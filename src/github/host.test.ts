@@ -14,6 +14,8 @@ import {
   isAssigneeRead,
   isCommentsRead,
   isIssueAssign,
+  isIssueAssigneeRead,
+  issueAssigneeReadArgs,
   isIssueBodyEdit,
   isIssueClose,
   isIssueComment,
@@ -39,7 +41,7 @@ import {
   type GhResult,
   type GhRunner,
 } from './gh.ts';
-import { GitHubIssueHost, issueIdIn, loginIn } from './host.ts';
+import { GitHubIssueHost, issueIdIn, labelNamesIn, loginIn } from './host.ts';
 import { ISSUE_LIMIT, issuePageArgs } from './issues.ts';
 import { CLOSED_ISSUES_QUERY, PULL_PAGE_SIZE } from './queries.ts';
 import { PULL_LIMIT } from './pulls.ts';
@@ -443,6 +445,46 @@ describe('GitHubIssueHost', () => {
     const other = new FakeGh().answersUserRead({ end: { kind: 'exited', code: 0 }, stdout: '{"login":"mallory"}', stderr: '' });
     assert.deepEqual(await hostWith(other).assigneeExists('acme/web', 'octocat'), { kind: 'failed', reason: 'gh printed no login octocat for the GitHub user octocat' });
     assert.equal(other.ran.length, 1);
+  });
+
+  it('reads whether a login may be assigned to one item, so one who took part in it may be though the repository read says not (T3228)', async () => {
+    const gh = new FakeGh().spells('OctoCat').cannotAssign('acme/web', ['OctoCat', 'mallory']).tookPart('acme/web', 7, ['OctoCat']);
+    const host = hostWith(gh);
+    assert.deepEqual(await host.assignableOn(TARGET, 'octocat'), { kind: 'found', login: 'OctoCat' });
+    assert.deepEqual(await host.assigneeExists('acme/web', 'octocat'), { kind: 'missing' });
+    assert.deepEqual(await host.assignableOn(TARGET, 'mallory'), { kind: 'missing' });
+    assert.deepEqual(await host.assignableOn({ repo: 'acme/web', number: 8 }, 'octocat'), { kind: 'missing' });
+    assert.deepEqual(gh.ran.slice(0, 2).map((request) => request.args), [userReadArgs('octocat'), issueAssigneeReadArgs(TARGET, 'OctoCat')]);
+    assert.ok(isIssueAssigneeRead(gh.ran[1]?.args ?? []));
+  });
+
+  it("refuses a login of no GitHub shape before any read, and gives gh's own line when the item read fails (T3228)", async () => {
+    const gh = new FakeGh();
+    assert.deepEqual(await hostWith(gh).assignableOn(TARGET, 'a/b'), { kind: 'failed', reason: '"a/b" is no GitHub login' });
+    assert.deepEqual(await hostWith(gh).assigneeExists('acme/web', '-x'), { kind: 'failed', reason: '"-x" is no GitHub login' });
+    assert.equal(gh.ran.length, 0);
+    const stopped = new FakeGh().answers('acme/web', { end: { kind: 'signal', signal: 'SIGTERM' }, stdout: '', stderr: '' });
+    assert.deepEqual(await hostWith(stopped).assignableOn(TARGET, 'octocat'), { kind: 'failed', reason: 'gh was stopped (SIGTERM) while reading whether octocat may be assigned to acme/web#7' });
+  });
+
+  it('reads the labels an issue carries, missing for no such issue, failed for an answer with no label list (T3228)', async () => {
+    const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7, { labels: ['design', 'type:feature'] })]);
+    const host = hostWith(gh);
+    assert.deepEqual(await host.issueLabels(TARGET), { kind: 'read', labels: ['design', 'type:feature'] });
+    assert.deepEqual(await host.issueLabels({ repo: 'acme/web', number: 9 }), { kind: 'missing' });
+    assert.ok(gh.ran.every((request) => isIssueRead(request.args)));
+    const bare = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 0 }, stdout: '{"id":1007}', stderr: '' });
+    assert.deepEqual(await hostWith(bare).issueLabels(TARGET), { kind: 'failed', reason: 'gh printed no label list for acme/web#7' });
+  });
+
+  it('takes as label names only a list of objects each with a name string', () => {
+    assert.deepEqual(labelNamesIn('{"labels":[{"name":"design"},{"name":"p1","color":"fff"}]}'), ['design', 'p1']);
+    assert.deepEqual(labelNamesIn('{"labels":[]}'), []);
+    assert.equal(labelNamesIn('{"labels":[{"name":7}]}'), undefined);
+    assert.equal(labelNamesIn('{"labels":["design"]}'), undefined);
+    assert.equal(labelNamesIn('{"labels":{"name":"design"}}'), undefined);
+    assert.equal(labelNamesIn('[]'), undefined);
+    assert.equal(labelNamesIn('not json'), undefined);
   });
 
   it("takes as a login only a string of a login's shape in the printed user", () => {

@@ -74,6 +74,9 @@ export type HostLabelFile = { readonly kind: 'read'; readonly labels: readonly L
  */
 export type HostAssignee = { readonly kind: 'found'; readonly login: string } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
 
+/** The labels one issue or pull request carries as one read found them; missing when the host shows no such item; or the read failed. */
+export type HostIssueLabels = { readonly kind: 'read'; readonly labels: readonly string[] } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
+
 /** The comments one read of an issue's new comments gave, oldest first, each with its text matched and dropped; or the read failed. */
 export type HostComments = { readonly kind: 'read'; readonly comments: readonly ReadComment[] } | { readonly kind: 'failed'; readonly reason: string };
 
@@ -175,8 +178,15 @@ export interface IssueHost {
   addBlockedBy(target: IssueTarget, blockerId: number): Promise<HostEnd>;
   /** Whether `login` may be assigned in `repo`, so an assign is only sent for one the host would not drop. */
   assigneeExists(repo: string, login: string): Promise<HostAssignee>;
+  /**
+   * Whether `login` may be assigned to the issue or pull request: one with access to the repository, or one who took
+   * part in that item, such as a commenter asking to take it (issue assign).
+   */
+  assignableOn(target: IssueTarget, login: string): Promise<HostAssignee>;
   /** Adds `logins` to the assignees of the issue or pull request; those already on it stay. */
   assign(target: IssueTarget, logins: readonly string[]): Promise<HostEnd>;
+  /** The labels the issue or pull request carries now, read so a write its labels rule out is refused (issue assign on a design issue). */
+  issueLabels(target: IssueTarget): Promise<HostIssueLabels>;
   /**
    * Whether `repo` changed since the host gave `marks`, cheaply enough to ask every minute: no list is read. Empty
    * marks always read as changed.

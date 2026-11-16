@@ -1,6 +1,7 @@
 import { recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import {
   isAssigneeRead,
+  isIssueAssigneeRead,
   isCommentsRead,
   COMMENTS_PAGE,
   isUserRead,
@@ -326,6 +327,7 @@ export class FakeGh implements GhRunner {
   /** What each label file read named, as the real runner keeps it, so a create of a label it named is taken. */
   private readonly fileReads = new LabelFileReads();
   private readonly unassignable = new Map<string, readonly string[]>();
+  private readonly participants = new Map<string, readonly string[]>();
   private readonly spellings = new Map<string, string>();
   private userAnswer: GhResult | undefined;
   private commentsAnswer: GhResult | undefined;
@@ -448,6 +450,15 @@ export class FakeGh implements GhRunner {
   }
 
   /**
+   * From now on, these logins took part in the issue or pull request `repo#number` (a comment), so GitHub lets them
+   * be assigned to it, though a read for the whole repository is still Not Found for one set by cannotAssign.
+   */
+  tookPart(repo: string, number: number, logins: readonly string[]): this {
+    this.participants.set(`${repo}#${number}`, logins);
+    return this;
+  }
+
+  /**
    * From now on, GitHub spells each of these logins as given: a user read in any case prints it so, and an assignee
    * read matches it only in that case, as GitHub's does. A login not given is spelled as a read names it.
    */
@@ -521,6 +532,9 @@ export class FakeGh implements GhRunner {
     }
     if (isAssigneeRead(request.args)) {
       return this.assigneeRead(request.args[1] ?? '');
+    }
+    if (isIssueAssigneeRead(request.args)) {
+      return this.issueAssigneeRead(request.args[1] ?? '');
     }
     if (isUserRead(request.args)) {
       return this.userRead(request.args[1] ?? '');
@@ -685,8 +699,18 @@ export class FakeGh implements GhRunner {
   }
 
   /**
+   * A read of whether a login may be assigned to one item, as GitHub answers it: what a test set for the repository,
+   * else as the repository-wide read, except that a login that took part in the item may be assigned to it.
+   */
+  private issueAssigneeRead(path: string): GhResult {
+    const [, owner = '', name = '', , number = '', , login = ''] = path.split('/');
+    const took = (this.participants.get(`${owner}/${name}#${number}`) ?? []).includes(login);
+    return took && this.canned.get(`${owner}/${name}`) === undefined ? { end: { kind: 'exited', code: 0 }, stdout: '', stderr: '' } : this.assigneeRead(`repos/${owner}/${name}/assignees/${login}`);
+  }
+
+  /**
    * An issue read as GitHub's REST API answers it: what a test set for the repository, else the issue's number and
-   * its id, 1000 + the number, when the repository holds it, else Not Found.
+   * its id, 1000 + the number, and the names of its labels, when the repository holds it, else Not Found.
    */
   /**
    * A read of one issue's new comments as GitHub's REST API answers it: the comments the issue holds posted at or
@@ -717,9 +741,9 @@ export class FakeGh implements GhRunner {
     if (canned !== undefined) {
       return canned;
     }
-    const held = (this.issues.get(`${owner}/${name}`) ?? []).some((issue) => String(issue['number']) === number);
-    return held
-      ? { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ id: 1000 + Number(number), number: Number(number) }), stderr: '' }
+    const held = (this.issues.get(`${owner}/${name}`) ?? []).find((issue) => String(issue['number']) === number);
+    return held !== undefined
+      ? { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ id: 1000 + Number(number), number: Number(number), labels: nodesOf(recordField(held, 'labels')).flatMap((label) => { const named = stringField(label, 'name'); return named === undefined ? [] : [{ name: named }]; }) }), stderr: '' }
       : { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' };
   }
 

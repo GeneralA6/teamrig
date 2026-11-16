@@ -1,4 +1,4 @@
-import type { CloseReason, HostAssignee, HostComments, HostEnd, HostIssueId, HostJobLog, HostLabel, HostLabelFile, HostLinks, HostList, HostOpen, HostPulls, HostReach, HostUse, HostWatch, IssueDraft, IssueHost, IssueTarget, LabelSpec, WatchMarks } from '../issues/host.ts';
+import { targetText, type CloseReason, type HostAssignee, type HostComments, type HostEnd, type HostIssueId, type HostIssueLabels, type HostJobLog, type HostLabel, type HostLabelFile, type HostLinks, type HostList, type HostOpen, type HostPulls, type HostReach, type HostUse, type HostWatch, type IssueDraft, type IssueHost, type IssueTarget, type LabelSpec, type WatchMarks } from '../issues/host.ts';
 import type { FieldValue, HostField, HostFieldRead, IssueFields } from '../issues/fields.ts';
 import type { LinkedIssue } from '../issues/issue.ts';
 import type { HostPost, HostPosts } from '../issues/post.ts';
@@ -54,6 +54,11 @@ export class FakeIssueHost implements IssueHost {
   private readonly spellings = new Map<string, string>();
   private assigneeRead: HostAssignee | undefined;
   private assignEnd: HostEnd = { kind: 'done' };
+  private readonly itemLabels = new Map<string, readonly string[]>();
+  private issueLabelsRead: HostIssueLabels | undefined;
+  private readonly participants = new Set<string>();
+  /** Each item a labels read was asked for, in order. */
+  readonly labelReads: IssueTarget[] = [];
   private unassignEnd: HostEnd = { kind: 'done' };
   /** No fields capability until a test gives one, as a tracker without issue fields has none. */
   fields?: IssueFields;
@@ -104,6 +109,24 @@ export class FakeIssueHost implements IssueHost {
   /** From now on, an assign fails for `reason`. */
   failsAssign(reason: string): this {
     this.assignEnd = { kind: 'failed', reason };
+    return this;
+  }
+
+  /** From now on, the issue or pull request `target` carries these labels; every other one carries none. */
+  labelsItem(target: IssueTarget, ...labels: string[]): this {
+    this.itemLabels.set(targetText(target), labels);
+    return this;
+  }
+
+  /** From now on, every read of an item's labels ends as `end`. */
+  readsIssueLabels(end: HostIssueLabels): this {
+    this.issueLabelsRead = end;
+    return this;
+  }
+
+  /** From now on, these logins may be assigned only to the items they took part in: never in a repository-wide read. */
+  tookPart(...logins: string[]): this {
+    logins.forEach((login) => this.participants.add(login));
     return this;
   }
 
@@ -347,7 +370,22 @@ export class FakeIssueHost implements IssueHost {
   }
 
   assigneeExists(_repo: string, login: string): Promise<HostAssignee> {
-    return Promise.resolve(this.assigneeRead ?? (this.unassignable.has(login) ? { kind: 'missing' } : { kind: 'found', login: this.spellings.get(login.toLowerCase()) ?? login }));
+    return Promise.resolve(this.assigneeRead ?? (this.participants.has(login) ? { kind: 'missing' } : this.assignee(login)));
+  }
+
+  /** As assigneeExists, but a login that took part in an item may be assigned to it too. */
+  assignableOn(_target: IssueTarget, login: string): Promise<HostAssignee> {
+    return Promise.resolve(this.assigneeRead ?? this.assignee(login));
+  }
+
+  /** Missing for a login set unassignable, else found as the host spells it. */
+  private assignee(login: string): HostAssignee {
+    return this.unassignable.has(login) ? { kind: 'missing' } : { kind: 'found', login: this.spellings.get(login.toLowerCase()) ?? login };
+  }
+
+  issueLabels(target: IssueTarget): Promise<HostIssueLabels> {
+    this.labelReads.push(target);
+    return Promise.resolve(this.issueLabelsRead ?? { kind: 'read', labels: this.itemLabels.get(targetText(target)) ?? [] });
   }
 
   assign(target: IssueTarget, logins: readonly string[]): Promise<HostEnd> {
