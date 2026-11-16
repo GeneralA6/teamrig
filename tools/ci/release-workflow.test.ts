@@ -28,9 +28,8 @@ function readRecord(path: string): JsonRecord {
 }
 
 describe('release.yml', () => {
-  it('runs by hand only, until pull requests stop raising the version themselves', () => {
-    assert.match(workflow, /^on:\n(?: {2}#.*\n)*? {2}workflow_dispatch:\n {4}inputs:\n {6}main-as-is:\n(?: {8}.+\n)+\n/m);
-    assert.doesNotMatch(workflow, /^ {2}push:$/m);
+  it('runs on each push to main, and by hand', () => {
+    assert.match(workflow, /^on:\n(?: {2}#.*\n)*? {2}push:\n {4}branches: \[main\]\n {2}workflow_dispatch:\n {4}inputs:\n {6}main-as-is:\n(?: {8}.+\n)+\n/m);
   });
 
   it("can publish main as it stands, for the first release, never by default", () => {

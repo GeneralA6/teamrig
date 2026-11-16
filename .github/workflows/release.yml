@@ -1,8 +1,9 @@
 name: release
 
 on:
-  # Run by hand only until pull requests stop raising the version themselves: with both, the release pull request
-  # would raise from a version main already passed. The cutover adds the push to main here (T3346).
+  # Each merge to main updates the release pull request; merging that one tags main and publishes the release.
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       main-as-is:
