@@ -27,7 +27,7 @@ the rules that apply on every turn, and the project skills in `.claude/skills/` 
 | [`dev-add-command`](.claude/skills/dev-add-command/SKILL.md) | a new CLI command, or a flag on one |
 | [`dev-add-config-key`](.claude/skills/dev-add-config-key/SKILL.md) | a new key in the team config |
 | [`dev-update-docs`](.claude/skills/dev-update-docs/SKILL.md) | the docs a change must update, and the checks that hold them to the code |
-| [`dev-ship-change`](.claude/skills/dev-ship-change/SKILL.md) | from the last commit to the merge: dist, version raise, checks, push, pull request |
+| [`dev-ship-change`](.claude/skills/dev-ship-change/SKILL.md) | from the last commit to the merge: dist, checks, push, pull request |
 | [`dev-design-issue`](.claude/skills/dev-design-issue/SKILL.md) | joining a design issue: a reasoned comment, nothing taken until it is agreed, no sensitive data |
 | [`dev-github-intake`](.claude/skills/dev-github-intake/SKILL.md) | a maintainer taking in issues and pull requests: labels, best fix first, landing with credit, design issues |
 
@@ -182,13 +182,25 @@ matrix.
 - Each commit is one logical change. The `size rule` (`tools/ci/size-rule-cli.ts`, run by the local gate, CI
   and `npm run check`) fails a commit over 400 changed non-test lines or 15 non-test files whose message has
   no `Large-commit: <reason>` line: the push guard's rule at its defaults, so a pull request meets it too.
-- Nothing is pushed to `main` directly, and release tags are set only by the release workflow, which the maintainer
-  runs.
-- The `release` workflow (`.github/workflows/release.yml`, run by hand for now) keeps one release pull request open
+- Each commit subject is a Conventional Commit, `<type>(<area>): <what>` with the area optional, such as
+  `fix(ship): ...` or `docs: ...`; the types are `feat`, `fix`, `perf`, `refactor`, `docs`, `test`,
+  `build`, `ci`, `chore` and `revert`, and a `!` before the colon marks a change that breaks how people use
+  teamrig. The release workflow raises the version from these subjects, and a pull request is rebase-merged with its
+  commits as they are, so the `commit subjects` check (`tools/ci/commit-subjects-cli.ts`, run by the local gate, CI
+  and `npm run check`) fails a commit whose subject is not one, and says how to reword it.
+- Nothing is pushed to `main` directly, and release tags are set only by the release workflow.
+- The `release` workflow (`.github/workflows/release.yml`, run on each push to `main`) keeps one release pull request open
   through release-please (`release-please-config.json`): it raises the version in the plugin's `plugin.json` and
   `src/core/version.ts` and writes the notes, and a person reviews and merges it. Once it merged, the next run tags
   main `teamrig-v<version>` with the notes, builds the dist with a read-only token, and pushes main's commit with
   the dist on top to the `release` branch, tagged `v<version>` (`tools/release/publish.ts`).
+- Installs take the version in `plugins/teamrig/.claude-plugin/plugin.json`, not the newest commit:
+  `claude plugin update` moves an install only when that version rises. A pull request never raises it: the release
+  pull request does, from the commit subjects since the last release. While it is 0.x, a `feat` or a breaking
+  change raises the minor, a `fix` or `perf` the patch. A spec (`tools/ci/release-workflow.test.ts`) holds
+  `plugin.json`, `src/core/version.ts` and `.release-please-manifest.json` to one version, so a raise by hand
+  fails, and another (`tools/lib/marketplace.test.ts`) fails a marketplace entry that gives a version of its own,
+  which Claude Code ignores. How users update: [Updating the plugin](docs/how-it-works.md#updating-the-plugin).
 
 ## Issues
 Each issue becomes a task teamrig tracks, so an issue carries the task's fields. Open one through a form: a blank issue

@@ -1,6 +1,6 @@
 ---
 name: dev-ship-change
-description: Land a finished teamrig change through small signed commits, a dist rebuild, the version raise, npm run check, a push through the local gate and a rebase-merged pull request.
+description: Land a finished teamrig change through small signed commits with Conventional subjects, a dist rebuild, npm run check, a push through the local gate and a rebase-merged pull request.
 ---
 
 # Ship a change
@@ -12,17 +12,15 @@ description: Land a finished teamrig change through small signed commits, a dist
    `<type>/<id>-<slug>` such as `feat/t12-parse-input` (CONTRIBUTING.md, Branches and releases). A worktree works
    too: `teamrig worktree add --task <id>` names the branch and runs the setup, or `git worktree add -b <branch>
    <path> origin/main`, then `npm ci` in it.
-3. Commit each logical change once its step passes, with `git commit -s`. Subjects follow the log, `area: what`
-   (`cli:`, `config:`, `hooks:`, `docs:`, `test:`, `ci:`, `tools:`). A commit past 400 changed non-test lines or 15
+3. Commit each logical change once its step passes, with `git commit -s`. Subjects are Conventional Commits,
+   `<type>(<area>): <what>` with the area optional (`feat(cli): ...`, `fix(ship): ...`, `docs: ...`); the
+   `commit subjects` check fails any other (CONTRIBUTING.md, Branches and releases). A commit past 400 changed non-test lines or 15
    non-test files carries a `Large-commit: <reason>` line.
 4. After a `src/` change, run `npm run build` and commit `plugins/teamrig/dist` on its own
    (`build: rebuild the plugin dist`): the `dist-fresh` check refuses a dist that does not match the source.
-5. A change under `plugins/teamrig/` raises the version: `plugins/teamrig/.claude-plugin/plugin.json` and
-   `src/core/version.ts` (a test holds them equal), in their own commit, `plugin: version X.Y.Z, <why>`. While the
-   version is 0.x, the minor for a feature or a change that breaks how people use it, else the patch. Installs move
-   only when this version rises. Check it with `node tools/ci/plugin-version-cli.ts`: a local run judges the raise
-   against the branch's fork point, so main raising since does not block the push; the pull request's run holds it
-   above main's.
+5. Never raise the version in `plugins/teamrig/.claude-plugin/plugin.json` or `src/core/version.ts`: the release
+   pull request does, from the subjects. While the version is 0.x, a `feat` or a breaking change (`!`) raises the
+   minor, a `fix` or `perf` the patch, so pick the type for what the change does for users.
 6. `npm run check`: every gate CI runs, on your tree.
 7. `git push -u origin <branch>`: the pre-push hook runs the local gate (`tools/ci/local.ts`, its checks listed in
    `tools/ci/local-checks.ts`) on the committed tree. Never `--no-verify`.
@@ -37,16 +35,11 @@ description: Land a finished teamrig change through small signed commits, a dist
 
 - Queue a `tools/ship` run without `--merge` as `--kind test`, and only a `--merge` run as `--kind ship`: the queue
   refuses a run whose kind does not fit, as only a merge moves main and holds the host's one ship slot.
-- Main moved while you worked: the merge catches the branch up itself when the version raise and the dist each sit
-  in a commit of their own (`tools/ship/merge.ts`). When it refuses, rebase onto `origin/main` by hand and
-  set the version raise again from main's version.
-- `tools/ship` run without `--merge`, for an approval, leaves the work alone on the head: it raises the version and
-  builds the dist only to run the checks, then takes both back, the raise left uncommitted (a new migration's
-  `firstRelease` stamp in `src/config/migrate.ts` goes in the raise chunk and comes back with it). The `--merge` run commits
-  both once, on the base it lands on, and the approval still holds, as it reads the change apart from those files.
-- A line the change adds that names the version it ships in (a migration's `firstRelease`, a docs `since x.y.z` in a
-  Markdown file or the config schema) may move to main's next version after main moves, and the approval holds. If
-  you change any other word on that line, or a version on a line the change did not add, you need a new approval.
+- Main moved while you worked: the merge catches the branch up itself when the dist sits in a commit of its own
+  (`tools/ship/merge.ts`). When it refuses, rebase onto `origin/main` by hand and rebuild the dist.
+- `tools/ship` run without `--merge`, for an approval, leaves the work alone on the head: it builds the dist only to
+  run the checks, then takes it back. The `--merge` run commits the dist once, on the base it lands on, and the
+  approval still holds, as it reads the change apart from the dist.
 - The local gate proves a committed tree, so it refuses uncommitted changes: commit or stash them first.
 - With `"mergeChecks": "changed"` on the repository in `tools/ship/repos.json`, the pre-push hook and the `--merge`
   run take the short checks (scrub, DCO, typecheck, the changed files' specs) and leave the whole suite to required

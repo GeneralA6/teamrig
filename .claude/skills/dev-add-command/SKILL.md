@@ -23,7 +23,8 @@ flag missing from any of them fails `npm test`.
 6. Add its row to `docs/features.md` (held by `tools/docs/features-doc.test.ts`).
 7. Run `npm run docs:images`: the commands picture is drawn by running the CLI, and `npm run check` fails while it is
    stale.
-8. Land it with `dev-ship-change`: the change is under `src/`, so it rebuilds the dist and raises the version.
+8. Land it with `dev-ship-change` as a `feat` commit: the change is under `src/`, so it rebuilds the dist, and the
+   release pull request raises the version.
 
 ## Traps
 
