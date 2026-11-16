@@ -16,8 +16,8 @@ import type { CliRuntime } from './runtime.ts';
  * places may be used. C4: the worktree is a linked worktree of the repository whose `shipTool` the line runs, inside its
  * worktree folder, on a task branch whose task the holder owns, and the plan and note files sit in that task's folder,
  * so a session ships only its own work. C5: the tool is a tracked file of a checkout of the same repository with no
- * change at all and a HEAD on the default branch as of the last fetch, so what runs is code that landed through review.
- * Paths are the host's, since git and the tool open them there.
+ * change at all whose HEAD makes the default branch's tree as of the last fetch, so what runs is main's current code,
+ * reviewed, never a past main's (T3223). Paths are the host's, since git and the tool open them there.
  */
 
 /** A repository of the team's delivery config, with its main checkout as a place. */
@@ -54,19 +54,85 @@ function sameRepository(git: MergeGit, a: string, b: string): boolean {
   return first !== undefined && second !== undefined && samePath(first, second);
 }
 
-/** C5: the tool is a tracked file of a checkout of the repository, with no change at all and a HEAD on its default branch. */
-function toolIsLanded(git: MergeGit, tool: string, mainDir: string): boolean {
+/** The checkout a ship tool runs from, and the commit its HEAD is at. */
+interface ToolCheckout {
+  readonly top: string;
+  readonly head: string;
+}
+
+/** The tool's checkout when the tool is a tracked file of a checkout of the repository with no change at all; undefined otherwise. */
+function cleanToolCheckout(git: MergeGit, tool: string, mainDir: string): ToolCheckout | undefined {
   const checkout = git.checkoutOf(dirname(tool));
   if (checkout === undefined || !sameRepository(git, checkout.top, mainDir)) {
-    return false;
+    return undefined;
   }
   const path = relative(checkout.top, tool).replaceAll('\\', '/');
   if (path === '' || path.startsWith('../') || isAbsolute(path)) {
-    return false;
+    return undefined;
   }
   const changes = git.changes(checkout.top, true);
   const tracked = git.blobsAt(checkout.top, 'HEAD', [path])?.has(path) === true;
-  return changes?.length === 0 && tracked && git.isAncestor(checkout.top, 'HEAD', `${ORIGIN}/${git.defaultBranch(checkout.top, ORIGIN)}`);
+  const head = git.sha(checkout.top, 'HEAD');
+  return changes?.length === 0 && tracked && head !== undefined ? { top: checkout.top, head } : undefined;
+}
+
+/** The default branch as of the checkout's last fetch, such as `origin/main`. */
+function defaultRefOf(git: MergeGit, top: string): string {
+  return `${ORIGIN}/${git.defaultBranch(top, ORIGIN)}`;
+}
+
+/** True when the checkout's HEAD makes the default branch's tree: main's current code, where any past main's has another tree. */
+function holdsMainsCode(git: MergeGit, top: string): boolean {
+  const tree = git.treeOf(top, 'HEAD');
+  return tree !== undefined && tree === git.treeOf(top, defaultRefOf(git, top));
+}
+
+/** C5: the tool is a clean, tracked file of a checkout of the repository that holds main's current code. */
+function toolIsLanded(git: MergeGit, tool: string, mainDir: string): boolean {
+  const checkout = cleanToolCheckout(git, tool, mainDir);
+  return checkout !== undefined && holdsMainsCode(git, checkout.top);
+}
+
+/** A configured ship tool a queued step runs, and the commit its checkout was at when the step was queued (T3223). */
+export interface ShipToolPin {
+  readonly tool: string;
+  readonly head: string;
+}
+
+/** The configured ship tool a step's words run, each word read from the step's folder; undefined when they run none. */
+export function shipToolOfWords(kit: Kit, config: KitConfig, words: readonly string[], cwd: string): string | undefined {
+  return words.map((word) => (isAbsolute(word) ? word : resolve(cwd, word))).find((word) => shipRepoOf(kit, config, word) !== undefined);
+}
+
+/** A stale or changed ship tool's refusal: what it is not, and how to move its checkout to the newest main. */
+function staleToolReason(git: MergeGit, tool: string, since: string): string {
+  const top = git.checkoutOf(dirname(tool))?.top ?? dirname(tool);
+  const main = defaultRefOf(git, top);
+  return `the ship tool ${tool}${since} is not ${main}'s current code in a checkout with no change: run git -C ${top} fetch -q ${ORIGIN} && git -C ${top} checkout -q --detach ${main}, then queue the step again`;
+}
+
+/**
+ * Pins a ship tool a step is queued to run (T3223): it must hold main's current code as C5 reads it, so a queued ship
+ * runs the same reviewed tool whether a role's allow or a person let the line through; a reason when it does not.
+ */
+export function shipToolPinOf(git: MergeGit, kit: Kit, config: KitConfig, tool: string): ShipToolPin | { readonly refused: string } {
+  const repo = shipRepoOf(kit, config, tool);
+  const checkout = repo === undefined ? undefined : cleanToolCheckout(git, tool, repo.mainDir);
+  return checkout !== undefined && holdsMainsCode(git, checkout.top) ? { tool, head: checkout.head } : { refused: staleToolReason(git, tool, '') };
+}
+
+/**
+ * Why a pinned ship tool may not run when its step starts, after waiting in the host lock's line; undefined when it
+ * may. Its checkout must still be clean and at the pinned commit, or at main's current code if it moved on, so a
+ * checkout moved to another commit while the step waited never runs that commit's tool.
+ */
+export function shipToolStartRefusal(git: MergeGit, kit: Kit, config: KitConfig, pin: ShipToolPin): string | undefined {
+  const repo = shipRepoOf(kit, config, pin.tool);
+  const checkout = repo === undefined ? undefined : cleanToolCheckout(git, pin.tool, repo.mainDir);
+  if (checkout !== undefined && (checkout.head === pin.head || holdsMainsCode(git, checkout.top))) {
+    return undefined;
+  }
+  return staleToolReason(git, pin.tool, ` changed from ${pin.head.slice(0, 9)} while the step waited and`);
 }
 
 /**

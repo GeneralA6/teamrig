@@ -216,6 +216,17 @@ describe('hook route-allow: the ship role (T2984)', () => {
     }
   });
 
+  it("gives no ship from a clean checkout detached at an older main commit, only from main's current code (C5, T3223)", async () => {
+    const older = await shipKit();
+    older.git.heads.set('/repo/ship', 'old');
+    older.git.ancestry.add('old>base');
+    assert.deepEqual(await older.kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: older.git }), NOTHING, 'a past main, though main holds it');
+    const same = await shipKit();
+    same.git.heads.set('/repo/ship', 'rebuilt');
+    same.git.trees.set('rebuilt', 'tree-base');
+    assert.equal(decisionOf(await same.kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: same.git })), 'allow', "another commit that makes main's tree");
+  });
+
   it('gives no ship to a team whose repository names no ship tool', async () => {
     const { kit, git } = await shipKit({ delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT } } } });
     assert.deepEqual(await kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: git }), NOTHING);

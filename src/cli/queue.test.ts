@@ -10,6 +10,7 @@ import { APP, CliHarness, CONFIG_PATH, KIT, TEAM, TEAM_HOME, type CliResult } fr
 import { BUSY_HOLDERS, BUSY_HOLDERS_TEXT, FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { cleanTree, FakeTrees, GIT_DIR } from '../testing/fake-trees.ts';
 import { CLAUDE, FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
+import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
@@ -1172,4 +1173,72 @@ describe('teamrig queue hands a waiting step over when its shell ended under a l
       assert.deepEqual(steps.ran, []);
     });
   }
+});
+
+const SHIP_TOOL = '/repo/ship/tools/ship/ship.ts';
+/** A team whose repo app names the ship tool its clean checkout /repo/ship holds, queued one step at a time. */
+const SHIPPING = { ...TEAM, delivery: { queue: { admission: 'serial' }, repos: { app: { mainCheckout: MAIN_CHECKOUT, shipTool: SHIP_TOOL } } } };
+const SHIP_STEP = ['queue', '--session', 'alpha', '--what', 'ship T1', '--kind', 'ship', '--', 'node', SHIP_TOOL, '/repo/app/.claude/worktrees/t1-cli', '/tasks/T1/plan.json'];
+const MOVE = 'run git -C /repo/ship fetch -q origin && git -C /repo/ship checkout -q --detach origin/main, then queue the step again';
+const STALE = `the ship tool ${SHIP_TOOL} is not origin/main's current code in a checkout with no change: ${MOVE}`;
+
+/** The ship tool's checkout at main's current code, `base`, as of the last fetch. */
+function shipGit(): FakeMergeGit {
+  const git = new FakeMergeGit();
+  const checkout = { top: '/repo/ship', branch: undefined, mainCheckout: MAIN_CHECKOUT, linked: true };
+  git.checkouts.set('/repo/ship', checkout);
+  git.checkouts.set('/repo/ship/tools/ship', checkout);
+  git.heads.set('/repo/ship', 'base');
+  git.tracking.set('origin/main', 'base');
+  return git;
+}
+
+describe("teamrig queue runs a configured ship tool only from main's current code (T3223)", () => {
+  it("runs a ship step whose tool's checkout is clean at main's current code", async () => {
+    const { kit, steps } = harness(SHIPPING);
+    const result = await kit.run(SHIP_STEP, { steps, mergeGit: shipGit() });
+    assert.deepEqual([result.code, steps.ran.length], [EXIT.ok, 1]);
+  });
+
+  it('refuses at once, running nothing and starting no detached run, a ship tool at an older main or with a change', async () => {
+    const older = shipGit();
+    older.heads.set('/repo/ship', 'old');
+    older.ancestry.add('old>base');
+    const changed = shipGit();
+    changed.status.set('/repo/ship', [' M tools/ship/ship.ts']);
+    for (const [name, git] of Object.entries({ older, changed })) {
+      const { kit, steps } = harness(SHIPPING);
+      assert.deepEqual(await kit.run(SHIP_STEP, { steps, mergeGit: git }), { code: EXIT.refused, stdout: [`REFUSED ${STALE}`], stderr: [] }, name);
+      const processes = new FakeProcesses();
+      const detached = await kit.run([...SHIP_STEP.slice(0, 7), '--detach', ...SHIP_STEP.slice(7)], { steps, mergeGit: git, processes });
+      assert.deepEqual([detached.code, detached.stdout, processes.hidden, steps.ran, ledgerOf(kit)], [EXIT.refused, [`REFUSED ${STALE}`], [], [], []], `${name}, detached`);
+    }
+  });
+
+  it('refuses at its start, recording its refusal, a ship step whose tool moved to another commit while it waited', async () => {
+    const { kit, steps } = harness(SHIPPING);
+    await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
+    const git = shipGit();
+    const sleep = async (ms: number): Promise<void> => {
+      git.heads.set('/repo/ship', 'old');
+      await kit.clock.sleep(ms);
+    };
+    const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
+    const moved = `the ship tool ${SHIP_TOOL} changed from base while the step waited and is not origin/main's current code in a checkout with no change: ${MOVE}`;
+    assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [EXIT.refused, `REFUSED ${moved}`, []]);
+    assert.deepEqual(ledgerOf(kit).map((record) => (typeof record === 'object' && record !== null && 'outcome' in record ? record.outcome : undefined)), ['refused']);
+  });
+
+  it('runs a ship step whose tool moved on to the newest main while it waited', async () => {
+    const { kit, steps } = harness(SHIPPING);
+    await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
+    const git = shipGit();
+    const sleep = async (ms: number): Promise<void> => {
+      git.heads.set('/repo/ship', 'next');
+      git.tracking.set('origin/main', 'next');
+      await kit.clock.sleep(ms);
+    };
+    const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
+    assert.deepEqual([result.code, steps.ran.length], [EXIT.ok, 1]);
+  });
 });

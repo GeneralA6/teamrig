@@ -30,6 +30,7 @@ import { openTeamKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, te
 import { parentLockOf } from '../parent-lock.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { rerunAdvice, stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.ts';
+import { shipToolOfWords, shipToolPinOf, shipToolStartRefusal } from '../ship-role-check.ts';
 import { postUrgentLine } from '../urgent-line.ts';
 import { envSession, markedSessionOf } from './hook-input.ts';
 import { inboxDepsOf } from './inbox.ts';
@@ -101,18 +102,38 @@ function requestOf(args: ParsedArgs, words: readonly string[], what: string): Pr
   return processRequest(kindOf(args, words), taskOf(args, what));
 }
 
-/** What the step's start is checked against: the queue cutoff, and the host's pipeline freezes on its kind. */
+/**
+ * What the step's start is checked against: the queue cutoff, the host's pipeline freezes on its kind, and for a step
+ * that runs a configured ship tool, that its checkout still holds the code pinned when the step was queued.
+ */
 interface StartGate {
   readonly cutoffUtc: string | undefined;
   readonly pipelineFreezes: string;
   readonly kind: StepKind;
   readonly zone: TimeZone;
+  readonly shipTool: () => string | undefined;
 }
 
-/** Why the step may not start now (the queue cutoff, or a pipeline freeze on its kind), or undefined when it may. */
+/** Why the step may not start now (the queue cutoff, a pipeline freeze on its kind, a moved ship tool), or undefined when it may. */
 async function startRefusal(runtime: CliRuntime, gate: StartGate): Promise<string | undefined> {
   const now = runtime.clock.now();
-  return queueCutoffReason(now, gate.cutoffUtc, gate.zone) ?? pipelineFrozenRefusal(await runtime.files.read(gate.pipelineFreezes), gate.pipelineFreezes, now, [gate.kind], gate.zone);
+  return queueCutoffReason(now, gate.cutoffUtc, gate.zone) ?? pipelineFrozenRefusal(await runtime.files.read(gate.pipelineFreezes), gate.pipelineFreezes, now, [gate.kind], gate.zone) ?? gate.shipTool();
+}
+
+/**
+ * The start check of a step that runs a configured ship tool (T3223): pinned as this run of queue begins, the --detach
+ * call, its detached run and a hand-over's run each, so a tool whose checkout is not main's current code is refused
+ * before it waits, and one whose checkout moved while it waited is refused at its start. Nothing is taken from the
+ * arguments, so no flag can loosen it; a step that runs no ship tool has no check.
+ */
+function shipToolCheckOf(runtime: CliRuntime, kit: Kit, config: KitConfig, words: readonly string[]): () => string | undefined {
+  const tool = shipToolOfWords(kit, config, words, runtime.cwd);
+  if (tool === undefined) {
+    return () => undefined;
+  }
+  const pin = shipToolPinOf(runtime.mergeGit, kit, config, tool);
+  // A stale tool's refusal comes from the gate (`refuseUnstartable`), so a detached run refused before it waits still tells its session.
+  return 'refused' in pin ? () => pin.refused : () => shipToolStartRefusal(runtime.mergeGit, kit, config, pin);
 }
 
 async function refuseUnstartable(runtime: CliRuntime, gate: StartGate): Promise<void> {
@@ -552,7 +573,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
   const parent = await parentLockOf(runtime, lock, say);
   const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
-  const gate: StartGate = { cutoffUtc: delivery.schedule.queueCutoffUtc, pipelineFreezes: places.pipelineFreezes, kind: request.kind, zone };
+  const gate: StartGate = { cutoffUtc: delivery.schedule.queueCutoffUtc, pipelineFreezes: places.pipelineFreezes, kind: request.kind, zone, shipTool: shipToolCheckOf(runtime, kit, config, words) };
   if (detach) {
     if (parent !== undefined) {
       throw new UsageError('--detach under a live host lock: a step a queued step starts runs at once under its lock, and that step waits for its result; run it without --detach');
