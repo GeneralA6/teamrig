@@ -117,4 +117,11 @@ describe('closesIssue (T3169)', () => {
       assert.ok(!closesIssue(body, TARGET), body);
     }
   });
+
+  it('reads a repository name with a dot as written, the dot matching only a dot', () => {
+    const dotted = { repo: 'acme/web.site', number: 922 };
+    assert.ok(closesIssue('Closes acme/web.site#922', dotted));
+    assert.ok(!closesIssue('Closes acme/webXsite#922', dotted));
+    assert.ok(!closesIssue('fix https://github.com/acme/webXsite/issues/922', dotted));
+  });
 });
