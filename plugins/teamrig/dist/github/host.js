@@ -1,12 +1,17 @@
 import { targetText, } from "../issues/host.js";
 import { exitText } from "../open/processes.js";
-import { assigneeReadArgs, blockedByAddArgs, commentsReadArgs, issueAssignArgs, issueUnassignArgs, issueBodyArgs, issueCloseArgs, issueCommentArgs, issueCreateArgs, issueLabelAddArgs, issueLabelRemoveArgs, issueReadArgs, labelReadArgs, isLogin, labelCreateArgs, subIssueAddArgs, WATCH_PATHS, watchProbeArgs, userReadArgs, } from "./gh.js";
+import { assigneeReadArgs, blockedByAddArgs, commentsReadArgs, issueAssignArgs, issueUnassignArgs, issueBodyArgs, issueCloseArgs, issueCommentArgs, issueCreateArgs, issueLabelAddArgs, issueLabelRemoveArgs, issueReadArgs, jobLogArgs, labelReadArgs, isLogin, labelCreateArgs, subIssueAddArgs, WATCH_PATHS, watchProbeArgs, userReadArgs, } from "./gh.js";
 import { probeAnswerOf } from "./probe.js";
-import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, readCommentsIn, startFailureText } from "./issues.js";
+import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, readCommentsIn, runRead, startFailureText } from "./issues.js";
+import { failedLogExcerpt } from "./job-log.js";
 import { listLinks } from "./links.js";
 import { createdNumber } from "./migrate.js";
 import { latestIssues } from "./plan.js";
+import { listPulls, PULL_LIMIT } from "./pulls.js";
+import { PULL_PAGE_SIZE } from "./queries.js";
 import { TokenReadError } from "./tokens.js";
+/** A failed job's log read, as a failure line words it: the Actions permission lets a token read it. */
+const JOB_LOG_READ = { noun: 'failed job logs', permission: 'Actions', command: 'gh run view' };
 /** What each use does with an access, as its ACCESS line words it. */
 const USE_VERB = { read: 'read with', open: 'opens issues with', write: 'writes with' };
 /**
@@ -56,6 +61,46 @@ export class GitHubIssueHost {
             return closed;
         }
         return { kind: 'listed', issues: latestIssues(open.issues, closed.issues), notes: [...listNotes('open', open), ...listNotes('closed', closed)] };
+    }
+    /**
+     * The open pull requests, then those changed since `since`, as the owner's saved token or the gh login reads them
+     * (pulls.ts). With no `since` the second read takes one page, which only dates the next read.
+     */
+    async pulls(repo, since) {
+        const access = await this.tokens.accessFor(repo);
+        if (access instanceof TokenReadError) {
+            return { kind: 'failed', reason: access.message };
+        }
+        const open = await listPulls(this.gh, access, { repo, read: 'open', since: undefined, limit: PULL_LIMIT });
+        if (open.kind === 'failed') {
+            return open;
+        }
+        const changed = await listPulls(this.gh, access, { repo, read: 'changed', since, limit: since === undefined ? PULL_PAGE_SIZE : PULL_LIMIT });
+        if (changed.kind === 'failed') {
+            return changed;
+        }
+        const unreadable = open.unreadable + changed.unreadable;
+        const notes = [
+            ...(open.full ? [`the open pull request read reached ${PULL_LIMIT}, so it may leave some out`] : []),
+            ...(since !== undefined && changed.full ? [`the changed pull request read reached ${PULL_LIMIT}, so it may leave some out`] : []),
+            ...(unreadable > 0 ? [`${unreadable} item(s) gh printed did not read as pull requests and were left out`] : []),
+        ];
+        return { kind: 'listed', open: open.pulls, changed: changed.pulls, notes };
+    }
+    /**
+     * The end of one failed job's log (job-log.ts), as the owner's saved token or the gh login reads it; each line and
+     * a failure's reason have any secret shape redacted.
+     */
+    async jobLog(repo, jobId) {
+        const access = await this.tokens.accessFor(repo);
+        if (access instanceof TokenReadError) {
+            return { kind: 'failed', reason: access.message };
+        }
+        const run = await runRead(this.gh, access, repo, jobLogArgs(repo, jobId), JOB_LOG_READ);
+        if (run.kind === 'failed') {
+            return { kind: 'failed', reason: this.scanner.redact(run.reason) };
+        }
+        return { kind: 'read', ...failedLogExcerpt(run.stdout, (text) => this.scanner.redact(text)) };
     }
     /**
      * Opens one issue. A failure is one plain line with gh's own first error line, any secret shape in it redacted; a

@@ -150,6 +150,7 @@ export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
         warn: join(state, 'usage', 'warn'),
         logs: join(state, 'logs'),
         githubSync: join(state, 'github-sync.json'),
+        githubCi: join(state, 'github-ci'),
         githubSyncLock: join(state, 'github-sync.lock'),
         githubClocks: join(state, 'github-clocks.json'),
         githubWatch: join(state, 'github-watch.json'),
