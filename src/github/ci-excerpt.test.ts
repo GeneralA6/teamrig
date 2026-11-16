@@ -30,6 +30,7 @@ function pull(number: number, overrides: Partial<HostPull> = {}): HostPull {
     checks: 'failing',
     review: 'none',
     failedJobs: [{ name: 'test (ubuntu-latest)', id: number * 10 }],
+    closes: [],
     ...overrides,
   };
 }

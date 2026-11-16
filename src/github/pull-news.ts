@@ -144,9 +144,9 @@ export interface PullListener {
  * whose ref links it, and its `followers` (follows.ts), those two as followers: the pull request's needs are its
  * recipient's to wake for. A session is listed once, as the first it is.
  */
-export function pullListeners(recipient: string, holder: string | undefined, followers: readonly string[]): PullListener[] {
+export function pullListeners(recipient: string, linked: readonly string[], followers: readonly string[]): PullListener[] {
   const listeners: PullListener[] = [{ to: recipient, followed: false }];
-  for (const to of [...(holder === undefined ? [] : [holder]), ...followers]) {
+  for (const to of [...linked, ...followers]) {
     if (!listeners.some((listener) => listener.to === to)) {
       listeners.push({ to, followed: true });
     }

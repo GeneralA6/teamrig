@@ -211,7 +211,9 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   const news = eventsByRecipient(heard, (pull) => {
     const recipient = pullRecipient(pull, ours, (task) => owners.get(task), watcher);
     const ref = issueRef(pull.repo, pull.number);
-    return config.github.activity ? pullListeners(recipient, holders.get(ref)?.owner, followers.get(ref) ?? []) : [{ to: recipient, followed: false }];
+    // The owners of the tasks holding it or an issue it closes: its own task's, or the one it fixes.
+    const linked = [pull.number, ...pull.closes].flatMap((number) => holders.get(issueRef(pull.repo, number))?.owner ?? []);
+    return config.github.activity ? pullListeners(recipient, linked, followers.get(ref) ?? []) : [{ to: recipient, followed: false }];
   });
   for (const [to, events] of news) {
     const { text, wake } = pullNewsText(events, ours);

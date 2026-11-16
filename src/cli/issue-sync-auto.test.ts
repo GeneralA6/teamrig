@@ -335,6 +335,20 @@ describe('teamrig issue sync --auto, the activity on a task\'s or a followed ite
     assert.equal(githubLines(kit, 'charlie').length, 1);
   });
 
+  it("tells the owner of a task whose issue a pull request closes that pull request's news and posts, whatever its branch", async () => {
+    const kit = await linkedTeam(ACTIVITY_TEAM);
+    const closing = (state: 'OPEN' | 'MERGED', updatedAt: string): JsonRecord =>
+      ghPull('acme/web', 30, { head: 'fix-login', author: 'visitor', authorAssociation: 'CONTRIBUTOR', fork: true, closes: ['acme/api#9', 9], state, updatedAt });
+    const reply = restComment('acme/web', 30, 4, { author: 'visitor', body: 'Rebased on main.', updatedAt: '2030-01-08T10:20:00Z' });
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [closing('OPEN', '2030-01-01T00:00:00Z')]));
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [closing('MERGED', '2030-01-02T00:00:00Z')]).holdsPosts('acme/web', 'issues/comments', [reply]));
+    assert.deepEqual(githubLines(kit, 'alpha'), [
+      'GitHub pull requests: gh:acme/web#30 "Change 30": merged',
+      'GitHub activity: gh:acme/web#30 comment by visitor at https://github.com/acme/web/issues/30#issuecomment-4',
+    ]);
+    assert.equal(await asks(kit, 'alpha'), 0);
+  });
+
   /** An outsider's pull request #9, first with its checks running, then green with changes requested. */
   const outsidePull = (checks: 'PENDING' | 'SUCCESS', reviewDecision: 'CHANGES_REQUESTED' | null, updatedAt: string): JsonRecord =>
     ghPull('acme/web', 9, { head: 'feature', author: 'visitor', authorAssociation: 'CONTRIBUTOR', checks, reviewDecision, updatedAt });

@@ -30,6 +30,7 @@ function pull(number: number, overrides: Partial<HostPull> = {}): HostPull {
     checks: 'passing',
     review: 'none',
     failedJobs: [],
+    closes: [],
     ...overrides,
   };
 }
@@ -162,12 +163,12 @@ describe('pullRecipient', () => {
 
 describe('pullListeners', () => {
   it("lists the recipient, then a linked task's owner and the followers as followers, each session once", () => {
-    assert.deepEqual(pullListeners('bravo', 'alpha', ['charlie', 'bravo', 'alpha']), [
+    assert.deepEqual(pullListeners('bravo', ['alpha'], ['charlie', 'bravo', 'alpha']), [
       { to: 'bravo', followed: false },
       { to: 'alpha', followed: true },
       { to: 'charlie', followed: true },
     ]);
-    assert.deepEqual(pullListeners('watch', undefined, []), [{ to: 'watch', followed: false }]);
+    assert.deepEqual(pullListeners('watch', [], []), [{ to: 'watch', followed: false }]);
   });
 });
 

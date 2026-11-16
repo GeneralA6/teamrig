@@ -104,7 +104,7 @@ describe('mentionRoutes', () => {
 });
 
 describe('mentionItems', () => {
-  const pull = (number: number, head: string, author: string, fork = false): HostPull => ({
+  const pull = (number: number, head: string, author: string, fork = false, closes: readonly number[] = []): HostPull => ({
     repo: 'acme/web',
     number,
     title: `Change ${number}`,
@@ -123,10 +123,14 @@ describe('mentionItems', () => {
     checks: 'none',
     review: 'none',
     failedJobs: [],
+    closes,
   });
   const itemOf = mentionItems(
     'acme/web',
-    { issues: [{ number: 3, labels: ['area:docs'] }], pulls: [pull(20, 't5-docs', 'Hubber'), pull(21, 't5-docs', 'outsider'), pull(22, 't5-docs', 'hubber', true)] },
+    {
+      issues: [{ number: 3, labels: ['area:docs'] }],
+      pulls: [pull(20, 't5-docs', 'Hubber', false, [4]), pull(21, 't5-docs', 'outsider'), pull(22, 't5-docs', 'hubber', true), pull(23, 'patch-1', 'outsider', true, [3, 4])],
+    },
     { ofRef: (ref) => (ref === 'gh:acme/web#4' ? 'alpha' : undefined), ofTask: (task) => (task === 'T5' ? 'charlie' : undefined) },
     ROUTING.ours,
   );
@@ -137,6 +141,10 @@ describe('mentionItems', () => {
       { labels: [], taskOwner: 'alpha' },
       { labels: [], taskOwner: 'charlie' },
     ]);
+  });
+
+  it("gives a pull request closing a tracked issue that task's owner, whatever its branch or author, after its own branch's task", () => {
+    assert.deepEqual([20, 23].map((number) => itemOf(number).taskOwner), ['charlie', 'alpha']);
   });
 
   it("gives no task owner for an outsider's branch or a fork, even one named for a task, nor for an item it never read", () => {

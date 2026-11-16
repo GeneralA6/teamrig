@@ -58,4 +58,6 @@ export interface HostPull {
   readonly review: PullReview;
   /** The failed checks of its last commit, at most the first the query reads (queries.ts); empty when none failed. */
   readonly failedJobs: readonly FailedJob[];
+  /** The issues of its own repository it closes once merged, at most the first the query reads (queries.ts). */
+  readonly closes: readonly number[];
 }
