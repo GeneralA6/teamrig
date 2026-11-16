@@ -65,7 +65,15 @@ function ledgerStepOf(value) {
  * that process ends too: its death is told late, never falsely.
  */
 export async function deadRunsOf(ports, dir, team) {
-    const dead = [];
+    return (await runsOf(ports, dir, team)).filter(({ alive }) => !alive).map(({ path, record }) => ({ path, record }));
+}
+/** The runs of `team` in the detached folder `dir` whose process still goes: each waits for its turn or runs. */
+export async function liveRunsOf(ports, dir, team) {
+    return (await runsOf(ports, dir, team)).filter(({ alive }) => alive).map(({ record }) => record);
+}
+/** Every readable run record of `team` in `dir`. */
+async function runsOf(ports, dir, team) {
+    const runs = [];
     for (const name of await ports.files.list(dir)) {
         if (!name.endsWith(RUN_RECORD_SUFFIX)) {
             continue;
@@ -73,11 +81,11 @@ export async function deadRunsOf(ports, dir, team) {
         const path = join(dir, name);
         const text = await ports.files.read(path);
         const record = text === undefined ? undefined : parseRunRecord(text);
-        if (record !== undefined && record.team === team && !ports.alive(record.pid)) {
-            dead.push({ path, record });
+        if (record !== undefined && record.team === team) {
+            runs.push({ path, record, alive: ports.alive(record.pid) });
         }
     }
-    return dead;
+    return runs;
 }
 /** The line a dead run's session hears: what died, at which stage, and that nothing will report its end. */
 export function diedText(record) {

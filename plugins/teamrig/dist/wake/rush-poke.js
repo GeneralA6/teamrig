@@ -1,4 +1,5 @@
 import { KIT_NAME } from "../core/home.js";
+import { taskOfLabel } from "../delivery/process-request.js";
 import { costText } from "./decide.js";
 /**
  * The owner's "work left": an open or in-progress task, not one waiting or verifying whose waits cleared, since a
@@ -14,14 +15,16 @@ function topTaskOf(tasks, goal) {
 /**
  * Whether to poke the tab now, later, or not at all. One poke per idle stretch: a poke at or after the tab's last turn
  * blocks another until the tab has a new turn, so a tab that ignores a poke (or whose poke was dropped) is not poked
- * again and again. Nothing is due past the rush's end.
+ * again and again. Nothing is due past the rush's end. A task with a queued run of the session is not poked for: its
+ * next move is that run's end, whose line wakes the tab anyway. Poking for one cost a tab about 281k W each idle
+ * stretch while its ship gate waited in line and it had nothing else to do (T3168); its other work is still poked for.
  */
 export function decideRushPoke(input) {
-    const { rush, lastTurnAt, now, idleMs, lastPokeAt } = input;
+    const { rush, lastTurnAt, now, idleMs, lastPokeAt, queued } = input;
     if (rush === undefined || lastTurnAt === undefined) {
         return { kind: 'none' };
     }
-    const task = topTaskOf(input.startable.filter(isWorkLeft), rush.goal);
+    const task = topTaskOf(input.startable.filter((candidate) => isWorkLeft(candidate) && !queued.has(candidate.id)), rush.goal);
     if (task === undefined || (lastPokeAt !== undefined && lastPokeAt >= lastTurnAt)) {
         return { kind: 'none' };
     }
@@ -51,6 +54,20 @@ export function stepRunningFor(records, session, now, maxRunMs) {
         }
     }
     return [...started].some(([id, at]) => !ended.has(id) && now - at < maxRunMs);
+}
+/**
+ * The tasks `session`'s queued runs are for: the task each run's label names (`taskOfLabel`), the one
+ * `teamrig queue --task` defaults to. A run whose label names no task is for none.
+ */
+export function queuedTasksOf(runs, session) {
+    const tasks = new Set();
+    for (const run of runs) {
+        const task = run.session === session ? taskOfLabel(run.what) : undefined;
+        if (task !== undefined) {
+            tasks.add(task);
+        }
+    }
+    return tasks;
 }
 function minutesText(ms) {
     return `${Math.round(ms / 60_000)} min`;
