@@ -1,7 +1,7 @@
-import type { JsonRecord } from '../core/guards.ts';
+import { isStringArray, type JsonRecord } from '../core/guards.ts';
 import { parseJsonl, type JsonlParse, type JsonlRecord } from '../core/jsonl.ts';
 import { parseUtcDay } from '../core/time.ts';
-import { SESSION_NAME } from './model.ts';
+import { SESSION_NAME, TASK_ID } from './model.ts';
 
 /**
  * Goal records (T1730): a goal's tag, title, planned window and target, each move of its target with the note saying
@@ -17,17 +17,26 @@ export const GOALS_FILE = 'goals.jsonl';
 
 /**
  * The newest format of a goal record this teamrig reads and writes: 2 added the rank record (T2083), 3 a set's open
- * `slice` (T2453). Each record is
+ * `slice` (T2453), 4 the slice record (T2203). Each record is
  * written with the oldest format that holds it, so an older teamrig still reads every goal's add and set; it counts a
  * rank record as one from a newer teamrig and refuses to write beside it, never folding the goals without their ranks.
  */
-export const GOAL_RECORD_VERSION = 3;
+export const GOAL_RECORD_VERSION = 4;
 
 /** The format a rank record is written with. */
 const GOAL_RANK_VERSION = 2;
 
+/** The format a slice record is written with. */
+const GOAL_SLICE_VERSION = 4;
+
+/** The most a slice may cost, as a task's size: the whole weekly limit, in percent. */
+const MAX_SLICE_SIZE_PCT = 100;
+
 /** The format a goal's add, and a set without a slice, are written with: they are unchanged since format 1. */
 const GOAL_ADD_SET_VERSION = 1;
+
+/** The format a set naming a slice is written with: unchanged since format 3, so a teamrig that reads 3 still writes beside it. */
+const GOAL_SET_SLICE_VERSION = 3;
 
 /** The lowest rank, the first goal, and the highest a goal may take. */
 export const FIRST_GOAL_RANK = 1;
@@ -94,7 +103,36 @@ export interface GoalRank {
   readonly rank: number | null;
 }
 
-export type GoalRecord = GoalAdd | GoalSet | GoalRank;
+/**
+ * One of a goal's shippable slices, as the lead plans it (T2203): its title, the session that owns it, the day it
+ * ships, the live proof that shows it shipped and the tasks that make it, and once that proof exists, the evidence.
+ * A slice's first record names all but its size and evidence; a later one changes what it names, each field null
+ * where it keeps it, and a move of the ship day is a slip with its note.
+ */
+export interface GoalSliceRecord {
+  readonly type: 'goal-slice';
+  readonly at: string;
+  readonly by: string;
+  readonly tag: string;
+  /** The slice's number in its goal, FIRST_SLICE first. */
+  readonly slice: number;
+  readonly title: string | null;
+  /** The session that ships it, by id. */
+  readonly owner: string | null;
+  /** The day it ships, `YYYY-MM-DD` of the team's clock. */
+  readonly ship: string | null;
+  /** The live proof that shows it shipped, as text. */
+  readonly proof: string | null;
+  /** The ids of the tasks that make it; a task makes one slice of a goal. */
+  readonly tasks: readonly string[] | null;
+  /** What it costs, in percent of the weekly limit, as a task's size. */
+  readonly size: number | null;
+  /** The evidence that its proof exists: the slice has shipped. */
+  readonly proven: string | null;
+  readonly note: string;
+}
+
+export type GoalRecord = GoalAdd | GoalSet | GoalRank | GoalSliceRecord;
 
 export type GoalRecordParse =
   | { readonly kind: 'record'; readonly record: GoalRecord }
@@ -111,6 +149,29 @@ export interface GoalSlip {
   readonly note: string;
 }
 
+/** Who recorded a slice's proof, when, and the evidence. */
+export interface SliceProven {
+  readonly at: string;
+  readonly by: string;
+  readonly evidence: string;
+}
+
+/** A slice as its records fold: the latest of each field, its first proof, and every move of its ship day. */
+export interface Slice {
+  readonly number: number;
+  readonly title: string;
+  readonly owner: string;
+  readonly ship: string;
+  readonly proof: string;
+  readonly tasks: readonly string[];
+  readonly size: number | null;
+  /** Null until its proof is recorded. */
+  readonly proven: SliceProven | null;
+  readonly slips: readonly GoalSlip[];
+  readonly addedAt: string;
+  readonly addedBy: string;
+}
+
 /** A goal as its records fold: the latest title, target and rank, and every target move in write order. */
 export interface Goal {
   readonly tag: string;
@@ -125,6 +186,8 @@ export interface Goal {
   readonly rank: number | null;
   /** The slice now open (T2453), 1 first; null while the lead has opened none. */
   readonly slice: number | null;
+  /** Its slice records (T2203), by number. */
+  readonly slices: readonly Slice[];
 }
 
 /** The goal records as read: the goals by tag, in the order they were added, and what could not be used. */
@@ -228,9 +291,91 @@ export function parseGoalRecord(line: JsonlRecord): GoalRecordParse {
       }
       return { kind: 'record', record: { type: 'goal-rank', ...base, rank } };
     }
+    case 'goal-slice': {
+      const fields = sliceFieldsOf(record);
+      return typeof fields === 'string' ? { kind: 'unreadable', reason: fields } : { kind: 'record', record: { type: 'goal-slice', ...base, ...fields } };
+    }
     default:
       return { kind: 'unreadable', reason: `unknown type ${JSON.stringify(record['type'])}` };
   }
+}
+
+/** A slice record's own fields. */
+type SliceFields = Omit<GoalSliceRecord, 'type' | 'at' | 'by' | 'tag'>;
+
+/** A field that is absent (null) or non-empty text; undefined when it is neither. */
+function nullableText(record: JsonRecord, key: string): string | null | undefined {
+  const value = record[key] ?? null;
+  return value === null || (typeof value === 'string' && value.trim() !== '') ? value : undefined;
+}
+
+/** A field that is absent (null) or a list of task ids; undefined when it is neither. */
+function nullableTaskIds(record: JsonRecord, key: string): readonly string[] | null | undefined {
+  const value = record[key] ?? null;
+  if (value === null) {
+    return null;
+  }
+  return isStringArray(value) && value.every((id) => TASK_ID.test(id)) ? value : undefined;
+}
+
+/** A field that is absent (null) or a size above 0 and at most the whole week; undefined when it is neither. */
+function nullableSize(record: JsonRecord, key: string): number | null | undefined {
+  const value = record[key] ?? null;
+  return value === null || (typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MAX_SLICE_SIZE_PCT) ? value : undefined;
+}
+
+/** A slice record's own fields, or why they cannot be read. */
+function sliceFieldsOf(record: JsonRecord): SliceFields | string {
+  const slice = record['slice'];
+  const note = textField(record, 'note');
+  const [title, proof, proven, owner, ship] = [
+    nullableText(record, 'title'),
+    nullableText(record, 'proof'),
+    nullableText(record, 'proven'),
+    nullableText(record, 'owner'),
+    nullableText(record, 'ship'),
+  ];
+  const tasks = nullableTaskIds(record, 'tasks');
+  const size = nullableSize(record, 'size');
+  if (!isSlice(slice)) {
+    return `slice ${JSON.stringify(slice)} is not a whole number from ${FIRST_SLICE}`;
+  }
+  if (note === undefined) {
+    return 'note is not text';
+  }
+  if (title === undefined || proof === undefined || proven === undefined) {
+    return 'title, proof or proven is not text';
+  }
+  if (owner === undefined || (owner !== null && !SESSION_NAME.test(owner))) {
+    return 'owner is not a session';
+  }
+  if (ship === undefined || (ship !== null && !isGoalDay(ship))) {
+    return 'ship is not a day';
+  }
+  if (tasks === undefined) {
+    return 'tasks is not a list of task ids';
+  }
+  if (size === undefined) {
+    return `size is not above 0 and at most ${MAX_SLICE_SIZE_PCT}`;
+  }
+  return { slice, title, owner, ship, proof, tasks, size, proven, note };
+}
+
+/** A slice record as its line is written: its kept fields left out. */
+function sliceRecordJson(record: GoalSliceRecord): JsonRecord {
+  const { title, owner, ship, proof, tasks, size, proven, note, ...rest } = record;
+  return {
+    v: GOAL_SLICE_VERSION,
+    ...rest,
+    ...(title === null ? {} : { title }),
+    ...(owner === null ? {} : { owner }),
+    ...(ship === null ? {} : { ship }),
+    ...(proof === null ? {} : { proof }),
+    ...(tasks === null ? {} : { tasks }),
+    ...(size === null ? {} : { size }),
+    ...(proven === null ? {} : { proven }),
+    note,
+  };
 }
 
 /** A record as its line is written: the oldest format that holds it first, and a set's kept fields left out. */
@@ -240,9 +385,11 @@ export function goalRecordJson(record: GoalRecord): JsonRecord {
       return { v: GOAL_ADD_SET_VERSION, ...record };
     case 'goal-rank':
       return { v: GOAL_RANK_VERSION, ...record };
+    case 'goal-slice':
+      return sliceRecordJson(record);
     case 'goal-set': {
       const { target, title, slice, ...rest } = record;
-      const v = slice === null ? GOAL_ADD_SET_VERSION : GOAL_RECORD_VERSION;
+      const v = slice === null ? GOAL_ADD_SET_VERSION : GOAL_SET_SLICE_VERSION;
       return { v, ...rest, ...(target === null ? {} : { target }), ...(title === null ? {} : { title }), ...(slice === null ? {} : { slice }) };
     }
   }
@@ -264,7 +411,49 @@ function changedGoal(goal: Goal, record: GoalSet | GoalRank): Goal {
   };
 }
 
-/** Folds records in write order: a set or rank changes the goal it names; one before its goal's add, or a second add, is ignored. */
+/** A slice's first record as a slice; undefined when it lacks a field a new slice names. */
+function newSlice(record: GoalSliceRecord): Slice | undefined {
+  const { title, owner, ship, proof, tasks } = record;
+  if (title === null || owner === null || ship === null || proof === null || tasks === null) {
+    return undefined;
+  }
+  const proven = record.proven === null ? null : { at: record.at, by: record.by, evidence: record.proven };
+  return { number: record.slice, title, owner, ship, proof, tasks, size: record.size, proven, slips: [], addedAt: record.at, addedBy: record.by };
+}
+
+/** The slice a later record leaves: the fields it names, its first proof kept, a ship day move as a slip. */
+function changedSlice(slice: Slice, record: GoalSliceRecord): Slice {
+  const slip: GoalSlip | undefined =
+    record.ship !== null && record.ship !== slice.ship ? { at: record.at, by: record.by, from: slice.ship, to: record.ship, note: record.note } : undefined;
+  const proven = slice.proven ?? (record.proven === null ? null : { at: record.at, by: record.by, evidence: record.proven });
+  return {
+    ...slice,
+    title: record.title ?? slice.title,
+    owner: record.owner ?? slice.owner,
+    ship: record.ship ?? slice.ship,
+    proof: record.proof ?? slice.proof,
+    tasks: record.tasks ?? slice.tasks,
+    size: record.size ?? slice.size,
+    proven,
+    slips: slip === undefined ? slice.slips : [...slice.slips, slip],
+  };
+}
+
+/** The goal a slice record leaves; undefined when it opens a slice without the fields a new one names. */
+function slicedGoal(goal: Goal, record: GoalSliceRecord): Goal | undefined {
+  const known = goal.slices.find((slice) => slice.number === record.slice);
+  const slice = known === undefined ? newSlice(record) : changedSlice(known, record);
+  if (slice === undefined) {
+    return undefined;
+  }
+  const slices = [...goal.slices.filter((each) => each.number !== record.slice), slice].sort((a, b) => a.number - b.number);
+  return { ...goal, slices };
+}
+
+/**
+ * Folds records in write order: a set, rank or slice record changes the goal it names; one before its goal's add, a
+ * second add, or a slice's first record lacking a field a new slice names, is ignored.
+ */
 export function foldGoals(records: Iterable<GoalRecord>): { readonly goals: ReadonlyMap<string, Goal>; readonly ignored: number } {
   const goals = new Map<string, Goal>();
   let ignored = 0;
@@ -273,17 +462,18 @@ export function foldGoals(records: Iterable<GoalRecord>): { readonly goals: Read
     if (record.type === 'goal-add') {
       if (goal === undefined) {
         const { tag, title, start, target, parent, at, by } = record;
-        goals.set(tag, { tag, title, start, target, parent, addedAt: at, addedBy: by, slips: [], rank: null, slice: null });
+        goals.set(tag, { tag, title, start, target, parent, addedAt: at, addedBy: by, slips: [], rank: null, slice: null, slices: [] });
       } else {
         ignored += 1;
       }
       continue;
     }
-    if (goal === undefined) {
+    const changed = goal === undefined ? undefined : record.type === 'goal-slice' ? slicedGoal(goal, record) : changedGoal(goal, record);
+    if (changed === undefined) {
       ignored += 1;
       continue;
     }
-    goals.set(record.tag, changedGoal(goal, record));
+    goals.set(record.tag, changed);
   }
   return { goals, ignored };
 }

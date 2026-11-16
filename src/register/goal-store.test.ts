@@ -6,6 +6,7 @@ import { NewerDataError, toJsonlLine } from '../core/jsonl.ts';
 import { LockBusyError, type Mutex } from '../core/lock.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import type { GoalSliceInput } from './goal-slices.ts';
 import { GoalStore, type GoalWriter } from './goal-store.ts';
 import { GOAL_RECORD_VERSION, GOALS_FILE, type GoalAddInput, type KeyResultCap } from './goals.ts';
 
@@ -14,6 +15,8 @@ const LEAD: GoalWriter = { by: 'lead', at: '2030-01-08T10:00:00.000Z' };
 const LATER: GoalWriter = { by: 'lead', at: '2030-01-09T10:00:00.000Z' };
 const A1: GoalAddInput = { tag: 'A1', title: 'Ship the pane goals', start: '2030-01-08', target: '2030-01-20', parent: null };
 const CAP: KeyResultCap = { max: 5, today: '2030-01-08' };
+const NOTHING: GoalSliceInput = { tag: 'A1', slice: 1, title: null, owner: null, ship: null, proof: null, tasks: null, size: null, proven: null, note: 'why' };
+const SLICE_1: GoalSliceInput = { ...NOTHING, title: 'Pane reads slices', owner: 'tr-pane', ship: '2030-01-15', proof: 'the pane shows A1:1 live', tasks: ['T10'], size: 6 };
 
 const busy: Mutex = {
   run: () => Promise.reject(new LockBusyError(`${PATH}.lock`, 10)),
@@ -148,6 +151,41 @@ describe('GoalStore', () => {
 
     assert.match(missing.kind === 'refused' ? missing.reason : '', /goal B1 does not exist/);
     assert.match(same.kind === 'refused' ? same.reason : '', /goal A1 is not ranked; nothing to change/);
+    assert.equal(files.get(PATH), before);
+  });
+
+  it('adds a slice in a line of format 4, under the lock, and its owner records the proof (T2203)', async () => {
+    const files = new MemoryFiles();
+    const mutex = new InlineMutex();
+    const goals = store(files, mutex);
+    await goals.add(A1, LEAD, CAP);
+
+    const write = await goals.slice(SLICE_1, LATER, 'lead');
+    const proven = await goals.slice({ ...NOTHING, proven: 'the pane shows A1:1 live' }, { by: 'tr-pane', at: '2030-01-10T10:00:00.000Z' }, 'lead');
+
+    assert.deepEqual(write, { kind: 'written', record: { type: 'goal-slice', ...LATER, ...SLICE_1 } });
+    assert.equal(proven.kind, 'written');
+    assert.equal(mutex.runs, 3);
+    const lines = (files.get(PATH) ?? '').split('\n').filter((line) => line !== '');
+    assert.deepEqual(
+      lines.map((line) => JSON.parse(line).v),
+      [1, GOAL_RECORD_VERSION, GOAL_RECORD_VERSION],
+    );
+    const slice = (await goals.read()).goals.get('A1')?.slices[0];
+    assert.equal(slice?.owner, 'tr-pane');
+    assert.deepEqual(slice?.proven, { at: '2030-01-10T10:00:00.000Z', by: 'tr-pane', evidence: 'the pane shows A1:1 live' });
+  });
+
+  it('refuses a slice change by anyone but the lead, and writes nothing (T2203)', async () => {
+    const files = new MemoryFiles();
+    const goals = store(files);
+    await goals.add(A1, LEAD, CAP);
+    await goals.slice(SLICE_1, LATER, 'lead');
+    const before = files.get(PATH);
+
+    const write = await goals.slice({ ...NOTHING, ship: '2030-01-30' }, { by: 'tr-pane', at: '2030-01-10T10:00:00.000Z' }, 'lead');
+
+    assert.match(write.kind === 'refused' ? write.reason : '', /only the lead \(lead\) adds and changes a goal's slices/);
     assert.equal(files.get(PATH), before);
   });
 });
