@@ -44,6 +44,32 @@ async function meterTab(runtime, store, id, transcript, budget) {
     await runMeter({ bytes: runtime.transcripts, store, clock: runtime.clock }, { session: id, transcripts, subagentWeight: budget.subagentWeight, modelWeights: budget.modelWeights, maxBytes: budget.maxBytesPerHook });
 }
 /**
+ * How far a tab's transcript runs past its stored cursor before a tool call meters it mid-turn (T3298). The Stop hook
+ * meters the tab at a turn's end; a turn that runs for hours (a long chain of calls, compacted again and again)
+ * reaches no Stop, so its use went uncounted until it ended. A megabyte is a few dozen calls: a busy tab's store is
+ * written a few times a minute at most, and each run reads well within `budget.maxBytesPerHook`.
+ */
+export const MID_TURN_METER_BYTES = 1_000_000;
+/**
+ * Meters the tab at a tool call once its transcript has grown {@link MID_TURN_METER_BYTES} past its stored cursor, so a
+ * long turn is counted as it runs; nothing with the budget off, for a missing transcript or below that growth.
+ * Returns whether it metered.
+ */
+export async function meterTabMidTurn(runtime, scope, transcript) {
+    const { kit, config, id } = scope;
+    if (!config.budget.enabled) {
+        return false;
+    }
+    const store = new UsageStore(runtime.files, kit.paths.usage);
+    const cursor = (await store.load(id)).state.cursors[transcript];
+    const size = await runtime.transcripts.size(transcript);
+    if (size === undefined || size - (cursor?.offset ?? 0) < MID_TURN_METER_BYTES) {
+        return false;
+    }
+    await meterTab(runtime, store, id, transcript, config.budget);
+    return true;
+}
+/**
  * The session's budget now, after metering the tab whose transcript is given; undefined with the
  * budget off, before the week's use, W per % and reset are known, or without a daily budget for the session.
  * Its part of its team's part of the account's daily budget (the other teams on the account read each call,
