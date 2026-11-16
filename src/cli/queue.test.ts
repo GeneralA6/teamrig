@@ -1332,6 +1332,75 @@ describe('teamrig queue runs a ship tool only under a kind that fits it (T3414)'
   });
 });
 
+describe("teamrig queue refuses a waiting ship only when the code its tool runs changed, not when main moved on (T3419)", () => {
+  /**
+   * The ship tool's checkout pinned at main `base`, moved while the step waits to `b1`, a later main, with main gone on
+   * to `b2`; at `b1` the tool imports repos.ts and src/core/home.ts and reads repos.json, and `base..b1` differ in `changed`.
+   */
+  function movedTwice(kit: CliHarness, changed: readonly string[]): { git: FakeMergeGit; sleep: (ms: number) => Promise<void> } {
+    const git = shipGit();
+    git.files.set('b1:tools/ship/ship.ts', "import { profiles } from './repos.ts';\nimport { teamHome } from '../../src/core/home.ts';\n");
+    git.files.set('b1:tools/ship/repos.ts', "import { join } from 'node:path';\nexport const PROFILES_PATH = new URL('./repos.json', import.meta.url);\n");
+    git.files.set('b1:tools/ship/repos.json', '{}');
+    git.files.set('b1:src/core/home.ts', "export const teamHome = '';\n");
+    git.ancestry.add('b1>b2');
+    git.diffs.set('base..b1', changed);
+    const sleep = async (ms: number): Promise<void> => {
+      git.heads.set('/repo/ship', 'b1');
+      git.tracking.set('origin/main', 'b2');
+      await kit.clock.sleep(ms);
+    };
+    return { git, sleep };
+  }
+
+  /** The refusal of a tool that moved from `base` while the step waited, naming `files` when it can tell them. */
+  const movedFrom = (files: string): string => `the ship tool ${SHIP_TOOL} changed from base while the step waited${files} and is not origin/main's current code in a checkout with no change: ${MOVE}`;
+
+  it("runs a ship whose checkout moved to a later main, main moving on again, when none of the tool's code changed", async () => {
+    const { kit, steps } = harness(SHIPPING);
+    await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
+    const { git, sleep } = movedTwice(kit, ['src/app.ts', 'docs/commands.md']);
+    const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
+    assert.deepEqual([result.code, steps.ran.length], [EXIT.ok, 1]);
+  });
+
+  it('refuses it at its start, naming each file of the code the tool runs that changed: an import, a src file, a data file', async () => {
+    for (const changed of [['tools/ship/repos.ts'], ['src/core/home.ts', 'src/app.ts'], ['tools/ship/repos.json']]) {
+      const { kit, steps } = harness(SHIPPING);
+      await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
+      const { git, sleep } = movedTwice(kit, changed);
+      const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
+      const named = changed.filter((file) => file !== 'src/app.ts').join(', ');
+      assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [EXIT.refused, `REFUSED ${movedFrom(` (${named})`)}`, []], named);
+    }
+  });
+
+  it("refuses it when the commit it moved to is off main's history, or a file the tool runs is not there", async () => {
+    const off = (git: FakeMergeGit): void => void git.ancestry.delete('b1>b2');
+    const missing = (git: FakeMergeGit): void => void git.files.delete('b1:src/core/home.ts');
+    for (const [name, spoil] of Object.entries({ off, missing })) {
+      const { kit, steps } = harness(SHIPPING);
+      await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
+      const { git, sleep } = movedTwice(kit, ['src/app.ts']);
+      spoil(git);
+      const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
+      assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [EXIT.refused, `REFUSED ${movedFrom('')}`, []], name);
+    }
+  });
+
+  it('refuses it when the checkout it moved to has a change', async () => {
+    const { kit, steps } = harness(SHIPPING);
+    await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
+    const { git, sleep: moving } = movedTwice(kit, ['src/app.ts']);
+    const sleep = async (ms: number): Promise<void> => {
+      git.status.set('/repo/ship', [' M tools/ship/repos.ts']);
+      await moving(ms);
+    };
+    const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
+    assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [EXIT.refused, `REFUSED ${movedFrom('')}`, []]);
+  });
+});
+
 describe("teamrig queue gives a ship step the task its worktree's branch names (T3286)", () => {
   const WORKTREE = '/repo/app/.claude/worktrees/t1-cli';
   const PLAN = '/tasks/T1/plan.json';

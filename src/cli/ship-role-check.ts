@@ -1,4 +1,4 @@
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { dirname, isAbsolute, posix, resolve } from 'node:path';
 import { DEFAULT_WORKTREE_FOLDER } from '../config/defaults.ts';
 import type { DeliveryRepoConfig, KitConfig } from '../config/types.ts';
 import { taskFolder } from '../core/home.ts';
@@ -6,7 +6,7 @@ import { isAtOrBelow, samePath } from '../core/paths.ts';
 import { teamPlace } from '../delivery/places.ts';
 import { takesShipSlot, type StepKind } from '../delivery/process-request.ts';
 import type { Sleep } from '../core/lock.ts';
-import { FALLBACK_BRANCH, ORIGIN, type GitRead, type MergeGit } from '../merge/git.ts';
+import { FALLBACK_BRANCH, ORIGIN, pathInCheckout, type GitRead, type MergeGit } from '../merge/git.ts';
 import { taskBranchOf } from '../permissions/route-git.ts';
 import type { ShipRun } from '../permissions/ship-role-call.ts';
 import { JsonlEventLog } from '../register/store.ts';
@@ -171,6 +171,57 @@ export function shipKindRefusal(kit: Kit, config: KitConfig, words: readonly str
   return undefined;
 }
 
+/** The most files the code a ship tool runs is read to; a larger closure tells nothing, so the start check fails closed. */
+export const TOOL_CODE_MAX_FILES = 2000;
+
+/**
+ * The repository paths a module at `path` loads by a relative specifier: an import (`from './x.ts'`, `import('../y.ts')`)
+ * or a file it reads beside it (`new URL('./repos.json', import.meta.url)`), so a data file the tool runs on is its code
+ * too. A match in a comment only adds a path, which never lets a changed tool run.
+ */
+export function relativeImportsOf(text: string, path: string): string[] {
+  const specifiers = text.matchAll(/(?:\bfrom|\bimport|\bnew URL)\s*\(?\s*['"](\.{1,2}\/[^'"]+)['"]/g);
+  return [...specifiers].map((match) => posix.normalize(posix.join(posix.dirname(path), match[1] ?? '.')));
+}
+
+/**
+ * The code a ship tool runs at `ref` (T3419): the tool's file and every module it imports, followed through relative
+ * imports, as paths in its checkout; undefined when one is not a file there, leaves the checkout, or the closure passes
+ * {@link TOOL_CODE_MAX_FILES}, so the caller cannot tell the code is the same.
+ */
+export function toolCodeAt(git: MergeGit, top: string, ref: string, tool: string): readonly string[] | undefined {
+  const seen = new Set<string>();
+  const next = [tool];
+  for (let path = next.pop(); path !== undefined; path = next.pop()) {
+    if (seen.has(path)) {
+      continue;
+    }
+    const text = path.startsWith('../') || seen.size >= TOOL_CODE_MAX_FILES ? undefined : git.fileAt(top, ref, path);
+    if (text === undefined) {
+      return undefined;
+    }
+    seen.add(path);
+    next.push(...relativeImportsOf(text, path));
+  }
+  return [...seen].sort();
+}
+
+/**
+ * The files of the code a pinned tool runs that differ between its pin and `head`, a commit on main's history its clean
+ * checkout moved to while the step waited (T3419): none when the tool runs the same code, so a main that moved on
+ * without touching it refuses no waiting ship. Undefined when that cannot be told (`head` off main's history, a read
+ * git did not answer), so the step is refused as a changed tool.
+ */
+function toolCodeChangeOf(git: MergeGit, state: ToolState, tool: string, pinned: string, head: string): readonly string[] | undefined {
+  const path = pathInCheckout(state.top, tool);
+  if (path === undefined || !git.isAncestor(state.top, head, state.mainRef)) {
+    return undefined;
+  }
+  const code = toolCodeAt(git, state.top, head, path);
+  const changed = git.changedPaths(state.top, pinned, head);
+  return code === undefined || changed === undefined ? undefined : code.filter((file) => changed.includes(file));
+}
+
 /** A stale or changed ship tool's refusal: what it is not, and how to move its checkout to the newest main. */
 function staleToolReason(tool: string, state: ToolState, since: string): string {
   return `the ship tool ${tool}${since} is not ${state.mainRef}'s current code in a checkout with no change: run git -C ${state.top} fetch -q ${ORIGIN} && git -C ${state.top} checkout -q --detach ${state.mainRef}, then queue the step again`;
@@ -191,8 +242,9 @@ export function shipToolPinOf(git: MergeGit, kit: Kit, config: KitConfig, tool: 
 
 /**
  * Why a pinned ship tool may not run when its step starts, after waiting in the host lock's line; undefined when it
- * may. Its checkout must still be clean and at the pinned commit, or at main's current code if it moved on, so a
- * checkout moved to another commit while the step waited never runs that commit's tool. A read git does not answer is
+ * may. Its checkout must still be clean and at the pinned commit, or at main's current code if it moved on, or at a
+ * later commit of main's history where none of the code the tool runs changed (T3419), so a checkout moved to another
+ * commit while the step waited never runs other code than the one it was queued with or main's current one. A read git does not answer is
  * read again, {@link SHIP_TOOL_READS} times in all, then refused naming that read, never as a changed tool (T3368).
  */
 export async function shipToolStartRefusal(git: MergeGit, kit: Kit, config: KitConfig, pin: ShipToolPin, sleep: Sleep): Promise<string | undefined> {
@@ -200,8 +252,16 @@ export async function shipToolStartRefusal(git: MergeGit, kit: Kit, config: KitC
     const state = shipToolStateOf(git, kit, config, pin.tool);
     if (state.ok) {
       const { head, landed } = state.value;
-      const since = pin.head === undefined ? '' : ` changed from ${pin.head.slice(0, 9)} while the step waited and`;
-      return head !== undefined && (head === pin.head || landed) ? undefined : staleToolReason(pin.tool, state.value, since);
+      if (head !== undefined && (head === pin.head || landed)) {
+        return undefined;
+      }
+      const changed = head === undefined || pin.head === undefined ? undefined : toolCodeChangeOf(git, state.value, pin.tool, pin.head, head);
+      if (changed !== undefined && changed.length === 0) {
+        return undefined;
+      }
+      const files = changed === undefined ? '' : ` (${changed.slice(0, 5).join(', ')}${changed.length > 5 ? `, and ${changed.length - 5} more` : ''})`;
+      const since = pin.head === undefined ? '' : ` changed from ${pin.head.slice(0, 9)} while the step waited${files} and`;
+      return staleToolReason(pin.tool, state.value, since);
     }
     if (reads >= SHIP_TOOL_READS) {
       return `could not read the checkout of the ship tool ${pin.tool}, so the step did not run: ${state.reason}, at each of ${reads} reads ${SHIP_TOOL_REREAD_MS / 1000} s apart; git gave no answer, which says nothing of the tool, so queue the step again once git answers on this host`;
