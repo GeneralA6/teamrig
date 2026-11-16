@@ -754,6 +754,8 @@ function parseGithub(read: ConfigReader, raw: JsonRecord, sessions: readonly str
     statusPush: read.boolean(raw, 'statusPush', 'github', DEFAULT_GITHUB.statusPush),
     acceptLabel: read.string(raw, 'acceptLabel', 'github', DEFAULT_GITHUB.acceptLabel, shortLine(GITHUB_LABEL_MAX_LENGTH)),
     similarThreshold: read.number(raw, 'similarThreshold', 'github', DEFAULT_GITHUB.similarThreshold, CONFIG_LIMITS.similarThreshold),
+    activity: read.boolean(raw, 'activity', 'github', DEFAULT_GITHUB.activity),
+    followMax: read.integer(raw, 'followMax', 'github', DEFAULT_GITHUB.followMax, CONFIG_LIMITS.githubFollowMax),
     ...readGithubWatcher(read, raw, sessions),
     ...(issueAtAdd === undefined ? {} : { issueAtAdd }),
   };

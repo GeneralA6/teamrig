@@ -1419,6 +1419,18 @@
           "maximum": 1,
           "default": 0.35
         },
+        "activity": {
+          "description": "Whether the automatic sync tells a task's owner each new comment, review, CI result, label, close and merge on the issue or pull request the task holds, and each session the same on the issues and pull requests it follows (teamrig follow). What asks the session to act (changes requested, a failed check, a question, a mention) wakes it; the rest are quiet inbox lines. It reads nothing more from GitHub than the sync already does. Off, a session hears only mentions and the pull request news of its own branches.",
+          "type": "boolean",
+          "default": true
+        },
+        "followMax": {
+          "description": "The most issues and pull requests one session follows at once with teamrig follow. 0 turns following off.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 20
+        },
         "watcher": {
           "description": "The session that hears the pull request news no task owner takes: a pull request from a fork or by an author outside the repository, or from a branch that names no task. Unset, the lead.",
           "$ref": "#/$defs/sessionName"

@@ -710,6 +710,15 @@ export interface GithubConfig {
    */
   readonly similarThreshold: number;
   /**
+   * Whether the automatic sync tells a task's owner each new comment, review, CI result, label, close and merge on the
+   * issue or pull request the task holds, and each session the same on the items it follows (`teamrig follow`): what
+   * asks it to act (changes requested, a failed check, a question, a mention) wakes it, the rest are quiet inbox lines.
+   * Off, a session hears only mentions and the pull request news of its own branches.
+   */
+  readonly activity: boolean;
+  /** The most issues and pull requests one session follows at once (`teamrig follow`); 0 turns following off. */
+  readonly followMax: number;
+  /**
    * The session that hears the pull request news no task owner takes: a pull request from a fork or by an author
    * outside the repository, or from a branch that names no task. Unset, the lead.
    */
