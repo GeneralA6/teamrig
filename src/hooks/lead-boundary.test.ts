@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ToolUse } from '../budget/line.ts';
 import { promptLine, replyLine, resultsLine, transcript } from '../testing/transcript-lines.ts';
-import { leadNudgeLine, leadStopLine, leadTallyOf, leadWorkOf, OwnPaths, taskOwnersOf, tasksSearched, TeamFolders, type LeadPaths, type SubTeamPlace } from './lead-boundary.ts';
+import { commandNormalized, leadNudgeLine, leadStopLine, leadTallyOf, leadWorkOf, OwnPaths, taskOwnersOf, tasksSearched, TeamFolders, type LeadPaths, type SubTeamPlace } from './lead-boundary.ts';
 import { turnTasksOf, turnToolsOf } from './loop-nudge.ts';
 
 const TEAM_HOME = '~/.teamrig/teams/app';
@@ -202,6 +202,34 @@ describe('the lead boundary', () => {
     assert.equal(leadWorkOf(tool('Read', { path: 'D:/backups/tools/a.sql' }), PATHS), 'search', 'no task id');
     const unknown: LeadPaths = { own: OWN, team: teamFolders(new Map()) };
     assert.deepEqual(tasksSearched([own, other], unknown), ['T1', 'T2'], 'the register is read for their owners');
+  });
+
+  it('resolves . and .. in a path before placing it (GeneralA6/teamrig#1278)', () => {
+    assert.equal(
+      leadWorkOf(tool('Edit', { path: '~/.teamrig/teams/app/tasks/T1/../../../outside/a.ts' }), PATHS),
+      'edit',
+      'a path through the lead own task folder that steps back out is outside the team',
+    );
+    assert.deepEqual(
+      TEAM.researchOf('~/.teamrig/teams/app/tasks/T1/../../notes/alpha/board.md'),
+      { name: 'notes/alpha', owner: 'alpha' },
+      'a path through the lead own task folder that steps back out places the file it reaches',
+    );
+    assert.equal(
+      leadWorkOf(tool('Edit', { path: '~/ops/lead/../lead/agenda.md' }), PATHS),
+      undefined,
+      'a path that steps out and back into the lead own folder stays quiet',
+    );
+  });
+
+  it('keeps a URL whole, since a scheme is no path to step through (GeneralA6/teamrig#1278)', () => {
+    assert.equal(commandNormalized('curl https://example.com/x', 'D:/team/lee'), 'curl https://example.com/x');
+    assert.equal(commandNormalized('rg --glob=https://example.com//x', 'D:/team/lee'), 'rg --glob=https://example.com//x');
+  });
+
+  it('keeps a .. in the word that spells it, not the word before (GeneralA6/teamrig#1278)', () => {
+    assert.equal(commandNormalized('cd ~/ops/lead && cat ../../x', 'D:/team/lee'), 'cd d:/team/lee/ops/lead && cat ../../x');
+    assert.equal(OWN.named('cd ~/ops/lead && cat ../../x'), true, 'the command still names the lead own folder');
   });
 
   it('names the tasks whose folders a turn searches, each once, before their owners are known (T1467)', () => {
