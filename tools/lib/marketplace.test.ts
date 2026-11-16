@@ -1,6 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { MARKETPLACE, readCatalog } from './marketplace.ts';
+
+describe('the marketplace catalog this repo ships', () => {
+  it('gives no version in an entry, which Claude Code would ignore for the one in plugin.json', () => {
+    assert.deepEqual(readCatalog(readFileSync(new URL(`../../${MARKETPLACE}`, import.meta.url), 'utf8')).problems, []);
+  });
+});
 
 describe('readCatalog', () => {
   it('lists the plugins whose source is a folder in the repo', () => {
