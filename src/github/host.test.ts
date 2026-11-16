@@ -139,7 +139,7 @@ describe('GitHubIssueHost.pulls', () => {
   it('gives the one line when the read fails', async () => {
     assert.deepEqual(await hostWith(new FakeGh()).pulls('acme/nope', undefined), {
       kind: 'failed',
-      reason: 'acme/nope is not visible to the gh login: check github.repos, or save a read-only token for acme with: save teamrig-gh-acme',
+      reason: 'acme/nope is not visible to the token saved as teamrig-gh-acme: check github.repos, and on GitHub give that token this repository',
     });
   });
 });

@@ -6,8 +6,7 @@ import type { HostPull } from '../issues/pull.ts';
 import { listPulls, pullOf, type PullListRequest } from './pulls.ts';
 import type { RepoAccess } from './tokens.ts';
 
-const LOGIN: RepoAccess = { via: 'login', env: { HOME: '/u' }, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme' };
-const TOKEN: RepoAccess = { ...LOGIN, via: 'token', env: { HOME: '/u', GH_TOKEN: 'read-token' } };
+const TOKEN: RepoAccess = { env: { HOME: '/u', GH_TOKEN: 'read-token' }, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme' };
 const ALL: PullListRequest = { repo: 'acme/web', read: 'changed', since: undefined, limit: 200 };
 
 /** A pull request of acme/web as read from what ghPull gives when a test sets nothing. */
@@ -43,7 +42,7 @@ function changed(count: number): ReturnType<typeof ghPull>[] {
 describe('listPulls', () => {
   it('reads every pull request newest change first, through the shipped query only', async () => {
     const gh = new FakeGh().holdsPulls('acme/web', changed(3));
-    const list = await listPulls(gh, LOGIN, ALL);
+    const list = await listPulls(gh, TOKEN,ALL);
     assert.equal(list.kind, 'listed');
     assert.deepEqual(list.kind === 'listed' ? list.pulls.map((pull) => pull.number) : [], [3, 2, 1]);
     assert.ok(gh.ran.every((request) => isIssueQuery(request.args)));
@@ -51,33 +50,33 @@ describe('listPulls', () => {
 
   it('reads only the open ones for the open read', async () => {
     const gh = new FakeGh().holdsPulls('acme/web', [...changed(2), ghPull('acme/web', 3, { state: 'MERGED' })]);
-    const list = await listPulls(gh, LOGIN, { ...ALL, read: 'open' });
+    const list = await listPulls(gh, TOKEN,{ ...ALL, read: 'open' });
     assert.deepEqual(list.kind === 'listed' ? list.pulls.map((pull) => pull.number) : [], [2, 1]);
   });
 
   it('stops at the first one changed before since, so a run reads only what changed', async () => {
     const gh = new FakeGh().pages(1).holdsPulls('acme/web', changed(5));
-    const list = await listPulls(gh, LOGIN, { ...ALL, since: '2030-01-04T00:00:00Z' });
+    const list = await listPulls(gh, TOKEN,{ ...ALL, since: '2030-01-04T00:00:00Z' });
     assert.deepEqual(list, { kind: 'listed', pulls: [readPull(5, { updatedAt: '2030-01-05T00:00:00Z' }), readPull(4, { updatedAt: '2030-01-04T00:00:00Z' })], unreadable: 0, full: false });
     assert.equal(gh.ran.length, 3, 'the third page held the first older one');
   });
 
   it('stops at its limit, and says it left some out only when GitHub has more', async () => {
-    const full = await listPulls(new FakeGh().pages(2).holdsPulls('acme/web', changed(5)), LOGIN, { ...ALL, limit: 4 });
+    const full = await listPulls(new FakeGh().pages(2).holdsPulls('acme/web', changed(5)), TOKEN,{ ...ALL, limit: 4 });
     assert.deepEqual(full.kind === 'listed' ? [full.pulls.length, full.full] : [], [4, true]);
-    const exact = await listPulls(new FakeGh().pages(2).holdsPulls('acme/web', changed(4)), LOGIN, { ...ALL, limit: 4 });
+    const exact = await listPulls(new FakeGh().pages(2).holdsPulls('acme/web', changed(4)), TOKEN,{ ...ALL, limit: 4 });
     assert.deepEqual(exact.kind === 'listed' ? [exact.pulls.length, exact.full] : [], [4, false]);
   });
 
   it('counts an item it cannot read and reads on past it', async () => {
     const gh = new FakeGh().holdsPulls('acme/web', [...changed(2), { ...ghPull('acme/web', 9), state: 'DRAFTED' }]);
-    const list = await listPulls(gh, LOGIN, ALL);
+    const list = await listPulls(gh, TOKEN,ALL);
     assert.deepEqual(list.kind === 'listed' ? [list.pulls.map((pull) => pull.number), list.unreadable] : [], [[2, 1], 1]);
   });
 
   it('runs nothing for a repository that is not owner/name', async () => {
     const gh = new FakeGh();
-    assert.deepEqual(await listPulls(gh, LOGIN, { ...ALL, repo: 'acme' }), { kind: 'failed', reason: 'acme is not owner/name: check github.repos' });
+    assert.deepEqual(await listPulls(gh, TOKEN,{ ...ALL, repo: 'acme' }), { kind: 'failed', reason: 'acme is not owner/name: check github.repos' });
     assert.equal(gh.ran.length, 0);
   });
 
@@ -91,7 +90,7 @@ describe('listPulls', () => {
 
   it('fails on output that is not a page of pull requests', async () => {
     const gh = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 0 }, stdout: '{"data":{"repository":{"issues":{}}}}', stderr: '' });
-    assert.deepEqual(await listPulls(gh, LOGIN, ALL), { kind: 'failed', reason: 'gh printed no page of the pull requests of acme/web' });
+    assert.deepEqual(await listPulls(gh, TOKEN,ALL), { kind: 'failed', reason: 'gh printed no page of the pull requests of acme/web' });
   });
 
   it('runs gh with the token only in its environment', async () => {
