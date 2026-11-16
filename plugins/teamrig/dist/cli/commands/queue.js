@@ -26,6 +26,7 @@ import { openTeamKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, te
 import { parentLockOf } from "../parent-lock.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { rerunAdvice, stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
+import { shipToolOfWords, shipToolPinOf, shipToolStartRefusal } from "../ship-role-check.js";
 import { postUrgentLine } from "../urgent-line.js";
 import { envSession, markedSessionOf } from "./hook-input.js";
 import { inboxDepsOf } from "./inbox.js";
@@ -90,10 +91,25 @@ function declaredMbOf(args) {
 function requestOf(args, words, what) {
     return processRequest(kindOf(args, words), taskOf(args, what));
 }
-/** Why the step may not start now (the queue cutoff, or a pipeline freeze on its kind), or undefined when it may. */
+/** Why the step may not start now (the queue cutoff, a pipeline freeze on its kind, a moved ship tool), or undefined when it may. */
 async function startRefusal(runtime, gate) {
     const now = runtime.clock.now();
-    return queueCutoffReason(now, gate.cutoffUtc, gate.zone) ?? pipelineFrozenRefusal(await runtime.files.read(gate.pipelineFreezes), gate.pipelineFreezes, now, [gate.kind], gate.zone);
+    return queueCutoffReason(now, gate.cutoffUtc, gate.zone) ?? pipelineFrozenRefusal(await runtime.files.read(gate.pipelineFreezes), gate.pipelineFreezes, now, [gate.kind], gate.zone) ?? gate.shipTool();
+}
+/**
+ * The start check of a step that runs a configured ship tool (T3223): pinned as this run of queue begins, the --detach
+ * call, its detached run and a hand-over's run each, so a tool whose checkout is not main's current code is refused
+ * before it waits, and one whose checkout moved while it waited is refused at its start. Nothing is taken from the
+ * arguments, so no flag can loosen it; a step that runs no ship tool has no check.
+ */
+function shipToolCheckOf(runtime, kit, config, words) {
+    const tool = shipToolOfWords(kit, config, words, runtime.cwd);
+    if (tool === undefined) {
+        return () => undefined;
+    }
+    const pin = shipToolPinOf(runtime.mergeGit, kit, config, tool);
+    // A stale tool's refusal comes from the gate (`refuseUnstartable`), so a detached run refused before it waits still tells its session.
+    return 'refused' in pin ? () => pin.refused : () => shipToolStartRefusal(runtime.mergeGit, kit, config, pin);
 }
 async function refuseUnstartable(runtime, gate) {
     const reason = await startRefusal(runtime, gate);
@@ -452,7 +468,7 @@ export async function queue(args, runtime) {
     const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
     const parent = await parentLockOf(runtime, lock, say);
     const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
-    const gate = { cutoffUtc: delivery.schedule.queueCutoffUtc, pipelineFreezes: places.pipelineFreezes, kind: request.kind, zone };
+    const gate = { cutoffUtc: delivery.schedule.queueCutoffUtc, pipelineFreezes: places.pipelineFreezes, kind: request.kind, zone, shipTool: shipToolCheckOf(runtime, kit, config, words) };
     if (detach) {
         if (parent !== undefined) {
             throw new UsageError('--detach under a live host lock: a step a queued step starts runs at once under its lock, and that step waits for its result; run it without --detach');
