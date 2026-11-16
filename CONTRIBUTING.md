@@ -144,6 +144,14 @@ is `tools/ci/local-checks.ts`), all but the dependency review, which reads GitHu
   checked once; a new commit is checked again. Only the runner writes a record: the pass-record guard refuses a
   session's own write of one (`hook pass-record-guard`).
 - It cannot be skipped: never push with `--no-verify`.
+- **Short checks** (off by default): when the repository's entry in `tools/ship/repos.json` says
+  `"mergeChecks": "changed"`, which needs the `ci` gate, a push to any branch but `main` runs only the short checks:
+  the scrub, the DCO sign-off, the typecheck and the specs beside the changed files (`foo.ts` brings `foo.test.ts`,
+  a changed spec runs itself). `tools/ship/ship.ts --merge` proves the tree the same way in place of the typecheck,
+  coverage gate and full run, then pushes and merges once the required CI checks pass, so the merge holds the ship
+  slot only for those steps. A short pass is recorded apart (`local-ci/short/<tree>.json`), never taken for a full
+  one; a full pass counts as a short one. A run without `--merge`, and every repository left at `"full"`, run every
+  check as above.
 
 It runs on one machine and one Node, so a failure that only another OS or Node version shows waits for CI's test
 matrix.

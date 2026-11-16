@@ -24,7 +24,9 @@ project skills in `.claude/skills/` hold the steps of each repeated job.
 - **Docs in the same pull request**: `dev-update-docs` says which page each kind of change touches.
 - **No private data**: no home paths, e-mail addresses, host names or secrets in code, tests, docs or commit
   messages; the scrub refuses them.
-- **Gates**: `npm run check` before you push; the pre-push hook runs the local gate. Never `--no-verify`.
+- **Gates**: `npm run check` before you push; the pre-push hook runs the local gate, only its short checks on a
+  branch when `tools/ship/repos.json` sets `"mergeChecks": "changed"` (required CI then runs the whole suite on the
+  pull request). Never `--no-verify`.
 
 ## Project skills
 

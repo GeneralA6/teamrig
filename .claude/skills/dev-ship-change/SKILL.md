@@ -42,7 +42,11 @@ description: Land a finished teamrig change through small signed commits, a dist
   builds the dist only to run the checks, then takes both back, the raise left uncommitted. The `--merge` run commits
   both once, on the base it lands on, and the approval still holds, as it reads the change apart from those files.
 - The local gate proves a committed tree, so it refuses uncommitted changes: commit or stash them first.
+- With `"mergeChecks": "changed"` on the repository in `tools/ship/repos.json`, the pre-push hook and the `--merge`
+  run take the short checks (scrub, DCO, typecheck, the changed files' specs) and leave the whole suite to required
+  CI; a spec only a changed file's neighbour misses fails there, not here. Run `npm run check` yourself first when
+  the change reaches far.
 - A missing sign-off: `git commit --amend -s` for the last commit; the `commit-msg` hook from `npm run setup` catches
   it before the push.
 
-Last verified: 2026-11-16
+Last verified: 2026-11-17
