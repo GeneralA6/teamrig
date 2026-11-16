@@ -3,6 +3,7 @@ import { writableObject } from "../../core/jsonl.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { addedLines, failureNews, finishState, formatSyncState, leftOutNews, parseSyncState, SYNC_STATE_FORMAT, } from "../../github/auto.js";
 import { issueRef } from "../../github/map.js";
+import { mentionCutLine, mentionLine, wakeRoutes } from "../../github/mention-route.js";
 import { pullNewsText } from "../../github/pull-news.js";
 import { ourLogins } from "../../github/trust.js";
 import { capAlerts, overCapLine, overCapPageText, securityLine, securityPageText, unpagedIssues, unpagedLine } from "../../github/security-alert.js";
@@ -45,16 +46,19 @@ async function writableState(runtime, kit) {
  * then posts one inbox line to each owner naming the tasks added for it, one to the lead when the failing
  * repositories changed (`failureNews`) and one when an outsider's issue was left out that was not before
  * (`leftOutNews`), and one to each session with pull request news (`pullNewsText`), which also wakes it when
- * the news needs a hand soon and the team has wake on. It gives a line for each inbox line that was refused, such as
- * an issue title that matches a secret pattern.
+ * the news needs a hand soon and the team has wake on, and one to the routed session for each mention of one of ours
+ * (mention-route.ts), which wakes it at most once per item every MENTION_WAKE_GAP_MINUTES, and one to the watcher for a
+ * repository whose posts it could not read through. It gives a line for each inbox line that was refused, such as an
+ * issue title that matches a secret pattern.
  */
 export async function reportAutoSync(runtime, kit, config, run) {
     const now = runtime.clock.now();
-    const { before, after } = await stateLock(runtime, kit, config, config.lock.waitMs).run(async () => {
+    const { before, after, wakes } = await stateLock(runtime, kit, config, config.lock.waitMs).run(async () => {
         const state = await writableState(runtime, kit);
-        const finished = finishState(state, now, run);
+        const woken = wakeRoutes(run.mentionRoutes, state?.mentionWakes ?? new Map(), now);
+        const finished = finishState(state, now, run, woken.lastWoken);
         await runtime.files.write(kit.paths.githubSync, formatSyncState(finished));
-        return { before: state, after: finished };
+        return { before: state, after: finished, wakes: woken.wakes };
     });
     const posts = [...addedLines(run.added)].map(([to, text]) => ({ to, text, wake: false }));
     const news = [failureNews(before?.failing ?? [], run.failures), leftOutNews(before?.leftOut ?? new Map(), after.leftOut, config.github.acceptLabel)];
@@ -66,6 +70,12 @@ export async function reportAutoSync(runtime, kit, config, run) {
     const ours = ourLogins(config.github);
     for (const [to, events] of run.pullNews) {
         posts.push({ to, ...pullNewsText(events, ours) });
+    }
+    // A mention is an ask addressed to one of ours, so it wakes; wakeRoutes holds a busy item to one wake per gap.
+    run.mentionRoutes.forEach((route, index) => posts.push({ to: route.to, text: mentionLine(route), wake: wakes[index] ?? false }));
+    const watcher = config.github.watcher ?? config.roles.lead;
+    for (const [repo, cutAt] of run.mentionCuts) {
+        posts.push({ to: watcher, text: mentionCutLine(repo, cutAt), wake: false });
     }
     const lines = [];
     // Each open security issue not paged before wakes its session and pages the owner, up to the run's cap; the rest

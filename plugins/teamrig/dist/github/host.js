@@ -7,6 +7,7 @@ import { failedLogExcerpt } from "./job-log.js";
 import { listLinks } from "./links.js";
 import { createdNumber } from "./migrate.js";
 import { latestIssues } from "./plan.js";
+import { readPosts } from "./posts.js";
 import { listPulls, PULL_LIMIT } from "./pulls.js";
 import { PULL_PAGE_SIZE } from "./queries.js";
 import { NoAccessError } from "./tokens.js";
@@ -101,6 +102,19 @@ export class GitHubIssueHost {
             return { kind: 'failed', reason: this.scanner.redact(run.reason) };
         }
         return { kind: 'read', ...failedLogExcerpt(run.stdout, (text) => this.scanner.redact(text)) };
+    }
+    /** The posts of `repo` changed since `since` (posts.ts), as the owner's saved token reads them. */
+    async posts(repo, since) {
+        const access = await this.tokens.accessFor(repo);
+        if (access instanceof NoAccessError) {
+            return { kind: 'failed', reason: access.message };
+        }
+        const read = await readPosts(this.gh, access, repo, since);
+        if (read.kind === 'failed') {
+            return { kind: 'failed', reason: this.scanner.redact(read.reason) };
+        }
+        const notes = read.unreadable > 0 ? [`${read.unreadable} item(s) gh printed did not read as comments, reviews or bodies and were left out`] : [];
+        return { kind: 'read', posts: read.posts, cutAt: read.cutAt, notes };
     }
     /**
      * Opens one issue. A failure is one plain line with gh's own first error line, any secret shape in it redacted; a

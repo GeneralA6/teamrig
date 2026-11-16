@@ -4,6 +4,7 @@ import { addedTasks } from "../../github/auto.js";
 import { importRules, issueOwner, issueRef } from "../../github/map.js";
 import { importedTasks, linkedRefs, planSync } from "../../github/plan.js";
 import { withCiExcerpts } from "../../github/ci-excerpt.js";
+import { firstMentionWatch, mentionItems, mentionReadSince, mentionStep, mentionTime, } from "../../github/mention-route.js";
 import { securityIssues } from "../../github/security-alert.js";
 import { eventsByRecipient, pullEvents, pullNewsText, pullRecipient } from "../../github/pull-news.js";
 import { ourLogins } from "../../github/trust.js";
@@ -36,9 +37,10 @@ export const SHOWN_LEFT_OUT = 20;
  * `--yes` does and tells each owner's inbox its new tasks, and the lead's when the failing repositories change or
  * an issue is newly left out. Each repository's pull requests are read too and compared with what the last
  * `--auto` read of them (pull-news.ts): a PULL NEWS line per session names what happened since, but only `--auto`
- * keeps what it read and tells each session's inbox, so a run by hand changes nothing there. Exit 1 when a
- * repository could not be read (its tasks stay as they are, and its pull request watch), 2 when the register
- * refused a step, else 0.
+ * keeps what it read and tells each session's inbox, so a run by hand changes nothing there. `--auto` also reads each
+ * repository's posts changed since its last read and routes each new mention of one of ours to a session
+ * (mention-route.ts); a run by hand reads none. Exit 1 when a repository could not be read (its tasks stay as they are,
+ * and its pull request and mention watches), 2 when the register refused a step, else 0.
  */
 export async function issueSync(args, runtime) {
     noPositionals(args);
@@ -76,7 +78,15 @@ export async function issueSync(args, runtime) {
     const failures = [];
     const leftOut = new Map();
     const unread = new Set();
-    const watched = (await readSyncState(runtime, kit))?.pulls ?? new Map();
+    const last = await readSyncState(runtime, kit);
+    const watched = last?.pulls ?? new Map();
+    const scanned = last?.mentions ?? new Map();
+    const mentions = new Map();
+    const mentionRoutes = [];
+    const mentionCuts = new Map();
+    const ours = ourLogins(config.github);
+    const watcher = config.github.watcher ?? config.roles.lead;
+    const routing = { ours, self: undefined, rules, watcher, secrets: new SecretScanner(config.register.secretPatterns) };
     const pulls = new Map();
     const pullNews = [];
     const security = new Map();
@@ -143,12 +153,27 @@ export async function issueSync(args, runtime) {
         }
         pulls.set(repo, watch.after);
         pullNews.push(...watch.events);
+        if (auto) {
+            const items = mentionItems(repo, { issues: read.issues, pulls: watch.pulls }, { ofRef: (ref) => imported.get(ref)?.owner, ofTask: (id) => tasks.find((held) => held.id === id)?.owner }, ours);
+            const scan = await readMentions(host, repo, scanned.get(repo), { readAt: mentionTime(runtime.clock.now()), cutoffMs: Date.parse(since), itemOf: items, routing });
+            scan.lines.forEach(say);
+            if (scan.kind === 'failed') {
+                if (end === 'ok') {
+                    failures.push({ repo, reason: scan.reason });
+                }
+                ends.push('failed');
+                continue;
+            }
+            mentions.set(repo, scan.after);
+            mentionRoutes.push(...scan.routes);
+            if (scan.cutAt !== undefined) {
+                mentionCuts.set(repo, scan.cutAt);
+            }
+        }
         ends.push(end);
     }
     const owners = new Map([...(await register.snapshot()).state.tasks.values()].map((task) => [task.id, task.owner]));
-    const watcher = config.github.watcher ?? config.roles.lead;
     // Only --auto tells the news, so only it reads the failed jobs' logs for it and writes their excerpts.
-    const ours = ourLogins(config.github);
     const ci = auto ? await withCiExcerpts({ host, files: runtime.files, dir: kit.paths.githubCi, now: new Date(runtime.clock.now()).toISOString(), ours }, pullNews) : { events: pullNews, lines: [] };
     ci.lines.forEach(say);
     const news = eventsByRecipient(ci.events, (pull) => pullRecipient(pull, ours, (task) => owners.get(task), watcher));
@@ -187,7 +212,7 @@ export async function issueSync(args, runtime) {
         }
     }
     if (auto) {
-        (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls, pullNews: news, security })).forEach(say);
+        (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls, pullNews: news, security, mentions, mentionRoutes, mentionCuts })).forEach(say);
     }
     else if (news.size > 0) {
         say(`NOTE only ${KIT_NAME} issue sync --auto tells the pull request news and keeps what it read, so the next run names it again`);
@@ -208,7 +233,34 @@ async function readPulls(host, repo, before) {
         return { kind: 'failed', reason, lines: [`FAILED ${repo} ${reason}; what was last read of them stays`] };
     }
     const step = pullEvents(before, read.open, read.changed);
-    return { kind: 'read', after: step.after, events: step.events, lines: read.notes.map((note) => `NOTE ${repo}: ${note}`) };
+    return { kind: 'read', after: step.after, events: step.events, pulls: [...read.open, ...read.changed], lines: read.notes.map((note) => `NOTE ${repo}: ${note}`) };
+}
+/**
+ * Reads `repo`'s posts changed since `before`, the watch the last `--auto` run kept, and routes their new mentions
+ * (mention-route.ts). A repository with no watch yet is not read: its scan starts at `readAt`, so the first run routes
+ * nothing written before. A route prints without its excerpt, which only the routed session's inbox gets.
+ */
+async function readMentions(host, repo, before, at) {
+    if (before === undefined) {
+        return { kind: 'read', after: firstMentionWatch(at.readAt), routes: [], cutAt: undefined, lines: [`NOTE ${repo}: the mention scan starts now; the next run reads what was written since`] };
+    }
+    const read = await host.posts(repo, mentionReadSince(before, at.cutoffMs));
+    if (read.kind === 'failed') {
+        const reason = `mentions: ${read.reason}`;
+        return { kind: 'failed', reason, lines: [`FAILED ${repo} ${reason}; the scan goes on from where it was`] };
+    }
+    const step = mentionStep(repo, before, read, at.readAt, at.itemOf, at.routing, at.cutoffMs);
+    return {
+        kind: 'read',
+        after: step.after,
+        routes: step.routes,
+        cutAt: read.cutAt,
+        lines: [
+            ...read.notes.map((note) => `NOTE ${repo}: ${note}`),
+            ...step.routes.map((route) => `MENTION ${route.to}: ${route.ref} names ${route.logins.map((login) => `@${login}`).join(', ')}, by ${route.author}`),
+            ...(read.cutAt === undefined ? [] : [`NOTE ${repo}: the mention read was cut off; it read through ${read.cutAt} and the next run goes on from there`]),
+        ],
+    };
 }
 /** Why the task list refused some of a repository's steps: how many, and the first one's error; undefined when none was. */
 function refusedReason(outcomes) {

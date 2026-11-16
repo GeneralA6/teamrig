@@ -12,10 +12,12 @@ import { QUERY_VARIABLES, RAW_FIELD } from "./queries.js";
  * in, and the read of whether one login may be assigned (the status push), one login taken off one issue's
  * assignees (a claim the sync made that ran out), the creation of one of the labels teamrig makes (the status push
  * and issue label), one sub-issue or blocked-by link added (issue links), and `issue watch`'s two probes,
- * conditional reads that tell whether a repository changed (isWatchProbe), and the read of one failed Actions job's
- * log (the pull request monitor names its failed step). The runner refuses any other command line before it starts:
- * no title or state edit besides the close, no reopen, removal of more than one assignee at once, label create but
- * teamrig's own, label edit or delete, link removal, merge, branch delete, run rerun or cancel, or log download.
+ * conditional reads that tell whether a repository changed (isWatchProbe), the read of one failed Actions job's log
+ * (the pull request monitor names its failed step), and the reads of a repository's comments, review comments, issue
+ * and pull request bodies changed since a time and of one pull request's reviews (the mention scan). The runner
+ * refuses any other command line before it starts: no title or state edit besides the close, no reopen, removal of
+ * more than one assignee at once, label create but teamrig's own, label edit or delete, link removal, merge, branch
+ * delete, run rerun or cancel, or log download.
  *
  * isIssueQuery is true for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
  * word for word, each variable one it declares and given once, every field raw (`-f`). Any other flag (`-F`,
@@ -468,11 +470,11 @@ export function isLinkAdd(args) {
         field.slice(0, equals) === key &&
         HOST_ID.test(field.slice(equals + 1)));
 }
-/** A command line the runner will not start: none of a shipped query's page, a watch probe, one issue's creation, comment, body, labels, close or link, or a failed job's log. */
+/** A command line the runner will not start: none of a shipped query's page, a watch probe, one issue's creation, comment, body, labels, close or link, a failed job's log, or a mention scan's read. */
 export class GhRefusedError extends Error {
     name = 'GhRefusedError';
     constructor(args) {
-        super(`teamrig only runs gh for its shipped issue queries, its two watch probes, to open, read, comment on, edit the body of, label, assign, close or link an issue, and to read a failed job's log: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
+        super(`teamrig only runs gh for its shipped issue queries, its two watch probes, to open, read, comment on, edit the body of, label, assign, close or link an issue, to read a failed job's log, and to read the posts that may mention a user: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
     }
 }
 /** True for each command line the runner starts. */
@@ -494,7 +496,46 @@ export function isAllowedGh(args) {
         isLabelCreate(args) ||
         isLinkAdd(args) ||
         isWatchProbe(args) ||
-        isJobLogRead(args));
+        isJobLogRead(args) ||
+        isMentionRead(args) ||
+        isReviewRead(args));
+}
+/** The lists the mention scan pages through, each changed since a time: comments on issues and pull requests, inline review comments, and the issues and pull requests themselves for their bodies. */
+export const MENTION_LISTS = ['issues/comments', 'pulls/comments', 'issues'];
+/** The page size of a mention list and of a pull request's reviews: GitHub's largest. */
+export const MENTION_PAGE_SIZE = 100;
+/** The most pages of one list the scan reads in a run; past it, the rest is cut off and said so. */
+export const MENTION_PAGES_MAX = 10;
+/** A time as the scan sends it: whole seconds in UTC, which GitHub reads as ISO 8601. */
+export const MENTION_SINCE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+/** `gh api repos/<owner>/<name>/<list>?since=<time>&sort=updated&direction=asc[&state=all]&per_page=100&page=<n>`: one page, oldest change first. */
+export function mentionListArgs(repo, list, since, page) {
+    const state = list === 'issues' ? '&state=all' : '';
+    return ['api', `repos/${repo}/${list}?since=${since}&sort=updated&direction=asc${state}&per_page=${MENTION_PAGE_SIZE}&page=${page}`];
+}
+const MENTION_PATH = /^repos\/([^/]+\/[^/?]+)\/(issues\/comments|pulls\/comments|issues)\?since=([^&]+)&sort=updated&direction=asc(&state=all)?&per_page=100&page=([1-9][0-9]?)$/;
+/**
+ * True for a page of a mention list as mentionListArgs makes it and nothing more: one GET (no method, field, header
+ * or other flag, so gh cannot write or read a file), a repository name, a since time of MENTION_SINCE, `state=all`
+ * on the issues list only, and a page from 1 to MENTION_PAGES_MAX.
+ */
+export function isMentionRead(args) {
+    const match = args.length === 2 && args[0] === 'api' ? MENTION_PATH.exec(args[1] ?? '') : null;
+    if (match === null) {
+        return false;
+    }
+    const page = Number(match[5]);
+    return REPO_NAME.test(match[1] ?? '') && MENTION_SINCE.test(match[3] ?? '') && (match[4] !== undefined) === (match[2] === 'issues') && page <= MENTION_PAGES_MAX;
+}
+/** `gh api repos/<owner>/<name>/pulls/<number>/reviews?per_page=100`: one pull request's reviews, for their text. */
+export function reviewListArgs(repo, number) {
+    return ['api', `repos/${repo}/pulls/${number}/reviews?per_page=${MENTION_PAGE_SIZE}`];
+}
+const REVIEW_PATH = /^repos\/([^/]+\/[^/?]+)\/pulls\/([1-9][0-9]{0,9})\/reviews\?per_page=100$/;
+/** True for one pull request's reviews read as reviewListArgs makes it and nothing more: one GET, no method, field, header or flag. */
+export function isReviewRead(args) {
+    const match = args.length === 2 && args[0] === 'api' ? REVIEW_PATH.exec(args[1] ?? '') : null;
+    return match !== null && REPO_NAME.test(match[1] ?? '');
 }
 /**
  * The real runner: `spawn` with no shell, so an issue title or a repository name can never become a
