@@ -1098,7 +1098,8 @@ export interface DeliveryRepoConfig {
    */
   readonly worktreeFolder?: string;
   /**
-   * The ship tool a service role may run through `teamrig queue --kind ship|merge` with no permission check (T2984):
+   * The ship tool a service role may run through `teamrig queue` with no permission check (T2984), a run without
+   * --merge as `--kind test` and a merge as `--kind ship|merge` (T3414):
    * its script, in a checkout of this repository kept clean at main's current code, checked at every allow, as a queued
    * step that runs it is queued and again when it starts (T3223). A relative path is in the main checkout; unset: no
    * role runs a ship.
