@@ -63,6 +63,15 @@ describe('teamrig step-away and step-back', () => {
     assert.deepEqual([back.code, back.stdout], [0, ['NONE no host share of m1 is set aside: the step holds what it held']]);
   });
 
+  it('keeps the share an older teamrig took, whose release would leave it set aside behind (T3409)', async () => {
+    const kit = new CliHarness(TEAM);
+    const older: HostShare = { ...MERGE, kit: '0.447.0' };
+    await kit.files.write(join(SHARED, 'm1.json'), JSON.stringify(older));
+    const kept = await kit.run(['step-away'], { sessionProcesses: running(), env: UNDER });
+    assert.deepEqual(kept, { code: 1, stdout: ['KEPT heavy: merge api: its host share was taken by teamrig 0.447.0, whose release would leave a share set aside behind, so the step keeps it'], stderr: [] });
+    assert.deepEqual([await kit.files.list(SHARED), await kit.files.list(AWAY)], [['m1.json'], []]);
+  });
+
   it('waits in line to take the share back, giving up when its wait runs out and stopping when withdrawn, the share kept aside', async () => {
     const HOLDER = 7001;
     const held: HostLockInfo = { id: 'h1', pid: HOLDER, session: 'po', purpose: 'heavy: build', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };

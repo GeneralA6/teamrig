@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { isRecord } from '../core/guards.ts';
 import type { Sleep } from '../core/lock.ts';
 import { SecretShapes } from '../core/secret-shapes.ts';
 import { EnvAssignments } from '../secret-guard/env-assignments.ts';
@@ -2007,6 +2008,20 @@ describe('HostLock setting a share aside while its step waits on a remote servic
     assert.deepEqual([aside.share.id, aside.share.request?.kind, await files.list(SHARED), shareIn(files, AWAY)], ['t1', 'merge', [], held]);
     const ship = await lockOver(files, clock, OTHER, clock.sleep, PIPELINE).acquire('bravo', 'heavy: ship', 0, 30_000, () => undefined, { request: SHIP });
     assert.equal(ship.kind, 'taken');
+  });
+
+  it('keeps a share a teamrig older than 0.448.0 took, or one naming no teamrig, as that release would leave the share set aside behind (T3409)', async () => {
+    const { files, lock } = await merging();
+    const held = shareIn(files, SHARED);
+    assert.ok(isRecord(held));
+    const { kit: _kit, ...unnamed } = held;
+    for (const share of [{ ...held, kit: '0.447.0' }, unnamed]) {
+      await files.write(`${SHARED}/t1.json`, JSON.stringify(share));
+      const aside = await lock.setAside('t1');
+      assert.deepEqual([aside.kind, shareIn(files, SHARED), await files.list(AWAY)], ['olderKit', share, []]);
+    }
+    await files.write(`${SHARED}/t1.json`, JSON.stringify({ ...held, kit: '0.448.0' }));
+    assert.equal((await lock.setAside('t1')).kind, 'aside');
   });
 
   it("takes the share back under its id and its step's process, at its first place in line, ahead of a step that joined later", async () => {

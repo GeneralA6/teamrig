@@ -4,6 +4,7 @@ import type { Files } from '../core/files.ts';
 import { ENV, type Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import { isTransientFileError } from '../core/retry.ts';
+import { compareVersions, parseVersion, type Version } from '../core/release-version.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { AdmitFile } from './admit-file.ts';
@@ -198,12 +199,27 @@ export interface StepBack {
 
 /**
  * What setting a share aside did: `aside`, its share released and kept to be taken back; `whole`, kept, as its step
- * holds the whole host (the lock file: `--exclusive`, or `serial` mode); `none`, as no live share or lock has the id.
+ * holds the whole host (the lock file: `--exclusive`, or `serial` mode); `olderKit`, kept, as the teamrig that took it
+ * and will release it is older than {@link FIRST_AWAY_KIT}; `none`, as no live share or lock has the id.
  */
 export type SetAside =
   | { readonly kind: 'aside'; readonly share: HostShare }
   | { readonly kind: 'whole'; readonly lock: HostLockInfo }
+  | { readonly kind: 'olderKit'; readonly share: HostShare }
   | { readonly kind: 'none' };
+
+/**
+ * The first teamrig whose release of a share also removes the share it set aside (T3336). A step can run a newer
+ * teamrig than the queue that took its share (ship.ts runs its own checkout's CLI); a share set aside under an older
+ * queue would outlive its step, as that queue's release looks only at the shares it knows.
+ */
+const FIRST_AWAY_KIT: Version = { major: 0, minor: 448, patch: 0 };
+
+/** True when the teamrig `kit` names releases a share set aside; a share with no kit was taken by one older still. */
+function releasesAway(kit: string | undefined): boolean {
+  const version = kit === undefined ? undefined : parseVersion(kit);
+  return version !== undefined && compareVersions(version, FIRST_AWAY_KIT) >= 0;
+}
 
 /** What taking a share back did: the lock's taking in line, or `none` when no share with the id was set aside by a live step. */
 export type TakeBack = Taking | { readonly kind: 'none' };
@@ -952,13 +968,17 @@ export class HostLock {
    * request's checks (`teamrig step-away`): the share is released, so the ship slot, its heavy place and its MB go to
    * the next step in line, and kept in `<lock>.away/<id>.json` for {@link takeBack}. Its end is marked as a release's
    * is, so its class is charged the minutes it ran. A step holding the whole host keeps it: the lock file is the only
-   * guard of a team whose own deploy tool takes it, and the shares it let end are not waiting to come back.
+   * guard of a team whose own deploy tool takes it, and the shares it let end are not waiting to come back. A share an
+   * older teamrig took is kept too ({@link FIRST_AWAY_KIT}).
    */
   async setAside(id: string): Promise<SetAside> {
     const found = await this.shareWith(id);
     if (found === undefined || this.isStale(found.share)) {
       const seen = await this.read();
       return seen.kind === 'held' && seen.info.id === id && !this.isStale(seen.info) ? { kind: 'whole', lock: seen.info } : { kind: 'none' };
+    }
+    if (!releasesAway(found.share.kit)) {
+      return { kind: 'olderKit', share: found.share };
     }
     // Not release(): it would take the away file just written for a share already set aside, and drop that instead.
     await this.ports.files.write(join(this.away, `${id}.json`), stored(found.share));

@@ -38,7 +38,7 @@ async function openLock(runtime: CliRuntime): Promise<Opened> {
  * `teamrig step-away`: run by a queued step while it only waits on a remote service (a merge waiting on its pull
  * request's checks), it sets the step's host share aside, so the ship slot, its heavy place and its MB go to the next
  * step in line; `teamrig step-back` takes them back in turn. Exit 0 set aside; 1 when the step holds the whole host
- * (the lock file), which it keeps, or holds nothing; 64 (usage) refused outside a queued step.
+ * (the lock file) or an older teamrig's share, which it keeps, or holds nothing; 64 (usage) refused outside a queued step.
  */
 export async function stepAway(_args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = heldIdOf(runtime, 'step-away');
@@ -50,6 +50,9 @@ export async function stepAway(_args: ParsedArgs, runtime: CliRuntime): Promise<
       return EXIT.ok;
     case 'whole':
       runtime.out.stdout(`KEPT ${holderText({ kind: 'held', info: aside.lock }, zone)}: it holds the whole host (the lock file), which it keeps`);
+      return EXIT.failed;
+    case 'olderKit':
+      runtime.out.stdout(`KEPT ${aside.share.purpose}: its host share was taken by teamrig ${aside.share.kit ?? 'older than 0.448.0'}, whose release would leave a share set aside behind, so the step keeps it`);
       return EXIT.failed;
     case 'none':
       runtime.out.stdout(`NONE no live host share or lock has the id ${id}: nothing set aside`);
