@@ -167,7 +167,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     if (write) {
       const outcomes = await applySteps(register, plan.steps);
       // Against the tasks as written, so an issue the import just took is held by its new task.
-      threads.push(...repoThreads(read.issues, [...(await register.snapshot()).state.tasks.values()], rules));
+      threads.push(...repoThreads(read.issues, [...(await register.snapshot()).state.tasks.values()], rules, ours));
       clocked.add(repo);
       claimRead.set(repo, read.issues);
       [...resultLines(repo, plan, outcomes), ...leftOutText].forEach(say);
