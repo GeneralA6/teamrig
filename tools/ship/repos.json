@@ -1,5 +1,6 @@
 {
   "GeneralA6/teamrig": {
+    "aliases": ["teamrig/teamrig"],
     "main": "main",
     "gate": "ci",
     "checks": [
@@ -21,6 +22,7 @@
     "flaky": ["test (ubuntu-latest, node 22)", "test (windows-latest, node 22)", "test (macos-latest, node 22)"]
   },
   "GeneralA6/teamrig-pane": {
+    "aliases": ["teamrig/teamrig-pane"],
     "main": "main",
     "gate": "ci",
     "checks": [

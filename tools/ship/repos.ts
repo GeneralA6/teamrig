@@ -17,6 +17,12 @@ export interface LocalChecks {
 
 export interface RepoProfile {
   slug: string;
+  /**
+   * The other `<owner>/<repo>` names the same repo is reached by, its entry found under each: the name a transfer
+   * moves it to, before the move, and the one it moved from after it, as a checkout whose remote still names the old
+   * owner works through GitHub's redirect. Empty when not listed.
+   */
+  aliases: readonly string[];
   /** The branch pull requests merge into. */
   main: string;
   /**
@@ -83,9 +89,24 @@ function parseRegenerated(slug: string, value: unknown): readonly string[] {
   return value;
 }
 
+const SLUG = /^[\w.-]+\/[\w.-]+$/u;
+
+function parseAliases(slug: string, value: unknown): readonly string[] {
+  if (value === undefined) return [];
+  if (!isNameList(value) || value.some(alias => !SLUG.test(alias))) {
+    throw new Error(`repos.json: ${slug} "aliases" needs a list of <owner>/<repo> names`);
+  }
+  return value;
+}
+
+/** Each repo's own name once, its aliases apart: the repos repos.json lists. */
+export function repoSlugs(profiles: ReadonlyMap<string, RepoProfile>): string[] {
+  return [...new Set(profiles.values())].map(profile => profile.slug);
+}
+
 export function parseProfiles(json: string): Map<string, RepoProfile> {
   const body: unknown = JSON.parse(json);
-  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky" } }');
+  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky", "aliases" } }');
   const profiles = new Map<string, RepoProfile>();
   for (const [slug, entry] of Object.entries(body)) {
     if (!isRecord(entry) || typeof entry['main'] !== 'string' || !isNameList(entry['checks'])) throw new Error(`repos.json: ${slug} needs "main" and a "checks" list of names`);
@@ -93,8 +114,10 @@ export function parseProfiles(json: string): Map<string, RepoProfile> {
     const gate = entry['gate'];
     if (!isGate(gate)) throw new Error(`repos.json: ${slug} needs a "gate": "ci" (GitHub checks) or "local" (checks run on this machine)`);
     const summary = parseSummary(slug, entry['summary'], entry['checks']);
-    profiles.set(slug.toLowerCase(), {
+    const aliases = parseAliases(slug, entry['aliases']);
+    const profile: RepoProfile = {
       slug,
+      aliases,
       main: entry['main'],
       gate,
       checks: entry['checks'],
@@ -102,7 +125,13 @@ export function parseProfiles(json: string): Map<string, RepoProfile> {
       local: parseLocalChecks(slug, entry['local']),
       regenerated: parseRegenerated(slug, entry['regenerated']),
       flaky: parseFlaky(slug, entry['flaky'], entry['checks'], summary),
-    });
+    };
+    for (const name of [slug, ...aliases]) {
+      const key = name.toLowerCase();
+      const holder = profiles.get(key);
+      if (holder !== undefined) throw new Error(`repos.json: ${name} names both ${holder.slug} and ${slug}: a name finds one repo`);
+      profiles.set(key, profile);
+    }
   }
   return profiles;
 }

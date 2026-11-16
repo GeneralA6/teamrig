@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { parseProfiles, profileFor, readProfiles, slugOf } from './repos.ts';
+import { parseProfiles, profileFor, readProfiles, repoSlugs, slugOf } from './repos.ts';
 import { DIST } from './ship-commits.ts';
 import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
@@ -9,7 +9,7 @@ const LOCAL = '"local":{"runner":"tools/ci/local.ts"}';
 
 test('reads each repo\'s main branch, gate and check lists, looked up without regard to case', () => {
   const profiles = parseProfiles(`{"Owner/Repo":{"main":"main","gate":"ci","checks":["a","b"]}}`);
-  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [] });
+  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [], aliases: [] });
   const local = parseProfiles(`{"Owner/Local":{"main":"main","gate":"local","checks":[],${LOCAL}}}`);
   assert.deepEqual(profileFor(local, 'Owner/Local').local, { runner: 'tools/ci/local.ts' });
 });
@@ -145,4 +145,29 @@ test('the shipped repos.json re-runs only teamrig\'s test legs once as flaky (T2
   const profiles = readProfiles();
   assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig').flaky, ['test (ubuntu-latest, node 22)', 'test (windows-latest, node 22)', 'test (macos-latest, node 22)']);
   assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig-pane').flaky, []);
+});
+
+test('finds a repo under each of its aliases, any case, as the same profile, and lists it once by its own name (T3275)', () => {
+  const profiles = parseProfiles(`{"Old/Repo":{"aliases":["New/Repo"],"main":"main","gate":"ci","checks":["a"]},"Other/Repo":{"main":"main","gate":"ci","checks":["b"]}}`);
+  assert.equal(profileFor(profiles, 'new/repo'), profileFor(profiles, 'Old/Repo'));
+  assert.equal(profileFor(profiles, 'New/Repo').slug, 'Old/Repo');
+  assert.deepEqual(profileFor(profiles, 'Old/Repo').aliases, ['New/Repo']);
+  assert.deepEqual(repoSlugs(profiles), ['Old/Repo', 'Other/Repo']);
+});
+
+test('refuses an alias that is no <owner>/<repo> name, or a name that would find two repos', () => {
+  assert.throws(() => parseProfiles('{"O/R":{"aliases":"N/R","main":"main","gate":"ci","checks":["a"]}}'), /O\/R "aliases" needs a list of <owner>\/<repo> names/);
+  assert.throws(() => parseProfiles('{"O/R":{"aliases":["N"],"main":"main","gate":"ci","checks":["a"]}}'), /O\/R "aliases" needs a list/);
+  assert.throws(() => parseProfiles('{"O/R":{"aliases":["N/R/x"],"main":"main","gate":"ci","checks":["a"]}}'), /O\/R "aliases" needs a list/);
+  assert.throws(
+    () => parseProfiles('{"O/R":{"main":"main","gate":"ci","checks":["a"]},"P/R":{"aliases":["o/r"],"main":"main","gate":"ci","checks":["a"]}}'),
+    /repos\.json: o\/r names both O\/R and P\/R: a name finds one repo/,
+  );
+});
+
+test('the shipped repos.json finds each repo under the organization it moves to as well', () => {
+  const profiles = readProfiles();
+  assert.equal(profileFor(profiles, 'teamrig/teamrig'), profileFor(profiles, 'GeneralA6/teamrig'));
+  assert.equal(profileFor(profiles, 'teamrig/teamrig-pane'), profileFor(profiles, 'GeneralA6/teamrig-pane'));
+  assert.deepEqual(repoSlugs(profiles), ['GeneralA6/teamrig', 'GeneralA6/teamrig-pane']);
 });

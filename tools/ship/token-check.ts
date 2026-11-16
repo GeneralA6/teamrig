@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { type Gh, ghWithToken } from './github.ts';
 import { type Credential, SHIP_TOKEN_TARGET, readCredential, windowsPowerShell } from './keychain.ts';
-import { readProfiles } from './repos.ts';
+import { readProfiles, repoSlugs } from './repos.ts';
 
 /**
  * Says whether ship's token is stored and what it can read, never the token itself (at most its type prefix).
@@ -101,7 +101,7 @@ export function parseArgs(argv: readonly string[], known: readonly string[]): { 
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const { repos, pr } = parseArgs(process.argv.slice(2), [...readProfiles().values()].map(profile => profile.slug));
+  const { repos, pr } = parseArgs(process.argv.slice(2), repoSlugs(readProfiles()));
   const { lines, ok } = tokenCheck(readCredential(SHIP_TOKEN_TARGET, windowsPowerShell), token => ghWithToken(token), repos, pr);
   for (const line of lines) console.log(line);
   process.exitCode = ok ? 0 : 1;
