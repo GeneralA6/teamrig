@@ -145,6 +145,10 @@ describe('cdCompoundReason', () => {
     const reason = cdCompoundReason({ kind: 'drop-cd' });
     assert.match(reason, /^teamrig picker guard: Claude Code asks a person before a `cd` compound/);
     assert.match(reason, /Do not retry this line; a folder only known when it runs counts as leaving\. Drop the `cd`: run git as `git -C <dir> \.\.\.`/);
-    assert.match(reason, /`env -C <dir> <command>`, name files by absolute path, or put the steps in a script file and run that\.$/);
+    assert.match(reason, /`env -C <dir> <command>`, or name files by absolute path\.$/);
+  });
+
+  it('never sends the line into a script file, which the guards read less of than the line (T3291)', () => {
+    assert.doesNotMatch(cdCompoundReason({ kind: 'drop-cd' }), /script/);
   });
 });

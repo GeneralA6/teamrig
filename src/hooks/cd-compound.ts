@@ -82,7 +82,7 @@ export function cdCompoundReason(compound: CdCompound): string {
   }
   return (
     `${why} a folder only known when it runs counts as leaving. Drop the \`cd\`: run git as \`git -C <dir> ...\`,` +
-    ' anything else as `env -C <dir> <command>`, name files by absolute path, or put the steps in a script file and run that.'
+    ' anything else as `env -C <dir> <command>`, or name files by absolute path.'
   );
 }
 
