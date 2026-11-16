@@ -6,7 +6,7 @@ import { mergeStandingOf, type MergeStanding } from '../../src/cli/ship-approval
 import { CLAUDE_SESSION, CliHarness, TEAM_HOME } from '../../src/testing/cli-harness.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
 import { changePatch, clearMerge, clearMergeFrom, mergeClearance, type MergeReads, shipWritesOf, type StandingOf, type TabCallerOf, taskOfBranch, type WorkCommit, workChanges, workCommitsOf } from './approval.ts';
-import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
+import { TEAMRIG_RELEASE_STAMPS, TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 const HEAD = '0123456789abcdef0123456789abcdef01234567';
 const MANIFEST = 'plugins/teamrig/.claude-plugin/plugin.json';
@@ -15,6 +15,9 @@ const VERSION_TS = 'src/core/version.ts';
 const HOOKS_KEY = ',\n  "hooks": "./hooks/hooks.json"';
 const manifest = (version: string, more = ''): string => `{\n  "name": "teamrig",\n  "version": "${version}",\n  "description": "the kit"${more}\n}\n`;
 const versionTs = (version: string): string => `/** The kit's version. */\nexport const KIT_VERSION = '${version}';\n`;
+const MIGRATE_TS = 'src/config/migrate.ts';
+/** A config migration from `from`, first read by release `release`. */
+const migration = (from: number, release: string): string => `export const STEP_${from} = {\n  from: ${from},\n  firstRelease: '${release}',\n};\n`;
 
 /** Team app with T1, alpha's, waiting on the lead's approval; `answer` is the lead's answer, if any. */
 async function waitingKit(answer?: readonly string[]): Promise<CliHarness> {
@@ -169,19 +172,20 @@ describe('clearMerge', () => {
 
 describe('shipWritesOf: how an approval reads the paths a ship writes again (T2914 F1)', () => {
   it('leaves a folder out of the hash and masks a known version file', () => {
-    assert.deepEqual(shipWritesOf(['dist/', VERSION_TS], TEAMRIG_VERSION_FILES), {
+    assert.deepEqual(shipWritesOf(['dist/', VERSION_TS], TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS), {
       generated: ['dist/'],
       versionFiles: TEAMRIG_VERSION_FILES.filter((file) => file.path === VERSION_TS),
+      releaseStamps: TEAMRIG_RELEASE_STAMPS,
     });
   });
 
   it('refuses a file that is neither a folder nor a version file the ship rewrites', () => {
-    assert.throws(() => shipWritesOf(['dist/', 'src/hooks.json'], TEAMRIG_VERSION_FILES), /regenerated path src\/hooks\.json is no folder the build rebuilds and no version file/);
+    assert.throws(() => shipWritesOf(['dist/', 'src/hooks.json'], TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS), /regenerated path src\/hooks\.json is no folder the build rebuilds and no version file/);
   });
 });
 
 describe('changePatch: the fingerprint of what a branch changes over main', () => {
-  const WRITES = shipWritesOf(['dist/', MANIFEST, VERSION_TS], TEAMRIG_VERSION_FILES);
+  const WRITES = shipWritesOf(['dist/', MANIFEST, VERSION_TS], TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS);
   let repo: TempRepo;
   const git = (args: readonly string[]): string => repo.git(...args);
   const commitFiles = (subject: string, files: Readonly<Record<string, string>>): string => {
@@ -197,7 +201,7 @@ describe('changePatch: the fingerprint of what a branch changes over main', () =
   beforeEach(() => {
     repo = new TempRepo('approval').init();
     repo.git('symbolic-ref', 'HEAD', 'refs/heads/main');
-    commitFiles('base', { 'src/a.ts': lines(1, 20), 'src/b.ts': 'b\n', 'dist/a.js': 'a\n', [MANIFEST]: manifest('0.1.0'), [VERSION_TS]: versionTs('0.1.0') });
+    commitFiles('base', { 'src/a.ts': lines(1, 20), 'src/b.ts': 'b\n', 'dist/a.js': 'a\n', [MANIFEST]: manifest('0.1.0'), [VERSION_TS]: versionTs('0.1.0'), [MIGRATE_TS]: migration(1, '0.1.0') });
     repo.git('checkout', '-q', '-b', 't1-change');
     commitFiles('core: a', { 'src/a.ts': lines(1, 20).replace('line 15\n', 'line fifteen\n'), 'src/new.ts': 'new\n' });
   });
@@ -254,6 +258,38 @@ describe('changePatch: the fingerprint of what a branch changes over main', () =
     repo.git('checkout', '-q', '-b', 't1-blob', base);
     commitFiles('docs: notes', { 'notes.txt': 'one\n', 'src/blob.bin': 'a\u0000c\n' });
     assert.notEqual(patch(), approved, 'a binary file');
+  });
+
+  /**
+   * A change that adds config migration 2, stamped with the version it ships in, approved at its raise to 0.2.0; then
+   * main takes 0.2.0, and the same change is made again on it, its raise and stamp set to 0.3.0 (T3419).
+   */
+  function stampedAgain(): string {
+    commitFiles('config: migration 2', { [MIGRATE_TS]: `${migration(1, '0.1.0')}${migration(2, '0.2.0')}` });
+    raise('0.2.0');
+    const approved = repo.git('rev-parse', 'HEAD').trim();
+    repo.git('checkout', '-q', 'main');
+    raise('0.2.0');
+    repo.git('checkout', '-q', '-b', 't1-again');
+    commitFiles('core: a', { 'src/a.ts': lines(1, 20).replace('line 15\n', 'line fifteen\n'), 'src/new.ts': 'new\n' });
+    commitFiles('config: migration 2', { [MIGRATE_TS]: `${migration(1, '0.1.0')}${migration(2, '0.3.0')}` });
+    raise('0.3.0');
+    return approved;
+  }
+
+  it("keeps the fingerprint and each patch id when a migration's release stamp is set again with the raise on a newer main (T3419)", () => {
+    const approved = stampedAgain();
+    assert.equal(patch(), patch(approved));
+    assert.deepEqual(workChanges(workCommitsOf(git, approved, 'main', WRITES), workCommitsOf(git, 'HEAD', 'main', WRITES)), []);
+  });
+
+  it("moves the fingerprint on an edit to an existing migration's stamp, or to a line of the added migration beside its stamp (T3419)", () => {
+    const approved = stampedAgain();
+    const restamped = commitFiles('config: restamp 1', { [MIGRATE_TS]: `${migration(1, '0.3.0')}${migration(2, '0.3.0')}` });
+    assert.notEqual(patch(restamped), patch(approved), 'an existing stamp');
+    repo.git('checkout', '-q', '-b', 't1-from', 'HEAD~1');
+    commitFiles('config: migration 2 from 3', { [MIGRATE_TS]: `${migration(1, '0.1.0')}${migration(2, '0.3.0').replace('from: 2', 'from: 3')}` });
+    assert.notEqual(patch(), patch(approved), 'a line beside the stamp');
   });
 
   it('reads the change from the merge base, so commits main gains after the fork never count', () => {

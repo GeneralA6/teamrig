@@ -15,7 +15,7 @@ import { takeBackEarlierRun } from './rerun.ts';
 import { shipCommand } from './ship-command.ts';
 import { DIST, type ShipDeps } from './ship-commits.ts';
 import { mainMovedPast, syncToMain } from './sync.ts';
-import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
+import { TEAMRIG_RELEASE_STAMPS, TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 /**
  * The ship tool's command line; what each command does lives in its module.
@@ -61,8 +61,8 @@ function realShipDeps(repo: string, noteFile: string | null): ShipDeps {
     merge: (branch) => mergeBranch([repo, '--head', branch, ...(noteFile === null ? [] : ['--note-file', noteFile])]),
     mainMove: () => mainMovedPast(gitLine, profile.main),
     clearMerge: clearMergeFrom(process.env, { env: process.env, userHome: homedir(), files: nodeFiles(realSleep), clock: systemClock }),
-    patchOf: (rev) => changePatch(git, rev, `refs/remotes/origin/${profile.main}`, shipWritesOf(profile.regenerated, TEAMRIG_VERSION_FILES)),
-    workOf: (rev) => workCommitsOf(git, rev, `refs/remotes/origin/${profile.main}`, shipWritesOf(profile.regenerated, TEAMRIG_VERSION_FILES)),
+    patchOf: (rev) => changePatch(git, rev, `refs/remotes/origin/${profile.main}`, shipWritesOf(profile.regenerated, TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS)),
+    workOf: (rev) => workCommitsOf(git, rev, `refs/remotes/origin/${profile.main}`, shipWritesOf(profile.regenerated, TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS)),
   };
 }
 

@@ -57,6 +57,13 @@ export const TEAMRIG_VERSION_FILES: readonly VersionFile[] = [
   { path: 'src/core/version.ts', pattern: /(KIT_VERSION = ')(\d+\.\d+\.\d+)(')/ },
 ];
 
+/**
+ * The release stamps a change carries beside the version raise: a config migration's first release
+ * (`firstRelease` in src/config/migrate.ts), set to the version the change ships in, so it follows each raise the ship
+ * sets again on a newer main (T3419).
+ */
+export const TEAMRIG_RELEASE_STAMPS: readonly VersionFile[] = [{ path: 'src/config/migrate.ts', pattern: /(firstRelease: ')(\d+\.\d+\.\d+)(')/ }];
+
 export function versionIn(text: string, file: VersionFile): Version {
   const found = file.pattern.exec(text)?.[2];
   if (found === undefined) throw new Error(`${file.path}: no version matching ${file.pattern.source}`);
