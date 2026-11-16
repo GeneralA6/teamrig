@@ -1452,11 +1452,24 @@ export function isIdleMode(value: unknown): value is IdleMode {
   return IDLE_MODES.some((mode) => mode === value);
 }
 
+/**
+ * Which leads the idle pass never closes for being quiet: `root`, the lead of the tree's root team alone (a child
+ * team's lead and a sub-lead close like any session once nothing waits on them and no session they lead is open), or
+ * `all`, every team's lead (T3387).
+ */
+export const IDLE_LEADER_KEEPS = ['root', 'all'] as const;
+export type IdleLeaderKeep = (typeof IDLE_LEADER_KEEPS)[number];
+
+export function isIdleLeaderKeep(value: unknown): value is IdleLeaderKeep {
+  return IDLE_LEADER_KEEPS.some((keep) => keep === value);
+}
+
 /** The idle pass: it closes a session the wake check would not wake once it is quiet, and reopens it when work arrives. */
 export interface IdleConfig {
   readonly mode: IdleMode;
-  /** Sessions never closed for being quiet (by the pass or `teamrig close`), on top of the lead and the delivery owner. */
+  /** Sessions never closed for being quiet (by the pass or `teamrig close`), on top of the root lead and the delivery owner. */
   readonly keepOpen: readonly string[];
+  readonly leaders: IdleLeaderKeep;
 }
 
 export interface OpenConfig {

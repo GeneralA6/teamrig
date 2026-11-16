@@ -351,7 +351,7 @@ export const DEFAULT_HEADROOM: HeadroomConfig = { sessionMb: 1200, commitMaxPct:
  * The idle pass closes and reopens sessions unless the team sets it to dry-run or off, so an idle tab spends no tokens
  * on any team (owner order, T1409); it keeps open only the sessions its roles name.
  */
-export const DEFAULT_IDLE: IdleConfig = { mode: 'on', keepOpen: [] };
+export const DEFAULT_IDLE: IdleConfig = { mode: 'on', keepOpen: [], leaders: 'root' };
 
 export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto', teamWindow: false, headroom: DEFAULT_HEADROOM, idle: DEFAULT_IDLE };
 

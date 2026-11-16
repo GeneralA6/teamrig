@@ -109,6 +109,7 @@ import {
   isHiringPolicy,
   isOverAction,
   isHookAsks,
+  isIdleLeaderKeep,
   isIdleMode,
   isOtherAreaListing,
   isPushToProtected,
@@ -127,6 +128,7 @@ import {
   type ModelWeight,
   type ResetStock,
   HOOK_ASKS,
+  IDLE_LEADER_KEEPS,
   IDLE_MODES,
   OTHER_AREA_LISTINGS,
   OVER_ACTIONS,
@@ -1672,7 +1674,10 @@ function parseOpen(read: ConfigReader, raw: JsonRecord, sessions: readonly strin
   };
 }
 
-/** `open.idle`: whether the idle pass runs, and the sessions it keeps open; one not on the team is reported and left out. */
+/**
+ * `open.idle`: whether the idle pass runs, the sessions it keeps open (one not on the team is reported and left out),
+ * and which leads it never closes.
+ */
 function parseIdle(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): IdleConfig {
   const path = 'open.idle';
   const mode = read.string(raw, 'mode', path, DEFAULT_IDLE.mode, (value) => (isIdleMode(value) ? undefined : `expected one of ${IDLE_MODES.join(', ')}`));
@@ -1684,7 +1689,8 @@ function parseIdle(read: ConfigReader, raw: JsonRecord, sessions: readonly strin
     }
     return id;
   });
-  return { mode: isIdleMode(mode) ? mode : DEFAULT_IDLE.mode, keepOpen };
+  const leaders = read.string(raw, 'leaders', path, DEFAULT_IDLE.leaders, (value) => (isIdleLeaderKeep(value) ? undefined : `expected one of ${IDLE_LEADER_KEEPS.join(', ')}`));
+  return { mode: isIdleMode(mode) ? mode : DEFAULT_IDLE.mode, keepOpen, leaders: isIdleLeaderKeep(leaders) ? leaders : DEFAULT_IDLE.leaders };
 }
 
 /** `open.headroom`: the room a new session needs on the host. */

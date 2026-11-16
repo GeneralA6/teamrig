@@ -1793,7 +1793,7 @@
           }
         },
         "idle": {
-          "description": "The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The lead and the delivery owner are never closed.",
+          "description": "The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The delivery owner is never closed, nor the leads open.idle.leaders keeps.",
           "type": "object",
           "properties": {
             "mode": {
@@ -1803,10 +1803,16 @@
               "default": "on"
             },
             "keepOpen": {
-              "description": "Sessions the idle pass and teamrig close never close for being quiet, on top of the lead and the delivery owner.",
+              "description": "Sessions the idle pass and teamrig close never close for being quiet, on top of the delivery owner and the leads open.idle.leaders keeps.",
               "type": "array",
               "items": { "$ref": "#/$defs/sessionName" },
               "default": []
+            },
+            "leaders": {
+              "description": "Which leads are never closed for being quiet. root, the default: only the lead of the tree's root team (one with no team.parent); a child team's lead and a sub-lead close like any session once no task of theirs can start, nothing waits on them (an approval or decision they have not given, an open meeting they are in, an urgent line) and no session they lead runs, and reopen on the same triggers as any closed session. all: every team's lead stays open, as before.",
+              "type": "string",
+              "enum": ["root", "all"],
+              "default": "root"
             }
           }
         }
