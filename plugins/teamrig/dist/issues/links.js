@@ -36,7 +36,10 @@ export function planLinks(tasks, repo, issues) {
                 continue;
             }
             if (partTarget.repo === repo) {
-                edges.push({ whole: wholeTarget, part: partTarget, sub });
+                // Two tasks of one issue make no link: GitHub refuses an issue blocked by, or a sub-issue of, itself (422).
+                if (partTarget.number !== wholeTarget.number) {
+                    edges.push({ whole: wholeTarget, part: partTarget, sub });
+                }
             }
             else {
                 otherRepo += 1;
