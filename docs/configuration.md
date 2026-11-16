@@ -28,6 +28,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `contextFiles` | [object](#contextfiles) |  | Character budgets for the text Claude Code puts in every call's context; teamrig doctor flags a file over its budget. |
 | `lock` | [object](#lock) |  | The file lock each write of the team's state files takes (the task list, the exec audit, the GitHub sync), so two writes never interleave. |
 | `pushGuard` | [object](#pushguard) |  | The push guard: what a git push to a protected branch does. |
+| `changes` | [object](#changes) |  | Where teamrig changes reads what changed in the project. |
 | `exec` | [object](#exec) |  | Privileged commands a reviewer approved, run once by teamrig exec run. |
 | `packageGuard` | [object](#packageguard) |  | The package guard: what a Bash or PowerShell call that installs a package or runs one ad hoc does. |
 | `commitGuard` | [object](#commitguard) |  | The commit guard: what a Bash or PowerShell call that runs git without the repository's hooks does. |
@@ -220,6 +221,14 @@ The team's review gate entries, read on top of teamrig's generic security list (
 | `glob` (required) | string (1 to 200 characters) |  | The paths the entry covers: with no slash a file name at any depth, with one a path from the repo root; case is ignored. |
 | `mode` | one of `"always"`, `"check"` | `"always"` | always holds a change touching the paths for the class's reviewer; check runs the repo's reviewCheck first, which clears the change or holds it. |
 | `class` | one of `"security"`, `"leader"` | `"security"` | Who reviews a held change: security (roles.securityReviewer), or leader (the session's lead or sub-lead). |
+
+## `changes`
+
+Where teamrig changes reads what changed in the project.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `sources` | array (at most 3 items, unique) of one of `"notes"`, `"register"`, `"git"` | `[]` | The change sources teamrig changes reads, in the order their entries win when two name one change: notes (the project's changes/\<slug>.md files not released yet), register (the team's tasks its commits name), git (the commit subjects). Empty: every source that applies to the project. |
 
 ## `exec`
 

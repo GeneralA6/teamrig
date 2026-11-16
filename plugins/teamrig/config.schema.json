@@ -394,6 +394,21 @@
         }
       }
     },
+    "changes": {
+      "description": "Where teamrig changes reads what changed in the project.",
+      "type": "object",
+      "properties": {
+        "sources": {
+          "description": "The change sources teamrig changes reads, in the order their entries win when two name one change: notes (the project's changes/<slug>.md files not released yet), register (the team's tasks its commits name), git (the commit subjects). Empty: every source that applies to the project.",
+          "type": "array",
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["notes", "register", "git"] },
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
     "exec": {
       "description": "Privileged commands a reviewer approved, run once by teamrig exec run.",
       "type": "object",
