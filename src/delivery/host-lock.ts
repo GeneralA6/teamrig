@@ -3,6 +3,7 @@ import { isNonNegativeInteger, isRecord } from '../core/guards.ts';
 import type { Files } from '../core/files.ts';
 import { ENV, type Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
+import { isTransientFileError } from '../core/retry.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { AdmitFile } from './admit-file.ts';
@@ -1071,7 +1072,20 @@ export class HostLock {
     for (;;) {
       stop?.throwIfAborted();
       const removeUnknown = unknownSince !== undefined && clock.now() - unknownSince >= HostLock.UNREADABLE_GRACE_MS;
-      const looked = await this.lookInLine(ticket, removeUnknown, ask, await this.rulesNow());
+      let looked: LineLook | undefined;
+      try {
+        looked = await this.lookInLine(ticket, removeUnknown, ask, await this.rulesNow());
+      } catch (error) {
+        // A look reads every ticket in line, and Windows refuses each open of one pending its delete until its last
+        // reader closes it, past the read's own retries under load (T3201). That says nothing of this step's place, so
+        // the look is passed, never taking a turn past a ticket it could not read, and the wait goes on.
+        const left = patience.deadline - clock.now();
+        if (!isTransientFileError(error) || left <= 0) {
+          throw error;
+        }
+        await sleep(Math.min(pollMs, left));
+        continue;
+      }
       if (looked === undefined) {
         return { kind: 'withdrawn' };
       }
