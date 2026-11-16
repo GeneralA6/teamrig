@@ -56,6 +56,11 @@ export const ISSUE_REF_PREFIX = 'gh:';
  */
 export const LOCAL_REF_PREFIX = 'local: ';
 
+/** Whether a task's ref points at its issue or says why it has none: the two refs `github.issueAtAdd` accepts. */
+export function hasIssueOrReason(ref: string | null): boolean {
+  return ref !== null && (ref.startsWith(ISSUE_REF_PREFIX) || ref.startsWith(LOCAL_REF_PREFIX));
+}
+
 /** A priority as the CLI prints and takes it: `p1`, the most urgent, `p2` and so on. */
 export function priorityText(priority: number): string {
   return `p${priority}`;

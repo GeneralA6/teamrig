@@ -5,7 +5,7 @@ import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testConfig } from '../testing/config.ts';
 import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
-import { checkTasks, formatFlag, leaderWaitFlags, PACE_DAYS, peerWaitFlags, runFileFlags, untriagedFlags } from './check.ts';
+import { checkTasks, formatFlag, leaderWaitFlags, noIssueFlags, PACE_DAYS, peerWaitFlags, runFileFlags, untriagedFlags } from './check.ts';
 import { RETAIN_DAYS } from './compaction.ts';
 import type { Task } from './fold.ts';
 import type { RunFiles } from './hand-step.ts';
@@ -805,5 +805,32 @@ describe('untriagedFlags', () => {
       testTask({ id: 'T8', createdBy: 'lead' }),
     ];
     assert.deepEqual(untriagedFlags(tasks, new LeadTree(testConfig())).map((flag) => flag.task.id), ['T1', 'T2', 'T3', 'T4']);
+  });
+});
+
+describe('noIssueFlags', () => {
+  it('flags an active task with no issue and no local reason, naming the repository and the refs that end it', () => {
+    assert.deepEqual(
+      noIssueFlags([testTask({ id: 'T1' })], 'acme/kit').map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`),
+      ['NO-ISSUE T1: no issue in acme/kit and no reason to stay local: open it (issue migrate <rows>), or update T1 --ref gh:<repo>#<n> or --ref "local: <reason>"'],
+    );
+  });
+
+  it('reads every active status, and leaves out a finished task, one with its issue and one with its local reason', () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'open' }),
+      testTask({ id: 'T2', status: 'in-progress', ref: 'notes/plan.md' }),
+      testTask({ id: 'T3', status: 'waiting' }),
+      testTask({ id: 'T4', status: 'verifying' }),
+      testTask({ id: 'T5', status: 'done' }),
+      testTask({ id: 'T6', status: 'dropped' }),
+      testTask({ id: 'T7', ref: 'gh:acme/kit#12' }),
+      testTask({ id: 'T8', ref: 'local: an unfixed hole, reported privately' }),
+    ];
+    assert.deepEqual(noIssueFlags(tasks, 'acme/kit').map((flag) => flag.task.id), ['T1', 'T2', 'T3', 'T4']);
+  });
+
+  it('flags nothing while github.issueAtAdd is unset', () => {
+    assert.deepEqual(noIssueFlags([testTask({ id: 'T1' })], undefined), []);
   });
 });
