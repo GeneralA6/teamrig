@@ -723,6 +723,19 @@ describe('hook wake-check rush poke (T2865)', () => {
     assert.match((await check(kit, idle)).stdout[0] ?? '', /"toast":"teamrig poked this tab \(rush on PROD, idle 35 min\): T1 /);
   });
 
+  it("pokes not for a task the session's queued run is for, still waiting in line, and pokes once the run is gone (T3168)", async () => {
+    const kit = await rushingAlpha();
+    const idle = turnAt(kit.clock.now() - 30 * MINUTE);
+    const dir = join(TEAM_HOME, 'state', 'deploys', 'detached');
+    const record = { v: 2, id: 'r1', team: 'app', session: 'alpha', what: 'T1 ship gate', log: join(dir, 'r1.log'), pid: 5150, startedAt: new Date(kit.clock.now()).toISOString() } as const;
+    await kit.files.write(runRecordPathOf(dir, 'r1'), formatRunRecord(record));
+    kit.sessionProcesses.add({ pid: 5150, parentPid: 1, name: 'node.exe', commandLine: 'node teamrig queue --detached-run' });
+    assert.deepEqual(answerOf(await check(kit, idle)), waitTill(null), 'its only task waits on its queued run');
+    assert.deepEqual(await logLines(kit), []);
+    kit.sessionProcesses.exit(5150);
+    assert.match((await check(kit, idle)).stdout[0] ?? '', /"toast":"teamrig poked this tab \(rush on PROD, idle 30 min\): T1 /);
+  });
+
   it('starts a session whose restart waits for work fresh in place of the poke (T1383)', async () => {
     const { kit, store } = await parkedRestart(AUTO_RESTART_TEAM);
     await hand(kit, 'Ship the page', 'p2');

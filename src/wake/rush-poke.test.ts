@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Rush } from '../budget/burst.ts';
+import { RUN_RECORD_FORMAT, type DetachedRunRecord } from '../delivery/detached-runs.ts';
 import type { LedgerRecord } from '../delivery/ledger.ts';
 import { testTask } from '../testing/task.ts';
-import { decideRushPoke, rushPokePrompt, rushPokeToast, stepRunningFor, type PokeInput } from './rush-poke.ts';
+import { decideRushPoke, queuedTasksOf, rushPokePrompt, rushPokeToast, stepRunningFor, type PokeInput } from './rush-poke.ts';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -30,7 +31,7 @@ const OPEN = testTask({ id: 'T1', priority: 1 });
 const ON_GOAL = testTask({ id: 'T2', priority: 2, goals: ['PROD'], status: 'in-progress' });
 
 function input(overrides: Partial<PokeInput> = {}): PokeInput {
-  return { rush: RUSH, startable: [OPEN], lastTurnAt: NOW - IDLE_MS, now: NOW, idleMs: IDLE_MS, lastPokeAt: undefined, ...overrides };
+  return { rush: RUSH, startable: [OPEN], lastTurnAt: NOW - IDLE_MS, now: NOW, idleMs: IDLE_MS, lastPokeAt: undefined, queued: new Set(), ...overrides };
 }
 
 describe('decideRushPoke', () => {
@@ -56,6 +57,25 @@ describe('decideRushPoke', () => {
 
   it("names the rush goal's task ahead of a more urgent one off the goal", () => {
     assert.deepEqual(decideRushPoke(input({ startable: [OPEN, ON_GOAL] })), { kind: 'poke', task: ON_GOAL, idleMs: IDLE_MS });
+  });
+
+  it('pokes not for a task a queued run is for, but for the next one with work left (T3168)', () => {
+    assert.deepEqual(decideRushPoke(input({ queued: new Set(['T1']) })), { kind: 'none' });
+    assert.deepEqual(decideRushPoke(input({ startable: [OPEN, ON_GOAL], queued: new Set(['T2']) })), { kind: 'poke', task: OPEN, idleMs: IDLE_MS });
+    assert.deepEqual(decideRushPoke(input({ queued: new Set(['T9']) })), { kind: 'poke', task: OPEN, idleMs: IDLE_MS });
+  });
+});
+
+describe('queuedTasksOf', () => {
+  const run = (id: string, session: string, what: string): DetachedRunRecord => ({ v: RUN_RECORD_FORMAT, id, team: 'app', session, what, log: `${id}.log`, pid: 4242, startedAt: '2030-01-08T19:00:00.000Z' });
+
+  it("names the task each of the session's runs is for, by its label", () => {
+    const runs = [run('r1', 'alpha', 'T1 gate'), run('r2', 'alpha', 'ship T7 merge'), run('r3', 'bravo', 'T2 gate'), run('r4', 'alpha', 'nightly build')];
+    assert.deepEqual([...queuedTasksOf(runs, 'alpha')].sort(), ['T1', 'T7']);
+  });
+
+  it('names none with no runs', () => {
+    assert.equal(queuedTasksOf([], 'alpha').size, 0);
   });
 
   it('pokes nothing with no rush, an unknown last turn, or a poke due at or past the rush end', () => {

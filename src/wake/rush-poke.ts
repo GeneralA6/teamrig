@@ -1,6 +1,8 @@
 import type { Rush } from '../budget/burst.ts';
 import { KIT_NAME } from '../core/home.ts';
+import type { DetachedRunRecord } from '../delivery/detached-runs.ts';
 import type { LedgerRecord } from '../delivery/ledger.ts';
+import { taskOfLabel } from '../delivery/process-request.ts';
 import type { Task } from '../register/fold.ts';
 import { costText, type WakeCost } from './decide.ts';
 
@@ -24,6 +26,8 @@ export interface PokeInput {
   readonly idleMs: number;
   /** The last poke of the session, epoch ms (`SettledMoments.poke`). */
   readonly lastPokeAt: number | undefined;
+  /** The tasks a queued run of the session is for, waiting for its turn or running (`queuedTasksOf`). */
+  readonly queued: ReadonlySet<string>;
 }
 
 export type PokeVerdict =
@@ -47,14 +51,16 @@ function topTaskOf(tasks: readonly Task[], goal: string): Task | undefined {
 /**
  * Whether to poke the tab now, later, or not at all. One poke per idle stretch: a poke at or after the tab's last turn
  * blocks another until the tab has a new turn, so a tab that ignores a poke (or whose poke was dropped) is not poked
- * again and again. Nothing is due past the rush's end.
+ * again and again. Nothing is due past the rush's end. A task with a queued run of the session is not poked for: its
+ * next move is that run's end, whose line wakes the tab anyway. Poking for one cost a tab about 281k W each idle
+ * stretch while its ship gate waited in line and it had nothing else to do (T3168); its other work is still poked for.
  */
 export function decideRushPoke(input: PokeInput): PokeVerdict {
-  const { rush, lastTurnAt, now, idleMs, lastPokeAt } = input;
+  const { rush, lastTurnAt, now, idleMs, lastPokeAt, queued } = input;
   if (rush === undefined || lastTurnAt === undefined) {
     return { kind: 'none' };
   }
-  const task = topTaskOf(input.startable.filter(isWorkLeft), rush.goal);
+  const task = topTaskOf(input.startable.filter((candidate) => isWorkLeft(candidate) && !queued.has(candidate.id)), rush.goal);
   if (task === undefined || (lastPokeAt !== undefined && lastPokeAt >= lastTurnAt)) {
     return { kind: 'none' };
   }
@@ -84,6 +90,21 @@ export function stepRunningFor(records: readonly LedgerRecord[], session: string
     }
   }
   return [...started].some(([id, at]) => !ended.has(id) && now - at < maxRunMs);
+}
+
+/**
+ * The tasks `session`'s queued runs are for: the task each run's label names (`taskOfLabel`), the one
+ * `teamrig queue --task` defaults to. A run whose label names no task is for none.
+ */
+export function queuedTasksOf(runs: readonly DetachedRunRecord[], session: string): ReadonlySet<string> {
+  const tasks = new Set<string>();
+  for (const run of runs) {
+    const task = run.session === session ? taskOfLabel(run.what) : undefined;
+    if (task !== undefined) {
+      tasks.add(task);
+    }
+  }
+  return tasks;
 }
 
 function minutesText(ms: number): string {

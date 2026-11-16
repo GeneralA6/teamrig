@@ -1,7 +1,8 @@
 import { activeBurst, activeRush, type Rush } from '../../budget/burst.ts';
 import { parseLedger } from '../../delivery/ledger.ts';
-import { deliveryPlaces } from '../../delivery/places.ts';
-import { decideRushPoke, rushPokePrompt, rushPokeToast, stepRunningFor } from '../../wake/rush-poke.ts';
+import { liveRunsOf } from '../../delivery/detached-runs.ts';
+import { deliveryPlaces, detachedDirOf } from '../../delivery/places.ts';
+import { decideRushPoke, queuedTasksOf, rushPokePrompt, rushPokeToast, stepRunningFor, type PokeInput } from '../../wake/rush-poke.ts';
 import { BurstLog } from '../../budget/burst-log.ts';
 import { claudeProjectsDir, lastWriteOf } from '../../budget/discover.ts';
 import { autoRestartOf } from '../../config/refresh.ts';
@@ -225,7 +226,8 @@ type PokeCheck = Extract<CheckVerdict, { kind: 'poke' }> | { readonly kind: 'non
  * The rush poke (src/wake/rush-poke.ts), checked when nothing else wakes the tab: only in a rush that lists the
  * session, never for the lead (it talks with the owner, and a poke would cut into that). The ledger, a large file, is
  * read only once a poke is due: a queued step of the session running now puts the poke off by one idle span, since
- * the step's end posts a line that wakes the tab anyway.
+ * the step's end posts a line that wakes the tab anyway. The detached runs are read then too: a task one of them is for
+ * is not poked for (T3168).
  */
 async function pokeOf(
   runtime: CliRuntime,
@@ -246,7 +248,14 @@ async function pokeOf(
   const startable = startableTasks(tasks, elsewhere, id, now, teamZone(config, runtime), parkRulesOf(config));
   const lastTurnAt = await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
   const idleMs = config.rush.pokeAfterMinutes * MINUTE_MS;
-  const verdict = decideRushPoke({ rush, startable, lastTurnAt, now, idleMs, lastPokeAt: state.settled.poke });
+  const pokeInput: PokeInput = { rush, startable, lastTurnAt, now, idleMs, lastPokeAt: state.settled.poke, queued: new Set() };
+  const due = decideRushPoke(pokeInput);
+  if (due.kind !== 'poke') {
+    return due;
+  }
+  const runs = await liveRunsOf({ files: runtime.files, alive: (pid) => runtime.sessionProcesses.alive(pid) }, detachedDirOf(config.delivery, kit.paths), kit.paths.team);
+  const queued = queuedTasksOf(runs, id);
+  const verdict = queued.size === 0 ? due : decideRushPoke({ ...pokeInput, queued });
   if (verdict.kind !== 'poke') {
     return verdict;
   }
