@@ -41,6 +41,7 @@ const SIGHT: ReadingSight = {
   use: { usedPct: 13, resetsAt: END, at: NOW - MS_PER_MINUTE },
   covered: true,
   w: 120_000_000,
+  readings: [],
   now: NOW,
 };
 const FIT: RateFit = { wPerPct: 10_000_000, errorPts: 0.5, readings: 20 };
@@ -63,6 +64,21 @@ describe('crossingOf', () => {
   it('logs the use the moment it passes a whole percent, with the W metered and the fit forecast for it', () => {
     assert.deepEqual(crossingOf(SIGHT, FIT), { at: NOW - MS_PER_MINUTE, usedPct: 13, start: START, end: END, w: 120_000_000, forecastPct: 12 });
     assert.equal(crossingOf(SIGHT, undefined)?.forecastPct, undefined);
+  });
+
+  describe('in a period that started inside the week (T3164)', () => {
+    const afterReset: Period = { ...PERIOD, start: START + 3 * MS_PER_WEEK / 7, lastPct: 70 };
+    const sight: ReadingSight = { ...SIGHT, before: afterReset, period: { ...afterReset, lastPct: 71 }, use: { usedPct: 71, resetsAt: END, at: NOW - MS_PER_MINUTE }, w: 20_000_000 };
+
+    it('forecasts from where the reset left the use, not from 0%', () => {
+      const readings = [reading(70, 10_000_000, { start: afterReset.start })];
+      assert.equal(crossingOf({ ...sight, readings }, FIT)?.forecastPct, 71);
+    });
+
+    it('forecasts nothing before a reading places where the use started', () => {
+      assert.equal(crossingOf(sight, FIT)?.forecastPct, undefined);
+      assert.notEqual(crossingOf(sight, FIT), undefined);
+    });
   });
 
   it('logs nothing for the first reading of a period: its use may sit anywhere within its percent', () => {

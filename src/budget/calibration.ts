@@ -150,6 +150,8 @@ export interface ReadingSight {
   readonly covered: boolean;
   /** The account's W metered since the period's start. */
   readonly w: number;
+  /** The meter readings that count (`accountReadings`), which place where the period's use started (`forecastOf`). */
+  readonly readings: readonly MeterReading[];
   readonly now: number;
 }
 
@@ -160,7 +162,7 @@ export interface ReadingSight {
  * the week's), or while the usage stores do not reach the period's start.
  */
 export function crossingOf(sight: ReadingSight, fit: RateFit | undefined): MeterReading | undefined {
-  const { before, period, use, covered, w, now } = sight;
+  const { before, period, use, covered, w, readings, now } = sight;
   if (before === undefined || period === undefined || use === undefined || !covered || !SEEN_STARTS.includes(period.kind)) {
     return undefined;
   }
@@ -169,7 +171,7 @@ export function crossingOf(sight: ReadingSight, fit: RateFit | undefined): Meter
   if (!crossed || now - use.at > FRESH_READING_MS || use.usedPct > 100) {
     return undefined;
   }
-  return { at: use.at, usedPct: use.usedPct, start: period.start, end: period.end, w, forecastPct: fit === undefined ? undefined : w / fit.wPerPct };
+  return { at: use.at, usedPct: use.usedPct, start: period.start, end: period.end, w, forecastPct: fit === undefined ? undefined : forecastOf(readings, period, w, fit) };
 }
 
 function rms(misses: readonly number[]): number {
@@ -177,11 +179,21 @@ function rms(misses: readonly number[]): number {
 }
 
 /**
- * Whether the period of `reading` started inside a week, at a reset the use fell at, rather than at the weekly reset.
- * Such a reset drops the use to some percent, not to 0: one on 11-15 fell from 98% to about 69% (T3164).
+ * Whether the period from `start` to `end` started inside a week, at a reset the use fell at, rather than at the
+ * weekly reset. Such a reset drops the use to some percent, not to 0: one on 11-15 fell from 98% to about 69% (T3164).
  */
-function startsInsideWeek(reading: MeterReading): boolean {
-  return reading.end - reading.start < MS_PER_WEEK - WHOLE_WEEK_SLACK_MS;
+function startsInsideWeek({ start, end }: Pick<MeterReading, 'start' | 'end'>): boolean {
+  return end - start < MS_PER_WEEK - WHOLE_WEEK_SLACK_MS;
+}
+
+/**
+ * The use `fit` gives for `w` metered in `period`: where the period's use started (`startPointOf`) plus `w` at its rate.
+ * Undefined for a period that started inside the week with no reading yet to place that start: a forecast from 0% there
+ * missed by over 70 points at every reading (T3164).
+ */
+function forecastOf(readings: readonly MeterReading[], period: Pick<Period, 'start' | 'end'>, w: number, fit: RateFit): number | undefined {
+  const byW = readings.filter((reading) => reading.start === period.start).sort((a, b) => a.w - b.w);
+  return byW.length === 0 && startsInsideWeek(period) ? undefined : startPointOf(byW, fit.wPerPct).usedPct + w / fit.wPerPct;
 }
 
 /**
