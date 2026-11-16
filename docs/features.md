@@ -111,7 +111,7 @@ your machine.
 | | Open tabs take a plugin update by themselves: once an install changed and no turn runs, teamrig's mod runs `/reload-plugins` in each tab, at most once per 5 minutes (a Claude Code without mods still needs it typed) | works today |
 | | A new-version notice: a band above the prompt names a newer teamrig or teamrig-pane once its marketplace publishes one (asked at most every 6 hours across the machine), with Update (Claude Code's own `plugin update`, which each tab then reloads) and Dismiss (hidden until a newer version is out) | works today |
 | | `teamrig upgrade` with rollback | planned (T203) |
-| **Windows and Linux** | Every change passes the local checks on Windows before it lands; on Linux the full test suite and a smoke run of the commands and hooks pass. The tab status circles and teamrig-pane are proven on Windows only; macOS is untested. | works today |
+| **Windows, macOS and Linux** | CI runs the type check, the full test suite, the build with its fresh-dist check and a smoke run of the commands and hooks, and the docs checks on Linux, Windows and macOS with Node 22, and a pull request merges only when every check passed; every change also passes the local checks before it is pushed. The tab status circles and teamrig-pane are proven on Windows only. | works today |
 
 ## Works with
 
