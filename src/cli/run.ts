@@ -520,8 +520,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --ask (with waiting only): adds the work as that session's task and waits on it; --due is then the
       asked task's due date
       a task your leader approved keeps the approval only to verifying, done or dropped, or waiting on it
-      again behind a task or a time; any other set is refused, since a merge on it would be: record
-      progress with update --note, or give the approval up for a new ask with --drop-approval
+      again, alone or behind a task or a time, with a note naming no new head; any other set is refused,
+      since a merge on it would be: record progress with update --note, or give the approval up for a
+      new ask with --drop-approval
       verifying needs --waits for when its proof runs: a time, or a task in progress or verifying (the
       owner's approval may stand beside one); set verifying again without --waits keeps them, --waits none clears them
       a wait on the owner's decision or approval needs a card the owner decides from alone
