@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { APP, CliHarness, TEAM } from '../testing/cli-harness.ts';
 import { parseArgs, UsageError } from './args.ts';
+import { withoutUndeclared } from './common-flags.ts';
 import { COMMAND_FLAGS, COMMAND_TABLE, USAGE } from './run.ts';
 import { EXIT } from './runtime.ts';
 
@@ -47,6 +48,14 @@ describe('--session and --team on every command (#654)', () => {
     const plain = await kit.run(['who']);
     assert.deepEqual(await kit.run(['who', '--session', 'bravo']), plain);
     assert.deepEqual(await kit.run(['who', '--team', 'app']), plain);
+  });
+
+  it('takes the undeclared common flags out before the command runs, so nothing it reaches reads them', () => {
+    const args = parseArgs(['exec', 'dry-run', 'R1', '--session', 'bravo', '--team', 'app'], COMMAND_TABLE.flags, COMMAND_TABLE.switches, COMMAND_TABLE.renamed, COMMAND_TABLE.rest);
+    assert.deepEqual([...withoutUndeclared(args, []).flags], []);
+    assert.deepEqual(withoutUndeclared(args, []).positionals, ['R1']);
+    const declared = parseArgs(['exec', 'approve', 'R1', '--session', 'bravo', '--note', 'ok'], COMMAND_TABLE.flags, COMMAND_TABLE.switches, COMMAND_TABLE.renamed, COMMAND_TABLE.rest);
+    assert.deepEqual([...withoutUndeclared(declared, ['session', 'note', 'team']).flags], [['session', 'bravo'], ['note', 'ok']]);
   });
 
   it('refuses with one line a --session that names no session of the team, on a command that ignores it', async () => {

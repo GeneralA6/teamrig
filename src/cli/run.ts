@@ -1151,9 +1151,12 @@ export async function runCli(given: readonly string[], runtime: CliRuntime): Pro
       throw new UsageError(`unknown command "${args.command}"`);
     }
     refuseSettingsWrite(args.command, args.switches, runtime);
+    let given = args;
     if (COMMON_FLAGS.some((name) => args.flags.has(name) && !spec.flags.includes(name))) {
       // Loaded only then, as it reads the team's config: a hook passes neither flag and loads only its own code.
-      await (await import('./common-flags.ts')).checkCommonFlags(args.command, spec.flags, args, runtime);
+      const common = await import('./common-flags.ts');
+      await common.checkCommonFlags(args.command, spec.flags, args, runtime);
+      given = common.withoutUndeclared(args, spec.flags);
     }
     if (spec.effect === 'write' && spec.bindsTab !== true) {
       // A write runs only as the tab's own session, whatever --session says (T3082); a tab's binding has its own rule.
@@ -1161,7 +1164,7 @@ export async function runCli(given: readonly string[], runtime: CliRuntime): Pro
     }
     const command = await spec.load();
     const lockDeadline = hookLockDeadline(args.command, runtime.clock.now());
-    return await command(args, lockDeadline === undefined ? runtime : { ...runtime, lockDeadline });
+    return await command(given, lockDeadline === undefined ? runtime : { ...runtime, lockDeadline });
   } catch (error) {
     if (error instanceof UsageError) {
       runtime.out.stderr(COMMAND_HELP.usageError(error.message, error.command ?? named));
