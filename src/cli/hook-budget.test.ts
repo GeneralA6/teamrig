@@ -17,6 +17,7 @@ import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { replyLine, transcript } from '../testing/transcript-lines.ts';
 import { ok } from '../testing/hired-team.ts';
+import { TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { teamConfigOf, teamHomeOf } from '../testing/team-tree.ts';
 import { formatConfig } from '../config/load.ts';
 import { openKit } from './kit.ts';
@@ -441,3 +442,37 @@ describe('the budget in the hooks', () => {
     assert.deepEqual(workCached(), { alpha: { 1: 5 } });
   });
 });
+
+describe("the Stop hook's work-order nudge under the daily budget stop (#922)", () => {
+  /** The Stop hook's decision, `block` when it blocked the turn end; undefined when it let it end. */
+  function stopDecisionOf(result: CliResult): unknown {
+    const parsed: unknown = JSON.parse(result.stdout[0] ?? '{}');
+    return typeof parsed === 'object' && parsed !== null && 'decision' in parsed ? parsed.decision : undefined;
+  }
+
+  /** Alpha's T1 goes waiting with T2 open beside it, so its next stop would send it to T2. */
+  async function waitingWithWork(kit: CliHarness): Promise<void> {
+    for (const title of ['Pick the plan', 'Fix the login']) {
+      assert.equal((await kit.run(['add', '--owner', 'alpha', '--title', title, '--description', 'the job', '--priority', 'p2', '--session', 'lead'])).code, EXIT.ok);
+    }
+    const waiting = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two plans', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha']);
+    assert.equal(waiting.code, EXIT.ok, waiting.stderr.join('\n'));
+  }
+
+  it('does not block the turn end to start the next task while the budget holds the session', async () => {
+    const team = await world({}, 40_000_000, 30);
+    await meterLead(team);
+    await waitingWithWork(team.kit);
+    const result = await team.hook('stop', ALPHA_TAB);
+    assert.equal(stopDecisionOf(result), undefined, result.stdout.join('\n'));
+    assert.match(messageOf(result), /past its in-day pace/);
+  });
+
+  it('blocks once to send the session to its next task while the budget has room', async () => {
+    const team = await world({}, 1_000, 5);
+    await waitingWithWork(team.kit);
+    const result = await team.hook('stop', ALPHA_TAB);
+    assert.equal(stopDecisionOf(result), 'block', result.stdout.join('\n'));
+  });
+});
+
