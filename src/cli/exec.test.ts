@@ -203,6 +203,16 @@ describe('runCli: exec dry-run and run (T755)', () => {
     assert.match(outputOf(await team.run('status')), /R1 .*: ran, exit 0/);
   });
 
+  it('runs a dry run with an undeclared --session as without it, the caller from the environment (#654)', async () => {
+    const plain = new ExecTeam(EXEC_TEAM, { env: { TEAMRIG_SESSION: 'alpha' } });
+    const flagged = new ExecTeam(EXEC_TEAM, { env: { TEAMRIG_SESSION: 'alpha' } });
+    for (const team of [plain, flagged]) {
+      assertOk(await team.request());
+    }
+    assert.deepEqual(await flagged.run('dry-run', 'R1', '--session', 'bravo'), await plain.run('dry-run', 'R1'));
+    assert.equal(await flagged.kit.files.read(AUDIT), await plain.kit.files.read(AUDIT));
+  });
+
   it('prints the dry run with its next step and its output tail', async () => {
     const team = new ExecTeam();
     assertOk(await team.request());
