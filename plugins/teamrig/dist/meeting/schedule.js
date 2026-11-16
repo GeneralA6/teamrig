@@ -1,5 +1,6 @@
 import { isStringArray, numberField, stringField } from "../core/guards.js";
 import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
+import { printable } from "../core/printable.js";
 import { MS_PER_DAY, MS_PER_MINUTE } from "../core/time.js";
 import { MEETING_LAPSE_MS } from "./state.js";
 /**
@@ -142,9 +143,13 @@ export function meetingsOnOf(meetings, now) {
 }
 /** The longest meeting title a status line shows, in characters, so the rest of its line still fits a tab. */
 export const MEETING_TITLE_MAX = 24;
-/** A meeting's short title for a status line: what it is about, cut to MEETING_TITLE_MAX with an ellipsis. */
+/**
+ * A meeting's short title for a status line: what it is about, cut to MEETING_TITLE_MAX with an ellipsis. Written
+ * through printable, so a control or bidi mark in a record (one written before --about refused them) reaches no
+ * terminal (security T3007 F1).
+ */
 export function meetingTitleOf(meeting) {
-    const about = meeting.about.trim().replace(/[.\s]+$/, '');
+    const about = printable(meeting.about.trim().replace(/[.\s]+$/, ''));
     return about.length <= MEETING_TITLE_MAX ? about : `${about.slice(0, MEETING_TITLE_MAX - 1).trimEnd()}…`;
 }
 /** When a meeting's slot ends, epoch ms. */
