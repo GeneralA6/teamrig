@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { EXIT_USAGE } from '../lib/exit.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
 
 const CLI = fileURLToPath(new URL('./commit-subjects-cli.ts', import.meta.url));
@@ -36,6 +37,13 @@ describe('commit-subjects cli', () => {
     const passed = repo.run(CLI, ['--base', 'main']);
     assert.equal(passed.status, 0, passed.stderr);
     assert.match(passed.stdout, /^commit-subjects: 1 commit\(s\) in main\.\.HEAD, each subject/);
+  });
+
+  it('refuses an option it does not know, named on stderr, and checks nothing', () => {
+    const result = repo.run(CLI, ['--bse', 'main']);
+    assert.equal(result.status, EXIT_USAGE);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, /^commit-subjects: .*'--bse'/);
   });
 
   it('compares with origin/main by default', () => {
