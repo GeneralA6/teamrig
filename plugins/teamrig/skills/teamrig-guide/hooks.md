@@ -1013,7 +1013,7 @@ session until someone answers. In a team session the hook refuses the line befor
 quotes the line's rerun form, which runs the same commands in the same folder with no `cd` (`git -C D ...`,
 `env -C D ...`). A line with no rerun form (a `cd` mid-line or after a `;`, a folder only known when it runs, such as
 `cd "$S"`) is refused too when git runs after its `cd` or the `cd` may leave the folder, and its reason says to drop
-the `cd`: `git -C <dir>`, `env -C <dir>`, absolute paths or a script file (since 0.452.0). A folder only known when it
+the `cd`: `git -C <dir>`, `env -C <dir>` or absolute paths (since 0.452.0). A folder only known when it
 runs, `cd` alone (home), `cd -` and a `cd` with options count as leaving. A line that stays in the folder and runs no
 git, a `cd` with nothing else on the line, and a PowerShell line are left to Claude Code.
 
