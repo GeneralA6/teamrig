@@ -66,7 +66,7 @@ describe('teamrig owner note (T1298)', () => {
     assert.deepEqual(await inboxOf(kit, 'alpha'), [`- 2030-01-08 10:00 UTC owner: ${line}`]);
   });
 
-  it('refuses a dropped task and a blank Note, telling nobody, and takes no --session', async () => {
+  it('refuses a dropped task, a blank Note and a --session naming no session, telling nobody', async () => {
     const kit = await team();
     ok(await kit.run(['set', 'T1', '--status', 'dropped', '--note', 'not needed', '--session', 'alpha']));
     const before = kit.files.get(EVENTS_PATH);
@@ -74,8 +74,10 @@ describe('teamrig owner note (T1298)', () => {
     assertRefused(await kit.run(['owner', 'note', 'T2', '--text', '  ']), /^REFUSED a Note needs --text: what owner tells alpha/);
     assertRefused(await kit.run(['owner', 'note', 'T2']), /^REFUSED a Note needs --text: what owner tells alpha/);
     assert.equal(kit.files.get(EVENTS_PATH), before);
+    // Every command reads --session (#654); one that writes as the owner checks it names a session and ignores it.
+    assertRefused(await kit.run(['owner', 'note', 'T2', '--text', 'x', '--session', 'nobody']), /^REFUSED --session nobody names no session of team app/);
+    assert.equal(kit.files.get(EVENTS_PATH), before);
     assert.deepEqual(await inboxOf(kit, 'alpha'), []);
-    assert.equal((await kit.run(['owner', 'note', 'T2', '--text', 'x', '--session', 'lead'])).code, EXIT.usage);
   });
 });
 

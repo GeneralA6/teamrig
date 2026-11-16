@@ -15,7 +15,7 @@ a channel or `claude -p` sends them. `/teamrig` alone prints this.
 This is what `teamrig help` prints:
 
 ```text
-teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
+teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION; every command takes --session <id|name> and --team <team>)
   team create <team> --sessions <id,id> [--lead <id>] [--project <dir>] [--parent <team>] [--dry-run]
       writes the team config, ties the project folder to the team (the lead defaults to lead) and
       starts a root team's lead on its first task, setting the team up; --parent hangs it under
