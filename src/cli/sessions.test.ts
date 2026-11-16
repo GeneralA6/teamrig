@@ -119,6 +119,16 @@ async function runningTeam(config: JsonRecord = TEAM, project = APP): Promise<{ 
   return { kit, processes, options };
 }
 
+/** A child team (it has a parent) whose lead is alpha: the session named lead is a member. */
+const CHILD_LEAD: JsonRecord = { ...TEAM, team: { id: 'app', parent: 'org' }, roles: { lead: 'alpha' } };
+
+/** {@link runningTeam}, but the session named lead last ran in a Claude Code that ended: alpha alone runs. */
+async function leaderTeam(config: JsonRecord): Promise<{ readonly kit: CliHarness; readonly processes: FakeSessionProcesses; readonly options: RunOptions }> {
+  const team = await runningTeam(config);
+  await new SessionRecordStore(team.kit.files, { sessions: SESSIONS }).write('lead', { claudePid: 7200, claudeSession: 'claude-lead', at: '2030-01-08T09:00:00.000Z' });
+  return team;
+}
+
 /** A team none of whose sessions runs, alpha and bravo closed by the lead at 09:00 UTC. */
 async function closedTeam(config: JsonRecord = TEAM): Promise<CliHarness> {
   const kit = new CliHarness(config);
@@ -151,6 +161,39 @@ describe('teamrig sessions --pass', () => {
     ]);
     assert.deepEqual(team.processes.ends, [], 'the pass ends nothing');
     assert.equal(team.kit.files.get(LOG), undefined, 'and logs nothing');
+  });
+
+  it("closes a quiet child team's lead nothing waits on, and keeps it on open.idle.leaders: all (T3387)", async () => {
+    const team = await leaderTeam(CHILD_LEAD);
+    const result = await team.kit.run(['sessions', '--pass'], team.options);
+    assertOk(result);
+    assert.deepEqual(result.stdout.slice(0, 2), [
+      'AWAY app-lead (session lead): not running, and teamrig did not close it',
+      'CLOSE app-alpha (session alpha): quiet 75 min, its Claude Code holds 1300 MB, 1800 MB committed',
+    ]);
+    const all = await leaderTeam({ ...CHILD_LEAD, open: { idle: { leaders: 'all' } } });
+    assert.equal((await all.kit.run(['sessions', '--pass'], all.options)).stdout[1], 'KEEP app-alpha (session alpha) holds the lead role: teamrig never closes it');
+  });
+
+  it('closes a quiet sub-lead, and keeps a leader open while a session it leads runs (T3387)', async () => {
+    const subLead: JsonRecord = { ...TEAM, roles: { lead: 'bravo' }, leads: { alpha: ['lead'] } };
+    const quiet = await leaderTeam(subLead);
+    assert.equal((await quiet.kit.run(['sessions', '--pass'], quiet.options)).stdout[1], 'CLOSE app-alpha (session alpha): quiet 75 min, its Claude Code holds 1300 MB, 1800 MB committed');
+    for (const config of [subLead, CHILD_LEAD]) {
+      const led = await runningTeam(config);
+      const result = await led.kit.run(['sessions', '--pass'], led.options);
+      assertOk(result);
+      assert.equal(result.stdout[1], 'KEEP app-alpha (session alpha) leads app-lead (session lead), which is running');
+    }
+  });
+
+  it('keeps a quiet leader open while a task waits on its approval, and closes it once given (T3387)', async () => {
+    const team = await leaderTeam(CHILD_LEAD);
+    assertOk(await team.kit.run(['add', '--title', 'Fix the CLI', '--description', 'what and why', '--priority', 'p1', '--owner', 'lead', '--session', 'alpha']));
+    assertOk(await team.kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:alpha', '--note', 'branch t1, the CLI fix', '--session', 'lead']));
+    assert.equal((await team.kit.run(['sessions', '--pass'], team.options)).stdout[1], 'KEEP app-alpha (session alpha) has T1 waiting on it (approval:alpha)');
+    assertOk(await team.kit.run(['approve', 'T1', '--note', 'checked', '--session', 'alpha']));
+    assert.match((await team.kit.run(['sessions', '--pass'], team.options)).stdout[1] ?? '', /^CLOSE app-alpha \(session alpha\)/);
   });
 
   it("reads a running session's transcript in its own launch.<id>.project folder", async () => {
