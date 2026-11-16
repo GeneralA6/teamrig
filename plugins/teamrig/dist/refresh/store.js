@@ -26,6 +26,14 @@ export class RefreshStore {
     ownerTurnsPath(id) {
         return join(this.paths.handover, `${id}.owner.md`);
     }
+    /**
+     * Where the handover of a session whose refresh is ready is: a start of the session takes it then, so its reopen
+     * starts fresh on it (T2354) and the idle pass may close it even when its context is too big to resume (T1248).
+     * Undefined in any other phase.
+     */
+    async readyHandover(id) {
+        return (await this.state(id))?.phase === 'ready' ? this.handoverPath(id) : undefined;
+    }
     /** The handover's text; undefined when the session has not written one. */
     handover(id) {
         return this.files.read(this.handoverPath(id));

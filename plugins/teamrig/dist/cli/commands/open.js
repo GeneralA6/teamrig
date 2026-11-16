@@ -152,7 +152,7 @@ export async function openSession(runtime, kit, config, roster, request) {
     const fresh = request.fresh === true;
     // A closed session whose refresh is ready starts from its handover: a resume keeps the old context, and a start
     // takes a ready handover only when fresh, so a resume would lose it (T2354).
-    const handover = closed === undefined || fresh ? undefined : await readyHandoverOf(new RefreshStore(runtime.files, kit.paths), id);
+    const handover = closed === undefined || fresh ? undefined : await new RefreshStore(runtime.files, kit.paths).readyHandover(id);
     const closedIn = closed?.claudeSession === undefined || fresh ? undefined : handover === undefined ? await reopenOf(runtime, config, closed, project, request.projectGiven === true) : { verdict: READY_FRESH, folder: project };
     const reopen = closedIn?.verdict;
     // A closed session opened fresh still logs its reopen below, so the idle pass knows it runs again.
@@ -189,10 +189,6 @@ export async function openSession(runtime, kit, config, roster, request) {
 }
 /** A closed session's reopen while its refresh is ready: fresh, so its start takes the handover (T2354). */
 const READY_FRESH = { kind: 'fresh', detail: 'its refresh is ready: it starts from its handover' };
-/** The handover of a session whose refresh is ready, else undefined. */
-async function readyHandoverOf(store, id) {
-    return (await store.state(id))?.phase === 'ready' ? store.handoverPath(id) : undefined;
-}
 /**
  * A closed session's reopen. It resumes in the folder its close recorded, which holds its transcript (T1408), or the
  * project for a close that recorded none; a recorded folder since removed (a worktree) opens it fresh in the project.

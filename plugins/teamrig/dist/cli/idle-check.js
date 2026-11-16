@@ -6,6 +6,7 @@ import { bookedMeetingOf, MeetingSchedule } from "../meeting/schedule.js";
 import { workCutOffBy } from "../open/end-tab.js";
 import { isClaudeProcess } from "../open/session-processes.js";
 import { readRunningWork } from "../refresh/running.js";
+import { RefreshStore } from "../refresh/store.js";
 import { parkRulesOf } from "../register/park.js";
 import { lastTurnAtOf, soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES } from "../sessions/idle.js";
 import { measureSessions } from "../sessions/measure.js";
@@ -48,7 +49,14 @@ export async function idleFactsOf(runtime, kit, config, roster) {
         asks.set(id, (await asksNowOf(await store.read(id), now, () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id), () => seenLinesOf(inboxDepsOf(runtime, kit.paths), id))).asks);
     }
     const { meetings } = await new MeetingSchedule(runtime.files, kit.paths.meetings).read();
-    return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, meetings, now, zone: teamZone(config, runtime) };
+    const refresh = new RefreshStore(runtime.files, kit.paths);
+    const readyHandovers = new Set();
+    for (const id of roster.ids) {
+        if ((await refresh.readyHandover(id)) !== undefined) {
+            readyHandovers.add(id);
+        }
+    }
+    return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, meetings, readyHandovers, now, zone: teamZone(config, runtime) };
 }
 /**
  * The transcript of `record`'s Claude Code session, measured: the one its start recorded while a file is there, else
@@ -94,7 +102,8 @@ function measuredOf(last) {
  * the next pass for it), a time wait of its own ending soon, quiet too briefly since its last own transcript entry, a
  * transcript in a project folder no folder `open` could resume it in has (`resumeFolderOf`: the project, or a folder
  * it ran in, which its close records), a turn not ended (under way, at a tool call, or a decision put to the person),
- * work running in the background, a last session too big or old to resume (v1 has no handover for a close), its
+ * work running in the background, a last session too big or old to resume unless its refresh is ready (its reopen then
+ * starts fresh on its handover, T1248), its
  * process no longer a Claude Code, or shells
  * an end would cut off. The first that holds keeps it open. The last two look at the host's processes one by one
  * (about a second each on Windows), so only a session every other check would close pays for them.
@@ -157,7 +166,8 @@ export async function idleVerdictOf(runtime, config, roster, facts, id, options)
         return keep('still runs background work its transcript shows');
     }
     const resume = resumeVerdict({ claudeSession: record.claudeSession, changedAt: last.changedAt, tokens: last.tokens }, config.hiring, now);
-    if (resume.kind === 'fresh') {
+    // A ready refresh reopens fresh on its handover (open.ts, T2354), so the size of the old context no longer matters.
+    if (resume.kind === 'fresh' && !facts.readyHandovers.has(id)) {
         return keep(`could not be resumed once closed (${resume.detail}); retire it with its handover instead`);
     }
     const claude = await runtime.sessionProcesses.describe(record.claudePid);
