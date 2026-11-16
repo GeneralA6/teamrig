@@ -10,24 +10,24 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `SubagentStart` (each helper) | `hook subagent-start` | Gives the helper the team rules and whose helper it is ([A helper's start](#a-helpers-start)) |
 | `SessionStart` (`/clear`), in the background | `hook refresh-wake` | Wakes a session that `/clear` started from its context refresh, so it carries on without a prompt |
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Stops a prompt that holds a secret and cleans it out of Claude Code's prompt history ([Each prompt](#each-prompt)); cancels a waiting automatic restart; shows new inbox lines; shows a leader the [register changes in its tree](#each-prompt-the-leader-digest) since its last prompt; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |
-| `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Refuses a push to a protected branch with the route to take, unless `pushGuard.pushToProtected` clears it; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, an `npx --no <bin>` that hands the bin's flag to npm, and an install that would rewrite a `node_modules` linked to another checkout's ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read`, `Grep`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment, a Kubernetes secret's data or a dump command's output into the conversation, or whose command line or written text holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
-| `PreToolUse` on `Bash` and `PowerShell` | `hook db-write-guard` | Asks before a line that writes to a database by hand (a built-in SQL client, a database program or Node client module the team names, a data script the team names run with its apply flag), so the owner sees counts or a preview first; refuses it instead under `dbWriteGuard.writes: deny` or with asks off ([the db-write guard](#before-a-shell-command-the-db-write-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook db-write-guard` | Refuses a line that writes to a database by hand (a built-in SQL client, a database program or Node client module the team names, a data script the team names run with its apply flag), naming the counts or preview to show the owner first, unless `dbWriteGuard.writes` is `allow` ([the db-write guard](#before-a-shell-command-the-db-write-guard)) |
 | `PostToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-redact` | Replaces each secret a call's result holds before Claude and the transcript see it, and tells the session which kinds it held and the task it filed to rotate each ([the secret redactor](#after-a-tool-call-the-secret-redactor)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, every `owner note` or `owner next`, which act as the owner, a settings writer's `--yes` write, which changes a permission, every `hook` command, which takes its tab from its stdin, a bound tab's `start` or `inbox read` as another session, a line that changes `$CLAUDECODE`, and a shell fed its commands from a pipe ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
-| `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook service-role-guard` | Asks the owner before a session's `teamrig roles grant` or `revoke`, and refuses a session's own write of `serviceRoles` in the team config ([the service-role guard](#before-a-write-or-a-shell-command-the-service-role-guard)) |
+| `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook service-role-guard` | Refuses a session's `teamrig roles grant` or `revoke` (the owner runs it from their own terminal), and refuses a session's own write of `serviceRoles` in the team config ([the service-role guard](#before-a-write-or-a-shell-command-the-service-role-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
-| `PreToolUse` on `Bash` | `hook route-allow` | With `prompts.hookAsks: refuse` and `prompts.routeAllow` on, lets a line that runs one of the session's own jobs (`teamrig merge`, `deploy`, `exec request`, `worktree remove`, a `git commit` with its hooks) run with no permission check, once every teamrig guard passed it ([asks off](#asks-off-a-refusal-instead-of-a-prompt)); with `prompts.routeAllow` on, whatever asks say, lets a service role's holder run the role's `teamrig issue close` or `issue comment` from its own tab, up to a daily cap, or a queued ship or merge of its own task branch with the team's ship tool ([the service-role allow](#before-a-shell-command-the-service-role-allow)) |
+| `PreToolUse` on `Bash` | `hook route-allow` | With `prompts.hookAsks: refuse` (the default) and `prompts.routeAllow` on, lets a line that runs one of the session's own jobs (`teamrig merge`, `deploy`, `exec request`, `worktree remove`, a `git commit` with its hooks) run with no permission check, once every teamrig guard passed it ([No teamrig hook asks a person](#no-teamrig-hook-asks-a-person)); with `prompts.routeAllow` on, whatever asks say, lets a service role's holder run the role's `teamrig issue close` or `issue comment` from its own tab, up to a daily cap, or a queued ship or merge of its own task branch with the team's ship tool ([the service-role allow](#before-a-shell-command-the-service-role-allow)) |
 | `PreToolUse` on `AskUserQuestion` and `Bash` | `hook picker-guard` | With `pickerGuard.enabled` (on unless a team sets it false), refuses the question picker to every session and helper, to the lead in and outside the owner's daily meeting, to a sub-team's lead, and to a session in its own meeting with the owner, with the reason to decide it if it is the session's own, else record it on its task and go on, and a session's Bash `cd` compound Claude Code would hold on a permission prompt, quoting its form to rerun, or saying to drop the `cd` when it has none ([the picker guard](#before-a-question-the-picker-guard)) |
-| `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that runs a sanctioned route or provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
+| `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse` (the default), answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that runs a sanctioned route or provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([No teamrig hook asks a person](#no-teamrig-hook-asks-a-person)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; with `open.idle.mode` on, turns a message to a session teamrig closed into its urgent line; during the daily meeting, holds every message to the lead but a CRITICAL one, and during a booked or on-the-spot meeting every message to the session met |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
 | `PostToolUse` and `PostToolUseFailure` on `Bash` and `PowerShell`, in a team or not | `hook missing-cli` | After a shell call that did not find the bare `teamrig` command, hands the model [the CLI's path to run instead](#after-a-shell-call-the-cli-by-its-path) |
 | `PostToolUse` on `SendMessage` | `hook route-reminder` | After a delivered send that skipped a sub-lead below the sender, hands the model [the sub-lead to route such work via](#after-a-send-past-a-sub-lead-the-route-reminder) |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
-| `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one while its budget holds it or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
+| `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; refuses one while its budget holds it or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work), and runs the team's [idle pass](#the-idle-pass), at most once a minute |
 | The mod, every 30 s in each tab | `hook meeting-due` | Sends a scheduled meeting's notices before, at and past its time (OS notification, tab toast, a missed one to the lead), from one tab of the team ([a scheduled meeting's notification](#the-mod-a-scheduled-meetings-notification)) |
 | The mod, every 10 s in each tab | `hook needs-you`, `hook needs-you-focus` | Names another tab of the team that asks the user something (a permission prompt, a question, a decision line) in a toast and a band above the prompt, whose Focus brings that tab to the front ([the needs-you band](#the-mod-the-needs-you-band)) |
@@ -289,23 +289,20 @@ runner or version manager on it starts (`bash -c "..."`, `npx -c "..."`, `pnpm e
 push`), and decides. The line a package runner hands its shell (`npx -c`, `pnpm exec -c`, the first operand of
 `yarn exec` and `bun exec`) is read as bash, cmd and PowerShell each read it, since `--script-shell`,
 `npm_config_script_shell`, an `.npmrc` or `ComSpec` may pick any of them; one the line hands a shell it names that
-the guard cannot read (`--script-shell=node`, or a variable) is asked about. The guard:
+the guard cannot read (`--script-shell=node`, or a variable) is refused as a doubt. The guard:
 
 - **Runs as usual**: no `git push` in it, a `--dry-run`, or a push that updates no protected branch
   (`main` and `master` by default [pushGuard.protectedBranches]; an empty list guards nothing, mirrors included).
-- **Asks the human**: a push that updates a protected branch. The reason:
-  "This push updates a protected branch (main, master) while other sessions may be working. Confirm, or push your
-  own branch and rebase it onto the current one. To stop asking about normal pushes, set pushGuard.pushToProtected
-  in the team's config.json to allow, to lead to have the lead approve them, or to gated to let teamrig merge take
-  the changes that hold its gates." Commits over the size rule (400 changed non-test lines or 15
-  files without a `Large-commit:` line) are listed with it; with `commits.gate: refuse` they turn the ask into a
-  refusal. A `--force-with-lease` push is asked with its own reason, which does not name the switch. Under
-  `prompts.hookAsks: refuse` each question here is a refusal instead, without the switch hint (see
-  [Asks off](#asks-off-a-refusal-instead-of-a-prompt)).
+- **Refuses with the route**, when `pushGuard.pushToProtected` is `ask` (the default): a push that updates a
+  protected branch. The reason: "This push updates a protected branch (main, master) while other sessions may be
+  working. Push your own branch and rebase it onto the current one instead." Commits over the size rule (400 changed
+  non-test lines or 15 files without a `Large-commit:` line) are listed with it. A `--force-with-lease` push is
+  refused with its own reason: "... Push your own branch instead." Each reason ends with the note of
+  [No teamrig hook asks a person](#no-teamrig-hook-asks-a-person).
 - **Runs with a note**, when `pushGuard.pushToProtected` is `allow`: a normal push to a protected branch, with
   "teamrig did not ask about this push to a protected branch (main, master): pushGuard.pushToProtected is allow."
-  and any large commits listed; Claude Code's own permissions still decide. `--force-with-lease` and doubts still
-  ask, refusals stay, and `commits.gate: refuse` still refuses large commits.
+  and any large commits listed; Claude Code's own permissions still decide. `--force-with-lease` and doubts are
+  still refused with their route, refusals stay, and `commits.gate: refuse` still refuses large commits.
 - **The lead decides**, when `pushGuard.pushToProtected` is `lead` (T684): a normal push to a protected branch runs
   with a note when the lead pushes ("... through: the lead (lead) pushes unasked [pushGuard.pushToProtected:
   lead].") or when the lead approved one of the session's waiting tasks with `teamrig approve` ("... through: lead
@@ -317,24 +314,25 @@ the guard cannot read (`--script-shell=node`, or a variable) is asked about. The
   no exception: its own push runs only while the parent team's lead's approval stands on one of its tasks
   (`approval:app/lead`, answered with `teamrig approve web/T3`), and a parent team with no config here refuses it,
   saying so. A tab not bound to a team session, or a register the guard cannot read, is refused the same way with
-  that reason. `--force-with-lease` and doubts still ask, and refusals and `commits.gate: refuse` stay.
+  that reason. `--force-with-lease` and doubts are still refused with their route, and refusals and `commits.gate: refuse` stay.
 - **`teamrig merge` takes it**, when `pushGuard.pushToProtected` is `gated` (T858): a hand push is cleared as under
   `lead`, its note ending `[pushGuard.pushToProtected: gated]`. Otherwise it is refused, never asked: "This push to
   a protected branch (main, master) needs a lead's approval, not the human's: <why>. Merge the branch with `teamrig
   merge` instead: a change that holds the self-merge gates merges with no approval, and one that misses a gate is
   held for a leader's, saying how to ask. [pushGuard.pushToProtected: gated]" (see
-  [merge](commands.md#teamrig-merge), Gate holds). `--force-with-lease` and doubts still ask, and refusals and
+  [merge](commands.md#teamrig-merge), Gate holds). `--force-with-lease` and doubts are still refused with their
+  route, and refusals and
   `commits.gate: refuse` stay.
 - **Refuses**: a force-push (`--force`, a `+` refspec), a delete or `--mirror` of a protected branch:
   "Force-pushing, mirroring or deleting a protected branch (main, master) is refused: it can overwrite other
   sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it."
-- **Asks, in doubt**: when it cannot read part of the line (an unclosed quote, a branch or alias only known when
+- **Refuses, in doubt**: when it cannot read part of the line (an unclosed quote, a branch or alias only known when
   the line runs, a push held in quoted text such as `x='$(git push)'`, which bash runs if `${x@P}` or `$((x))`
   reads it again, though not quoted backticks that never close, which run nothing; a bash variable counts as known when the line set it earlier to text and other known variables,
   as in `B=feat; git push -u origin $B` or `G="git -C /w"; $G push`, and never set it otherwise; `$HOME` and a
   value's leading `~` count as your home folder in the line's own shell, as in `T=~/bin/teamrig; $T list`): "The guard
-  cannot tell whether this command pushes to a protected branch (...): <why>. Confirm, or write the push out
-  plainly." A line whose words depend on the shell's version, its host or how it is started (a NUL or a `` `u{2d} ``
+  cannot tell whether this command pushes to a protected branch (...): <why>. Write the push out plainly, a branch
+  named and no command built at run time." A line whose words depend on the shell's version, its host or how it is started (a NUL or a `` `u{2d} ``
   in PowerShell, a CR in bash, a caret before a line end in cmd, or a `"`, a `\`, an empty value, a bare comma or a
   `--%` handed to a program from PowerShell, as Windows PowerShell 5.1 rebuilds that program's line) is a doubt too,
   and every reading of it is judged, so a refusal in any one of them stands. Some doubts, such as an unclosed quote, a
@@ -373,7 +371,7 @@ reason: "teamrig commit guard: this runs git without the repository's hooks: git
 are the repository's own checks: let them run and fix what they report; if a hook itself is broken, tell the lead.
 [commitGuard.skipHooks]"
 
-`commitGuard.skipHooks` sets what such a line gets: `deny` (the default), `ask` the human, or `allow`; a missing or
+`commitGuard.skipHooks` sets what such a line gets: `deny` (the default), `ask` (refused too, with the route to take), or `allow`; a missing or
 broken config keeps `deny`, so a config mistake never turns the guard off. It applies whatever
 `pushGuard.protectedBranches` lists, and under `ask` a push the push guard refuses stays refused. Like the push
 guard, it reads only the line: a hook skipped inside a script the line runs, or a `core.hooksPath` written into a
@@ -427,7 +425,7 @@ rmdir <link>`; a recursive delete empties its target too), then install a copy h
 owns the folder."
 
 `packageGuard.adHocRunners` sets what an ad-hoc line gets, and `packageGuard.installs` what an unvetted install gets:
-`deny` (the default), `ask` the human, or `allow`. A team on a private registry sets `installs` to `ask` or `allow`, as
+`deny` (the default), `ask` (refused too, with the route to take), or `allow`. A team on a private registry sets `installs` to `ask` or `allow`, as
 the guard asks only the public one. A missing or broken config keeps `deny`, so a config mistake never turns the
 guard off. One refusal in a line refuses the whole line, naming every reason. Like the push guard, it reads only the
 line Claude runs, not a script or program that line starts.
@@ -436,20 +434,23 @@ The guard does not read installs yet: `npm install <pkg>`, `pnpm add` and `yarn 
 [security skill](../security/SKILL.md) has the steps for vetting the version an install resolves and for pinning one
 with overrides.
 
-## Asks off: a refusal instead of a prompt
+## No teamrig hook asks a person
 
-A permission prompt holds the session until a human answers it, for hours when nobody is there. With
-`prompts.hookAsks` set to `refuse` in the team config, every question a teamrig hook would raise is a refusal
-instead: the push guard's (a push to a protected branch, a `--force-with-lease` push, a line it cannot read), the
-commit guard's, the package guard's and the secret guard's under their `ask` choice, the db-write guard's, and the
-helper gate's. The hook's own reason
-comes first, then:
-"Asks are off [prompts.hookAsks], so teamrig refuses this instead of asking; do not retry it or route around it.
-Record the step as waiting for the owner (`teamrig set <task> --status waiting --waits approval:owner --note "<the
-command>"`) and take your next task."
+A permission prompt holds the session until a human answers it, for hours when nobody is there, so no teamrig hook
+ever asks (owner order, since 0.460.0), whatever a key says. What a hook once asked about is refused instead: the push
+guard's (a push to a protected branch, a `--force-with-lease` push, a line it cannot read), the commit guard's, the
+package guard's and the secret guard's under their `ask` choice, the db-write guard's, the service-role guard's (a
+role grant or revoke, a role past its daily cap), and the helper gate's. The hook's own reason, which names the route
+to take, comes first, then:
+"teamrig guards never ask a person, so this is refused; do not retry it or route around it. Take the route the
+reason names; if the step still needs a person's yes, record it as waiting for the owner (`teamrig set <task> --status
+waiting --waits approval:owner --note "<the command>"`) and take your next task. If you think the rule is wrong, ask
+for a change as a task: `teamrig add --owner <your lead> --title "Rule change: <guard>: <why>"`, or to the security
+reviewer for a security rule."
 
-A refusal stays as it was, with no note. `ask` (the default) keeps the questions; a missing or broken config keeps
-`ask` too. The same switch reaches the prompts Claude Code raises on its own (a call its permission rules do not
+A refusal stays as it was, with no note. `prompts.hookAsks` reaches only the prompts Claude Code raises on its own:
+`refuse` (the default since 0.460.0) answers them, `ask` lets them open, for a team with a person on every tab; a
+missing or broken config lets them open too. It reaches the prompts Claude Code raises on its own (a call its permission rules do not
 allow, in a mode that asks, or a check of its own that always asks): `hook prompt-refuse` answers each
 `PermissionRequest` for its case (since 0.151.0):
 
@@ -489,7 +490,7 @@ question picker and plan mode's exit still open: the [picker guard](#before-a-qu
 person decide those.
 
 Auto mode can refuse a call before any prompt, and a refusal it makes is a dead end no `PermissionRequest` answer
-reaches. So with asks off, `hook route-allow` (since 0.268.0) lets five of those routes run before any permission
+reaches. So with Claude Code's prompts refused (`prompts.hookAsks: refuse`, the default), `hook route-allow` (since 0.268.0) lets five of those routes run before any permission
 check, at `PreToolUse`: `teamrig merge`, `teamrig deploy`, `teamrig exec request`, `teamrig worktree remove` and the
 `git commit`, as plain as above. It answers only once the push, package, secret, db-write, exec, pass-record and service-role guards
 all passed the same call: a guard that asks or refuses answers instead. Its log line, in `state/prompt-answers.jsonl`, names the
@@ -590,8 +591,8 @@ PowerShell assignment or condition, and a substitution whose command prints noth
 Bearer $(cat ~/.token)"`). The reason: "teamrig secret guard: this call would print the content of .env into the conversation. Hand a secret to the tool that needs it (stdin, an env file option, a pipe), check it without printing it (grep -q, wc -c, a hash), or ask the owner to look in their own terminal. A false match: add its !glob to secretGuard.paths or its !pattern to secretGuard.envNames or secretGuard.commands. [secretGuard.secretReads]"
 
 `secretGuard.secretReads` sets what a call that would print a secret gets, and `secretGuard.writes` what a call that
-holds one as text gets (in its command line or the text it writes): `deny` (the default), `ask` the human, or
-`allow`. A call caught by both is refused when either refuses, and its reason names only what its key does not allow,
+holds one as text gets (in its command line or the text it writes): `deny` (the default), `ask` (refused too, with the
+route to take), or `allow`. A call caught by both is refused when either refuses, and its reason names only what its key does not allow,
 with that key. A missing or broken config keeps `deny`. `secretGuard.paths` adds the team's own files: globs where `~/` starts at home, one
 with no leading `/` or drive matches at any depth, and the last glob that matches decides, so `!glob` keeps a file
 readable. `secretGuard.envNames` adds the team's own name patterns, and `!pattern` keeps a variable printable. The
@@ -662,8 +663,8 @@ shows results whole, the owner's call. It does not cover:
 A write to a database run by hand cannot be taken back the way a code change can, so it should follow counts or a
 preview the owner has seen. Before Claude runs a Bash or PowerShell call, `hook db-write-guard` reads the line (as the
 push guard does: chains, subshells, nested shells, `cd`, pipes and substitutions; on Windows a Bash line also as bash
-receives it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and asks the human about one that
-writes:
+receives it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and refuses one that
+writes, naming the counts or preview to show the owner first:
 
 - **SQL through a built-in client**: `psql` (`-c`, a `-f` file, stdin), `mysql` and `mariadb` (`-e`, stdin) and
   `sqlite3` (the SQL after its database file, `-cmd`, stdin), with a statement that changes data or its schema:
@@ -718,10 +719,10 @@ teamrig db-write guard: this line writes to a database by hand: docsh runs delet
 ```
 
 For a data script it says "First run it without its apply flag (its dry run)". `dbWriteGuard.writes` sets what such
-a call gets: `ask` the human (the default), `deny`, or `allow`. A missing or broken config keeps `ask`, and outside a
-team's projects the guard does nothing; under `prompts.hookAsks: refuse` the question is a refusal with the note
-[asks off](#asks-off-a-refusal-instead-of-a-prompt) adds. The read-only allow cannot let such a line skip the
-question: Claude Code ranks the guard's `ask` over its `allow`. The guard reads only the line and the files it names,
+a call gets: `ask` (the default) refuses it with the note [No teamrig hook asks a person](#no-teamrig-hook-asks-a-person) adds, `deny`
+refuses it with the reason alone, `allow` lets it run. A missing or broken config keeps `ask`, and outside a team's
+projects the guard does nothing. The read-only allow cannot let such a line skip the refusal: Claude Code ranks the
+guard's `deny` over its `allow`. The guard reads only the line and the files it names,
 so it cannot see, and lets through:
 
 - code built or chosen when the line runs (`docsh --eval "$CODE"`, `node $(ls scripts/*.js)`), a variable or a .NET
@@ -854,11 +855,11 @@ tool: while sessions and the runner share one account, it stops a slip, not a de
 
 A service role [serviceRoles] lets its holders run a few teamrig commands for an outside service past every
 permission check, so who holds one is a permission, the owner's to give. Before Claude runs a Bash or PowerShell
-call, `hook service-role-guard` asks the owner when the line runs `teamrig roles grant` or `teamrig roles revoke`,
+call, `hook service-role-guard` refuses the line when it runs `teamrig roles grant` or `teamrig roles revoke`,
 by any client (`teamrig`, node and teamrig's entry, a package runner or a version manager and the shell line it
 starts, any program whose later words are `roles grant` or `roles revoke`, a program only known when the line runs,
-or a `roles` command only known when it runs), whatever `--yes` says; with asks off it refuses instead, with the note to record the step
-as waiting for the owner. The owner runs a grant from their own terminal, or types `/teamrig roles grant ...` in a
+or a `roles` command only known when it runs), whatever `--yes` says, with the note to record the step as waiting
+for the owner. The owner runs a grant from their own terminal, or types `/teamrig roles grant ...` in a
 tab. The route allow never lets one through, as it answers only once every guard passed.
 
 It also refuses a session's own write of an owner-gated key of the team config, each a permission or an owner gate:
@@ -910,11 +911,11 @@ with no permission check when all of these hold:
   bravo` from alpha's tab never lends it bravo's role;
 - **a role gives it**: one of `serviceRoles` names the session among its holders and the command among its commands;
 - **every guard passed it**: the same push, package, secret, db-write, exec, pass-record and service-role guards as
-  the route allow; a guard that asks or refuses answers instead;
+  the route allow; a guard that refuses answers instead;
 - **the role is under its cap**, for a close or comment: fewer than `prompts.serviceRoleDailyCap` (10 by default, 0
-  to 200) closes and comments the role allowed in the last 24 hours. Past it the call asks the owner (refused with
-  asks off), with the reason "teamrig: the service role github ran its 10 calls of the last 24 hours
-  (prompts.serviceRoleDailyCap), so this one asks the owner. ...". A ship or merge counts toward no cap: it acts only
+  to 200) closes and comments the role allowed in the last 24 hours. Past it the call is refused, with the reason
+  "teamrig: the service role github ran its 10 calls of the last 24 hours (prompts.serviceRoleDailyCap), so this
+  one is refused. ...". A ship or merge counts toward no cap: it acts only
   on the session's own task branch, through the ship tool's own checks.
 
 Each allow writes a line to `state/prompt-answers.jsonl` naming the session, the role, the command and the issue or
@@ -1678,7 +1679,7 @@ it is held: only p0 work wakes it or keeps its idle tab open, and it is escalate
 | --- | --- |
 | `warn` (default) | the lines only |
 | `ask-lead` | the session's leader (the lead, or its sub-lead) also gets one inbox line a day, naming the lift command |
-| `ask` | the leader's line, and the person is asked before each new helper launch |
+| `ask` | the leader's line, and each new helper launch is refused with its route (no teamrig hook asks a person) |
 | `block` | the leader's line, and new helper launches are refused |
 
 Under a leader's cut ([teamrig budget cut](commands.md#teamrig-budget-cut)), a session is held as soon as it is past
@@ -1907,19 +1908,19 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   (`claude --settings`) and as `--allowedTools`, let every teamrig command run with no question (`--version`,
   `team create`, and a chain of two, `teamrig who && teamrig list`), while `git --version` was still asked.
   `Bash(teamrig *)` worked the same. The rule is for the Bash tool, where Claude Code puts `teamrig`.
-- **The push guard** asks or refuses on its own, whatever the mode: a push to a protected branch always asks the
-  human, or is refused under `prompts.hookAsks: refuse`.
+- **The push guard** refuses on its own, whatever the mode: a push to a protected branch is refused with its route
+  unless `pushGuard.pushToProtected` clears it.
 - **The commit guard** refuses a git command run without the repository's hooks on its own, whatever the mode,
-  unless `commitGuard.skipHooks` is `ask` or `allow`.
+  unless `commitGuard.skipHooks` is `allow`.
 - **The package guard** refuses an ad-hoc package run or an unvetted install on its own, whatever the mode, unless
-  `packageGuard.adHocRunners` or `packageGuard.installs` is `ask` or `allow`; an install through a linked
+  `packageGuard.adHocRunners` or `packageGuard.installs` is `allow`; an install through a linked
   `node_modules` whatever they say.
 - **The secret guard** refuses a call that would print a secret, or holds one as text, on its own, whatever the mode,
-  unless `secretGuard.secretReads` (a print) or `secretGuard.writes` (text) is `ask` or `allow`.
+  unless `secretGuard.secretReads` (a print) or `secretGuard.writes` (text) is `allow`.
 - **The secret redactor** replaces a secret in a call's result on its own, whatever the mode, unless
   `secretGuard.redact` is `false`.
-- **The db-write guard** asks before a line that writes to a database by hand on its own, whatever the mode, unless
-  `dbWriteGuard.writes` is `allow`; under `deny` or `prompts.hookAsks: refuse` it refuses the line.
+- **The db-write guard** refuses a line that writes to a database by hand on its own, whatever the mode, unless
+  `dbWriteGuard.writes` is `allow`.
 - **The exec guard** refuses a privileged command's review run as another session or the owner, any
   `exec` call through a client that is no install of the plugin or was changed, every `owner` and `hook` command, and a shell fed its commands from a pipe, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
   `exec` too. A team that wants each review asked as well allows the rest by name (`Bash(teamrig exec request:*)`,
@@ -1928,6 +1929,6 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   mode too; it never asks or refuses, so in a mode that already allows the line it changes nothing.
 - **The picker guard** (`pickerGuard.enabled`, on by default) refuses the question picker to every session and helper,
   the lead's own thread included, on its own, whatever the mode.
-- **The prompt refusal** (`prompts.hookAsks: refuse`) answers every permission prompt but the picker's and plan
+- **The prompt refusal** (`prompts.hookAsks: refuse`, the default) answers every permission prompt but the picker's and plan
   mode's exit, whatever raised it: a provably read-only line runs, a line with a rerun form is refused quoting it,
   anything else is refused.

@@ -307,7 +307,7 @@ Not teamrig output: what any session on a shared checkout or on Windows runs int
 - **No bare `git stash` on a shared checkout.** Every worktree of a repository shares one stash stack, so another
   session's `git stash pop` takes your changes. Commit on your own branch, or move scratch files to your scratchpad.
 - **Name a program literally.** A program held in a variable set by `$(...)`, or set outside the line, is only
-  known when the line runs, so [the push guard](hooks.md#before-a-shell-command-the-push-guard) asks the human. In
+  known when the line runs, so [the push guard](hooks.md#before-a-shell-command-the-push-guard) refuses it as a doubt. In
   auto mode, Claude Code also refuses a session isolated in a worktree a command whose program comes from a variable,
   and a complex command that names git in a part it cannot check (`github` and typed notes count). Write the program
   or its full path in the command, and put a long script in a file in your scratchpad.

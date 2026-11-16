@@ -81,8 +81,8 @@ teamrig test --session api -- npm test
 3. Before you push: `git fetch`, rebase on the current main, and run the tests again. On a conflict, resolve the
    files, `git add` them and `git rebase --continue`, then also run the specs of every file main changed too (the
    files of `git diff --name-only <old base> origin/main` that you changed) before you merge.
-4. Merge by your team's own route: a pull request, a release script, or a push to main, which asks the human
-   first. A route that is refused goes to the lead; never route around it or hand it to another session.
+4. Merge by your team's own route: a pull request, a release script, or a push to main, which the push guard
+   refuses unless `pushGuard.pushToProtected` clears it. A route that is refused goes to the lead; never route around it or hand it to another session.
 5. If the change must run, deploy it now, then check that the new code runs: the build has your commit, and the
    process restarted on it.
 6. Set the task `verifying` with its proof and date (see "Shipped, verifying"), and `done` once the proof exists.
