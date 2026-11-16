@@ -75,9 +75,11 @@ Flags:
   `--type` (`bug`, else `enhancement`) and `--priority` (p0 and p1 as `p1`, p2 as `p2`, lower as `p3`), and points
   the task's ref at it, so the sync adds no second task for it. The issue is public: one-line title, no task id,
   no secret, no private data (a home folder path, an e-mail address, an IP address, an internal host); the task
-  keeps its own title and description. It opens with the token saved for the repository's owner. When GitHub fails
-  the task stays written with no issue (`FAILED T<n>'s issue: ...`, exit 1); with GitHub off on the machine it
-  prints `OFF`. An add that posts its issue is not let through as a register command: it is judged as every
+  keeps its own title and description. It opens with the token saved for the repository's owner. All or nothing:
+  the add is judged, the issue opened, then the task written with its ref, so when GitHub fails nothing is written
+  (`FAILED the new task's issue: ...`, exit 1), and with GitHub off on the machine the add is refused (use
+  `--local`, or turn GitHub on). A task refused after its issue opened (one written between the two) closes that
+  issue as not planned (`CLOSED`), or says to close it by hand. An add that posts its issue is not let through as a register command: it is judged as every
   GitHub write is.
 - `--issue-body "<public text>"`: the issue's body; it comes with `--issue`.
 - `--issue-repo <owner/repo>`: where the issue opens, one of `github.repos`; else `[github.issueAtAdd]`, else the
