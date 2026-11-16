@@ -186,10 +186,10 @@ export function prunedSeen(seen: ReadonlyMap<string, SeenMention>, cutoffMs: num
 /**
  * Whether each route wakes its session: the first for a session and item since MENTION_WAKE_GAP_MINUTES does, later
  * ones go in unwoken. `lastWoken` maps `<session> <ref>` to the time it was last woken; the map after is returned,
- * holding only the wakes within the gap.
+ * holding only the wakes within the gap. A question told as activity (activity.ts) shares the gap with the mentions.
  */
 export function wakeRoutes(
-  routes: readonly MentionRoute[],
+  routes: readonly Pick<MentionRoute, 'to' | 'ref'>[],
   lastWoken: ReadonlyMap<string, number>,
   nowMs: number,
 ): { readonly wakes: boolean[]; readonly lastWoken: Map<string, number> } {

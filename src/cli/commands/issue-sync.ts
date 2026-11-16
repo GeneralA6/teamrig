@@ -1,6 +1,8 @@
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
+import { activityRoutes, type ActivityAudience, type ActivityRoute } from '../../github/activity.ts';
 import { addedTasks, type AddedTask, type RepoFailure } from '../../github/auto.ts';
+import { followersOf, parseFollows } from '../../github/follows.ts';
 import { importRules, issueOwner, issueRef } from '../../github/map.ts';
 import { importedTasks, linkedRefs, planSync, refHolders, type SyncPlan, type SyncStep } from '../../github/plan.ts';
 import { withCiExcerpts } from '../../github/ci-excerpt.ts';
@@ -14,6 +16,7 @@ import {
   type MentionRoute,
   type MentionRouting,
   type MentionWatch,
+  type SeenMention,
 } from '../../github/mention-route.ts';
 import { securityIssues, type SecurityIssue } from '../../github/security-alert.ts';
 import { eventsByRecipient, pullEvents, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from '../../github/pull-news.ts';
@@ -104,6 +107,9 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   const mentions = new Map<string, MentionWatch>();
   const mentionRoutes: MentionRoute[] = [];
   const mentionCuts = new Map<string, string>();
+  const activity: ActivityRoute[] = [];
+  // Read once, without the lock: a follow made while this run reads is heard from the next run.
+  const followers = auto && config.github.activity ? followersOf(parseFollows((await runtime.files.read(kit.paths.githubFollows)) ?? '')) : new Map<string, string[]>();
   const ours = ourLogins(config.github);
   const watcher = config.github.watcher ?? config.roles.lead;
   const routing: MentionRouting = { ours, self: undefined, rules, watcher, secrets: new SecretScanner(config.register.secretPatterns) };
@@ -175,7 +181,8 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     if (auto) {
       const holders = refHolders(tasks);
       const items = mentionItems(repo, { issues: read.issues, pulls: watch.pulls }, { ofRef: (ref) => holders.get(ref)?.owner, ofTask: (id) => tasks.find((held) => held.id === id)?.owner }, ours);
-      const scan = await readMentions(host, repo, scanned.get(repo), { readAt: mentionTime(runtime.clock.now()), cutoffMs: Date.parse(since), itemOf: items, routing });
+      const audienceOf = config.github.activity ? (number: number): ActivityAudience => ({ owner: items(number).taskOwner, followers: followers.get(issueRef(repo, number)) ?? [] }) : undefined;
+      const scan = await readMentions(host, repo, scanned.get(repo), { readAt: mentionTime(runtime.clock.now()), cutoffMs: Date.parse(since), itemOf: items, routing, audienceOf });
       scan.lines.forEach(say);
       if (scan.kind === 'failed') {
         if (end === 'ok') {
@@ -186,6 +193,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
       }
       mentions.set(repo, scan.after);
       mentionRoutes.push(...scan.routes);
+      activity.push(...scan.activity);
       if (scan.cutAt !== undefined) {
         mentionCuts.set(repo, scan.cutAt);
       }
@@ -235,7 +243,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     }
   }
   if (auto) {
-    (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls, pullNews: news, security, mentions, mentionRoutes, mentionCuts })).forEach(say);
+    (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls, pullNews: news, security, mentions, mentionRoutes, mentionCuts, activityRoutes: activity })).forEach(say);
   } else if (news.size > 0) {
     say(`NOTE only ${KIT_NAME} issue sync --auto tells the pull request news and keeps what it read, so the next run names it again`);
   }
@@ -266,24 +274,42 @@ async function readPulls(host: IssueHost, repo: string, before: PullWatch | unde
   return { kind: 'read', after: step.after, events: step.events, pulls: [...read.open, ...read.changed], lines: read.notes.map((note) => `NOTE ${repo}: ${note}`) };
 }
 
-/** One repository's mention read: the lines it prints, and why it failed or its watch after, its routes and where it was cut. */
+/**
+ * One repository's post read: the lines it prints, and why it failed or its watch after, its mention routes, its
+ * activity routes and where it was cut.
+ */
 type MentionRead =
   | { readonly kind: 'failed'; readonly reason: string; readonly lines: readonly string[] }
-  | { readonly kind: 'read'; readonly after: MentionWatch; readonly routes: readonly MentionRoute[]; readonly cutAt: string | undefined; readonly lines: readonly string[] };
+  | {
+      readonly kind: 'read';
+      readonly after: MentionWatch;
+      readonly routes: readonly MentionRoute[];
+      readonly activity: readonly ActivityRoute[];
+      readonly cutAt: string | undefined;
+      readonly lines: readonly string[];
+    };
 
 /**
  * Reads `repo`'s posts changed since `before`, the watch the last `--auto` run kept, and routes their new mentions
- * (mention-route.ts). A repository with no watch yet is not read: its scan starts at `readAt`, so the first run routes
- * nothing written before. A route prints without its excerpt, which only the routed session's inbox gets.
+ * (mention-route.ts) and, when `audienceOf` is given (github.activity), the rest of their new posts on an item a task
+ * holds or a session follows (activity.ts), from the same read. A repository with no watch yet is not read: its scan
+ * starts at `readAt`, so the first run routes nothing written before. A route prints without its excerpt, which only
+ * the routed session's inbox gets.
  */
 async function readMentions(
   host: IssueHost,
   repo: string,
   before: MentionWatch | undefined,
-  at: { readonly readAt: string; readonly cutoffMs: number; readonly itemOf: (number: number) => MentionItem; readonly routing: MentionRouting },
+  at: {
+    readonly readAt: string;
+    readonly cutoffMs: number;
+    readonly itemOf: (number: number) => MentionItem;
+    readonly routing: MentionRouting;
+    readonly audienceOf: ((number: number) => ActivityAudience) | undefined;
+  },
 ): Promise<MentionRead> {
   if (before === undefined) {
-    return { kind: 'read', after: firstMentionWatch(at.readAt), routes: [], cutAt: undefined, lines: [`NOTE ${repo}: the mention scan starts now; the next run reads what was written since`] };
+    return { kind: 'read', after: firstMentionWatch(at.readAt), routes: [], activity: [], cutAt: undefined, lines: [`NOTE ${repo}: the mention scan starts now; the next run reads what was written since`] };
   }
   const read = await host.posts(repo, mentionReadSince(before, at.cutoffMs));
   if (read.kind === 'failed') {
@@ -291,14 +317,19 @@ async function readMentions(
     return { kind: 'failed', reason, lines: [`FAILED ${repo} ${reason}; the scan goes on from where it was`] };
   }
   const step = mentionStep(repo, before, read, at.readAt, at.itemOf, at.routing, at.cutoffMs);
+  // Against the marks before this read, so a post its mention marked just now is still new to its other sessions.
+  const activity = at.audienceOf === undefined ? { routes: [], marks: new Map<string, SeenMention>() } : activityRoutes(repo, read.posts, before.seen, at.audienceOf, step.routes, at.routing);
   return {
     kind: 'read',
-    after: step.after,
+    // A mention's mark keeps its logins, so it wins over the plain mark of the same post.
+    after: { ...step.after, seen: new Map([...activity.marks, ...step.after.seen]) },
     routes: step.routes,
+    activity: activity.routes,
     cutAt: read.cutAt,
     lines: [
       ...read.notes.map((note) => `NOTE ${repo}: ${note}`),
       ...step.routes.map((route) => `MENTION ${route.to}: ${route.ref} names ${route.logins.map((login) => `@${login}`).join(', ')}, by ${route.author}`),
+      ...activity.routes.map((route) => `ACTIVITY ${route.to}${route.wake ? ' (wakes)' : ''}: ${route.ref} ${route.kind} by ${route.author}`),
       ...(read.cutAt === undefined ? [] : [`NOTE ${repo}: the mention read was cut off; it read through ${read.cutAt} and the next run goes on from there`]),
     ],
   };

@@ -2,6 +2,7 @@ import { isRecord, stringField } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { PULL_CHECKS, PULL_MERGEABLE, PULL_REVIEWS } from '../issues/pull.ts';
 import { cut } from '../register/views.ts';
+import type { ActivityRoute } from './activity.ts';
 import { issueRef } from './map.ts';
 import type { MentionRoute, MentionWatch, SeenMention } from './mention-route.ts';
 import type { PullEvent, PullMark, PullWatch } from './pull-news.ts';
@@ -73,6 +74,8 @@ export interface SyncRun {
   readonly mentions: ReadonlyMap<string, MentionWatch>;
   readonly mentionRoutes: readonly MentionRoute[];
   readonly mentionCuts: ReadonlyMap<string, string>;
+  /** The posts told as activity, each to one session (activity.ts); none while github.activity is off. */
+  readonly activityRoutes: readonly ActivityRoute[];
 }
 
 /** A repository a sync could not read, or whose tasks the task list refused, and why. */

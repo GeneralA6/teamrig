@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseSyncState, SYNC_STATE_FORMAT } from '../github/auto.ts';
+import { formatFollows } from '../github/follows.ts';
 import { REVIEW_READS_MAX } from '../github/posts.ts';
 import { isIssueQuery } from '../github/gh.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
@@ -290,6 +291,56 @@ describe('teamrig issue sync --auto, mentions of our users (T3070)', () => {
     ]);
     assert.equal(await asks(kit, 'alpha'), 0);
     assert.equal(parseSyncState(kit.files.get(STATE) ?? '')?.mentions.get('acme/web')?.cursor, cutAt);
+  });
+});
+
+describe('teamrig issue sync --auto, the activity on a task\'s or a followed item (T3363)', () => {
+  const ACTIVITY_TEAM: JsonRecord = { ...TEAM, wake: { enabled: true }, github: { repos: ['acme/web'], owners: { octocat: 'bravo' } } };
+  const asks = async (kit: CliHarness, id: string): Promise<number> => (await new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks')).read(id)).length;
+  const ask = restComment('acme/web', 9, 1, { author: 'visitor', body: 'Is this still planned?', updatedAt: '2030-01-08T10:20:00Z' });
+  const askUrl = 'https://github.com/acme/web/issues/9#issuecomment-1';
+
+  async function run(kit: CliHarness, gh: FakeGh): Promise<void> {
+    kit.clock.advance(15 * MINUTE);
+    const result = await kit.run(['issue', 'sync', '--auto'], { gh });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+  }
+
+  /** A team whose task T1, owned by alpha, links gh:acme/web#9, which session charlie follows. */
+  async function linkedTeam(config: JsonRecord): Promise<CliHarness> {
+    const kit = new CliHarness(config);
+    const added = await kit.run(['add', '--title', 'Ship the login fix', '--description', 'Tracked on its issue.', '--priority', 'p2', '--owner', 'alpha', '--ref', 'gh:acme/web#9'], { env: { TEAMRIG_SESSION: 'lead' } });
+    assert.equal(added.code, EXIT.ok, [...added.stdout, ...added.stderr].join('\n'));
+    await kit.files.write(join(TEAM_HOME, 'state', 'github-follows.json'), formatFollows(new Map([['charlie', ['gh:acme/web#9']]])));
+    return kit;
+  }
+
+  it('tells the owner each new post once in one line, waking it for a question, and a follower unwoken; never our own posts', async () => {
+    const kit = await linkedTeam(ACTIVITY_TEAM);
+    const posts = [
+      ask,
+      restComment('acme/web', 9, 2, { author: 'octocat', body: 'Yes, this week.', updatedAt: '2030-01-08T10:21:00Z' }),
+      restComment('acme/web', 4, 3, { author: 'visitor', body: 'Unrelated item.', updatedAt: '2030-01-08T10:22:00Z' }),
+    ];
+    await run(kit, new FakeGh().holds('acme/web', []));
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPosts('acme/web', 'issues/comments', posts));
+    assert.deepEqual(githubLines(kit, 'alpha'), [`GitHub activity: gh:acme/web#9 comment by visitor (asks a question) at ${askUrl}`]);
+    assert.deepEqual(githubLines(kit, 'charlie'), [`GitHub activity: gh:acme/web#9 comment by visitor at ${askUrl}`]);
+    assert.equal(await asks(kit, 'alpha'), 1);
+    assert.equal(await asks(kit, 'charlie'), 0);
+    assert.deepEqual(githubLines(kit, 'bravo'), []);
+    // The same posts read again (an edit, or the reads' overlap) are told no more.
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPosts('acme/web', 'issues/comments', posts));
+    assert.equal(githubLines(kit, 'alpha').length, 1);
+    assert.equal(githubLines(kit, 'charlie').length, 1);
+  });
+
+  it('tells no activity while github.activity is off', async () => {
+    const kit = await linkedTeam({ ...ACTIVITY_TEAM, github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, activity: false } });
+    await run(kit, new FakeGh().holds('acme/web', []));
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPosts('acme/web', 'issues/comments', [ask]));
+    assert.deepEqual(githubLines(kit, 'alpha'), []);
+    assert.deepEqual(githubLines(kit, 'charlie'), []);
   });
 });
 
