@@ -19,6 +19,7 @@ export function localChecks(base: string): readonly LocalCheck[] {
     scrubCommits,
     dco,
     { name: 'size rule', argv: ['node', 'tools/ci/size-rule-cli.ts', '--base', base] },
+    { name: 'commit subjects', argv: ['node', 'tools/ci/commit-subjects-cli.ts', '--base', base] },
     { name: 'plugin version gate', argv: ['node', 'tools/ci/plugin-version-cli.ts', '--base', base] },
     TYPECHECK,
     { name: 'coverage gate', argv: ['node', 'tools/ci/coverage-cli.ts'] },
