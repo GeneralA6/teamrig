@@ -62,6 +62,12 @@ export interface LabelSpec {
 export type HostLabel = { readonly kind: 'found' } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
 
 /**
+ * A repository's own label file (issues/label-file.ts) as the host read it: the labels it names; missing when the
+ * repository has no such file; or failed, with one plain line saying why (a read refused, a file that is malformed).
+ */
+export type HostLabelFile = { readonly kind: 'read'; readonly labels: readonly LabelSpec[] } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
+
+/**
  * Whether a login may be assigned in a repository: found, with the login as the host spells it (GitHub keeps a login's
  * case, and its assignee check matches that case only), missing (no such user, or it may not be assigned), or the read failed.
  */
@@ -149,7 +155,12 @@ export interface IssueHost {
   issueId(target: IssueTarget): Promise<HostIssueId>;
   /** Whether `repo` has the label `label`, so a label is only added once the repository has it. */
   labelExists(repo: string, label: string): Promise<HostLabel>;
-  /** Makes `label` in the repository; only for a label teamrig makes (MANAGED_LABEL_SPECS), by the push or issue label. */
+  /** The labels `repo`'s own label file names, as it stands on the default branch, so issue label can make one it lacks. */
+  labelFile(repo: string): Promise<HostLabelFile>;
+  /**
+   * Makes `label` in the repository; only for a label teamrig makes (MANAGED_LABEL_SPECS), by the push or issue label,
+   * or one the repository's label file names, as labelFile read it this run.
+   */
   createLabel(repo: string, label: LabelSpec): Promise<HostEnd>;
   /** Adds `labels` to the issue or pull request. */
   addLabels(target: IssueTarget, labels: readonly string[]): Promise<HostEnd>;

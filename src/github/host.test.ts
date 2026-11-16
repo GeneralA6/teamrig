@@ -20,12 +20,16 @@ import {
   isIssueRead,
   isIssueUnassign,
   isLabelAdd,
+  isFileLabelCreate,
   isLabelCreate,
+  isLabelFileRead,
   isLabelRead,
   isLabelRemove,
   isLinkAdd,
   isWatchProbe,
   isUserRead,
+  LabelFileReads,
+  labelCreateArgs,
   userReadArgs,
   type GhRequest,
   type GhResult,
@@ -328,6 +332,30 @@ describe('GitHubIssueHost', () => {
     assert.deepEqual(await host.createLabel('acme/web', label), { kind: 'done' });
     assert.deepEqual(await host.labelExists('acme/web', label.name), { kind: 'found' });
     assert.ok(isLabelCreate(gh.ran[1]?.args ?? []));
+  });
+
+  it("reads the repository's label file raw, then makes a label it names through the runner's file-label create (T3198)", async () => {
+    const area = { name: 'area:cli', color: '1d76db', description: 'Area: the command line' };
+    const gh = new FakeGh().holdsLabelFile('acme/web', JSON.stringify({ labels: [area] }));
+    const host = hostWith(gh);
+    assert.deepEqual(await host.labelFile('acme/web'), { kind: 'read', labels: [area] });
+    assert.deepEqual(await host.createLabel('acme/web', area), { kind: 'done' });
+    assert.deepEqual(await host.labelExists('acme/web', area.name), { kind: 'found' });
+    assert.ok(isLabelFileRead(gh.ran[0]?.args ?? []));
+    const reads = new LabelFileReads();
+    reads.note(gh.ran[0]?.args ?? [], { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ labels: [area] }), stderr: '' });
+    assert.ok(isFileLabelCreate(gh.ran[1]?.args ?? [], reads.of) && !isLabelCreate(gh.ran[1]?.args ?? []));
+    assert.deepEqual(gh.ran[1]?.args, labelCreateArgs('acme/web', area));
+  });
+
+  it('gives no label file as missing on Not Found, and a malformed one or a refused read as failed', async () => {
+    assert.deepEqual(await hostWith(new FakeGh()).labelFile('acme/web'), { kind: 'missing' });
+    const broken = await hostWith(new FakeGh().holdsLabelFile('acme/web', '{"labels":[{"name":"x"}]}')).labelFile('acme/web');
+    assert.ok(broken.kind === 'failed' && broken.reason.startsWith('the .github/labels.json of acme/web does not parse: labels.json: each label needs'), JSON.stringify(broken));
+    const junk = await hostWith(new FakeGh().holdsLabelFile('acme/web', 'not json')).labelFile('acme/web');
+    assert.ok(junk.kind === 'failed' && junk.reason.startsWith('the .github/labels.json of acme/web does not parse: '), JSON.stringify(junk));
+    const refused = await hostWith(new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: HTTP 502\n' })).labelFile('acme/web');
+    assert.ok(refused.kind === 'failed' && refused.reason.startsWith('gh api to read .github/labels.json of acme/web exited with code 1'), JSON.stringify(refused));
   });
 
   it('gives gh\'s own line when the create fails', async () => {
