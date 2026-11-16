@@ -70,6 +70,24 @@ jobs:
           node-version: 24
       - run: node tools/ci/size-rule-cli.ts --github
 
+  commit-subjects:
+    name: commit subject gate
+    # Fails a commit whose subject is not <type>(<area>): <what>, a Conventional Commit: the release workflow
+    # raises the version from main's subjects, and a pull request is rebase-merged with its commits as they are
+    # (see CONTRIBUTING.md). A run by hand checks its head commit alone.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+      - run: node tools/ci/commit-subjects-cli.ts --github
+
   coverage:
     name: coverage gate
     # Fails on a failing, skipped or todo test, a source file no test loads, or a file or total
@@ -151,7 +169,7 @@ jobs:
     # failed, was cancelled or skipped; always() runs it after a failed one, where a job would skip, which
     # a required check reads as a pass.
     if: ${{ always() && !github.event.repository.private }}
-    needs: [gates, dependency-review, size-rule, coverage, plugin-version, test]
+    needs: [gates, dependency-review, size-rule, commit-subjects, coverage, plugin-version, test]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # actions: read lists this run's jobs; a job's permissions replace the workflow's, so contents: read is restated.
