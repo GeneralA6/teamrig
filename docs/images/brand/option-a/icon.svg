@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="teamrig">
+<title>teamrig</title>
+<style>.g{fill:#6e7781}.p{fill:#8957e5}.ps{fill:none;stroke:#8957e5}@media (prefers-color-scheme:dark){.g{fill:#8b949e}.p{fill:#a371f7}.ps{stroke:#a371f7}}</style>
+<path class="ps" d="M32 37.2L32 16.2M32 37.2L50.2 47.8M32 37.2L13.8 47.8" stroke-width="4" stroke-linecap="round"/><circle class="p" cx="32" cy="37.2" r="9.5"/><circle class="g" cx="32" cy="16.2" r="7.5"/><circle class="g" cx="50.2" cy="47.8" r="7.5"/><circle class="g" cx="13.8" cy="47.8" r="7.5"/>
+</svg>
