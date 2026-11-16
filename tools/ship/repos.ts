@@ -7,6 +7,13 @@ import { readFileSync } from 'node:fs';
  */
 export type Gate = 'ci' | 'local';
 
+/**
+ * What a --merge run checks locally before it pushes (T3414 part 2): `full`, the typecheck and the whole suite under
+ * the coverage gate, as a review run does; `changed`, the typecheck and the specs of the files the change touches,
+ * for a repo whose main requires its CI checks, which run the whole suite on the pull request before it merges.
+ */
+export type MergeChecks = 'full' | 'changed';
+
 export interface LocalChecks {
   /**
    * The repo's own local CI runner, relative to the repo dir: it runs every check the repo's CI runs that
@@ -49,6 +56,8 @@ export interface RepoProfile {
    * pass alone (T2532). Each is one of `checks`, never the summary, which echoes them (github.ts). Empty when not listed.
    */
   flaky: readonly string[];
+  /** What a --merge run checks locally before it pushes; `full` when not listed. `changed` needs the `ci` gate. */
+  mergeChecks: MergeChecks;
 }
 
 export const PROFILES_PATH = new URL('./repos.json', import.meta.url);
@@ -89,6 +98,13 @@ function parseRegenerated(slug: string, value: unknown): readonly string[] {
   return value;
 }
 
+function parseMergeChecks(slug: string, value: unknown, gate: Gate): MergeChecks {
+  if (value === undefined || value === 'full') return 'full';
+  if (value !== 'changed') throw new Error(`repos.json: ${slug} "mergeChecks" is "full" (the whole suite) or "changed" (the changed files' specs)`);
+  if (gate !== 'ci') throw new Error(`repos.json: ${slug} "mergeChecks": "changed" needs the "ci" gate: only required CI checks run the whole suite before the merge`);
+  return value;
+}
+
 const SLUG = /^[\w.-]+\/[\w.-]+$/u;
 
 function parseAliases(slug: string, value: unknown): readonly string[] {
@@ -106,7 +122,7 @@ export function repoSlugs(profiles: ReadonlyMap<string, RepoProfile>): string[] 
 
 export function parseProfiles(json: string): Map<string, RepoProfile> {
   const body: unknown = JSON.parse(json);
-  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky", "aliases" } }');
+  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky", "aliases", "mergeChecks" } }');
   const profiles = new Map<string, RepoProfile>();
   for (const [slug, entry] of Object.entries(body)) {
     if (!isRecord(entry) || typeof entry['main'] !== 'string' || !isNameList(entry['checks'])) throw new Error(`repos.json: ${slug} needs "main" and a "checks" list of names`);
@@ -125,6 +141,7 @@ export function parseProfiles(json: string): Map<string, RepoProfile> {
       local: parseLocalChecks(slug, entry['local']),
       regenerated: parseRegenerated(slug, entry['regenerated']),
       flaky: parseFlaky(slug, entry['flaky'], entry['checks'], summary),
+      mergeChecks: parseMergeChecks(slug, entry['mergeChecks'], gate),
     };
     for (const name of [slug, ...aliases]) {
       const key = name.toLowerCase();

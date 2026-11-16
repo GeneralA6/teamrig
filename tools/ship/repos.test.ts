@@ -9,7 +9,7 @@ const LOCAL = '"local":{"runner":"tools/ci/local.ts"}';
 
 test('reads each repo\'s main branch, gate and check lists, looked up without regard to case', () => {
   const profiles = parseProfiles(`{"Owner/Repo":{"main":"main","gate":"ci","checks":["a","b"]}}`);
-  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [], aliases: [] });
+  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [], aliases: [], mergeChecks: 'full' });
   const local = parseProfiles(`{"Owner/Local":{"main":"main","gate":"local","checks":[],${LOCAL}}}`);
   assert.deepEqual(profileFor(local, 'Owner/Local').local, { runner: 'tools/ci/local.ts' });
 });
@@ -56,6 +56,22 @@ test('reads the summary check, and refuses one that is blank or not among the ch
   for (const summary of ['"b"', '""', '3', '["all"]']) {
     assert.throws(() => parseProfiles(entry(summary)), /O\/R "summary" needs the name of one of its "checks"/, summary);
   }
+});
+
+test('reads what a merge checks locally, full when not listed, and refuses another value or "changed" without the ci gate (T3414)', () => {
+  const entry = (gate: string, mergeChecks: string): string => `{"O/R":{"main":"main","gate":"${gate}","checks":["a"],${LOCAL},"mergeChecks":${mergeChecks}}}`;
+  assert.equal(profileFor(parseProfiles(`{"O/R":{"main":"main","gate":"ci","checks":["a"]}}`), 'O/R').mergeChecks, 'full');
+  assert.equal(profileFor(parseProfiles(entry('ci', '"full"')), 'O/R').mergeChecks, 'full');
+  assert.equal(profileFor(parseProfiles(entry('ci', '"changed"')), 'O/R').mergeChecks, 'changed');
+  for (const value of ['"some"', '""', 'true', '["changed"]']) {
+    assert.throws(() => parseProfiles(entry('ci', value)), /O\/R "mergeChecks" is "full" \(the whole suite\) or "changed"/, value);
+  }
+  assert.throws(() => parseProfiles(entry('local', '"changed"')), /O\/R "mergeChecks": "changed" needs the "ci" gate/);
+});
+
+test('the shipped repos.json keeps every repo\'s merge on the whole local suite until its main requires CI (T3414)', () => {
+  const profiles = readProfiles();
+  for (const slug of repoSlugs(profiles)) assert.equal(profileFor(profiles, slug).mergeChecks, 'full', slug);
 });
 
 test('the shipped repos.json names each repo\'s every-check-passed job its summary', () => {
