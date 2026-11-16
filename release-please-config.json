@@ -8,6 +8,7 @@
       "package-name": "teamrig",
       "component": "teamrig",
       "include-component-in-tag": true,
+      "bump-minor-pre-major": true,
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         { "type": "json", "path": "plugins/teamrig/.claude-plugin/plugin.json", "jsonpath": "$.version" },
