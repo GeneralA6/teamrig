@@ -80,9 +80,10 @@ describe('hook route-allow', () => {
     assert.deepEqual(await answersOf(kit), []);
   });
 
-  it('prints nothing with asks on, by default, with the switch off, or with the config missing or broken', async () => {
+  it('prints nothing with asks on, with the switch off, or with the config missing or broken, and answers by default (T3356)', async () => {
+    const route = call('teamrig merge --session alpha');
+    assert.deepEqual(await new CliHarness().run(HOOK, { stdin: route }), await new CliHarness(ASKS_OFF).run(HOOK, { stdin: route }));
     const quiet = [
-      new CliHarness(),
       new CliHarness({ ...TEAM, prompts: { hookAsks: 'ask', routeAllow: 'on' } }),
       new CliHarness({ ...TEAM, prompts: { hookAsks: 'refuse', routeAllow: 'off' } }),
       new CliHarness(null),

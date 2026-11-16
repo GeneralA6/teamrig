@@ -1366,8 +1366,8 @@ describe('parseConfig', () => {
     assert.equal(bad.config.commitGuard.skipHooks, 'deny');
   });
 
-  it('reads what a hook does with a call it would ask about, defaulting to ask and refusing another word', () => {
-    assert.equal(parseConfig(ROSTER).config.prompts.hookAsks, 'ask');
+  it('reads what happens to a prompt Claude Code raises, defaulting to refuse (T3356) and refusing another word', () => {
+    assert.equal(parseConfig(ROSTER).config.prompts.hookAsks, 'refuse');
     for (const choice of ['ask', 'refuse']) {
       const set = parseConfig({ ...ROSTER, prompts: { hookAsks: choice } });
       assert.deepEqual(set.issues, []);
@@ -1376,7 +1376,7 @@ describe('parseConfig', () => {
     const bad = parseConfig({ ...ROSTER, prompts: { hookAsks: 'deny' } });
     assert.deepEqual(paths(bad.issues), ['prompts.hookAsks']);
     assert.match(bad.issues[0]?.message ?? '', /ask, refuse/);
-    assert.equal(bad.config.prompts.hookAsks, 'ask');
+    assert.equal(bad.config.prompts.hookAsks, 'refuse');
   });
 
   it('reads whether a sanctioned route runs before any permission check, defaulting to on and refusing another word', () => {

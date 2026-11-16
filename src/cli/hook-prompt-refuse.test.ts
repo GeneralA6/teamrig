@@ -158,8 +158,9 @@ describe('hook prompt-refuse', () => {
     assert.deepEqual(await kit.run(HOOK, { stdin: request('Bash', { hook_event_name: 'PreToolUse' }) }), NOTHING);
   });
 
-  it('prints nothing with asks on, by default, or with the config missing, broken or unreadable', async () => {
-    const on = [new CliHarness(), new CliHarness({ ...TEAM, prompts: { hookAsks: 'ask' } }), new CliHarness(null), new CliHarness('{ not json')];
+  it('prints nothing with asks on, or with the config missing, broken or unreadable, and answers by default (T3356)', async () => {
+    assert.deepEqual(await new CliHarness().run(HOOK, { stdin: request('Bash') }), await new CliHarness(ASKS_OFF).run(HOOK, { stdin: request('Bash') }));
+    const on = [new CliHarness({ ...TEAM, prompts: { hookAsks: 'ask' } }), new CliHarness(null), new CliHarness('{ not json')];
     for (const kit of on) {
       assert.deepEqual(await kit.run(HOOK, { stdin: request('Bash') }), NOTHING);
     }

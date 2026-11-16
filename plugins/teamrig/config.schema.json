@@ -450,23 +450,23 @@
       }
     },
     "prompts": {
-      "description": "The permission prompts teamrig's own hooks raise.",
+      "description": "The permission prompts a team's sessions meet; teamrig's own hooks raise none.",
       "type": "object",
       "properties": {
         "hookAsks": {
-          "description": "A call a teamrig hook would ask the human about (a push to a protected branch or one it cannot read, an ad-hoc package run, a git command without hooks, a call that would print a secret, a helper over the budget, as their own keys set): ask raises the permission prompt; refuse refuses it instead, its reason telling the session to record the step as waiting for the owner's approval and take its next task, so no prompt holds a session while nobody is there to answer it.",
+          "description": "What happens to a permission prompt Claude Code raises on its own while the team is loaded. teamrig's own hooks never ask a person, whatever this says: what one would ask about is refused with the route to take and how to ask for a rule change. refuse (the default) answers Claude Code's own prompts: a line that provably only reads runs, a line teamrig's rules give a rerun form is refused quoting it, anything else is refused, so no prompt holds a session while nobody is there to answer it. ask lets those prompts open; it suits only a team with a person watching every tab.",
           "type": "string",
           "enum": ["ask", "refuse"],
-          "default": "ask"
+          "default": "refuse"
         },
         "routeAllow": {
-          "description": "While hookAsks is refuse: on lets a Bash line that runs a sanctioned route marked for it (teamrig merge, deploy, exec request, worktree remove, git commit) run with no permission check at all, once every teamrig guard passed it, logged by its route alone; off takes that allow away without a release. It only takes allows away: no config adds a route. Inert for routes while hookAsks is ask. Whatever hookAsks says, on also lets a service role's holder run the role's calls from its own tab, up to serviceRoleDailyCap a day; off takes that away too.",
+          "description": "While hookAsks is refuse (the default): on lets a Bash line that runs a sanctioned route marked for it (teamrig merge, deploy, exec request, worktree remove, git commit) run with no permission check at all, once every teamrig guard passed it, logged by its route alone; off takes that allow away without a release. It only takes allows away: no config adds a route. Inert for routes while hookAsks is ask. Whatever hookAsks says, on also lets a service role's holder run the role's calls from its own tab, up to serviceRoleDailyCap a day; off takes that away too.",
           "type": "string",
           "enum": ["on", "off"],
           "default": "on"
         },
         "serviceRoleDailyCap": {
-          "description": "How many calls one service role (serviceRoles) lets run with no permission check in 24 hours, so a holder steered by text from outside closes or comments only so much; past it, the role's next call asks the owner (refused with hookAsks refuse). 0 lets none through. Each allowed call is a line of state/prompt-answers.jsonl naming the role, command and target, never the text.",
+          "description": "How many calls one service role (serviceRoles) lets run with no permission check in 24 hours, so a holder steered by text from outside closes or comments only so much; past it, the role's next call is refused. 0 lets none through. Each allowed call is a line of state/prompt-answers.jsonl naming the role, command and target, never the text.",
           "type": "integer",
           "minimum": 0,
           "maximum": 200,
