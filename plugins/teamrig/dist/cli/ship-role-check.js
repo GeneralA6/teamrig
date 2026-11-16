@@ -1,9 +1,9 @@
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import { DEFAULT_WORKTREE_FOLDER } from "../config/defaults.js";
 import { taskFolder } from "../core/home.js";
 import { isAtOrBelow, samePath } from "../core/paths.js";
 import { teamPlace } from "../delivery/places.js";
-import { ORIGIN } from "../merge/git.js";
+import { FALLBACK_BRANCH, ORIGIN } from "../merge/git.js";
 import { taskBranchOf } from "../permissions/route-git.js";
 import { JsonlEventLog } from "../register/store.js";
 /** The repository whose configured ship tool `tool` names; undefined when none does. */
@@ -30,35 +30,45 @@ function sameRepository(git, a, b) {
     const second = git.commonDir(b);
     return first !== undefined && second !== undefined && samePath(first, second);
 }
-/** The tool's checkout when the tool is a tracked file of a checkout of the repository with no change at all; undefined otherwise. */
-function cleanToolCheckout(git, tool, mainDir) {
-    const checkout = git.checkoutOf(dirname(tool));
-    if (checkout === undefined || !sameRepository(git, checkout.top, mainDir)) {
-        return undefined;
+/** The state of a tool in no checkout, or none of a configured repository: never main's current code. */
+function toolInNoCheckout(tool) {
+    return { top: dirname(tool), mainRef: `${ORIGIN}/${FALLBACK_BRANCH}`, head: undefined, landed: false };
+}
+/**
+ * The tool's checkout as C5 reads it, or which git read did not answer (T3368): a git that did not start, was stopped
+ * or died starting tells nothing of the tool, so it is never read as a tool that is not main's current code.
+ */
+function toolStateOf(git, tool, mainDir) {
+    const repository = git.repositoryOf(mainDir);
+    if (!repository.ok) {
+        return repository;
     }
-    const path = relative(checkout.top, tool).replaceAll('\\', '/');
-    if (path === '' || path.startsWith('../') || isAbsolute(path)) {
-        return undefined;
+    const read = git.fileCheckout(tool);
+    if (!read.ok) {
+        return read;
     }
-    const changes = git.changes(checkout.top, true);
-    const tracked = git.blobsAt(checkout.top, 'HEAD', [path])?.has(path) === true;
-    const head = git.sha(checkout.top, 'HEAD');
-    return changes?.length === 0 && tracked && head !== undefined ? { top: checkout.top, head } : undefined;
+    const checkout = read.value;
+    if (checkout === undefined) {
+        return { ok: true, value: toolInNoCheckout(tool) };
+    }
+    const ours = repository.value !== undefined && samePath(checkout.commonDir, repository.value);
+    const head = ours && checkout.clean && checkout.tracked ? checkout.head : undefined;
+    const landed = head !== undefined && checkout.headTree !== undefined && checkout.headTree === checkout.mainTree;
+    return { ok: true, value: { top: checkout.top, mainRef: checkout.mainRef, head, landed } };
 }
-/** The default branch as of the checkout's last fetch, such as `origin/main`. */
-function defaultRefOf(git, top) {
-    return `${ORIGIN}/${git.defaultBranch(top, ORIGIN)}`;
+/** The ship tool check's read of a configured or unconfigured tool. */
+function shipToolStateOf(git, kit, config, tool) {
+    const repo = shipRepoOf(kit, config, tool);
+    return repo === undefined ? { ok: true, value: toolInNoCheckout(tool) } : toolStateOf(git, tool, repo.mainDir);
 }
-/** True when the checkout's HEAD makes the default branch's tree: main's current code, where any past main's has another tree. */
-function holdsMainsCode(git, top) {
-    const tree = git.treeOf(top, 'HEAD');
-    return tree !== undefined && tree === git.treeOf(top, defaultRefOf(git, top));
-}
-/** C5: the tool is a clean, tracked file of a checkout of the repository that holds main's current code. */
+/** C5, failing closed: the tool is a clean, tracked file of a checkout of the repository that holds main's current code. */
 function toolIsLanded(git, tool, mainDir) {
-    const checkout = cleanToolCheckout(git, tool, mainDir);
-    return checkout !== undefined && holdsMainsCode(git, checkout.top);
+    const state = toolStateOf(git, tool, mainDir);
+    return state.ok && state.value.landed;
 }
+/** How many times the start check reads a checkout git does not answer, and how long it waits between reads (T3368). */
+export const SHIP_TOOL_READS = 4;
+export const SHIP_TOOL_REREAD_MS = 15_000;
 /** The configured ship tool a step's words run, each word read from the step's folder; undefined when they run none. */
 export function shipToolOfWords(kit, config, words, cwd) {
     return words.map((word) => placeOfWord(word, cwd)).find((word) => shipRepoOf(kit, config, word) !== undefined);
@@ -81,32 +91,40 @@ export function shipTaskOfWords(git, kit, config, words, cwd) {
     return branch === undefined ? undefined : taskBranchOf(branch, config.pushGuard.protectedBranches);
 }
 /** A stale or changed ship tool's refusal: what it is not, and how to move its checkout to the newest main. */
-function staleToolReason(git, tool, since) {
-    const top = git.checkoutOf(dirname(tool))?.top ?? dirname(tool);
-    const main = defaultRefOf(git, top);
-    return `the ship tool ${tool}${since} is not ${main}'s current code in a checkout with no change: run git -C ${top} fetch -q ${ORIGIN} && git -C ${top} checkout -q --detach ${main}, then queue the step again`;
+function staleToolReason(tool, state, since) {
+    return `the ship tool ${tool}${since} is not ${state.mainRef}'s current code in a checkout with no change: run git -C ${state.top} fetch -q ${ORIGIN} && git -C ${state.top} checkout -q --detach ${state.mainRef}, then queue the step again`;
 }
 /**
  * Pins a ship tool a step is queued to run (T3223): it must hold main's current code as C5 reads it, so a queued ship
  * runs the same reviewed tool whether a role's allow or a person let the line through; a reason when it does not.
+ * When git did not answer, it pins no commit and the start check, which reads again, decides (T3368).
  */
 export function shipToolPinOf(git, kit, config, tool) {
-    const repo = shipRepoOf(kit, config, tool);
-    const checkout = repo === undefined ? undefined : cleanToolCheckout(git, tool, repo.mainDir);
-    return checkout !== undefined && holdsMainsCode(git, checkout.top) ? { tool, head: checkout.head } : { refused: staleToolReason(git, tool, '') };
+    const state = shipToolStateOf(git, kit, config, tool);
+    if (!state.ok) {
+        return { tool, head: undefined };
+    }
+    return state.value.landed ? { tool, head: state.value.head } : { refused: staleToolReason(tool, state.value, '') };
 }
 /**
  * Why a pinned ship tool may not run when its step starts, after waiting in the host lock's line; undefined when it
  * may. Its checkout must still be clean and at the pinned commit, or at main's current code if it moved on, so a
- * checkout moved to another commit while the step waited never runs that commit's tool.
+ * checkout moved to another commit while the step waited never runs that commit's tool. A read git does not answer is
+ * read again, {@link SHIP_TOOL_READS} times in all, then refused naming that read, never as a changed tool (T3368).
  */
-export function shipToolStartRefusal(git, kit, config, pin) {
-    const repo = shipRepoOf(kit, config, pin.tool);
-    const checkout = repo === undefined ? undefined : cleanToolCheckout(git, pin.tool, repo.mainDir);
-    if (checkout !== undefined && (checkout.head === pin.head || holdsMainsCode(git, checkout.top))) {
-        return undefined;
+export async function shipToolStartRefusal(git, kit, config, pin, sleep) {
+    for (let reads = 1;; reads += 1) {
+        const state = shipToolStateOf(git, kit, config, pin.tool);
+        if (state.ok) {
+            const { head, landed } = state.value;
+            const since = pin.head === undefined ? '' : ` changed from ${pin.head.slice(0, 9)} while the step waited and`;
+            return head !== undefined && (head === pin.head || landed) ? undefined : staleToolReason(pin.tool, state.value, since);
+        }
+        if (reads >= SHIP_TOOL_READS) {
+            return `could not read the checkout of the ship tool ${pin.tool}, so the step did not run: ${state.reason}, at each of ${reads} reads ${SHIP_TOOL_REREAD_MS / 1000} s apart; git gave no answer, which says nothing of the tool, so queue the step again once git answers on this host`;
+        }
+        await sleep(SHIP_TOOL_REREAD_MS);
     }
-    return staleToolReason(git, pin.tool, ` changed from ${pin.head.slice(0, 9)} while the step waited and`);
 }
 /**
  * The branch a ship call runs on, when `holder` may run it (C4, C5 above); undefined otherwise, so the permission check

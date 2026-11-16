@@ -1,4 +1,4 @@
-import { basename, dirname, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { outcome, query, queryLine, runGit } from "../core/git-run.js";
 import { printable } from "../core/printable.js";
 /** The remote a branch is pushed to, and the one a deploy pulls from. */
@@ -45,6 +45,74 @@ export function rebaseStopReason(onto, conflicts, said, abort) {
 function refusedAsOption(name, what) {
     return name.startsWith('-') ? { ok: false, reason: `${what} refused "${name}": a branch or commit name never starts with "-"` } : undefined;
 }
+/** The branch a remote's default is taken to be when it names none of its own. */
+export const FALLBACK_BRANCH = 'main';
+/** `remote`'s default branch, read through `run`: `<remote>/HEAD`, else `main` or `master` when the remote has it, else {@link FALLBACK_BRANCH}. */
+function defaultBranchBy(run, remote) {
+    const refs = trackingRefs(remote);
+    const said = run(['symbolic-ref', '--quiet', `${refs}HEAD`]);
+    const head = said.status === 0 ? said.stdout.trim() : '';
+    if (head.startsWith(refs)) {
+        return head.slice(refs.length);
+    }
+    return DEFAULT_BRANCHES.find((name) => run(['show-ref', '--verify', '--quiet', `${refs}${name}`]).status === 0) ?? FALLBACK_BRANCH;
+}
+/** A read git did not answer, naming it and why; {@link readOrUnanswered} turns it into its {@link GitRead}. */
+class Unanswered extends Error {
+}
+/** git's answer to a read in `dir`; throws {@link Unanswered} when git gave none. */
+function answer(dir, args) {
+    const run = runGit(dir, args);
+    if (run.unanswered !== undefined) {
+        throw new Unanswered(`git ${args.join(' ')} in ${dir} did not answer: ${run.unanswered}`);
+    }
+    return run;
+}
+/** A read made of several git reads, or the first one git did not answer. */
+function readOrUnanswered(read) {
+    try {
+        return { ok: true, value: read() };
+    }
+    catch (error) {
+        if (error instanceof Unanswered) {
+            return { ok: false, reason: error.message };
+        }
+        throw error;
+    }
+}
+/** `file`'s path inside the checkout at `top`, with forward slashes; undefined when it is the top itself or outside it. */
+export function pathInCheckout(top, file) {
+    const path = relative(top, file).replaceAll('\\', '/');
+    return path === '' || path.startsWith('../') || isAbsolute(path) ? undefined : path;
+}
+/** A one-line answer, or undefined when git said no or nothing. */
+function lineOf(run) {
+    const line = run.stdout.trim();
+    return run.status === 0 && line !== '' ? line : undefined;
+}
+/** {@link MergeGit.fileCheckout} by the git CLI; throws {@link Unanswered}. */
+function fileCheckoutOf(file) {
+    const where = answer(dirname(file), ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir']);
+    const [top, commonDir] = where.status === 0 ? lines(where.stdout) : [];
+    if (top === undefined || commonDir === undefined) {
+        return undefined;
+    }
+    const status = answer(top, ['status', '--porcelain', '--untracked-files=normal']);
+    const path = pathInCheckout(top, file);
+    // Literal pathspecs, so a `*` or `[` in the file's name matches only that file; a folder lists its files, not itself.
+    const listed = path === undefined ? undefined : answer(top, ['--literal-pathspecs', 'ls-tree', '-r', '-z', '--name-only', '--full-tree', '--end-of-options', 'HEAD', '--', path]);
+    const mainRef = `${ORIGIN}/${defaultBranchBy((args) => answer(top, args), ORIGIN)}`;
+    return {
+        top,
+        commonDir,
+        clean: status.status === 0 && lines(status.stdout).length === 0,
+        tracked: listed?.status === 0 && listed.stdout.split('\0').includes(path ?? ''),
+        head: lineOf(answer(top, ['rev-parse', '--verify', '--quiet', '--end-of-options', 'HEAD^{commit}'])),
+        headTree: lineOf(answer(top, ['rev-parse', '--verify', '--quiet', '--end-of-options', 'HEAD^{commit}^{tree}'])),
+        mainRef,
+        mainTree: lineOf(answer(top, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${mainRef}^{commit}^{tree}`])),
+    };
+}
 /** The git CLI. */
 export const GIT_MERGE = {
     checkoutOf(dir) {
@@ -65,14 +133,13 @@ export const GIT_MERGE = {
         return text === undefined ? undefined : lines(text);
     },
     fetch: (dir, remote) => outcome(runGit(dir, ['fetch', '--prune', '--end-of-options', remote], LONG_TIMEOUT_MS), 'git fetch'),
-    defaultBranch(dir, remote) {
-        const refs = trackingRefs(remote);
-        const head = queryLine(dir, ['symbolic-ref', '--quiet', `${refs}HEAD`]);
-        if (head?.startsWith(refs) === true) {
-            return head.slice(refs.length);
-        }
-        return DEFAULT_BRANCHES.find((name) => runGit(dir, ['show-ref', '--verify', '--quiet', `${refs}${name}`]).status === 0) ?? 'main';
-    },
+    defaultBranch: (dir, remote) => defaultBranchBy((args) => runGit(dir, args), remote),
+    fileCheckout: (file) => readOrUnanswered(() => fileCheckoutOf(file)),
+    repositoryOf: (dir) => readOrUnanswered(() => {
+        const run = answer(dir, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+        const line = run.stdout.trim();
+        return run.status === 0 && line !== '' ? line : undefined;
+    }),
     sha: (dir, ref) => queryLine(dir, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`]),
     treeOf: (dir, ref) => queryLine(dir, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}^{tree}`]),
     remoteHead(dir, remote, branch) {

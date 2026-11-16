@@ -102,7 +102,7 @@ function withShipTask(request, shipped) {
 /** Why the step may not start now (the queue cutoff, a pipeline freeze on its kind, a moved ship tool), or undefined when it may. */
 async function startRefusal(runtime, gate) {
     const now = runtime.clock.now();
-    return queueCutoffReason(now, gate.cutoffUtc, gate.zone) ?? pipelineFrozenRefusal(await runtime.files.read(gate.pipelineFreezes), gate.pipelineFreezes, now, [gate.kind], gate.zone) ?? gate.shipTool();
+    return queueCutoffReason(now, gate.cutoffUtc, gate.zone) ?? pipelineFrozenRefusal(await runtime.files.read(gate.pipelineFreezes), gate.pipelineFreezes, now, [gate.kind], gate.zone) ?? (await gate.shipTool());
 }
 /**
  * The start check of a step that runs a configured ship tool (T3223): pinned as this run of queue begins, the --detach
@@ -113,11 +113,11 @@ async function startRefusal(runtime, gate) {
 function shipToolCheckOf(runtime, kit, config, words) {
     const tool = shipToolOfWords(kit, config, words, runtime.cwd);
     if (tool === undefined) {
-        return () => undefined;
+        return () => Promise.resolve(undefined);
     }
     const pin = shipToolPinOf(runtime.mergeGit, kit, config, tool);
     // A stale tool's refusal comes from the gate (`refuseUnstartable`), so a detached run refused before it waits still tells its session.
-    return 'refused' in pin ? () => pin.refused : () => shipToolStartRefusal(runtime.mergeGit, kit, config, pin);
+    return 'refused' in pin ? () => Promise.resolve(pin.refused) : () => shipToolStartRefusal(runtime.mergeGit, kit, config, pin, runtime.sleep);
 }
 async function refuseUnstartable(runtime, gate) {
     const reason = await startRefusal(runtime, gate);
