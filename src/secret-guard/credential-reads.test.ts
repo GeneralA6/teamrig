@@ -83,10 +83,15 @@ describe('credentialReadFindings', () => {
     }
   });
 
+  // The clock covers only the patterns under test. Splitting the line into runs costs about ten times as much, so
+  // timing it too failed the bound on a loaded host while the patterns stayed fast (#929). One pattern without its `^`
+  // retries the lookahead at every start and takes about 40 s on this line, far past the bound.
   it('reads a long line in time in proportion to it', () => {
     const line = `gh ${'auth '.repeat(20_000)}x`;
+    const runs = runsOf(line, { cwd: 'C:/w', home: 'C:/u', dialect: 'bash' }).programs;
     const started = performance.now();
-    assert.deepEqual(reads(line), []);
-    assert.ok(performance.now() - started < 2_000);
+    assert.deepEqual(credentialReadFindings(line, runs), []);
+    const took = performance.now() - started;
+    assert.ok(took < 2_000, `took ${Math.round(took)} ms`);
   });
 });
