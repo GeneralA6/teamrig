@@ -116,4 +116,24 @@ describe('the loop-nudge hook meters a long turn (T3298)', () => {
     await kit.run(['hook', 'loop-nudge'], { stdin: payload({ agent_id: 'helper-1' }), transcripts: source });
     assert.equal(await alphaToday(kit), undefined);
   });
+
+  it('still hands the model its nudge when the meter or the tab lookup fails, and counts nothing', async () => {
+    const { kit, source } = await alphaTab(BUDGET_TEAM, MID_TURN_METER_BYTES);
+    await kit.files.write(TRANSCRIPT, padLine(MID_TURN_METER_BYTES) + readRun(3));
+    const broken = new BrokenTranscripts();
+    const meterFails = await kit.run(['hook', 'loop-nudge'], { stdin: payload(), transcripts: broken });
+    assert.equal(meterFails.stdout.length, 1);
+    assert.equal(await alphaToday(kit), undefined);
+    const marks = join(TEAM_HOME, 'state', 'inbox-marks.jsonl');
+    const lookupFails = await kit.run(['hook', 'loop-nudge'], { stdin: payload(), transcripts: source, files: new FaultyFiles(kit.files).fail('read', marks, systemError('EIO')) });
+    assert.equal(lookupFails.stdout.length, 1);
+    assert.equal(await alphaToday(kit), undefined);
+  });
 });
+
+/** Transcripts whose size cannot be read, so a meter run fails. */
+class BrokenTranscripts extends MemoryTranscripts {
+  override size(): Promise<number | undefined> {
+    return Promise.reject(systemError('EIO'));
+  }
+}
