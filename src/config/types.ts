@@ -322,9 +322,9 @@ export interface CommitGuardConfig {
  */
 export type SkipHooks = 'deny' | 'ask' | 'allow';
 
-/** The permission prompts teamrig's own hooks raise. */
+/** The permission prompts a team's sessions meet; teamrig's own hooks raise none (T3356). */
 export interface PromptsConfig {
-  /** What a hook does with a call it would ask the human about. */
+  /** What happens to a permission prompt Claude Code raises on its own while the team is loaded. */
   readonly hookAsks: HookAsks;
   /**
    * Whether a sanctioned route's line runs with no permission check at all while asks are refused, and a service role's
@@ -333,7 +333,7 @@ export interface PromptsConfig {
   readonly routeAllow: RouteAllow;
   /**
    * How many calls one service role lets run with no permission check in 24 hours (T2984, security condition C6), so a
-   * holder steered by outside text closes or comments only so much; past it, the role's next call asks the owner.
+   * holder steered by outside text closes or comments only so much; past it, the role's next call is refused.
    */
   readonly serviceRoleDailyCap: number;
 }
@@ -347,12 +347,12 @@ export interface PromptsConfig {
 export type RouteAllow = 'on' | 'off';
 
 /**
- * A call a teamrig hook would ask the human about (a push to a protected branch or one it cannot read, an ad-hoc
- * package run, an install it cannot vet, a git command without hooks, a call that would print a secret, a helper over
- * the budget, as their own keys set): `ask` raises the permission prompt; `refuse` refuses it instead, its reason telling the session to record the step as waiting for
- * the owner's approval and take its next task, so no prompt holds a session while nobody is there to answer it.
- * `refuse` also answers the prompts Claude Code raises on its own, per case (hooks/prompt-refuse.ts): a line that
- * provably only reads runs, a line teamrig's rules give a rerun form is refused quoting it, anything else is refused.
+ * What happens to a permission prompt Claude Code raises on its own while the team is loaded. teamrig's own hooks never
+ * ask a person, whatever this says (owner order T3356): what one would ask about is refused with the route to take and
+ * how to ask for a rule change (hooks/permission.ts). `refuse`, the default since T3356, answers Claude Code's own
+ * prompts per case (hooks/prompt-refuse.ts): a line that provably only reads runs, a line teamrig's rules give a rerun
+ * form is refused quoting it, anything else is refused, so no prompt holds a session while nobody is there to answer
+ * it. `ask` lets those prompts open; it suits only a team with a person watching every tab.
  */
 export type HookAsks = 'ask' | 'refuse';
 

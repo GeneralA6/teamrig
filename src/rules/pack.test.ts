@@ -241,7 +241,7 @@ describe('renderCorePack', () => {
   it('states what the push guard does with a push to a protected branch', () => {
     const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard }), COMMAND, 'win32', RULES_CLOCK);
     const keys = String.raw`\[pushGuard\]`;
-    const routed = ' A route refused, blocked or prompting unexpectedly goes to the lead, never routed around or handed off.';
+    const routed = ' A refused or blocked route waits on approval:owner; take your next task, never route around it or hand it off.';
     assert.match(pack({}), new RegExp(String.raw`^15\. Every push to main, master is refused ${keys}\.${routed}$`, 'm'));
     assert.match(
       pack({ protectedBranches: ['release'], pushToProtected: 'allow' }),

@@ -12,7 +12,8 @@ function routeOf(id: RouteId): SanctionedRoute {
 
 describe('route allow', () => {
   it('answers only while the team refuses asks and its switch is on', () => {
-    assert.equal(routeAllowOn(DEFAULT_PROMPTS), false);
+    // T3356: asks are refused by default, so the switch is on with no prompts key.
+    assert.equal(routeAllowOn(DEFAULT_PROMPTS), true);
     assert.equal(routeAllowOn({ hookAsks: 'refuse', routeAllow: 'on', serviceRoleDailyCap: 10 }), true);
     assert.equal(routeAllowOn({ hookAsks: 'refuse', routeAllow: 'off', serviceRoleDailyCap: 10 }), false);
     assert.equal(routeAllowOn({ hookAsks: 'ask', routeAllow: 'on', serviceRoleDailyCap: 10 }), false);
