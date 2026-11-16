@@ -13,7 +13,8 @@ import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
  * reason), its body replaced (issue edit), its labels: the read of one label of a repository, labels added to one
  * issue, one label taken off it (issue label), the read of one issue, for the id a duplicate close names (issue close
  * --duplicate-of), logins added to one issue's assignees, the read of one user, for the case GitHub spells its login
- * in, and the read of whether one login may be assigned (the status push), one login taken off one issue's
+ * in, the read of whether one login may be assigned (the status push) or assigned to one issue (issue assign, which
+ * also reads the issue for its labels), one login taken off one issue's
  * assignees (a claim the sync made that ran out), the creation of one of the labels teamrig makes (the status push
  * and issue label), one sub-issue or blocked-by link added (issue links), and `issue watch`'s two probes,
  * conditional reads that tell whether a repository changed (isWatchProbe), the read of one failed Actions job's log
@@ -126,7 +127,7 @@ export function issueCloseArgs(target: IssueNumber, reason?: CloseReason, duplic
   return ['api', `repos/${target.repo}/issues/${target.number}`, '-X', 'PATCH', RAW_FIELD, 'state=closed', ...why, ...of];
 }
 
-/** The command line that reads one issue or pull request, for its id. */
+/** The command line that reads one issue or pull request, for its id or its labels. */
 export function issueReadArgs(target: IssueNumber): string[] {
   return ['api', `repos/${target.repo}/issues/${target.number}`, '-X', 'GET'];
 }
@@ -173,6 +174,14 @@ export function issueUnassignArgs(target: IssueNumber, login: string): string[] 
 /** The command line that reads whether `login` may be assigned in `repo`, which fails when it may not. */
 export function assigneeReadArgs(repo: string, login: string): string[] {
   return ['api', `repos/${repo}/assignees/${login}`];
+}
+
+/**
+ * The command line that reads whether `login` may be assigned to one issue or pull request, which fails when it may
+ * not: GitHub takes one with access to the repository, and also one who took part in that item (issue assign).
+ */
+export function issueAssigneeReadArgs(target: IssueNumber, login: string): string[] {
+  return ['api', `repos/${target.repo}/issues/${target.number}/assignees/${login}`];
 }
 
 /** The command line that reads one GitHub user, whose `login` is spelled in the case GitHub keeps; it fails when there is no such user. */
@@ -367,6 +376,18 @@ const ASSIGNEE_PATH = /^repos\/([^/]+\/[^/]+)\/assignees\/([^/]+)$/;
  */
 export function isAssigneeRead(args: readonly string[]): boolean {
   const match = ASSIGNEE_PATH.exec(args[1] ?? '');
+  return args[0] === 'api' && args.length === 2 && match !== null && REPO_NAME.test(match[1] ?? '') && isLogin(match[2] ?? '');
+}
+
+/** `repos/<owner>/<name>/issues/<number>/assignees/<login>`: whether one login may be assigned to one issue. */
+const ISSUE_ASSIGNEE_PATH = /^repos\/([^/]+\/[^/]+)\/issues\/[1-9][0-9]{0,9}\/assignees\/([^/]+)$/u;
+
+/**
+ * True for `gh api repos/<owner>/<name>/issues/<number>/assignees/<login>` and nothing more: a read, gh's default
+ * GET, of whether the login may be assigned to that issue or pull request. A method or field is refused.
+ */
+export function isIssueAssigneeRead(args: readonly string[]): boolean {
+  const match = ISSUE_ASSIGNEE_PATH.exec(args[1] ?? '');
   return args[0] === 'api' && args.length === 2 && match !== null && REPO_NAME.test(match[1] ?? '') && isLogin(match[2] ?? '');
 }
 
@@ -739,6 +760,7 @@ export function isAllowedGh(args: readonly string[]): boolean {
     isIssueAssign(args) ||
     isIssueUnassign(args) ||
     isAssigneeRead(args) ||
+    isIssueAssigneeRead(args) ||
     isUserRead(args) ||
     isLabelCreate(args) ||
     isLinkAdd(args) ||

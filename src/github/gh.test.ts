@@ -18,6 +18,7 @@ import {
   isAssigneeRead,
   isCommentsRead,
   isIssueAssign,
+  isIssueAssigneeRead,
   isIssueBodyEdit,
   isIssueClose,
   isIssueComment,
@@ -37,6 +38,7 @@ import {
   isReviewRead,
   isWatchProbe,
   issueAssignArgs,
+  issueAssigneeReadArgs,
   issueBodyArgs,
   issueCloseArgs,
   issueCommentArgs,
@@ -540,6 +542,26 @@ describe('the assignee calls (T2999)', () => {
       ['api', 'repos/../web/assignees/octocat'],
     ]) {
       assert.equal(isAssigneeRead(args), false, args.slice(1).join(' '));
+    }
+  });
+
+  it('takes the one-issue assignee read issueAssigneeReadArgs builds, and refuses a method, a field or another shape', () => {
+    const read = issueAssigneeReadArgs(ISSUE, 'OctoCat');
+    assert.deepEqual(read, ['api', 'repos/acme/web/issues/7/assignees/OctoCat']);
+    assert.ok(isIssueAssigneeRead(read) && isAllowedGh(read) && !isAssigneeRead(read));
+    for (const args of [
+      ['api', 'repos/acme/web/issues/7/assignees/octocat', '-X', 'GET'],
+      ['api', 'repos/acme/web/issues/7/assignees/octocat', '-X', 'DELETE'],
+      ['api', 'repos/acme/web/issues/7/assignees/octocat', '-f', 'x=1'],
+      ['api', 'repos/acme/web/issues/7/assignees/..'],
+      ['api', 'repos/acme/web/issues/7/assignees/octo%2Fcat'],
+      ['api', 'repos/acme/web/issues/7/assignees/octocat/x'],
+      ['api', 'repos/acme/web/issues/0/assignees/octocat'],
+      ['api', 'repos/acme/web/issues/x/assignees/octocat'],
+      ['api', 'repos/../web/issues/7/assignees/octocat'],
+    ]) {
+      assert.equal(isIssueAssigneeRead(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
     }
   });
 });
