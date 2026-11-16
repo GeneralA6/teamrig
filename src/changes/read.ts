@@ -1,3 +1,4 @@
+import { printable } from '../core/printable.ts';
 import type { ChangeEntry, ChangeKind, ChangePoint, ChangeQuery, ChangeSource, ChangeSourceDeps, Release, ResolvedPoint } from './source.ts';
 
 /** What `teamrig changes` asks: the range, the narrowing, and the sources the config picks. */
@@ -121,6 +122,22 @@ function withoutRepeats(bySource: readonly (readonly ChangeEntry[])[]): ChangeEn
   return kept;
 }
 
+/**
+ * An entry as it may be shown: a commit subject, a note or a release's text comes from whoever wrote it, an outside
+ * contributor too, so every control character and bidi mark in it is escaped (core/printable.ts), and it cannot send
+ * escape sequences to the reader's terminal nor add lines of its own. The text keeps its own lines, each escaped.
+ */
+function shownEntry(entry: ChangeEntry): ChangeEntry {
+  return {
+    ...entry,
+    area: printable(entry.area),
+    text: entry.text.split('\n').map(printable).join('\n'),
+    action: entry.action === undefined ? undefined : printable(entry.action),
+    files: entry.files.map(printable),
+    refs: entry.refs.map(printable),
+  };
+}
+
 function byShowOrder(a: ChangeEntry, b: ChangeEntry): number {
   if (a.version !== b.version) {
     return a.version === undefined ? -1 : b.version === undefined ? 1 : compareVersions(b.version, a.version);
@@ -190,9 +207,9 @@ export async function readChanges(deps: ChangeSourceDeps, registry: readonly Cha
     since,
     until,
     read: sources.map((source) => source.id),
-    entries: withoutRepeats(bySource).sort(byShowOrder),
-    warnings: reads.flatMap(({ source, read }) => (read.kind === 'read' ? read.warnings.map((warning) => `${source.id}: ${warning}`) : [])),
-    failed: reads.flatMap(({ source, read }) => (read.kind === 'failed' ? [{ source: source.id, error: read.error }] : [])),
+    entries: withoutRepeats(bySource).map(shownEntry).sort(byShowOrder),
+    warnings: reads.flatMap(({ source, read }) => (read.kind === 'read' ? read.warnings.map((warning) => `${source.id}: ${printable(warning)}`) : [])),
+    failed: reads.flatMap(({ source, read }) => (read.kind === 'failed' ? [{ source: source.id, error: printable(read.error) }] : [])),
     releases,
   };
 }
