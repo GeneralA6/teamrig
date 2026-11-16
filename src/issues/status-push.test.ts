@@ -11,6 +11,8 @@ import {
   hourPushWrites,
   isGoal,
   issueGoal,
+  onePushPlan,
+  planIssue,
   planPush,
   PUSH_WRITES_PER_HOUR,
   PUSH_WRITES_PER_RUN,
@@ -324,6 +326,37 @@ describe('planPush (T2682)', () => {
     );
     assert.deepEqual(plan.deferred, []);
     assert.deepEqual(planPush(REPO, issues, tasks).heldCloses, []);
+  });
+});
+
+describe('planIssue (T3169)', () => {
+  const target = { repo: REPO, number: 922 };
+
+  it('plans one issue as the repository push would: its status label, an assign of a scheduled task, a close of an ended one', () => {
+    const logins = sessionLogins({ octocat: 'bravo' });
+    const verifying = holding('T1', 922, { owner: 'bravo', status: 'verifying' });
+    const plan = planIssue(target, verifying, { state: 'open', labels: ['bug', 'status:open'], assignees: [] }, logins);
+    assert.deepEqual(plan, { kind: 'change', change: { target, task: 'T1', status: 'verifying', add: ['status:in review'], remove: ['status:open'], close: undefined, assign: 'octocat' } });
+    assert.deepEqual(planPush(REPO, [testHostIssue(922, { labels: ['bug', 'status:open'] })], [verifying], undefined, logins).changes, plan.kind === 'change' ? [plan.change] : []);
+    const done = planIssue(target, holding('T1', 922, { status: 'done' }), { state: 'open', labels: ['status:in review'], assignees: [] });
+    assert.deepEqual(done, { kind: 'change', change: { target, task: 'T1', status: 'done', add: [], remove: ['status:in review'], close: 'completed' } });
+  });
+
+  it('leaves an issue showing its status unchanged, and a closed one whose task is active closed', () => {
+    assert.deepEqual(planIssue(target, holding('T1', 922, { status: 'waiting' }), { state: 'open', labels: ['status:waiting'], assignees: ['x'] }), { kind: 'unchanged' });
+    assert.deepEqual(planIssue(target, holding('T1', 922, { status: 'waiting' }), { state: 'closed', labels: [], assignees: [] }), { kind: 'closed-active' });
+  });
+
+  it('makes a plan that sends one change alone', () => {
+    const change: IssueChange = { target, task: 'T1', status: 'open', add: ['status:open'], remove: [], close: undefined };
+    assert.deepEqual(onePushPlan(REPO, change), { repo: REPO, changes: [change], deferred: [], heldCloses: [], unchanged: 0, closedActive: [], keptOpen: [], unlisted: [], shared: [] });
+  });
+
+  it('leaves open an issue a finished task holds that is taken outside the team, or a design issue, as the repository push does', () => {
+    const done = holding('T1', 922, { status: 'done' });
+    assert.deepEqual(planIssue(target, done, { state: 'open', labels: ['status:in progress'], assignees: ['outsider'] }), { kind: 'kept-open', why: { kind: 'taken', assignees: ['outsider'] } });
+    assert.deepEqual(planIssue(target, done, { state: 'open', labels: ['design'], assignees: [] }), { kind: 'kept-open', why: { kind: 'design' } });
+    assert.equal(planIssue(target, done, { state: 'open', labels: [], assignees: ['acme'] }).kind, 'change', 'the repository owner is the team');
   });
 });
 
