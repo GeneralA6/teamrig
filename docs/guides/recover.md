@@ -53,7 +53,7 @@ teamrig restore run      # reopen the sessions the last shutdown killed
   first failure of each expiry posts one line to that chat, naming the tab and the time. Check it with
   `teamrig page test`, which posts one line marked TEST; `teamrig doctor` flags a webhook that gives no URL.
 - A tab held on a permission prompt: a tab that has waited 10 minutes on a prompt nobody answered pages the same
-  chat once, naming the tab, since when and the first words of the command, and `teamrig check` lists it as
+  chat once, naming the tab, since when, the tool and the program it runs (no argument, which may hold a secret), and `teamrig check` lists it as
   PROMPT-HELD for the lead until someone answers the prompt in that tab.
 - After a passing API error: a turn that ends on `server_error` or `overloaded` (once Claude Code's own retries within
   the turn failed) is sent on by itself, 1 minute later, then 5 and 15 minutes after that, each with an
