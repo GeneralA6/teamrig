@@ -196,6 +196,11 @@ export function oneCommitOf(switches: ReadonlySet<string>): { readonly oneCommit
   return switches.has('one-commit') ? { oneCommit: true } : {};
 }
 
+/** `--drop-approval`: the set gives up the approval the task holds, for a new ask; nothing without it. */
+export function dropApprovalOf(switches: ReadonlySet<string>): { readonly dropApproval?: boolean } {
+  return switches.has('drop-approval') ? { dropApproval: true } : {};
+}
+
 /** The goals `--goals` names: its tags, or none at all, said with `none` (T1730). */
 export interface GoalsSaid {
   readonly goals: readonly string[];
