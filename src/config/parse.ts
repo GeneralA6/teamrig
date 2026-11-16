@@ -759,6 +759,7 @@ function parseGithub(read: ConfigReader, raw: JsonRecord, sessions: readonly str
     followMax: read.integer(raw, 'followMax', 'github', DEFAULT_GITHUB.followMax, CONFIG_LIMITS.githubFollowMax),
     ...readGithubWatcher(read, raw, sessions),
     ...(issueAtAdd === undefined ? {} : { issueAtAdd }),
+    stamp: read.boolean(raw, 'stamp', 'github', DEFAULT_GITHUB.stamp),
   };
 }
 

@@ -352,7 +352,7 @@ Each text teamrig posts (a comment, a close comment, a claim reply, a migrated i
 one-line footer, `Made with teamrig <version>` linking to the project, then a hidden `<!-- teamrig-stamp -->` marker.
 The marker is how a later write finds the footer: posting a stamped text again, or editing a body read back with its
 footer, keeps one footer at the current version. A text the footer would push past the 65,536 characters GitHub holds
-is posted without it.
+is posted without it. A team that wants no footer sets `github.stamp` to false.
 
 ```sh
 teamrig issue comment acme/web#7 --body "Fixed in #9, thank you."

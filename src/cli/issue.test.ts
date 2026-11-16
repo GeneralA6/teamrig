@@ -25,6 +25,14 @@ describe('teamrig issue comment', () => {
     assert.equal(kit.files.get(EVENTS_PATH), log);
   });
 
+  it('posts the comment as given, with no footer, for a team that turned github.stamp off', async () => {
+    const kit = new CliHarness({ ...TEAM, github: { repos: ['acme/web'], stamp: false } });
+    const gh = new FakeGh();
+    const result = await kit.run(['issue', 'comment', 'acme/web#612', '--body', 'Thank you! Merged as #624.'], { ...AS_LEAD, gh });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.deepEqual(gh.ran.map((request) => request.args.at(-1)), ['body=Thank you! Merged as #624.']);
+  });
+
   it('refuses, running no gh, a caller not on the team, a repository not listed, a bad target, and a body that is empty, secret or names a task id', async () => {
     const kit = new CliHarness(GITHUB_TEAM);
     const gh = new FakeGh();

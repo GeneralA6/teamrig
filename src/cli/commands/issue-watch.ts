@@ -212,7 +212,7 @@ async function probeRound(
   config: KitConfig,
   marks: ReadonlyMap<string, WatchMarks>,
 ): Promise<{ readonly round: ProbeRound; readonly pending: ReadonlyMap<string, WatchMarks> }> {
-  const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns));
+  const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp);
   const pending = new Map<string, WatchMarks>();
   let failed = false;
   for (const repo of config.github.repos) {

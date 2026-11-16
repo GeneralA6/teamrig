@@ -1419,6 +1419,11 @@
           "type": "boolean",
           "default": false
         },
+        "stamp": {
+          "description": "Whether each text teamrig posts to GitHub (a comment, a close comment, a claim reply, a migrated issue, a replaced body) ends with a one-line footer naming teamrig, its version and a link to the project, then a hidden marker that keeps a rerun or an edit to one footer. On by default; false posts the text as given.",
+          "type": "boolean",
+          "default": true
+        },
         "similarThreshold": {
           "description": "The score, from 0 to 1, at which a mirrored issue counts as a duplicate candidate of a new one: the cosine of their TF-IDF word vectors. Higher lists fewer, closer candidates.",
           "type": "number",

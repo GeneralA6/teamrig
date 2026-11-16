@@ -227,5 +227,5 @@ function hostAfter(checked: CheckedRepo, runtime: CliRuntime, posted: Posted | u
     runtime.out.stdout(`OFF ${ENV.github}=${GITHUB_OFF} turns GitHub off on this machine; nothing was written`);
     return undefined;
   }
-  return hostOf(kind, runtime, scanner);
+  return hostOf(kind, runtime, scanner, config.github.stamp);
 }
