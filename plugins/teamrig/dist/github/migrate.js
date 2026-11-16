@@ -1,4 +1,5 @@
 import { isRecord } from "../core/guards.js";
+import { privateShapeIn } from "../core/private-shapes.js";
 import { SecretScanner } from "../core/secrets.js";
 import { taskIdIn } from "../issues/posted.js";
 import { ACTIVE_STATUSES, ISSUE_REF_PREFIX } from "../register/model.js";
@@ -14,6 +15,14 @@ import { ACTIVE_STATUSES, ISSUE_REF_PREFIX } from "../register/model.js";
 const PRIORITY_LABELS = ['p1', 'p2', 'p3'];
 /** A row's kind of work, and the GitHub label each one gets: a bug stays `bug`, a task is an `enhancement`. */
 const TYPE_LABELS = { bug: 'bug', task: 'enhancement' };
+/** The priority label of a task's priority: p0 and p1 are `p1`, the sync's highest, p2 is `p2`, any lower `p3`. */
+export function priorityLabelOf(priority) {
+    return priority <= 1 ? 'p1' : priority === 2 ? 'p2' : 'p3';
+}
+/** The labels an issue gets: its kind of work, then its priority. */
+export function issueLabels(type, priority) {
+    return [TYPE_LABELS[type], priority];
+}
 /** The keys an issue row holds, and no other. */
 const ISSUE_KEYS = new Set(['id', 'decision', 'repo', 'type', 'priority', 'title', 'body']);
 /** The keys a row that keeps its task local holds, and no other. */
@@ -104,26 +113,42 @@ function issueRow(raw, id, scanner) {
     if (label === undefined) {
         return { ok: false, error: `${id}: priority is not one of ${PRIORITY_LABELS.join(', ')}` };
     }
+    const text = publicIssueText(id, title, body, scanner);
+    if (!text.ok) {
+        return text;
+    }
+    return { ok: true, value: { decision: 'issue', id, repo: repo.trim().toLowerCase(), type, priority: label, ...text.value } };
+}
+/**
+ * The checks every issue teamrig opens passes, named after `who` (a task id, or the new task): a one-line title of
+ * 1 to {@link MAX_TITLE} characters, a body, no secret shape and no task id, since a task id is the team's own.
+ */
+export function publicIssueText(who, title, body, scanner) {
     const shown = title.trim();
     if (shown === '' || shown.length > MAX_TITLE || /[\r\n]/u.test(shown)) {
-        return { ok: false, error: `${id}: the title is one line of 1 to ${MAX_TITLE} characters` };
+        return { ok: false, error: `${who}: the title is one line of 1 to ${MAX_TITLE} characters` };
     }
     if (body.trim() === '') {
-        return { ok: false, error: `${id}: the body is empty` };
+        return { ok: false, error: `${who}: the body is empty` };
     }
-    const secret = scanner.refusal(`${id}'s title or body`, `${shown}\n${body}`);
+    const secret = scanner.refusal(`${who}'s title or body`, `${shown}\n${body}`);
     if (secret !== undefined) {
         return { ok: false, error: secret };
     }
+    // The same private-data check every other post runs: an issue opened at add has no preview a reviewer reads first.
+    const shape = privateShapeIn(`${shown}\n${body}`);
+    if (shape !== undefined) {
+        return { ok: false, error: `${who}'s title or body holds private data (${shape.description}): take it out, as a post may be read by anyone` };
+    }
     const named = taskIdIn(`${shown}\n${body}`);
     if (named !== undefined) {
-        return { ok: false, error: `${id}: the title or body names the task id ${named}: a task id is the team's own, so a posted issue shows none (link issues by #number)` };
+        return { ok: false, error: `${who}: the title or body names the task id ${named}: a task id is the team's own, so a posted issue shows none (link issues by #number)` };
     }
-    return { ok: true, value: { decision: 'issue', id, repo: repo.trim().toLowerCase(), type, priority: label, title: shown, body: body.trim() } };
+    return { ok: true, value: { title: shown, body: body.trim() } };
 }
 /** The labels an issue row's issue gets: its kind of work, then its priority. */
 export function rowLabels(row) {
-    return [TYPE_LABELS[row.type], row.priority];
+    return issueLabels(row.type, row.priority);
 }
 /**
  * What the rows do to the team's tasks. An issue row opens an issue only for a live task holding no issue ref, in

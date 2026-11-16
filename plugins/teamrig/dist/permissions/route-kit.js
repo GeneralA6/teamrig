@@ -1,5 +1,5 @@
 import { REST_MARKER } from "../cli/args.js";
-import { REGISTER_COMMANDS } from "../automode/lines.js";
+import { REGISTER_COMMANDS, REGISTER_POSTING_FLAGS } from "../automode/lines.js";
 import { KIT_NAME } from "../core/home.js";
 import { placeProgram } from "../exec/client-launch.js";
 import { readable } from "../slash/plan.js";
@@ -11,8 +11,8 @@ export const KIT_SHAPES = {
     execRequest: { commands: ['exec request'], options: ['session', 'file'], positionals: 'none' },
     /** Narrower than the CLI: no `--base`. */
     worktreeRemove: { commands: ['worktree remove'], options: ['session', 'delete-branch', 'dry-run'], positionals: 'one' },
-    /** The commands every session runs on the team's own files. */
-    register: { commands: REGISTER_COMMANDS, options: undefined, positionals: 'any' },
+    /** The commands every session runs on the team's own files; an add that posts its GitHub issue is none. */
+    register: { commands: REGISTER_COMMANDS, options: undefined, refusedOptions: REGISTER_POSTING_FLAGS, positionals: 'any' },
 };
 /** A path from the root of a drive or of the file system, as bash or Windows writes it. */
 export const ABSOLUTE = /^(?:\/|[A-Za-z]:[\\/])/;
@@ -29,6 +29,9 @@ export async function matchesKit(shape, words, context) {
     const options = [...parsed.flags.keys(), ...parsed.switches];
     const allowed = shape.options;
     if (allowed !== undefined && !options.every((name) => allowed.includes(name))) {
+        return false;
+    }
+    if (shape.refusedOptions?.some((name) => options.includes(name)) === true) {
         return false;
     }
     return positionalsFit(shape.positionals, parsed.positionals) && context.ownClient(program);

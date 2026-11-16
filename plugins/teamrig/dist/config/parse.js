@@ -471,6 +471,7 @@ function parseGithub(read, raw, sessions) {
         }
         repos.push(key);
     }
+    const issueAtAdd = readIssueAtAdd(read, raw, repos);
     return {
         repos,
         owners: readGithubOwners(read, read.section(raw, 'owners', 'github'), sessions),
@@ -482,7 +483,17 @@ function parseGithub(read, raw, sessions) {
         acceptLabel: read.string(raw, 'acceptLabel', 'github', DEFAULT_GITHUB.acceptLabel, shortLine(GITHUB_LABEL_MAX_LENGTH)),
         similarThreshold: read.number(raw, 'similarThreshold', 'github', DEFAULT_GITHUB.similarThreshold, CONFIG_LIMITS.similarThreshold),
         ...readGithubWatcher(read, raw, sessions),
+        ...(issueAtAdd === undefined ? {} : { issueAtAdd }),
     };
+}
+/** `github.issueAtAdd`: unset, or one of `repos` in lowercase; any other repository is reported and reads as unset. */
+function readIssueAtAdd(read, raw, repos) {
+    const repo = read.optionalString(raw, 'issueAtAdd', 'github')?.trim().toLowerCase();
+    if (repo !== undefined && !repos.includes(repo)) {
+        read.report('github.issueAtAdd', `${describe(repo)} is not one of github.repos`);
+        return undefined;
+    }
+    return repo;
 }
 /** Below this, a probe every few seconds would spend gh starts for nothing GitHub shows that fast. */
 export const MIN_PROBE_SECONDS = 30;
