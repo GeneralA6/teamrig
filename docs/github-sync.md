@@ -267,9 +267,11 @@ is woken with why.
 ## Answer times
 
 Each sync that writes (`--yes` or the automatic one) also times how long each open issue has waited for an answer of
-yours, so nobody outside waits unseen. An issue waits from the first post by someone outside the repository after your
-last reply (a member's, owner's or collaborator's post counts as yours; a bot's counts as nobody's), so a "any news?"
-follow-up does not restart the wait. The target depends on the issue:
+yours, so nobody outside waits unseen. An issue waits from the first post by someone outside the team after your last
+reply, so a "any news?" follow-up does not restart the wait. A post counts as yours when its author is a login of
+`github.owners` or the account that owns the repository; an outside contributor given collaborator access still
+waits on you. A team whose `github.owners` names no one counts every member's, owner's and collaborator's post as
+its own. A bot's post counts as nobody's. The target depends on the issue:
 
 | Issue | Answer within |
 | --- | --- |
