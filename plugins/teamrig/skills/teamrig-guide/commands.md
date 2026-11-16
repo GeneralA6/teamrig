@@ -132,6 +132,11 @@ Flags:
   and any start past `focus.wip.maxInProgress` tasks in progress. A reopen of a verifying or done task is never held,
   as its owner is finishing started work; a wait or a dropped task going back to `in-progress` is held like a first
   start. An expedite task and a task the owner ordered are never held.
+- `--drop-approval`: gives up the approval a leader gave the task. A set that would clear it before its step ends
+  (any status but `verifying`, `done` or `dropped`, unless it holds the approval behind a task or a time) is refused
+  without it, naming the approval and its sha, since a merge waiting on it would be refused too: record progress with
+  `teamrig update T<id> --note "..."` instead. Say it only for a new ask, such as a new head; on a set that drops no
+  approval it is refused.
 - `--evidence <proof>`: required for `done`: a commit, test count, path or number that proves it. Evidence
   already on the task counts.
 - `--watch "<what a sighting shows>"`: allowed only with `done`, and needs evidence (given or already on the task)
@@ -505,6 +510,9 @@ new one (`--waits approval:<lead>,task:T<id>`): that keeps the approval, and `ch
 new wait clears, so merge then. Setting the same waits again keeps the approval too, say to log a refused merge,
 unless the note names another commit than the approval's: that asks anew, as adding a decision or another approval
 does, and a new head always needs one, since `ship.ts merge` takes only a head the approval's note names.
+Any set before the step ends (a status but `verifying`, `done` or `dropped`) that would clear the approval, a new
+head's ask included, would leave a merge waiting on it refused, so `set` refuses it: record progress with
+`teamrig update T<id> --note "..."`, or add `--drop-approval` to give the approval up for a new ask.
 Only the lead answers (or a sub-lead above the task's owner, or the security reviewer, `roles.securityReviewer`, on
 a task not its own), only a task waiting on its approval, always with a note; an approval of the owner's stays the
 owner's. The same answer clears a review hold or a gate hold that `teamrig merge` made on the task's branch
