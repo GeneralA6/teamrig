@@ -37,6 +37,10 @@ the rules that apply on every turn, and the project skills in `.claude/skills/` 
   commit past 400 changed non-test lines or 15 non-test files carries a `Large-commit: <reason>` line saying why it
   cannot be split; these are the limits teamrig itself applies to a team's pushes.
 - **Docs in the same pull request** as the change they describe, so `main` never documents what it does not do.
+- **Every program teamrig starts is hidden**: each `spawn`, `spawnSync`, `execFile` or `execFileSync` passes
+  `windowsHide: true`. A queue run in the background has no console, so on Windows a program it starts otherwise opens
+  a terminal tab of its own. A call whose window is the point says so on the line above it (`// Shown on purpose:
+  <why>`); `src/core/hidden-children.test.ts` holds both.
 - **Typed code with no casts**: no `any`, no `as unknown as`; narrow `unknown` with a type guard.
 - **The why in plain words, where the reader finds it**: a comment says why the code is as it is, with a task or issue
   id only as a trace and never a path outside the repo; a pull request that settles a design question fills in the
