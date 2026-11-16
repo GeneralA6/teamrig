@@ -33,6 +33,8 @@ description: Land a finished teamrig change through small signed commits, a dist
 
 ## Traps
 
+- Queue a `tools/ship` run without `--merge` as `--kind test`, and only a `--merge` run as `--kind ship`: the queue
+  refuses a run whose kind does not fit, as only a merge moves main and holds the host's one ship slot.
 - Main moved while you worked: the merge catches the branch up itself when the version raise and the dist each sit
   in a commit of their own (`tools/ship/merge.ts`). When it refuses, rebase onto `origin/main` by hand and
   set the version raise again from main's version.
