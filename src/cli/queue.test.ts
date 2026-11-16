@@ -1394,6 +1394,16 @@ describe("teamrig queue refuses a waiting ship only when the code its tool runs 
     }
   });
 
+  it('refuses it when the checkout moved back to a main before its pin, on main\'s history though it is', async () => {
+    const { kit, steps } = harness(SHIPPING);
+    await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
+    const { git, sleep } = movedTwice(kit, ['src/app.ts'], 'b0');
+    git.ancestry.delete('base>b0');
+    git.ancestry.add('b0>base');
+    const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
+    assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [EXIT.refused, `REFUSED ${movedFrom('')}`, []]);
+  });
+
   it('refuses it when the checkout it moved to has a change', async () => {
     const { kit, steps } = harness(SHIPPING);
     await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));

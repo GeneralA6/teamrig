@@ -259,12 +259,12 @@ export function toolCodeAt(git: MergeGit, top: string, ref: string, tool: string
  * The files of the code a pinned tool runs that differ between its pin and `head`, a later commit of main's history its
  * clean checkout moved to while the step waited (T3419): none when the tool runs the same code, so a main that moved on
  * without touching it refuses no waiting ship. The code is what the tool runs at either commit, so a file it stopped
- * loading counts too. Undefined when that cannot be told (`head` off main's history, a read git
+ * loading counts too. Undefined when that cannot be told (`head` off main's history or not after the pin, a read git
  * did not answer), so the step is refused as a changed tool.
  */
 function toolCodeChangeOf(git: MergeGit, state: ToolState, tool: string, pinned: string, head: string): readonly string[] | undefined {
   const path = pathInCheckout(state.top, tool);
-  if (path === undefined || !git.isAncestor(state.top, head, state.mainRef)) {
+  if (path === undefined || !git.isAncestor(state.top, head, state.mainRef) || !git.isAncestor(state.top, pinned, head)) {
     return undefined;
   }
   const before = toolCodeAt(git, state.top, pinned, path);
