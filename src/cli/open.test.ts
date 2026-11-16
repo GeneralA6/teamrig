@@ -11,7 +11,7 @@ import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
-import { MeetingStore } from '../meeting/state.ts';
+import { type Meeting, MeetingStore } from '../meeting/state.ts';
 import { SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CLAUDE_SESSION, CliHarness, CONFIG_PATH, KIT, SKILLS_DIR, TEAM, TEAM_HOME, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
@@ -72,7 +72,7 @@ describe('teamrig open', () => {
   });
 
   describe('focus (T2510)', () => {
-    const OPEN_MEETING = { startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: null, since: null, carried: [], kind: 'daily' };
+    const OPEN_MEETING: Meeting = { startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: null, since: null, carried: [], kind: 'daily' };
 
     it('gives the new tab the focus when a person typed open outside any meeting', async () => {
       const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });

@@ -124,7 +124,9 @@ describe('the kind of meeting a start opens', () => {
   it("counts the day on the team's clock", () => {
     const evening: Meeting = { ...OPEN, startedAt: '2030-01-08T20:00:00.000Z', endedAt: '2030-01-08T20:30:00.000Z' };
     const now = Date.parse('2030-01-08T22:30:00.000Z');
+    const jerusalem = TimeZone.of('Asia/Jerusalem');
+    assert.ok(jerusalem, 'the system knows Asia/Jerusalem');
     assert.equal(startingKindOf(phaseOf(evening, now), now, UTC), 'extra');
-    assert.equal(startingKindOf(phaseOf(evening, now), now, new TimeZone('Asia/Jerusalem')), 'daily', 'past midnight on its clock');
+    assert.equal(startingKindOf(phaseOf(evening, now), now, jerusalem), 'daily', 'past midnight on its clock');
   });
 });
