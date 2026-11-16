@@ -152,6 +152,15 @@ export const IDLE_MODES = ['off', 'dry-run', 'on'];
 export function isIdleMode(value) {
     return IDLE_MODES.some((mode) => mode === value);
 }
+/**
+ * Which leads the idle pass never closes for being quiet: `root`, the lead of the tree's root team alone (a child
+ * team's lead and a sub-lead close like any session once nothing waits on them and no session they lead is open), or
+ * `all`, every team's lead (T3387).
+ */
+export const IDLE_LEADER_KEEPS = ['root', 'all'];
+export function isIdleLeaderKeep(value) {
+    return IDLE_LEADER_KEEPS.some((keep) => keep === value);
+}
 /** What the WIP rule does to a start it holds (`focus.wip.mode`): refuse it, let it through with a warning, or nothing. */
 export const WIP_MODES = ['refuse', 'warn', 'off'];
 export function isWipMode(value) {

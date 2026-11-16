@@ -11,6 +11,8 @@ import { headroomOf } from "./headroom.js";
 import { closableText, idleFactsOf, idleVerdictOf } from "./idle-check.js";
 import { RefusedError } from "./runtime.js";
 import { installStateOf, settleWaitText } from "./settled-install.js";
+import { unseenLinesOf } from "../inbox/inbox.js";
+import { inboxDepsOf } from "./commands/inbox.js";
 /** A session the budget neither holds nor puts in quiet hours. */
 const AWAKE = { held: false, quiet: false };
 /** The session's folder; one refused holds only its own session, so the pass goes on for the rest. */
@@ -25,7 +27,7 @@ async function folderOrRefusalOf(folderOf, id) {
         throw error;
     }
 }
-/** The pass's pick: urgent lines first, the oldest first, then the most urgent top task. */
+/** The pass's pick: urgent lines first, the oldest first, then the most urgent top task, then a pile of unseen lines. */
 function byReopenOrder(a, b) {
     if (a.reopening.kind === 'asked') {
         return b.reopening.kind === 'asked' ? a.reopening.at - b.reopening.at : -1;
@@ -33,7 +35,10 @@ function byReopenOrder(a, b) {
     if (b.reopening.kind === 'asked') {
         return 1;
     }
-    return a.top === undefined || b.top === undefined ? 0 : byUrgency(a.top, b.top);
+    if (a.top === undefined || b.top === undefined) {
+        return Number(a.top === undefined) - Number(b.top === undefined);
+    }
+    return byUrgency(a.top, b.top);
 }
 /**
  * The session's rest and the least urgent priority up to `configured` that wakes it now, as `hook wake-check` weighs
@@ -87,7 +92,11 @@ export async function judgeSession(runtime, kit, config, roster, facts, id, fold
         return { kind: 'away', id };
     }
     const asks = facts.asks.get(id) ?? [];
-    const input = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, parking: parkRulesOf(config), dayStart: (await dayStartFor(runtime, { kit, config }, id, now)).at, now, zone };
+    const { reopenUnreadLines } = config.open.idle;
+    // The inbox is read only when a pile can reopen it.
+    const unseenLines = reopenUnreadLines === 0 ? 0 : (await unseenLinesOf(inboxDepsOf(runtime, kit.paths), id)).size;
+    const dayStart = (await dayStartFor(runtime, { kit, config }, id, now)).at;
+    const input = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, parking: parkRulesOf(config), dayStart, unseenLines, reopenUnreadLines, now, zone };
     const asAwake = reopenVerdict(input);
     if (asAwake.kind === 'asked') {
         return wishOf(folderOf, id, asAwake, undefined);
@@ -96,6 +105,9 @@ export async function judgeSession(runtime, kit, config, roster, facts, id, fold
     // Never asked here: a session with asks reopened for them above.
     if (reopening.kind === 'stay' || reopening.kind === 'asked') {
         return { kind: 'closed', id };
+    }
+    if (reopening.kind === 'piled') {
+        return wishOf(folderOf, id, reopening, undefined);
     }
     const [top] = reopening.tasks;
     return top === undefined ? { kind: 'closed', id } : wishOf(folderOf, id, reopening, top);
@@ -157,6 +169,8 @@ export function reopeningText(reopening, zone) {
             return urgentLinesText(reopening.asks);
         case 'handed':
             return `work handed to it since its close: ${idsText(reopening.tasks)}`;
+        case 'piled':
+            return `${reopening.lines} inbox lines it has not seen, open.idle.reopenUnreadLines being ${reopening.threshold}`;
         case 'day-start':
             return `the day's start at ${zone.clock(new Date(reopening.at))}, with work it can start: ${idsText(reopening.tasks)}`;
     }

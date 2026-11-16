@@ -1,5 +1,6 @@
 import { dirname } from 'node:path';
 import { claudeProjectsDir, findTranscript } from "../budget/discover.js";
+import { LeadTree } from "../config/lead-tree.js";
 import { KIT_NAME } from "../core/home.js";
 import { resumeVerdict } from "../hiring/rehire.js";
 import { bookedMeetingOf, MeetingSchedule } from "../meeting/schedule.js";
@@ -8,8 +9,10 @@ import { isClaudeProcess } from "../open/session-processes.js";
 import { readRunningWork } from "../refresh/running.js";
 import { RefreshStore } from "../refresh/store.js";
 import { parkRulesOf } from "../register/park.js";
+import { waitSpelling } from "../register/waits.js";
 import { lastTurnAtOf, soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES } from "../sessions/idle.js";
-import { measureSessions } from "../sessions/measure.js";
+import { leaderHoldOf, leadNeverCloses } from "../sessions/leader-hold.js";
+import { measureSessions, runningPlaces } from "../sessions/measure.js";
 import { resumeFolderOf } from "../sessions/resume-folder.js";
 import { SessionRecordStore } from "../sessions/record.js";
 import { REPLY_TAIL_BYTES } from "../turn-log/reply.js";
@@ -91,15 +94,37 @@ export async function tabActivityNow(runtime, record, project) {
     const { tail, cut } = await transcriptTailOf(runtime, last.transcript);
     return tabActivityOf(tail, cut);
 }
+/**
+ * Why `id` stays open as a leader (the lead or a sub-lead) that would otherwise close: a task waiting on its answer,
+ * or a session it leads that runs (`leaderHoldOf`); undefined for a session that leads no one, or a leader neither
+ * holds.
+ */
+function leaderHoldOfSession(config, roster, facts, id) {
+    const tree = new LeadTree(config);
+    if (!tree.isLeader(id)) {
+        return undefined;
+    }
+    const running = new Set(runningPlaces(facts.places).map((place) => place.id));
+    const ownerMarker = id === tree.lead ? config.register.ownerSource : undefined;
+    const hold = leaderHoldOf({ leader: id, tasks: facts.tasks, ownerMarker, led: tree.groupOf(id), running });
+    if (hold === undefined) {
+        return undefined;
+    }
+    if (hold.kind === 'leads') {
+        return `leads ${roster.nameOf(hold.session) ?? hold.session} (session ${hold.session}), which is running`;
+    }
+    return `has ${hold.task.id} waiting on it (${waitSpelling(hold.reason)})`;
+}
 function measuredOf(last) {
     const { changedAt } = last;
     return changedAt === undefined ? undefined : { ...last, changedAt };
 }
 /**
- * Whether `id` closes, with the checks in the order they cost: a role, open.idle.keepOpen or a started booked owner
- * meeting it is in that keeps it, not running in the host's
- * process list, work it can start within `maxPriority`, an urgent line waiting to wake it (closed, it would reopen at
- * the next pass for it), a time wait of its own ending soon, quiet too briefly since its last own transcript entry, a
+ * Whether `id` closes, with the checks in the order they cost: the delivery owner's role or a lead's that
+ * open.idle.leaders keeps, open.idle.keepOpen or a started booked owner meeting it is in that keeps it, not running in
+ * the host's process list, work it can start within `maxPriority`, an urgent line waiting to wake it (closed, it would
+ * reopen at the next pass for it), as a leader a task waiting on its answer or a session it leads that runs (T3387), a
+ * time wait of its own ending soon, quiet too briefly since its last own transcript entry, a
  * transcript in a project folder no folder `open` could resume it in has (`resumeFolderOf`: the project, or a folder
  * it ran in, which its close records), a turn not ended (under way, at a tool call, or a decision put to the person),
  * work running in the background, a last session too big or old to resume unless its refresh is ready (its reopen then
@@ -112,7 +137,8 @@ export async function idleVerdictOf(runtime, config, roster, facts, id, options)
     const label = `${roster.nameOf(id) ?? id} (session ${id})`;
     const keep = (why) => ({ kind: 'keep', why: `${label} ${why}` });
     const notRunning = 'is not running: nothing to close';
-    const kept = roster.rolesOf(id).filter((role) => role === 'lead' || role === 'deliveryOwner');
+    // A child team's lead is judged like any session unless open.idle.leaders is all: only the root's lead is kept (T3387).
+    const kept = roster.rolesOf(id).filter((role) => role === 'deliveryOwner' || (role === 'lead' && leadNeverCloses(config.open.idle, config.team)));
     if (kept.length > 0) {
         return keep(`holds the ${kept.join(' and ')} role: ${KIT_NAME} never closes it`);
     }
@@ -137,6 +163,10 @@ export async function idleVerdictOf(runtime, config, roster, facts, id, options)
     const asks = facts.asks.get(id) ?? [];
     if (asks.length > 0) {
         return keep(`has ${urgentLinesText(asks)} waiting to wake it`);
+    }
+    const hold = leaderHoldOfSession(config, roster, facts, id);
+    if (hold !== undefined) {
+        return keep(hold);
     }
     const soon = soonTimeWaitOf(tasks, id, options.maxPriority, now, zone);
     if (soon !== undefined) {
