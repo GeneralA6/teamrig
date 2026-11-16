@@ -1,7 +1,7 @@
 import type { GithubConfig } from '../config/types.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import type { IssueDraft } from '../issues/host.ts';
-import { ISSUE_REF_PREFIX } from '../register/model.ts';
+import { ISSUE_REF_PREFIX, LOCAL_REF_PREFIX } from '../register/model.ts';
 import type { Verdict } from '../register/policy.ts';
 import { issueLabels, priorityLabelOf, publicIssueText, type RowType } from './migrate.ts';
 
@@ -11,9 +11,6 @@ import { issueLabels, priorityLabelOf, publicIssueText, type RowType } from './m
  * other (or point `--ref` at an issue it has), so no task starts without its issue unless someone wrote why. Judged
  * before the task is written, so a refused add writes nothing.
  */
-
-/** The ref a task kept local holds: this, then the reason, so the reason is on the task and never posted. */
-export const LOCAL_REF_PREFIX = 'local: ';
 
 /** What an add asked about its issue, from its flags, and the task's own type and priority for the labels. */
 export interface AddIssueAsk {

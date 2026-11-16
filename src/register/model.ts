@@ -50,6 +50,12 @@ export const GITHUB_SOURCE = 'github';
 /** What every issue ref starts with; here, beside GITHUB_SOURCE, so the write policy can tell an issue ref apart. */
 export const ISSUE_REF_PREFIX = 'gh:';
 
+/**
+ * The ref of a task kept off GitHub: this, then the reason (`add --local`), so the reason is on the task and never
+ * posted. Here, beside ISSUE_REF_PREFIX, so the check can tell a task with its reason from one with neither.
+ */
+export const LOCAL_REF_PREFIX = 'local: ';
+
 /** A priority as the CLI prints and takes it: `p1`, the most urgent, `p2` and so on. */
 export function priorityText(priority: number): string {
   return `p${priority}`;
