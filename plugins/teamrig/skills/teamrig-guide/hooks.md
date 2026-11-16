@@ -1730,7 +1730,9 @@ reads `Rush on PROD: this tab sat idle 5 min with work left ... Start or continu
 top task of the goal, else its top task; the toast says the tab was poked, with the rush's goal, the idle minutes and the task, and
 the wake log marks the line `poke`. A tab gets one poke per idle stretch: none again until it has a new turn. While a
 queued step of the session runs (`teamrig queue`), the poke waits for it to end; a step only waiting in line counts as
-idle. A shell the tab runs in the background is not seen. No poke once the rush ends.
+idle. A task that a queued run of the session is for (the task id its label names), waiting or running, is passed over:
+the poke names the next task with work left, or none, since that run's end line wakes the tab anyway. A shell the tab
+runs in the background is not seen. No poke once the rush ends.
 
 ## Every session: the restore tracker
 

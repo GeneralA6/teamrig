@@ -923,7 +923,7 @@ Rushes (teamrig burst start rush): a team works one goal at full speed until a s
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `pokeAfterMinutes` | integer (1 to 120) | `5` | The poke: while a rush is on, a tab idle this many minutes since its last turn, with a task of its own it can go on with (open or in progress, not waiting) and no queued step of its own running, is woken once to start or continue its top task. A step only waiting in the queue counts as idle. One poke per idle stretch; none once the rush ends. |
+| `pokeAfterMinutes` | integer (1 to 120) | `5` | The poke: while a rush is on, a tab idle this many minutes since its last turn, with a task of its own it can go on with (open or in progress, not waiting) and no queued step of its own running, is woken once to start or continue its top task. A step only waiting in the queue counts as idle, but a task that a queued run of the session is for (the task id its label names), waiting or running, is passed over, since that run's end wakes the tab anyway. One poke per idle stretch; none once the rush ends. |
 
 ## `paths`
 
