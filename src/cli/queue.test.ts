@@ -1335,18 +1335,24 @@ describe('teamrig queue runs a ship tool only under a kind that fits it (T3414)'
 describe("teamrig queue refuses a waiting ship only when the code its tool runs changed, not when main moved on (T3419)", () => {
   /**
    * The ship tool's checkout pinned at main `base`, moved while the step waits to `b1`, a later main, with main gone on
-   * to `b2`; at `b1` the tool imports repos.ts and src/core/home.ts and reads repos.json, and `base..b1` differ in `changed`.
+   * to `b2`; at both the tool imports repos.ts and src/core/home.ts, reads repos.json, and names src/cli/main.ts in its
+   * roots file, and `base..b1` differ in `changed`.
    */
-  function movedTwice(kit: CliHarness, changed: readonly string[]): { git: FakeMergeGit; sleep: (ms: number) => Promise<void> } {
+  function movedTwice(kit: CliHarness, changed: readonly string[], to = 'b1'): { git: FakeMergeGit; sleep: (ms: number) => Promise<void> } {
     const git = shipGit();
-    git.files.set('b1:tools/ship/ship.ts', "import { profiles } from './repos.ts';\nimport { teamHome } from '../../src/core/home.ts';\n");
-    git.files.set('b1:tools/ship/repos.ts', "import { join } from 'node:path';\nexport const PROFILES_PATH = new URL('./repos.json', import.meta.url);\n");
-    git.files.set('b1:tools/ship/repos.json', '{}');
-    git.files.set('b1:src/core/home.ts', "export const teamHome = '';\n");
-    git.ancestry.add('b1>b2');
-    git.diffs.set('base..b1', changed);
+    for (const commit of ['base', to]) {
+      git.files.set(`${commit}:tools/ship/ship.ts`, "import { profiles } from './repos.ts';\nimport { teamHome } from '../../src/core/home.ts';\n");
+      git.files.set(`${commit}:tools/ship/ship.roots.json`, '{"roots": ["src/cli/main.ts"]}');
+      git.files.set(`${commit}:tools/ship/repos.ts`, "import { join } from 'node:path';\nexport const PROFILES_PATH = new URL('./repos.json', import.meta.url);\n");
+      git.files.set(`${commit}:tools/ship/repos.json`, '{}');
+      git.files.set(`${commit}:src/core/home.ts`, "export const teamHome = '';\n");
+      git.files.set(`${commit}:src/cli/main.ts`, "export {};\n");
+    }
+    git.ancestry.add(`${to}>b2`);
+    git.ancestry.add(`base>${to}`);
+    git.diffs.set(`base..${to}`, changed);
     const sleep = async (ms: number): Promise<void> => {
-      git.heads.set('/repo/ship', 'b1');
+      git.heads.set('/repo/ship', to);
       git.tracking.set('origin/main', 'b2');
       await kit.clock.sleep(ms);
     };
@@ -1364,8 +1370,8 @@ describe("teamrig queue refuses a waiting ship only when the code its tool runs 
     assert.deepEqual([result.code, steps.ran.length], [EXIT.ok, 1]);
   });
 
-  it('refuses it at its start, naming each file of the code the tool runs that changed: an import, a src file, a data file', async () => {
-    for (const changed of [['tools/ship/repos.ts'], ['src/core/home.ts', 'src/app.ts'], ['tools/ship/repos.json']]) {
+  it('refuses it at its start, naming each file of the code the tool runs that changed: an import, a src file, a data file, a root', async () => {
+    for (const changed of [['tools/ship/repos.ts'], ['src/core/home.ts', 'src/app.ts'], ['tools/ship/repos.json'], ['src/cli/main.ts'], ['tools/ship/ship.roots.json']]) {
       const { kit, steps } = harness(SHIPPING);
       await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
       const { git, sleep } = movedTwice(kit, changed);
