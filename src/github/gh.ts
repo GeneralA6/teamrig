@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import type { Env } from '../core/home.ts';
 import { endOf, type ShellEnd } from '../test-run/shell.ts';
 import type { CloseReason, IssueDraft, LabelSpec } from '../issues/host.ts';
+import { LABEL_FILE, parseLabelFile } from '../issues/label-file.ts';
 import { MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
 import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
 
@@ -384,14 +385,84 @@ export function isUserRead(args: readonly string[]): boolean {
 /** `repos/<owner>/<name>/labels`: the labels of a repository, where a POST makes one. */
 const LABELS_PATH = /^repos\/([^/]+\/[^/]+)\/labels$/u;
 
+/** The labels a repository's own label file named, as the runner read it: none for a file it has not read. */
+export type FileLabels = (repo: string) => readonly LabelSpec[];
+
 /**
  * True for the command line labelCreateArgs builds for one of the labels teamrig makes (MANAGED_LABEL_SPECS: the
- * status push's own and the design label) and nothing more: its name, colour and description word for word, in that order. So the runner makes no other label,
- * and edits or deletes none, whatever a caller passes.
+ * status push's own and the design label) and nothing more: its name, colour and description word for word, in that
+ * order. So the runner makes no other label (beside one isFileLabelCreate takes), and edits or deletes none, whatever
+ * a caller passes.
  */
 export function isLabelCreate(args: readonly string[]): boolean {
+  return labelCreateIn(args, () => MANAGED_LABEL_SPECS);
+}
+
+/**
+ * True for the command line labelCreateArgs builds for a label the repository's own label file names, as the runner
+ * read it (`fileLabels`), word for word as isLabelCreate takes a managed one. A file the runner has not read names none.
+ */
+export function isFileLabelCreate(args: readonly string[], fileLabels: FileLabels): boolean {
+  return labelCreateIn(args, fileLabels);
+}
+
+/** True for labelCreateArgs's line for one of the labels `labelsOf` gives its repository, word for word. */
+function labelCreateIn(args: readonly string[], labelsOf: FileLabels): boolean {
   const repo = LABELS_PATH.exec(args[1] ?? '')?.[1] ?? '';
-  return args[0] === 'api' && REPO_NAME.test(repo) && MANAGED_LABEL_SPECS.some((label) => sameArgs(args, labelCreateArgs(repo, label)));
+  return args[0] === 'api' && REPO_NAME.test(repo) && labelsOf(repo).some((label) => sameArgs(args, labelCreateArgs(repo, label)));
+}
+
+/** The media type GitHub answers a file's raw bytes with, rather than JSON holding them in base64. */
+const RAW_ACCEPT = 'Accept: application/vnd.github.raw+json';
+
+/** The command line that reads `repo`'s label file (LABEL_FILE) as it stands on the default branch, raw. */
+export function labelFileReadArgs(repo: string): string[] {
+  return ['api', '-H', RAW_ACCEPT, `repos/${repo}/contents/${LABEL_FILE}`];
+}
+
+/** `repos/<owner>/<name>/contents/.github/labels.json`, the path of a repository's label file. */
+const LABEL_FILE_PATH = new RegExp(`^repos/([^/]+/[^/]+)/contents/${LABEL_FILE.replace(/[.]/g, '\\.')}$`, 'u');
+
+/** The repository whose label file the command line reads, or undefined when it is not labelFileReadArgs's line. */
+export function labelFileRepoOf(args: readonly string[]): string | undefined {
+  const repo = LABEL_FILE_PATH.exec(args[3] ?? '')?.[1];
+  return args.length === 4 && args[0] === 'api' && args[1] === '-H' && args[2] === RAW_ACCEPT && repo !== undefined && REPO_NAME.test(repo) ? repo : undefined;
+}
+
+/**
+ * True for labelFileReadArgs's line and nothing more: a read, gh's default GET, of the one file at LABEL_FILE, with
+ * the one raw header. A method, a field, another header or another path is refused.
+ */
+export function isLabelFileRead(args: readonly string[]): boolean {
+  return labelFileRepoOf(args) !== undefined;
+}
+
+/**
+ * The labels each repository's label file named when this runner read it, so a create of one of them is allowed
+ * (isLabelCreate). Only a read that ended well and printed a well-formed file counts; any other keeps nothing.
+ */
+export class LabelFileReads {
+  private readonly byRepo = new Map<string, readonly LabelSpec[]>();
+
+  /** Notes what one run printed, when it was a read of a label file: its labels if it ended well and parses, else none. */
+  note(args: readonly string[], result: GhResult): void {
+    const repo = labelFileRepoOf(args);
+    if (repo === undefined) {
+      return;
+    }
+    this.byRepo.delete(repo.toLowerCase());
+    if (result.end.kind !== 'exited' || result.end.code !== 0) {
+      return;
+    }
+    try {
+      this.byRepo.set(repo.toLowerCase(), parseLabelFile(result.stdout));
+    } catch {
+      // A malformed file names no label to make; the host's own read of it says why.
+    }
+  }
+
+  /** The labels `repo`'s file named at its last read; none before one, or after one that failed. */
+  readonly of: FileLabels = (repo) => this.byRepo.get(repo.toLowerCase()) ?? [];
 }
 
 /** True when the two command lines are the same, word for word. */
@@ -584,7 +655,7 @@ export class GhRefusedError extends Error {
   }
 }
 
-/** True for each command line the runner starts. */
+/** True for each fixed command line the runner starts; it also makes a label a read label file named (isFileLabelCreate). */
 export function isAllowedGh(args: readonly string[]): boolean {
   return (
     isIssueQuery(args) ||
@@ -596,6 +667,7 @@ export function isAllowedGh(args: readonly string[]): boolean {
     isLabelAdd(args) ||
     isLabelRemove(args) ||
     isLabelRead(args) ||
+    isLabelFileRead(args) ||
     isIssueRead(args) ||
     isIssueAssign(args) ||
     isIssueUnassign(args) ||
@@ -662,53 +734,62 @@ export function isReviewRead(args: readonly string[]): boolean {
  * The real runner: `spawn` with no shell, so an issue title or a repository name can never become a
  * command. gh is told never to prompt, as nobody is there to answer. `program` and `leading` let a test
  * stand a Node script in for gh. A run that prints more than `maxBytes` is stopped and rejects with
- * GhOutputCapError.
+ * GhOutputCapError. It keeps what each repository's label file named when it read one, so it makes only those
+ * labels beside its own.
  */
 export function nodeGhRunner(program = 'gh', leading: readonly string[] = [], timeoutMs = GH_TIMEOUT_MS, maxBytes = GH_OUTPUT_MAX_BYTES): GhRunner {
+  const labelFiles = new LabelFileReads();
   return {
-    run: (request) => {
-      if (!isAllowedGh(request.args)) {
-        return Promise.reject(new GhRefusedError(request.args));
+    run: async (request) => {
+      if (!isAllowedGh(request.args) && !isFileLabelCreate(request.args, labelFiles.of)) {
+        throw new GhRefusedError(request.args);
       }
-      return new Promise((resolve, reject) => {
-        const child = spawn(program, [...leading, ...request.args], {
-          env: { ...request.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' },
-          stdio: ['ignore', 'pipe', 'pipe'],
-          timeout: timeoutMs,
-          windowsHide: true,
-        });
-        const stdout: Buffer[] = [];
-        const stderr: Buffer[] = [];
-        let printed = 0;
-        let over = false;
-        const keep =
-          (into: Buffer[]) =>
-          (chunk: Buffer): void => {
-            if (over) {
-              return;
-            }
-            printed += chunk.length;
-            if (printed > maxBytes) {
-              over = true;
-              stdout.length = 0;
-              stderr.length = 0;
-              child.kill();
-              return;
-            }
-            into.push(chunk);
-          };
-        child.stdout.on('data', keep(stdout));
-        child.stderr.on('data', keep(stderr));
-        child.once('error', reject);
-        child.once('close', (code, signal) => {
-          if (over) {
-            reject(new GhOutputCapError(maxBytes));
-            return;
-          }
-          // Joined before decoding, so a character split across two chunks reads whole.
-          resolve({ end: endOf(code, signal), stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8') });
-        });
-      });
+      const result = await spawnGh(program, leading, request, timeoutMs, maxBytes);
+      labelFiles.note(request.args, result);
+      return result;
     },
   };
+}
+
+/** One run of gh to its end, its output capped at `maxBytes`. */
+function spawnGh(program: string, leading: readonly string[], request: GhRequest, timeoutMs: number, maxBytes: number): Promise<GhResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(program, [...leading, ...request.args], {
+      env: { ...request.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: timeoutMs,
+      windowsHide: true,
+    });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    let printed = 0;
+    let over = false;
+    const keep =
+      (into: Buffer[]) =>
+      (chunk: Buffer): void => {
+        if (over) {
+          return;
+        }
+        printed += chunk.length;
+        if (printed > maxBytes) {
+          over = true;
+          stdout.length = 0;
+          stderr.length = 0;
+          child.kill();
+          return;
+        }
+        into.push(chunk);
+      };
+    child.stdout.on('data', keep(stdout));
+    child.stderr.on('data', keep(stderr));
+    child.once('error', reject);
+    child.once('close', (code, signal) => {
+      if (over) {
+        reject(new GhOutputCapError(maxBytes));
+        return;
+      }
+      // Joined before decoding, so a character split across two chunks reads whole.
+      resolve({ end: endOf(code, signal), stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8') });
+    });
+  });
 }

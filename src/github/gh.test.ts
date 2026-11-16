@@ -23,7 +23,9 @@ import {
   isIssueUnassign,
   isJobLogRead,
   isLabelAdd,
+  isFileLabelCreate,
   isLabelCreate,
+  isLabelFileRead,
   isLabelRead,
   isLabelRemove,
   isLinkAdd,
@@ -42,19 +44,22 @@ import {
   isUserRead,
   jobLogArgs,
   labelCreateArgs,
+  LabelFileReads,
+  labelFileReadArgs,
   labelReadArgs,
   MENTION_LISTS,
   MENTION_PAGES_MAX,
   mentionListArgs,
   nodeGhRunner,
   reviewListArgs,
+  type GhResult,
   subIssueAddArgs,
   WATCH_PATHS,
   watchProbeArgs,
   userReadArgs,
   type IssueNumber,
 } from './gh.ts';
-import type { IssueDraft } from '../issues/host.ts';
+import type { IssueDraft, LabelSpec } from '../issues/host.ts';
 import { MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
 import { CLOSED_ISSUES_QUERY, closedPageArgs, OPEN_ISSUES_QUERY, openPageArgs, PULL_REQUESTS_QUERY, pullPageArgs } from './queries.ts';
 
@@ -391,6 +396,68 @@ describe('the managed label create (T2999, T3096)', () => {
       assert.equal(isLabelCreate(args), false, args.slice(1).join(' '));
       assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
     }
+  });
+});
+
+describe("the repository's label file: its read, and the create of a label it names", () => {
+  const AREA: LabelSpec = { name: 'area:cli', color: '1d76db', description: 'Area: the command line' };
+  const FILE = JSON.stringify({ labels: [AREA] });
+  const ok = (stdout: string): GhResult => ({ end: { kind: 'exited', code: 0 }, stdout, stderr: '' });
+
+  it('takes the raw read of .github/labels.json and nothing near it', () => {
+    const args = labelFileReadArgs('acme/web');
+    assert.deepEqual(args, ['api', '-H', 'Accept: application/vnd.github.raw+json', 'repos/acme/web/contents/.github/labels.json']);
+    assert.ok(isLabelFileRead(args) && isAllowedGh(args));
+    for (const bad of [
+      labelFileReadArgs('acme/..'),
+      args.map((arg, at) => (at === 3 ? 'repos/acme/web/contents/.github/labels.jsonx' : arg)),
+      args.map((arg, at) => (at === 3 ? 'repos/acme/web/contents/.github/workflows/ci.yml' : arg)),
+      args.map((arg, at) => (at === 2 ? 'Accept: application/json' : arg)),
+      [...args, '-X', 'PUT'],
+      [...args, '-f', 'content=x'],
+    ]) {
+      assert.equal(isLabelFileRead(bad), false, bad.join(' '));
+      assert.equal(isAllowedGh(bad), false, bad.join(' '));
+    }
+  });
+
+  it("allows the create of a label only once a read of that repository's file named it, word for word", () => {
+    const reads = new LabelFileReads();
+    const create = labelCreateArgs('acme/web', AREA);
+    assert.equal(isFileLabelCreate(create, reads.of), false, 'no file read yet');
+    reads.note(labelFileReadArgs('acme/web'), ok(FILE));
+    assert.ok(isFileLabelCreate(create, reads.of));
+    assert.equal(isAllowedGh(create), false, 'the fixed list alone never takes it');
+    for (const other of [
+      labelCreateArgs('acme/api', AREA),
+      labelCreateArgs('acme/web', { ...AREA, name: 'area:x' }),
+      labelCreateArgs('acme/web', { ...AREA, color: '000000' }),
+      labelCreateArgs('acme/web', { ...AREA, description: 'x' }),
+      create.map((arg) => (arg === 'POST' ? 'PATCH' : arg)),
+    ]) {
+      assert.equal(isFileLabelCreate(other, reads.of), false, other.join(' '));
+    }
+  });
+
+  it('forgets a file whose next read fails or does not parse, and ignores every other run', () => {
+    const reads = new LabelFileReads();
+    reads.note(labelFileReadArgs('acme/web'), ok(FILE));
+    reads.note(READ, ok('{"labels":[]}'));
+    assert.deepEqual(reads.of('ACME/web'), [AREA]);
+    reads.note(labelFileReadArgs('acme/web'), { end: { kind: 'exited', code: 1 }, stdout: FILE, stderr: 'HTTP 404' });
+    assert.deepEqual(reads.of('acme/web'), []);
+    reads.note(labelFileReadArgs('acme/web'), ok(FILE));
+    reads.note(labelFileReadArgs('acme/web'), ok('{"labels":[{"name":"x"}]}'));
+    assert.deepEqual(reads.of('acme/web'), []);
+  });
+
+  it('makes, through the real runner, a label the file it read names, and refuses it before that read', async () => {
+    const gh = script('label-file.mjs', `const args = process.argv.slice(2); process.stdout.write(args[3]?.endsWith('labels.json') ? ${JSON.stringify(FILE)} : JSON.stringify(args));`);
+    const runner = nodeGhRunner(process.execPath, [gh]);
+    const create = labelCreateArgs('acme/web', AREA);
+    await assert.rejects(runner.run({ args: create, env: ENV }), GhRefusedError);
+    await runner.run({ args: labelFileReadArgs('acme/web'), env: ENV });
+    assert.deepEqual(JSON.parse((await runner.run({ args: create, env: ENV })).stdout), create);
   });
 });
 
