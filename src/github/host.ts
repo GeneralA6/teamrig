@@ -1,4 +1,5 @@
 import type { SecretScanner } from '../core/secrets.ts';
+import { withStampFooter } from '../core/stamp.ts';
 import {
   targetText,
   type CloseReason,
@@ -25,6 +26,7 @@ import {
 import type { IssueState } from '../issues/issue.ts';
 import type { HostPosts } from '../issues/post.ts';
 import { LABEL_FILE, parseLabelFile } from '../issues/label-file.ts';
+import { MAX_COMMENT } from '../issues/write.ts';
 import { exitText } from '../open/processes.ts';
 import type { Env } from '../core/home.ts';
 import {
@@ -75,17 +77,31 @@ const USE_VERB: Readonly<Record<HostUse, string>> = { read: 'read with', open: '
  * the third, and each write one gh REST call the runner's allowlist takes (gh.ts), made with the token saved for the
  * repository's owner. An owner with no saved token, or one the store cannot read, is reached by nothing: never the
  * gh login in its place (tokens.ts). gh's own error, any secret shape in it redacted, is the reason a write failed.
+ * Each text it posts (an issue's body, a comment, a replaced body) carries the made-with-teamrig footer when `stamp`
+ * is on (#1102): this class is the one place every GitHub text write passes, so no command can post unstamped by
+ * forgetting it.
  */
 export class GitHubIssueHost implements IssueHost {
   readonly name = 'GitHub';
   private readonly gh: GhRunner;
   private readonly tokens: RepoTokens;
   private readonly scanner: SecretScanner;
+  private readonly stamp: boolean;
 
-  constructor(gh: GhRunner, tokens: RepoTokens, scanner: SecretScanner) {
+  constructor(gh: GhRunner, tokens: RepoTokens, scanner: SecretScanner, stamp: boolean) {
     this.gh = gh;
     this.tokens = tokens;
     this.scanner = scanner;
+    this.stamp = stamp;
+  }
+
+  /**
+   * `body` with one footer (core/stamp.ts replaces an earlier one), or as given when the stamp is off or the footer
+   * would take it past the most GitHub holds: the text matters more than the credit.
+   */
+  private stamped(body: string): string {
+    const stamped = this.stamp ? withStampFooter(body) : body;
+    return stamped.length <= MAX_COMMENT ? stamped : body;
   }
 
   /** Reached with the owner's saved token only; the scope is the owner, as one token serves all its repositories. */
@@ -190,7 +206,7 @@ export class GitHubIssueHost implements IssueHost {
     }
     let result: GhResult;
     try {
-      result = await this.gh.run({ args: issueCreateArgs(draft), env: access.env });
+      result = await this.gh.run({ args: issueCreateArgs({ ...draft, body: this.stamped(draft.body) }), env: access.env });
     } catch (error) {
       return { kind: 'failed', reason: startFailureText(error) };
     }
@@ -206,11 +222,11 @@ export class GitHubIssueHost implements IssueHost {
   }
 
   comment(target: IssueTarget, body: string): Promise<HostEnd> {
-    return this.write(target, issueCommentArgs(target, body), 'comment on');
+    return this.write(target, issueCommentArgs(target, this.stamped(body)), 'comment on');
   }
 
   editBody(target: IssueTarget, body: string): Promise<HostEnd> {
-    return this.write(target, issueBodyArgs(target, body), 'edit the body of');
+    return this.write(target, issueBodyArgs(target, this.stamped(body)), 'edit the body of');
   }
 
   close(target: IssueTarget, reason?: CloseReason, duplicateId?: number): Promise<HostEnd> {

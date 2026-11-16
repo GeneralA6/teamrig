@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
+import { withStampFooter } from '../core/stamp.ts';
 import { isIssueCreate, isIssueQuery } from '../github/gh.ts';
 import { foldEvents, type Task } from '../register/fold.ts';
 import { readEvents } from '../register/snapshot.ts';
@@ -88,8 +89,8 @@ describe('teamrig issue migrate', () => {
     assert.deepEqual(
       gh.ran.map((request) => request.args),
       [
-        ['api', 'repos/acme/web/issues', '-X', 'POST', '-f', 'title=Add a health check', '-f', 'body=Why Add a health check.', '-f', 'labels[]=enhancement', '-f', 'labels[]=p2'],
-        ['api', 'repos/acme/api/issues', '-X', 'POST', '-f', 'title=Login fails on retry', '-f', 'body=Why Login fails on retry.', '-f', 'labels[]=bug', '-f', 'labels[]=p1'],
+        ['api', 'repos/acme/web/issues', '-X', 'POST', '-f', 'title=Add a health check', '-f', `body=${withStampFooter('Why Add a health check.')}`, '-f', 'labels[]=enhancement', '-f', 'labels[]=p2'],
+        ['api', 'repos/acme/api/issues', '-X', 'POST', '-f', 'title=Login fails on retry', '-f', `body=${withStampFooter('Why Login fails on retry.')}`, '-f', 'labels[]=bug', '-f', 'labels[]=p1'],
       ],
     );
     const tasks = tasksOf(kit);

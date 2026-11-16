@@ -8,6 +8,7 @@ import { autoPushWrites } from '../issues/status-push.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { commentNode, FakeGh, ghIssue } from '../testing/fake-gh.ts';
 import { DEFAULT_GITHUB } from '../config/defaults.ts';
+import { withStampFooter } from '../core/stamp.ts';
 import { CLAIM_REPLY, claimBudget, claimWrites, RELEASE_REPLY } from './commands/issue-claim.ts';
 import { EXIT } from './runtime.ts';
 
@@ -59,7 +60,7 @@ describe('claims in the automatic sync (T3021)', () => {
     assert.deepEqual(writes(second, isIssueAssign), [`api repos/${REPO}/issues/8/assignees -X POST -f assignees[]=bob`]);
     assert.ok(out.includes(`CLAIMED ${REPO}#8: bob took it by a comment and is assigned for ${CLAIM_DAYS} days, or until a linked pull request lands`), out.join('\n'));
     assert.ok(out.includes(`LABELED ${REPO}#8: "status:claimed"`) && out.includes(`UNLABELED ${REPO}#8: "status:open"`), out.join('\n'));
-    assert.deepEqual(writes(second, isIssueComment), [`api repos/${REPO}/issues/8/comments -X POST -f body=${CLAIM_REPLY}`]);
+    assert.deepEqual(writes(second, isIssueComment), [`api repos/${REPO}/issues/8/comments -X POST -f body=${withStampFooter(CLAIM_REPLY)}`]);
     assert.deepEqual(
       parseClaims(kit.files.get(CLAIMS) ?? '').claims.map(({ number, login }) => ({ number, login })),
       [{ number: 8, login: 'bob' }],
@@ -103,7 +104,7 @@ describe('claims in the automatic sync (T3021)', () => {
     assert.deepEqual(writes(gh, isIssueUnassign), [`api repos/${REPO}/issues/8/assignees -X DELETE -f assignees[]=ada`]);
     assert.ok(out.includes(`RELEASED ${REPO}#8: ada's claim ran ${CLAIM_DAYS} days with no linked pull request; the assignee is taken off`), out.join('\n'));
     assert.ok(out.includes(`LABELED ${REPO}#8: "status:open"`) && out.includes(`UNLABELED ${REPO}#8: "status:claimed"`), out.join('\n'));
-    assert.ok(writes(gh, isIssueComment).includes(`api repos/${REPO}/issues/8/comments -X POST -f body=${RELEASE_REPLY}`));
+    assert.ok(writes(gh, isIssueComment).includes(`api repos/${REPO}/issues/8/comments -X POST -f body=${withStampFooter(RELEASE_REPLY)}`));
     assert.deepEqual(
       parseClaims(kit.files.get(CLAIMS) ?? '').claims.map(({ number, login }) => ({ number, login })),
       [{ number: 9, login: 'cy' }],

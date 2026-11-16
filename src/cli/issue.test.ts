@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
+import { withStampFooter } from '../core/stamp.ts';
 import { isIssueBodyEdit, isIssueClose, isIssueComment, isIssueRead, isLabelAdd, isLabelFileRead, isLabelRead, isLabelRemove } from '../github/gh.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
@@ -20,7 +21,7 @@ describe('teamrig issue comment', () => {
     const result = await kit.run(['issue', 'comment', 'Acme/Web#612', '--body', 'Thank you! Merged as #624.'], { ...AS_LEAD, gh });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
     assert.deepEqual(result.stdout, [LOGIN, 'COMMENTED acme/web#612']);
-    assert.deepEqual(gh.ran.map((request) => request.args), [['api', 'repos/acme/web/issues/612/comments', '-X', 'POST', '-f', 'body=Thank you! Merged as #624.']]);
+    assert.deepEqual(gh.ran.map((request) => request.args), [['api', 'repos/acme/web/issues/612/comments', '-X', 'POST', '-f', `body=${withStampFooter('Thank you! Merged as #624.')}`]]);
     assert.equal(kit.files.get(EVENTS_PATH), log);
   });
 
@@ -222,7 +223,7 @@ describe('teamrig issue edit', () => {
     const result = await kit.run(['issue', 'edit', 'Acme/Web#612', '--body-file', 'spec.md'], { ...AS_LEAD, gh });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
     assert.deepEqual(result.stdout, [LOGIN, `EDITED acme/web#612: its body is now ${BODY.length} characters`]);
-    assert.deepEqual(gh.ran.map((request) => request.args), [['api', 'repos/acme/web/issues/612', '-X', 'PATCH', '-f', `body=${BODY}`]]);
+    assert.deepEqual(gh.ran.map((request) => request.args), [['api', 'repos/acme/web/issues/612', '-X', 'PATCH', '-f', `body=${withStampFooter(BODY)}`]]);
     assert.ok(isIssueBodyEdit(gh.ran[0]?.args ?? []));
     assert.equal(kit.files.get(EVENTS_PATH), log);
   });
@@ -232,7 +233,7 @@ describe('teamrig issue edit', () => {
     await kit.files.write(SPEC, `\uFEFF${BODY}`);
     const gh = new FakeGh();
     await kit.run(['issue', 'edit', 'acme/web#7', '--body-file', SPEC], { ...AS_LEAD, gh });
-    assert.deepEqual(gh.ran.map((request) => request.args.at(-1)), [`body=${BODY}`]);
+    assert.deepEqual(gh.ran.map((request) => request.args.at(-1)), [`body=${withStampFooter(BODY)}`]);
   });
 
   it('refuses, running no gh, no file, a missing file, and a body that is empty, secret or names a task id', async () => {

@@ -11,7 +11,7 @@ import { RefusedError, type CliRuntime } from './runtime.ts';
 export function hostOf(kind: HostKind, runtime: CliRuntime, scanner: SecretScanner): IssueHost {
   switch (kind) {
     case 'github':
-      return new GitHubIssueHost(runtime.gh, new RepoTokens(runtime.credentials, runtime.env), scanner);
+      return new GitHubIssueHost(runtime.gh, new RepoTokens(runtime.credentials, runtime.env), scanner, true);
   }
 }
 

@@ -346,7 +346,13 @@ unmerged. `--reason completed`, `not-planned` or `duplicate` says why it closed 
 `--duplicate-of` closes it as a duplicate of another issue of the same repository, which GitHub links as the
 original. `teamrig issue edit` replaces the body (the description) with the text of a file, so a spec of many lines
 keeps its shape; the title, state and labels stay, and GitHub keeps the old body in the edit history. Each names its
-target as `owner/name#number`:
+target as `owner/name#number`.
+
+Each text teamrig posts (a comment, a close comment, a claim reply, a migrated issue, a replaced body) ends with a
+one-line footer, `Made with teamrig <version>` linking to the project, then a hidden `<!-- teamrig-stamp -->` marker.
+The marker is how a later write finds the footer: posting a stamped text again, or editing a body read back with its
+footer, keeps one footer at the current version. A text the footer would push past the 65,536 characters GitHub holds
+is posted without it.
 
 ```sh
 teamrig issue comment acme/web#7 --body "Fixed in #9, thank you."
