@@ -1398,7 +1398,8 @@ do, and the asks wait for the first check after them. The wake log marks such a 
 in another format goes at the next check. A session busy in a turn is not woken for them: at its next tool call's
 end (its own, not a helper's), `hook tool-end` shows it its new inbox lines, recorded as shown so its next prompt
 does not repeat them, and takes its asks under the session's wake lock, so its turn's end wakes nothing for lines it
-already saw; with a wake check holding the lock, the next tool end looks again. The idle pass's close posts one to the lead, and with `open.idle.mode` on
+already saw; with a wake check holding the lock, the next tool end looks again. The idle pass's close posts none: it
+tells no one, the session log holds it. With `open.idle.mode` on
 the `cold-send` hook turns a message to a session teamrig closed into one for that session. The idle pass never
 closes a session with one waiting; a closed session with one reopens at the next pass, ahead of every reopen for
 work, with its lines quoted in its first prompt and taken once its tab opened.
