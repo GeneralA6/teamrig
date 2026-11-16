@@ -16,9 +16,18 @@ In each mark the gray shapes are the team's sessions and the purple one is the r
 | Plain text | ⁂ | ◫ | ☰ |
 | Files | [logo](option-a/logo.svg), [icon](option-a/icon.svg), [one color](option-a/icon-mono.svg) | [logo](option-b/logo.svg), [icon](option-b/icon.svg), [one color](option-b/icon-mono.svg) | [logo](option-c/logo.svg), [icon](option-c/icon.svg), [one color](option-c/icon-mono.svg) |
 
-The table shows the icons on the background of the theme you view GitHub in; switch the theme (Settings,
-Appearance) to see them on the other. Each SVG's colors follow your system's color scheme, so the light and dark
-values each meet both backgrounds.
+The table shows the icons on the background of the theme you view GitHub in. Each SVG's colors follow your
+system's color scheme, so the light and dark values each meet both backgrounds.
+
+Option B, the one picked, on GitHub's light and dark backgrounds side by side, whatever your theme: the icon at 16,
+32 and 128 px, then the logo.
+
+<img src="preview-light.svg" width="720" alt="option B icon at 16, 32 and 128 px and logo on a light background">
+<img src="preview-dark.svg" width="720" alt="option B icon at 16, 32 and 128 px and logo on a dark background">
+
+The previews hold fixed colors: the light values on a light background, the dark values on a dark one, with no
+color-scheme switch. Their backgrounds, `#ffffff` and `#0d1117`, are GitHub's page colors, there for the preview
+only; they are not brand colors.
 
 Each option's folder holds:
 
