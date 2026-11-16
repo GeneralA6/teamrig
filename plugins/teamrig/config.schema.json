@@ -704,7 +704,7 @@
                 "default": ".claude/worktrees"
               },
               "shipTool": {
-                "description": "The ship tool a service role may run through teamrig queue --kind ship or merge with no permission check: its script, in a checkout of this repository teamrig keeps clean on main, checked at every allow. A relative path is in the main checkout. Unset: no role runs a ship.",
+                "description": "The ship tool a service role may run through teamrig queue --kind ship or merge with no permission check: its script, in a checkout of this repository kept clean at main's current code, checked at every allow, as a queued step that runs it is queued and again when it starts. A relative path is in the main checkout. Unset: no role runs a ship.",
                 "type": "string",
                 "minLength": 1
               },

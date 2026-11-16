@@ -898,8 +898,9 @@ with no permission check when all of these hold:
   or paragraph separator, and no @-mention (`@bob`, `@acme/team`; an @ inside a word, as in an e-mail address, is fine),
   so a role never pings someone or posts text that reads other than it is without the owner seeing it;
 - **a ship runs only the holder's own work**: `<shipTool>` is the `shipTool` [delivery.repos.shipTool] of a delivery
-  repository, a tracked file of a checkout of that repository with no change at all and its HEAD on the default
-  branch as of the last fetch, so what runs is code that landed through review; the worktree is a linked worktree of
+  repository, a tracked file of a checkout of that repository with no change at all whose HEAD makes the default
+  branch's tree as of the last fetch, so what runs is main's current code, never a past main's (`teamrig queue`
+  checks it again as the step is queued and at its start); the worktree is a linked worktree of
   the same repository inside its worktree folder, on a task branch (`t<id>-...`, never a protected branch) whose task
   the session owns, `--task` names that task when given, and the plan and note sit in that task's files folder;
 - **the tab is the holder's**: every inbox mark this Claude Code session ever wrote names one session, it is on the
