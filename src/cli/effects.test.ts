@@ -114,6 +114,7 @@ const EXPECTED = {
   'issue close': 'write',
   'issue label': 'write',
   'issue similar': 'read',
+  'issue assign': 'write',
   'pr conflicts': 'write',
   'issue links': 'write',
   follow: 'write',

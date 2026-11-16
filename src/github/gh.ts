@@ -357,8 +357,9 @@ export function isIssueAssign(args: readonly string[]): boolean {
 /**
  * True for `gh api repos/<owner>/<name>/issues/<number>/assignees -X DELETE -f assignees[]=<login>` and nothing more:
  * exactly one login, of a login's shape, taken off one issue or pull request. The sync sends it only for a claim it
- * made itself whose login is still the assignee (issues/claim.ts); two logins, no login, another field or flag is
- * refused, so no run can clear an issue's assignees.
+ * made itself whose login is still the assignee (issues/claim.ts), and issue assign once for each login a maintainer
+ * names (issues/assign.ts); two logins, no login, another field or flag is refused, so no run can clear an issue's
+ * assignees at once.
  */
 export function isIssueUnassign(args: readonly string[]): boolean {
   const call = issueCall(args);

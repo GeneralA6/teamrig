@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { withStampFooter } from '../core/stamp.ts';
-import { isIssueBodyEdit, isIssueClose, isIssueComment, isIssueRead, isLabelAdd, isLabelFileRead, isLabelRead, isLabelRemove } from '../github/gh.ts';
+import { isIssueAssign, isIssueAssigneeRead, isIssueBodyEdit, isIssueClose, isIssueComment, isIssueRead, isIssueUnassign, isLabelAdd, isLabelFileRead, isLabelRead, isLabelRemove, isUserRead } from '../github/gh.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
@@ -213,6 +213,65 @@ describe('teamrig issue label', () => {
   it('writes nothing while GitHub is off on the machine', async () => {
     const gh = new FakeGh();
     const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'label', 'acme/web#7', '--remove', 'p1'], { gh, env: { TEAMRIG_SESSION: 'lead', TEAMRIG_GITHUB: 'off' } });
+    assert.equal(result.code, EXIT.ok);
+    assert.match(result.stdout.join('\n'), /^OFF /u);
+    assert.deepEqual(gh.ran, []);
+  });
+});
+
+describe('teamrig issue assign (T3228)', () => {
+  it('reads the item, its labels and each login on it, then assigns and takes off by allowlisted calls', async () => {
+    const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7)]).spells('OctoCat').cannotAssign('acme/web', ['OctoCat']).tookPart('acme/web', 7, ['OctoCat']);
+    const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'assign', 'acme/web#7', '--add', '@octocat, OCTOCAT', '--remove', 'mallory'], { ...AS_LEAD, gh });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.deepEqual(result.stdout, [LOGIN, 'ASSIGNED acme/web#7: OctoCat', 'UNASSIGNED acme/web#7: mallory']);
+    const [labels, user, assignable, assign, unassign] = gh.ran.map((request) => request.args);
+    assert.ok(isIssueRead(labels ?? []) && isUserRead(user ?? []) && isIssueAssigneeRead(assignable ?? []) && isIssueAssign(assign ?? []) && isIssueUnassign(unassign ?? []));
+    assert.equal(gh.ran.length, 5);
+  });
+
+  it('refuses, assigning no one, on a design issue and for a login GitHub would drop', async () => {
+    const design = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7, { labels: ['design'] })]);
+    const refused = await new CliHarness(GITHUB_TEAM).run(['issue', 'assign', 'acme/web#7', '--add', 'octocat'], { ...AS_LEAD, gh: design });
+    assert.equal(refused.code, EXIT.refused);
+    assert.match(refused.stdout.join('\n'), /REFUSED acme\/web#7: it is a design issue/u);
+    assert.ok(design.ran.every((request) => isIssueRead(request.args)));
+    const stranger = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7)]).cannotAssign('acme/web', ['ghost']);
+    const dropped = await new CliHarness(GITHUB_TEAM).run(['issue', 'assign', 'acme/web#7', '--add', 'ghost'], { ...AS_LEAD, gh: stranger });
+    assert.equal(dropped.code, EXIT.refused);
+    assert.match(dropped.stdout.join('\n'), /REFUSED acme\/web#7: ghost may not be assigned to it/u);
+    assert.ok(!stranger.ran.some((request) => isIssueAssign(request.args)));
+  });
+
+  it('fails, assigning no one, when GitHub shows no such item', async () => {
+    const gh = new FakeGh().holds('acme/web', []);
+    const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'assign', 'acme/web#7', '--add', 'octocat'], { ...AS_LEAD, gh });
+    assert.equal(result.code, EXIT.failed);
+    assert.match(result.stdout.join('\n'), /FAILED acme\/web#7: GitHub shows no such issue or pull request; nothing was changed/u);
+  });
+
+  it('refuses, running no gh, no list, a login in both, a bad login, too many, and a repository not listed', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const gh = new FakeGh();
+    const cases: Array<[readonly string[], RegExp]> = [
+      [['issue', 'assign', 'acme/web#7'], /^REFUSED issue assign needs --add or --remove/u],
+      [['issue', 'assign', 'acme/web#7', '--add', 'octocat', '--remove', 'OctoCat'], /^REFUSED octocat is in both --add and --remove/u],
+      [['issue', 'assign', 'acme/web#7', '--add', 'a,,b'], /^REFUSED --add: a login is empty/u],
+      [['issue', 'assign', 'acme/web#7', '--remove', 'octo cat'], /^REFUSED --remove: the login "octo cat" holds a space/u],
+      [['issue', 'assign', 'acme/web#7', '--add', 'a,b', '--remove', 'c,d'], /^REFUSED issue assign takes at most 3 logins in all, not 4/u],
+      [['issue', 'assign', 'acme/api#7', '--add', 'octocat'], /^REFUSED acme\/api is not one of the team's repositories/u],
+    ];
+    for (const [argv, error] of cases) {
+      const result = await kit.run(argv, { ...AS_LEAD, gh });
+      assert.equal(result.code, EXIT.refused, argv.join(' '));
+      assert.match([...result.stdout, ...result.stderr].join('\n'), error, argv.join(' '));
+    }
+    assert.deepEqual(gh.ran, []);
+  });
+
+  it('writes nothing while GitHub is off on the machine', async () => {
+    const gh = new FakeGh();
+    const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'assign', 'acme/web#7', '--add', 'octocat'], { gh, env: { TEAMRIG_SESSION: 'lead', TEAMRIG_GITHUB: 'off' } });
     assert.equal(result.code, EXIT.ok);
     assert.match(result.stdout.join('\n'), /^OFF /u);
     assert.deepEqual(gh.ran, []);
