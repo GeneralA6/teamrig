@@ -1676,7 +1676,7 @@ function parseOpen(read: ConfigReader, raw: JsonRecord, sessions: readonly strin
 
 /**
  * `open.idle`: whether the idle pass runs, the sessions it keeps open (one not on the team is reported and left out),
- * and which leads it never closes.
+ * which leads it never closes, and how many unseen inbox lines reopen a closed session.
  */
 function parseIdle(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): IdleConfig {
   const path = 'open.idle';
@@ -1690,7 +1690,8 @@ function parseIdle(read: ConfigReader, raw: JsonRecord, sessions: readonly strin
     return id;
   });
   const leaders = read.string(raw, 'leaders', path, DEFAULT_IDLE.leaders, (value) => (isIdleLeaderKeep(value) ? undefined : `expected one of ${IDLE_LEADER_KEEPS.join(', ')}`));
-  return { mode: isIdleMode(mode) ? mode : DEFAULT_IDLE.mode, keepOpen, leaders: isIdleLeaderKeep(leaders) ? leaders : DEFAULT_IDLE.leaders };
+  const reopenUnreadLines = read.integer(raw, 'reopenUnreadLines', path, DEFAULT_IDLE.reopenUnreadLines, CONFIG_LIMITS.idleReopenUnreadLines);
+  return { mode: isIdleMode(mode) ? mode : DEFAULT_IDLE.mode, keepOpen, leaders: isIdleLeaderKeep(leaders) ? leaders : DEFAULT_IDLE.leaders, reopenUnreadLines };
 }
 
 /** `open.headroom`: the room a new session needs on the host. */

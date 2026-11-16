@@ -1733,17 +1733,20 @@ describe('parseConfig', () => {
   it('reads whether the idle pass runs and the sessions it keeps open, refusing a mode it does not know or a session not on the team', () => {
     // A team that sets nothing closes and reopens its idle sessions (T1409).
     // Only the tree's root lead is never closed unless set (T3387).
-    assert.deepEqual(parseConfig(ROSTER).config.open.idle, { mode: 'on', keepOpen: [], leaders: 'root' });
-    const set = parseConfig({ ...ROSTER, open: { idle: { mode: 'dry-run', keepOpen: ['bravo'], leaders: 'all' } } });
+    // Ten unseen inbox lines reopen a closed session unless set (T3387).
+    assert.deepEqual(parseConfig(ROSTER).config.open.idle, { mode: 'on', keepOpen: [], leaders: 'root', reopenUnreadLines: 10 });
+    const set = parseConfig({ ...ROSTER, open: { idle: { mode: 'dry-run', keepOpen: ['bravo'], leaders: 'all', reopenUnreadLines: 0 } } });
     assert.deepEqual(set.issues, []);
-    assert.deepEqual(set.config.open.idle, { mode: 'dry-run', keepOpen: ['bravo'], leaders: 'all' });
-    assert.deepEqual(parseConfig({ ...ROSTER, open: { idle: { mode: 'on' } } }).config.open.idle, { mode: 'on', keepOpen: [], leaders: 'root' });
-    const bad = parseConfig({ ...ROSTER, open: { idle: { mode: 'always', keepOpen: ['bravo', 'charlie', 7], leaders: 'none' } } });
-    assert.deepEqual(paths(bad.issues).sort(), ['open.idle.keepOpen[1]', 'open.idle.keepOpen[2]', 'open.idle.leaders', 'open.idle.mode']);
+    assert.deepEqual(set.config.open.idle, { mode: 'dry-run', keepOpen: ['bravo'], leaders: 'all', reopenUnreadLines: 0 });
+    assert.deepEqual(parseConfig({ ...ROSTER, open: { idle: { mode: 'on' } } }).config.open.idle, { mode: 'on', keepOpen: [], leaders: 'root', reopenUnreadLines: 10 });
+    const bad = parseConfig({ ...ROSTER, open: { idle: { mode: 'always', keepOpen: ['bravo', 'charlie', 7], leaders: 'none', reopenUnreadLines: 1001 } } });
+    assert.deepEqual(paths(bad.issues).sort(), ['open.idle.keepOpen[1]', 'open.idle.keepOpen[2]', 'open.idle.leaders', 'open.idle.mode', 'open.idle.reopenUnreadLines']);
     assert.match(bad.issues.find((issue) => issue.path === 'open.idle.mode')?.message ?? '', /expected one of off, dry-run, on/);
     assert.match(bad.issues.find((issue) => issue.path === 'open.idle.leaders')?.message ?? '', /expected one of root, all/);
+    assert.match(bad.issues.find((issue) => issue.path === 'open.idle.reopenUnreadLines')?.message ?? '', /0.*1000/);
     assert.match(bad.issues.find((issue) => issue.path === 'open.idle.keepOpen[1]')?.message ?? '', /"charlie" is not one of the sessions/);
-    assert.deepEqual(bad.config.open.idle, { mode: 'on', keepOpen: ['bravo'], leaders: 'root' });
+    assert.deepEqual(bad.config.open.idle, { mode: 'on', keepOpen: ['bravo'], leaders: 'root', reopenUnreadLines: 10 });
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, open: { idle: { reopenUnreadLines: -1 } } }).issues), ['open.idle.reopenUnreadLines']);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, open: { idle: { keepOpen: 'bravo' } } }).issues), ['open.idle.keepOpen']);
   });
 

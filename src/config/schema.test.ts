@@ -232,6 +232,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   headroomCommitMaxPct: 'open.headroom.commitMaxPct',
   headroomCloseIdleMinutes: 'open.headroom.closeIdleMinutes',
   headroomFloorMb: 'open.headroom.floorMb',
+  idleReopenUnreadLines: 'open.idle.reopenUnreadLines',
   headroomLoadMinutes: 'open.headroom.loadMinutes',
   deliveryPollSeconds: 'delivery.wait.pollSeconds',
   deliveryWaitMaxMinutes: 'delivery.wait.maxMinutes',

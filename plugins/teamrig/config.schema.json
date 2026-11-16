@@ -1813,6 +1813,13 @@
               "type": "string",
               "enum": ["root", "all"],
               "default": "root"
+            },
+            "reopenUnreadLines": {
+              "description": "How many inbox lines a session the idle pass closed has not seen (neither read nor shown at a prompt) reopen it, though none of them is urgent, unless its budget's rest holds it; 0 never reopens it for them. A lead or sub-lead reopens on it like any session.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000,
+              "default": 10
             }
           }
         }

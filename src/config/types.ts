@@ -1470,6 +1470,11 @@ export interface IdleConfig {
   /** Sessions never closed for being quiet (by the pass or `teamrig close`), on top of the root lead and the delivery owner. */
   readonly keepOpen: readonly string[];
   readonly leaders: IdleLeaderKeep;
+  /**
+   * How many inbox lines a closed session has not seen (neither read nor shown at a prompt) reopen it, though none is
+   * urgent; 0 never does (T3387).
+   */
+  readonly reopenUnreadLines: number;
 }
 
 export interface OpenConfig {
