@@ -178,6 +178,20 @@ export interface ClosedActive {
   readonly stateReason: string;
 }
 
+/**
+ * An open issue a finished task holds that the push leaves open: the task only took part in it, so its end is not the
+ * issue's. A design issue ends by its maintainers' `Agreed:` (write-issue, section 6), and an issue assigned only to
+ * logins outside the team is its taker's work, closed by their pull request or by a person. A task that only posted a
+ * comment there, done, must never close it.
+ */
+export interface KeptOpen {
+  readonly target: IssueTarget;
+  readonly task: string;
+  readonly status: TaskStatus;
+  /** Why the close is left: a design issue, or the outside logins it is assigned to. */
+  readonly why: { readonly kind: 'design' } | { readonly kind: 'taken'; readonly assignees: readonly string[] };
+}
+
 /** An issue an active task holds that the host did not list as open or lately closed. */
 export interface UnlistedIssue {
   readonly target: IssueTarget;
@@ -197,6 +211,8 @@ export interface PushPlan {
   /** Issues already showing their task's status. */
   readonly unchanged: number;
   readonly closedActive: readonly ClosedActive[];
+  /** Open issues a finished task holds whose close is not the task's to send (KeptOpen). */
+  readonly keptOpen: readonly KeptOpen[];
   /** Issues an active task holds that the list did not include: closed before the listed days, or gone. */
   readonly unlisted: readonly UnlistedIssue[];
 }
@@ -233,6 +249,7 @@ export function planPush(repo: string, issues: readonly HostIssue[], tasks: Iter
   const listed = new Map(issues.filter((issue) => issue.repo === repo).map((issue) => [issue.number, issue]));
   const planned: IssueChange[] = [];
   const closedActive: ClosedActive[] = [];
+  const keptOpen: KeptOpen[] = [];
   const unlisted: UnlistedIssue[] = [];
   let unchanged = 0;
   for (const [target, task] of [...holders(repo, tasks)].sort(([a], [b]) => a - b).map(([number, holder]) => [{ repo, number }, holder] as const)) {
@@ -251,6 +268,11 @@ export function planPush(repo: string, issues: readonly HostIssue[], tasks: Iter
       closedActive.push({ target, task: task.id, status: task.status, stateReason: issue.stateReason });
       continue;
     }
+    const kept = goal.open || issue.state === 'closed' ? undefined : closeLeft(repo, issue, logins);
+    if (kept !== undefined) {
+      keptOpen.push({ target, task: task.id, status: task.status, why: kept });
+      continue;
+    }
     const assign = goal.open && goal.claim && logins !== undefined && issue.assignees.length === 0 ? assigneeOf(repo, task.owner, logins) : undefined;
     const change = changeFor(target, task, issue, goal, assign);
     if (change === undefined) {
@@ -262,7 +284,21 @@ export function planPush(repo: string, issues: readonly HostIssue[], tasks: Iter
   const heldCloses = limits.closes ? [] : planned.filter((change) => change.close !== undefined);
   const sendable = limits.closes ? planned : planned.filter((change) => change.close === undefined);
   const { changes, deferred } = withinRun(sendable, limits.writesPerRun);
-  return { repo, changes, deferred, heldCloses, unchanged, closedActive, unlisted };
+  return { repo, changes, deferred, heldCloses, unchanged, closedActive, keptOpen, unlisted };
+}
+
+/**
+ * Why a finished task's close of the open `issue` is left, or undefined when the close is the task's to send. The
+ * team's logins are its sessions' (`logins`, from `github.owners`) and the repository's owner account; GitHub logins
+ * match whatever their case. A session two logins map to counts by its first, as assigneeOf assigns it.
+ */
+function closeLeft(repo: string, issue: HostIssue, logins: SessionLogins | undefined): KeptOpen['why'] | undefined {
+  if (issue.labels.includes(DESIGN_LABEL)) {
+    return { kind: 'design' };
+  }
+  const team = new Set([repo.slice(0, repo.indexOf('/')), ...(logins?.values() ?? [])].map((login) => login.toLowerCase()));
+  const outside = issue.assignees.filter((login) => !team.has(login.toLowerCase()));
+  return issue.assignees.length > 0 && outside.length === issue.assignees.length ? { kind: 'taken', assignees: outside } : undefined;
 }
 
 /** The task speaking for each issue number of `repo` a task holds: a team task over one the import added. */
