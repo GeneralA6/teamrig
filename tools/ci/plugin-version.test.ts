@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
 import { FakeGit } from '../lib/fake-git.ts';
-import { checkPluginVersions, MARKETPLACE, readCatalog } from './plugin-version.ts';
+import { MARKETPLACE } from '../lib/marketplace.ts';
+import { checkPluginVersions } from './plugin-version.ts';
 
 const MANIFEST = 'plugins/demo/.claude-plugin/plugin.json';
 const ENDS = { base: 'base', head: 'head' } as const;
@@ -49,39 +50,6 @@ async function run(change: Change): Promise<{ readonly code: number; readonly li
   const code = await checkPluginVersions(ENDS, { git: gitFor({ catalog: catalogText(), ...change }), out: (line) => lines.push(line) });
   return { code, lines };
 }
-
-describe('readCatalog', () => {
-  it('lists the plugins whose source is a folder in the repo', () => {
-    const text = JSON.stringify({
-      plugins: [
-        { name: 'local', source: './plugins/local/' },
-        { name: 'remote', source: { source: 'github', repo: 'someone/else' } },
-        { name: 'root', source: './' },
-        'not an entry',
-      ],
-    });
-    assert.deepEqual(readCatalog(text), {
-      plugins: [
-        { name: 'local', folder: 'plugins/local' },
-        { name: 'root', folder: '' },
-      ],
-      problems: [],
-    });
-  });
-
-  it('flags an entry that gives a version, which Claude Code ignores', () => {
-    const { problems } = readCatalog(JSON.stringify({ plugins: [{ name: 'demo', source: './p', version: '0.1.0' }, { version: '1.0.0' }] }));
-    assert.deepEqual(problems, [
-      `demo: drop "version" from its ${MARKETPLACE} entry; Claude Code installs the version in plugin.json and ignores this one`,
-      `(unnamed): drop "version" from its ${MARKETPLACE} entry; Claude Code installs the version in plugin.json and ignores this one`,
-    ]);
-  });
-
-  it('refuses a catalog without a plugins list', () => {
-    assert.throws(() => readCatalog('{"name":"demo"}'), /has no "plugins" list/);
-    assert.throws(() => readCatalog('[]'), /has no "plugins" list/);
-  });
-});
 
 describe('checkPluginVersions', () => {
   it('passes a change under the plugin folder that raises the version', async () => {
