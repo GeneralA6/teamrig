@@ -9,6 +9,7 @@ import { ToolOutputRedactor } from '../secret-guard/redactor.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
+import { systemError } from '../testing/faulty-files.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import type { Files } from '../core/files.ts';
 import { FakeHostCpu } from '../testing/fake-host-cpu.ts';
@@ -161,6 +162,36 @@ function lockOver(files: Files, clock: FakeClock, pid: number = ME, sleep: Sleep
 type Operation = 'read' | 'write' | 'createExclusive' | 'remove';
 
 /** Files in memory where another process acts once, right after this one first does \`operation\` on a path \`at\` picks. */
+/**
+ * A ticket pending its delete, as Windows keeps one another process removed while a reader still holds it: each of
+ * its first `refusals` reads rejects with `code`, past the real filesystem's own retries; then it is gone.
+ */
+class PendingDelete extends MemoryFiles {
+  refused = 0;
+  private readonly path: string;
+  private readonly refusals: number;
+  private readonly code: string;
+
+  constructor(initial: Readonly<Record<string, string>>, path: string, refusals: number, code = 'EPERM') {
+    super(initial);
+    this.path = path;
+    this.refusals = refusals;
+    this.code = code;
+  }
+
+  override async read(path: string): Promise<string | undefined> {
+    if (path !== this.path) {
+      return super.read(path);
+    }
+    if (this.refused < this.refusals) {
+      this.refused += 1;
+      throw systemError(this.code, `${this.code}: operation not permitted, open '${path}'`);
+    }
+    await this.remove(path);
+    return undefined;
+  }
+}
+
 class Interleaved extends MemoryFiles {
   private readonly operation: Operation;
   private readonly at: (path: string) => boolean;
@@ -568,6 +599,23 @@ describe('HostLock.acquire in a moving line', () => {
       assert.deepEqual([taking.kind, clock.sleeps], ['busy', [2_000, 2_000, 2_000, 1_000]], 'moved at 10:00:02, its wait ran out 5 s later');
     });
   }
+
+  it('passes a look whose ticket ahead refuses its open past the retries, then takes its turn once that ticket is gone (T3201)', async () => {
+    const [path, text] = ticket(waiterOf('2030-01-08T09:59:00.000Z'));
+    const files = new PendingDelete({ [path]: text }, path, 3);
+    const clock = new FakeClock('2030-01-08T10:00:00Z');
+    const taking = await lockOver(files, clock).acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined);
+    assert.equal(taking.kind, 'taken');
+    assert.deepEqual([files.refused, clock.sleeps.length], [3, 3], 'each refused look waits one poll, taking no turn past the ticket');
+  });
+
+  it('still fails a wait on a refusal that is no transient code, or once the wait ran out', async () => {
+    const [path, text] = ticket(waiterOf('2030-01-08T09:59:00.000Z'));
+    const odd = new PendingDelete({ [path]: text }, path, 1, 'EIO');
+    await assert.rejects(lockOver(odd, new FakeClock('2030-01-08T10:00:00Z')).acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined), /EIO/u);
+    const lasting = new PendingDelete({ [path]: text }, path, Number.POSITIVE_INFINITY);
+    await assert.rejects(lockOver(lasting, new FakeClock('2030-01-08T10:00:00Z')).acquire('alpha', 'heavy: test', 5_000, 30_000, () => undefined), /EPERM/u);
+  });
 
   it('stops, never writing its ticket back, when the ticket was withdrawn as the line moved', async () => {
     const clock = new FakeClock('2030-01-08T10:00:00Z');

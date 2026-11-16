@@ -18,6 +18,12 @@ export const TRANSIENT_RETRY_DELAYS_MS: readonly number[] = [5, 10, 20, 40, 80, 
  */
 export const REPLACE_RETRY_DELAYS_MS: readonly number[] = [...TRANSIENT_RETRY_DELAYS_MS, ...Array.from({ length: 18 }, () => 500)];
 
+/** Whether `error` is one of the codes a file another process holds open gives, which clears in time. */
+export function isTransientFileError(error: unknown): boolean {
+  const code = errorCode(error);
+  return code !== undefined && TRANSIENT_CODES.has(code);
+}
+
 /**
  * Runs a file operation, repeating it after each delay while it fails with a transient code. Any
  * other error, or a transient one after the last delay, is thrown as it came.
@@ -27,8 +33,7 @@ export async function retryTransient<T>(operation: () => Promise<T>, sleep: Slee
     try {
       return await operation();
     } catch (error) {
-      const code = errorCode(error);
-      if (code === undefined || !TRANSIENT_CODES.has(code)) {
+      if (!isTransientFileError(error)) {
         throw error;
       }
     }
