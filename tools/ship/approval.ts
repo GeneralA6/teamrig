@@ -93,7 +93,7 @@ export interface MergeReads {
 export async function clearMerge(caller: MergeCaller, reads: MergeReads, branch: string, head: string, approved: string | null): Promise<MergeClearance> {
   const taskId = taskOfBranch(branch);
   if (taskId === null) {
-    return refused(`branch ${branch} names no task: a merged branch is t<id>-<name>`);
+    return refused(`branch ${branch} names no task: a merged branch is t<id>-<name>, after any type folder (fix/t<id>-<name>)`);
   }
   if (caller.session === undefined || caller.session === '' || caller.team === undefined || caller.team === '') {
     return refused('TEAMRIG_SESSION and TEAMRIG_TEAM must name the merging session and its team');

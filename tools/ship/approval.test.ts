@@ -131,7 +131,11 @@ describe('clearMerge', () => {
 
   it('refuses a branch that names no task, and a caller, team or tab left unset', async () => {
     const value = fixed(await approvedBy(HEAD));
-    assert.match(reasonOf(await clearMerge(caller, value, 'cli-fix', HEAD, HEAD)), /branch cli-fix names no task/);
+    assert.equal(
+      reasonOf(await clearMerge(caller, value, 'cli-fix', HEAD, HEAD)),
+      'branch cli-fix names no task: a merged branch is t<id>-<name>, after any type folder (fix/t<id>-<name>)',
+      'the refusal names both shapes taskOfBranch reads (GeneralA6/teamrig#1306)',
+    );
     assert.match(reasonOf(await clearMerge({ ...caller, session: undefined }, value, 't1-cli', HEAD, HEAD)), /TEAMRIG_SESSION and TEAMRIG_TEAM/);
     assert.match(reasonOf(await clearMerge({ ...caller, team: '' }, value, 't1-cli', HEAD, HEAD)), /TEAMRIG_SESSION and TEAMRIG_TEAM/);
     assert.match(reasonOf(await clearMerge({ ...caller, claudeSession: undefined }, value, 't1-cli', HEAD, HEAD)), /CLAUDE_CODE_SESSION_ID must name the merging Claude Code tab/);
