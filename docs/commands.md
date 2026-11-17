@@ -322,6 +322,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       open.headroom.closeIdleMinutes, in a turn, at a tool call or waiting on a decision it put to the
       person, running background work or shells, or too big or old to resume with no refresh ready;
       without --yes it shows the close and ends nothing
+  cleanup launchers [--yes]    lists each teamrig launch process on this host (a tab's root, which runs
+      its Claude Code) and which lost their tab: the terminal that started it has ended; without --yes
+      it ends nothing, with --yes it ends each orphaned one and what it started, never its own tab's
   rename <id|name> <new-name>  records a session's new name; its old names keep finding it
       (the session itself or the lead)
   hire <id> --scope "<its job>" --reason "<why>" [--name <name>] [--model <model>] [--effort <level>]

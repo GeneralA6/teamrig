@@ -2318,6 +2318,36 @@ Output:
 CLOSED shop-api (session api): quiet 75 min, its Claude Code holds 1300 MB, now free; teamrig open shop-api resumes it
 ```
 
+### teamrig cleanup launchers
+
+Lists every `teamrig launch` process on this machine, the root of a session's tab that runs and restarts its Claude
+Code, and marks one ORPHANED when its tab is gone: the terminal that started it has ended, or a later process now
+holds that terminal's id. Each line gives the process id, the team and session, when it started and what started it,
+then a count. Without `--yes` it ends nothing; with `--yes` it ends each orphaned launcher and every process it
+started, after checking that its id still runs that session's launch (an id the system gave to another program is
+left alone and shown `GONE`). Its own tab's launcher is never offered. It changes this machine, not a team, so it
+takes no `--session`. Exit 0, or 1 when the machine's processes cannot be listed (it then ends nothing) or an end
+failed.
+
+Flags:
+
+- `--yes`: end the orphaned launchers.
+
+Example:
+
+```sh
+teamrig cleanup launchers
+```
+
+Output:
+
+```text
+LIVE pid 4120 shop/api, started 11-17 09:12, starter 3880 WindowsTerminal.exe
+ORPHANED pid 5236 shop/web, started 11-16 22:40, starter 4904 (gone): its terminal has ended
+2 launcher(s), 1 orphaned
+DRY RUN ended nothing; run it again with --yes to end the 1 orphaned
+```
+
 ### teamrig rename
 
 Records a session's new name (`teamrig rename <id|name> <new-name>`). Its old names keep finding it in every

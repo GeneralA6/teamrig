@@ -77,6 +77,7 @@ const EXPECTED = {
   who: 'read',
   sessions: 'read',
   close: 'write',
+  'cleanup launchers': 'write',
   rename: 'write',
   queue: 'write',
   withdraw: 'write',
