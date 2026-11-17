@@ -672,6 +672,35 @@ export interface TestsConfig {
   readonly maxFailureChars: number;
 }
 
+/** The kinds of issue a task's issue is typed as (T3406): a design issue, a goal (a task planned after its parts), a bug, else a task. */
+export const ISSUE_KINDS = ['task', 'bug', 'goal', 'design'] as const;
+export type IssueKind = (typeof ISSUE_KINDS)[number];
+
+/**
+ * What the status push writes to the issue fields and the type of each open issue a task holds (T3406), one way from
+ * the register, on a tracker that has fields: the priority, the day the task first went in progress, its due day and
+ * its score, each only when it differs from what the issue holds. Labels stay as they are.
+ */
+export interface IssueFieldsConfig {
+  /** Off: the push writes no field and no type. */
+  readonly push: boolean;
+  /** The single-select field the priority goes to, as the option priorityOptions names for it; empty writes none. */
+  readonly priority: string;
+  /**
+   * The options each priority level is written as, by `p<n>`: the first one the field has wins (case aside, or one
+   * that starts with it, such as `P1 - high`). A level not listed is written as its `P<n>` option.
+   */
+  readonly priorityOptions: Readonly<Record<string, readonly string[]>>;
+  /** The date field the day the task first went in progress goes to, on the team's clock; empty writes none. */
+  readonly startDate: string;
+  /** The date field the task's due day goes to; empty writes none. */
+  readonly targetDate: string;
+  /** The number field the task's score goes to, rounded to a whole number, so it is written only when that changed; empty writes none. */
+  readonly score: string;
+  /** The issue types each kind is set as: the first one the repository has wins; an empty list sets no type for that kind. */
+  readonly types: Readonly<Record<IssueKind, readonly string[]>>;
+}
+
 /** The team's GitHub repositories: `teamrig issue sync` reads their issues into the register, never writing to GitHub; `issue migrate` and `issue comment`/`issue close`, run by hand, write only to them. */
 export interface GithubConfig {
   /** The repositories it reads, as `owner/name` in lowercase; empty turns the import off. */
@@ -699,6 +728,8 @@ export interface GithubConfig {
    * Off by default: read the push's dry run first.
    */
   readonly statusPush: boolean;
+  /** The issue fields and types the status push sets (T3406). */
+  readonly fields: IssueFieldsConfig;
   /**
    * The label that lets an issue by an author outside the repository (not its owner, an organization member or a
    * collaborator) become a task: it counts when someone other than the author added it last and the title and body

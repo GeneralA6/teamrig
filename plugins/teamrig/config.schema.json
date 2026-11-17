@@ -1424,6 +1424,91 @@
           "type": "boolean",
           "default": true
         },
+        "fields": {
+          "description": "What the status push writes to the issue fields and the type of each open issue a task holds, one way from the task list, on a repository that has issue fields or types: the priority, the day the task first went in progress, its due day and its score, each only when it differs from what the issue holds. Labels stay as they are. A field the repository lacks, or of another kind, is skipped and said so.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "push": {
+              "description": "Whether the push writes fields and types at all.",
+              "type": "boolean",
+              "default": true
+            },
+            "priority": {
+              "description": "The single-select field the task's priority goes to, as the option priorityOptions names for its level. Empty writes none.",
+              "type": "string",
+              "maxLength": 100,
+              "default": "Priority"
+            },
+            "priorityOptions": {
+              "description": "The options each priority level (p0, p1 and so on) is written as: the first one the field has wins, case aside, or an option that starts with it, such as P1 - high. A level listed here replaces its default list; a level not listed by default is written as its P<n> option, and an empty list writes no priority for it. By default P<n>, else GitHub's own Priority options: p0 and p1 Urgent, p2 High, p3 Medium, p4 and p5 Low.",
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^p[0-9]{1,2}$"
+              },
+              "additionalProperties": {
+                "type": "array",
+                "maxItems": 5,
+                "items": { "type": "string", "minLength": 1, "maxLength": 100 }
+              },
+              "default": { "p0": ["P0", "Urgent"], "p1": ["P1", "Urgent"], "p2": ["P2", "High"], "p3": ["P3", "Medium"], "p4": ["P4", "Low"], "p5": ["P5", "Low"] }
+            },
+            "startDate": {
+              "description": "The date field the day the task first went in progress goes to, on the team's clock. Empty writes none.",
+              "type": "string",
+              "maxLength": 100,
+              "default": "Start date"
+            },
+            "targetDate": {
+              "description": "The date field the task's due day goes to. Empty writes none.",
+              "type": "string",
+              "maxLength": 100,
+              "default": "Target date"
+            },
+            "score": {
+              "description": "The number field the task's score goes to, rounded to a whole number, so it is written only when that changed. Empty writes none.",
+              "type": "string",
+              "maxLength": 100,
+              "default": "Score"
+            },
+            "types": {
+              "description": "The issue types each kind of task is set as, the first one the repository has winning: a design issue (it carries the design label), a goal (a task planned after its parts), a bug, else a task. An empty list sets no type for that kind.",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "task": {
+                  "description": "The types a task is set as.",
+                  "type": "array",
+                  "maxItems": 5,
+                  "items": { "type": "string", "minLength": 1, "maxLength": 100 },
+                  "default": ["Task"]
+                },
+                "bug": {
+                  "description": "The types a bug is set as.",
+                  "type": "array",
+                  "maxItems": 5,
+                  "items": { "type": "string", "minLength": 1, "maxLength": 100 },
+                  "default": ["Bug"]
+                },
+                "goal": {
+                  "description": "The types a goal is set as: a Feature, as an issue opened for one is typed, else a Goal where the organization made that type.",
+                  "type": "array",
+                  "maxItems": 5,
+                  "items": { "type": "string", "minLength": 1, "maxLength": 100 },
+                  "default": ["Feature", "Goal"]
+                },
+                "design": {
+                  "description": "The types a design issue is set as.",
+                  "type": "array",
+                  "maxItems": 5,
+                  "items": { "type": "string", "minLength": 1, "maxLength": 100 },
+                  "default": ["Design"]
+                }
+              }
+            }
+          }
+        },
         "similarThreshold": {
           "description": "The score, from 0 to 1, at which a mirrored issue counts as a duplicate candidate of a new one: the cosine of their TF-IDF word vectors. Higher lists fewer, closer candidates.",
           "type": "number",

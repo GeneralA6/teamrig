@@ -183,6 +183,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   wakeMinGapMinutes: 'wake.minGapMinutes',
   maxFailureChars: 'tests.maxFailureChars',
   githubRepos: 'github.repos',
+  issueTypeNames: 'github.fields.types.task',
   closedDays: 'github.closedDays',
   githubProbeSeconds: 'github.probeSeconds',
   similarThreshold: 'github.similarThreshold',

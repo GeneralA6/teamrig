@@ -65,6 +65,7 @@ export const CONFIG_LIMITS = {
   wakeMinGapMinutes: { min: 0, max: 1440 },
   maxFailureChars: { min: 500, max: 50_000 },
   githubRepos: { maxItems: 20, maxLength: 140 },
+  issueTypeNames: { maxItems: 5, maxLength: 100 },
   closedDays: { min: 1, max: 365 },
   githubProbeSeconds: { min: 0, max: 3600 },
   similarThreshold: { min: 0, max: 1 },
@@ -190,6 +191,9 @@ export const BUDGET_ACCOUNT_MAX_LENGTH = 100;
 
 /** The longest `github.acceptLabel`: GitHub caps a label name at 50 characters. */
 export const GITHUB_LABEL_MAX_LENGTH = 50;
+
+/** The longest name in `github.fields`: past any field name GitHub shows. */
+export const ISSUE_FIELD_NAME_MAX_LENGTH = 100;
 
 /**
  * Bounds on `serviceRoles` (T2984): how many roles a team declares, and the shape of a role's name, which a log line
