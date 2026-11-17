@@ -195,6 +195,24 @@ describe('starterWatch', () => {
     }
   });
 
+  it('lists its starters once more when the first listing failed or left them out, as a listing under load can (#908)', async () => {
+    for (const how of ['failed', 'short'] as const) {
+      const processes = tab().failLineages(1, how);
+      const manual = new ManualEvery();
+      const watching = await starterWatch(processes, { pid: SELF.pid, shells: [] }, manual.every).watch();
+      assert.deepEqual([watching.starters, processes.lineages, manual.periods], [[SHELL, CLAUDE], [SELF.pid, SELF.pid], [STARTER_CHECK_MS]], how);
+      processes.exit(SHELL.pid);
+      manual.tick();
+      assert.equal(watching.stop.aborted, true, `${how}: the watch still finds a starter ended`);
+    }
+  });
+
+  it('lists its starters at most twice, and then watches none, when every listing goes wrong (#908)', async () => {
+    const processes = tab().failLineages(2, 'failed');
+    const watching = await starterWatch(processes, { pid: SELF.pid, shells: [] }, new ManualEvery().every).watch();
+    assert.deepEqual([watching.starters, processes.lineages], [[], [SELF.pid, SELF.pid]]);
+  });
+
   it('stops checking once closed', async () => {
     const manual = new ManualEvery();
     const watching = await starterWatch(tab(), { pid: SELF.pid, shells: [] }, manual.every).watch();

@@ -21,6 +21,7 @@ export class FakeSessionProcesses implements SessionProcesses {
   private lineageHidden = false;
   private listingHidden = false;
   private failingLookups = 0;
+  private badLineages: { count: number; how: 'failed' | 'short' } = { count: 0, how: 'failed' };
   /** Called after each end that ended something, as the operating system would tell a waiting parent. */
   private onEnded: (pid: number) => void = () => undefined;
   /** Called after each listing, as the system's processes change after a look at them. */
@@ -83,6 +84,15 @@ export class FakeSessionProcesses implements SessionProcesses {
     return this;
   }
 
+  /**
+   * The next `count` lists of a process's starters go wrong, as a listing under load: `failed` gives undefined (a `ps`
+   * that timed out), `short` the process alone (a listing that left its starters out).
+   */
+  failLineages(count: number, how: 'failed' | 'short'): this {
+    this.badLineages = { count, how };
+    return this;
+  }
+
   /** From now on, feeding `command` gives `outcome`. */
   onFeed(command: string, outcome: FeedOutcome): this {
     this.feedOutcomes.set(command, outcome);
@@ -122,6 +132,11 @@ export class FakeSessionProcesses implements SessionProcesses {
     this.lineages.push(pid);
     if (this.lineageHidden) {
       return undefined;
+    }
+    if (this.badLineages.count > 0) {
+      this.badLineages.count -= 1;
+      const own = this.running.get(pid);
+      return this.badLineages.how === 'failed' ? undefined : own === undefined ? [] : [own];
     }
     const chain: ProcessInfo[] = [];
     for (let info = this.running.get(pid); info !== undefined && !chain.includes(info); info = this.running.get(info.parentPid)) {
