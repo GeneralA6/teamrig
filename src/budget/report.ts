@@ -53,6 +53,8 @@ export interface SessionToday extends LiftNames {
   readonly paused: boolean;
   /** A leader's cut of it is in force (src/budget/cut.ts `activeCut`): past its part, it is held whatever room the team has. */
   readonly cut: boolean;
+  /** That cut is a stop: it is held whatever its use, past its part or not (T3455). */
+  readonly stopped: boolean;
 }
 
 /** One name in the past-budget lines: the team, never cut, or a session. */
@@ -363,7 +365,8 @@ function outsideLine(outside: OutsideToday, peers: readonly PeerToday[], all: bo
  * only as the hooks hold it (`holdsPastPart`): while the team has no room today, or while a leader's cut of it is in
  * force. While the team has room, the team past its part of the account's day and the uncut sessions past theirs are
  * named apart, not held, and the cut ones on a held line of their own. A hold for want of room gives the team's use
- * today against its in-day pace, so it never reads as a fixed cap next to the team's daily budget.
+ * today against its in-day pace, so it never reads as a fixed cap next to the team's daily budget. A session a leader
+ * stopped and still within its part is named on a line of its own: the hooks hold it all the same.
  */
 function pastLines(report: TodayReport, teamPast: boolean): string[] {
   const { week, sessions } = report;
@@ -381,6 +384,10 @@ function pastLines(report: TodayReport, teamPast: boolean): string[] {
   if (held.length > 0) {
     const warnOnly = report.overAction === 'warn';
     lines.push(`${heldLead(teamDay, warnOnly)}: ${held.join(', ')}${heldWhy(teamDay)}. ${warnOnly ? WARN_ONLY_ADVICE : OVER_BUDGET_ADVICE}`);
+  }
+  const stopped = sessions.filter((session) => session.stopped && !isPast(session.w, session.budgetPct, week)).map((session) => session.name);
+  if (stopped.length > 0) {
+    lines.push(`Stopped by a leader, held whatever their use: ${stopped.join(', ')}.`);
   }
   return lines;
 }

@@ -715,9 +715,20 @@ describe('teamrig budget cut', () => {
     assert.deepEqual(ok(await run([...CUT, '--session', 'lead'])), [cutLine('app-alpha', '00:00 UTC (the end of the budget day)')]);
     assert.deepEqual(ok(await run(['budget', 'cut', 'app/alpha', '--until', '18:00', '--reason', 'over on a p3', '--session', 'lead'])), [cutLine('app-alpha', '18:00 UTC')]);
     assert.deepEqual(records(kit.files.get(CUTS)), [
-      { v: 1, session: 'alpha', endsAt: '2030-01-09T00:00:00.000Z', reason: 'over on a p3', by: 'lead', at: '2030-01-08T10:00:00.000Z' },
-      { v: 1, session: 'alpha', endsAt: '2030-01-08T18:00:00.000Z', reason: 'over on a p3', by: 'lead', at: '2030-01-08T10:00:00.000Z' },
+      { v: 2, session: 'alpha', endsAt: '2030-01-09T00:00:00.000Z', stop: false, reason: 'over on a p3', by: 'lead', at: '2030-01-08T10:00:00.000Z' },
+      { v: 2, session: 'alpha', endsAt: '2030-01-08T18:00:00.000Z', stop: false, reason: 'over on a p3', by: 'lead', at: '2030-01-08T10:00:00.000Z' },
     ]);
+  });
+
+  it("stops a session until the week's reset, logged as a stop, and the report names it held at no use (T3455)", async () => {
+    const { kit, run } = await world();
+    const [line = ''] = ok(await run([...CUT, '--stop', '--session', 'lead']));
+    assert.match(line, /^CUT app-alpha stopped until .+: it is held whatever its use, so it wakes and is reopened for p0 work only /);
+    const [record] = records(kit.files.get(CUTS));
+    assert.deepEqual(record, { v: 2, session: 'alpha', endsAt: '2030-01-14T01:00:00.000Z', stop: true, reason: 'over on a p3', by: 'lead', at: '2030-01-08T10:00:00.000Z' });
+    assert.ok(ok(await run(['budget'])).includes('Stopped by a leader, held whatever their use: app-alpha.'));
+    // Until --until, when that comes first.
+    assert.match(ok(await run([...CUT, '--stop', '--until', '18:00', '--session', 'lead']))[0] ?? '', /^CUT app-alpha stopped until 18:00 UTC:/);
   });
 
   /** The report's past lines before and after a cut, once bravo's lift leaves alpha past its part, under `overAction`. */

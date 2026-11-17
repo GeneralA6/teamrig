@@ -102,7 +102,7 @@ const LIFT_BLOCK = [LIFT_HEADING, '  session   part  week now      until  stop a
 /** A session's row; a lifted one's daily budget is the share of the week its lift comes to. */
 function session(id: string, w: number, calls: number, budgetPct: number | undefined = 10.25 / 3, lift: Lift | undefined = undefined): SessionToday {
   const lifted = lift !== undefined;
-  return { id, name: id === 'lead' ? 'commander' : id, w, calls, budgetPct, lift, liftBy: lifted ? 'commander' : undefined, liftParent: undefined, liftWeekPct: lifted ? budgetPct : undefined, inBurst: undefined, paused: false, cut: false };
+  return { id, name: id === 'lead' ? 'commander' : id, w, calls, budgetPct, lift, liftBy: lifted ? 'commander' : undefined, liftParent: undefined, liftWeekPct: lifted ? budgetPct : undefined, inBurst: undefined, paused: false, cut: false, stopped: false };
 }
 
 /** A surplus burst for alpha and bravo until the pace end, Wed 10-21 00:00 UTC, started at a 12.5% floor that is 9.5% now. */
@@ -544,7 +544,7 @@ describe('sessionLines', () => {
   });
 
   it('says when there is no use and no budget', () => {
-    const unbudgeted: SessionToday = { id: 'lead', name: 'commander', w: 0, calls: 0, budgetPct: undefined, lift: undefined, liftBy: undefined, liftParent: undefined, liftWeekPct: undefined, inBurst: undefined, paused: false, cut: false };
+    const unbudgeted: SessionToday = { id: 'lead', name: 'commander', w: 0, calls: 0, budgetPct: undefined, lift: undefined, liftBy: undefined, liftParent: undefined, liftWeekPct: undefined, inBurst: undefined, paused: false, cut: false, stopped: false };
     assert.deepEqual(sessionLines(unbudgeted, state({}), UNKNOWN, TimeZone.UTC), ['commander (lead), by UTC day:', '  no use in the last 8 days', W_EXPLAINED]);
     assert.deepEqual(sessionLines(unbudgeted, state({ '2026-10-15': usage(500, 2) }), UNKNOWN, TimeZone.UTC).slice(1, 2), ['  2026-10-15  500 W in 2 calls']);
   });

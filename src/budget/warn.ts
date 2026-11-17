@@ -198,9 +198,13 @@ export function isPastDailyBudget(facts: BudgetFacts, extraPct = 0): boolean {
  * own part (T1616). A turn about to start counts as spent (`extraPct`, in % of the week), for the session and for the
  * team: a session with next to nothing left, idle since the night, is held before its wake, not after the wake's own
  * turn spent it; and as the quiet hours end the in-day pace is the night's use alone, so the team's room is a few
- * seconds of pace, which the wake's turn would spend at once (T1322).
+ * seconds of pace, which the wake's turn would spend at once (T1322). A leader's stop (a cut with `stop`) holds it
+ * whatever its use, from the day's start on, when it has all its part left (T3455).
  */
 export function isHeld(facts: BudgetFacts, extraPct = 0): boolean {
+  if (facts.cut?.stop === true) {
+    return true;
+  }
   return isPastDailyBudget(facts, extraPct) && holdsPastPart({ ...facts.teamDay, usedPct: facts.teamDay.usedPct + extraPct }, facts.cut !== undefined);
 }
 
@@ -431,7 +435,7 @@ function escalationLine(facts: BudgetFacts, budget: WarnBudget, standing: Standi
   const why =
     facts.cut === undefined
       ? `the team has no room left today${standing.ahead ? ', and it is ahead of its pace line' : ''}`
-      : `${leaderText(facts.cutBy, 'your')} cut you to it until ${formatEndTime(facts.cut.endsAt, facts.zone)}`;
+      : `${leaderText(facts.cutBy, 'your')} ${facts.cut.stop ? 'stopped you' : 'cut you to it'} until ${formatEndTime(facts.cut.endsAt, facts.zone)}`;
   if (budget.overAction === 'warn') {
     return `${BUDGET_COMMAND}: you are past today's budget and ${why}. The budget only warns (budget.overAction warn), so nothing is held: go on with your task list.`;
   }

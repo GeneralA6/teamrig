@@ -13,7 +13,7 @@ const DAY_END = Date.parse('2030-01-09T00:00:00Z');
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
-const REQUEST: CutRequest = { session: 'alpha', until: undefined, reason: 'over its part twice this week', by: 'lead', now: NOW };
+const REQUEST: CutRequest = { session: 'alpha', until: undefined, stop: false, reset: undefined, reason: 'over its part twice this week', by: 'lead', now: NOW };
 
 function refusal(decision: CutDecision): string {
   assert.equal(decision.kind, 'refused');
@@ -29,7 +29,7 @@ function given(decision: CutDecision): Cut {
 }
 
 function cut(overrides: Partial<Cut> = {}): Cut {
-  return { session: 'alpha', endsAt: DAY_END, reason: 'over its part twice this week', by: 'lead', at: NOW, ...overrides };
+  return { session: 'alpha', endsAt: DAY_END, stop: false, reason: 'over its part twice this week', by: 'lead', at: NOW, ...overrides };
 }
 
 function lift(overrides: Partial<Lift> = {}): Lift {
@@ -50,6 +50,16 @@ describe('decideCut', () => {
   it("refuses a passed --until, named on the team's clock", () => {
     assert.match(refusal(decideCut({ ...REQUEST, until: NOW }, TimeZone.UTC)), /^--until 2030-01-08 10:00 UTC has passed$/);
     assert.match(refusal(decideCut({ ...REQUEST, until: NOW - MINUTE }, JERUSALEM)), /^--until 2030-01-08 11:59 IST has passed$/);
+  });
+
+  it("lets a stop last to the week's reset, at --until when sooner, and to the day's end while the reset is unknown or past (T3455)", () => {
+    const reset = DAY_END + 48 * HOUR;
+    assert.deepEqual(given(decideCut({ ...REQUEST, stop: true, reset }, TimeZone.UTC)), cut({ stop: true, endsAt: reset }));
+    assert.equal(given(decideCut({ ...REQUEST, stop: true, reset, until: DAY_END + HOUR }, TimeZone.UTC)).endsAt, DAY_END + HOUR);
+    assert.equal(given(decideCut({ ...REQUEST, stop: true, reset: undefined }, TimeZone.UTC)).endsAt, DAY_END);
+    assert.equal(given(decideCut({ ...REQUEST, stop: true, reset: NOW - MINUTE }, TimeZone.UTC)).endsAt, DAY_END);
+    // A plain cut never outlives the budget day, whatever reset it is handed.
+    assert.equal(given(decideCut({ ...REQUEST, reset }, TimeZone.UTC)).endsAt, DAY_END);
   });
 });
 
@@ -114,13 +124,22 @@ describe('parseCut', () => {
   const record = { session: 'alpha', endsAt: '2030-01-09T00:00:00.000Z', reason: 'over its part twice this week', by: 'lead', at: '2030-01-08T10:00:00.000Z' };
 
   it('reads a whole record', () => {
-    assert.deepEqual(parseCut(record), cut());
+    assert.deepEqual(parseCut(record, 1), cut());
   });
 
   it('skips a damaged one', () => {
     const damages = [{ session: 3 }, { endsAt: 'soon' }, { endsAt: undefined }, { at: 5 }, { reason: undefined }, { by: null }];
     for (const damage of damages) {
-      assert.equal(parseCut({ ...record, ...damage }), undefined, JSON.stringify(damage));
+      assert.equal(parseCut({ ...record, ...damage }, 1), undefined, JSON.stringify(damage));
+    }
+  });
+
+  it('reads a format 1 record as a plain cut, and a format 2 one by its stop, skipped when that is damaged (T3455)', () => {
+    assert.deepEqual(parseCut({ ...record, stop: true }, 1), cut());
+    assert.deepEqual(parseCut({ ...record, stop: true }, 2), cut({ stop: true }));
+    assert.deepEqual(parseCut({ ...record, stop: false }, 2), cut());
+    for (const stop of [undefined, 'yes', 1, null]) {
+      assert.equal(parseCut({ ...record, stop }, 2), undefined, JSON.stringify(stop));
     }
   });
 });
@@ -150,6 +169,7 @@ describe('CutLog', () => {
   it('writes the pinned fields of its format: a field added to a cut raises CUT_FORMAT', async () => {
     const written: Readonly<Record<number, readonly string[]>> = {
       1: ['at', 'by', 'endsAt', 'reason', 'session', 'v'],
+      2: ['at', 'by', 'endsAt', 'reason', 'session', 'stop', 'v'],
     };
     const files = new MemoryFiles();
     await new CutLog(files, PATH).append(cut());

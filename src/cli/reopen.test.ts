@@ -12,6 +12,7 @@ import { decodePrompt, defaultPrompt, refreshPrompt, reopenPrompt } from '../ope
 import { RefreshStore } from '../refresh/store.ts';
 import { homeCloseOf, SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { APP, CLAUDE_SESSION, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { HOLDING_BUDGET, meterToday } from '../testing/budget-hold.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakePathProbe, FakeProcesses, NO_POWERSHELL } from '../testing/fake-processes.ts';
@@ -22,6 +23,8 @@ import { WakeStore } from '../wake/store.ts';
 import { EXIT } from './runtime.ts';
 
 const HOUR_MS = 3_600_000;
+/** The lead's Claude Code tab, metered so the budget knows the week. */
+const LEAD_TAB = '0123abcd-0000-4000-8000-0000000000d4';
 const LOG = join(TEAM_HOME, 'state', 'session-log.jsonl');
 const TRANSCRIPT = projectTranscriptPath(join(USER_HOME, '.claude', 'projects'), APP, CLAUDE_SESSION);
 /** Alpha, closed by the lead after 75 quiet minutes in Claude Code session CLAUDE_SESSION. */
@@ -300,6 +303,29 @@ describe('teamrig idle-open', () => {
     const away = await idleOpen(reopened);
     assert.deepEqual(away.result.stdout, ['KEPT app-alpha (session alpha): not running, and teamrig did not close it']);
     assert.deepEqual(away.argv, []);
+  });
+
+  it('keeps closed a session its leader stopped, though p1 work is handed to it and it has used nothing today (T3455)', async () => {
+    const budget = HOLDING_BUDGET;
+    // The week is known, from the lead's tab alone: alpha has used nothing today and the team has room.
+    const cut = async (alpha: ClosedAlpha, extra: readonly string[]): Promise<void> => {
+      await meterToday(alpha.kit, [{ id: 'lead', tab: LEAD_TAB, w: 1_000_000 }]);
+      ok(await alpha.kit.run(['budget', 'cut', 'alpha', ...extra, '--reason', 'stopped until the reset', '--session', 'lead']));
+    };
+    // A plain cut holds only past the session's part, so at no use it still reopens for p1 work.
+    const plain = await closedAlpha(40_000, { ...TEAM, budget });
+    await handWork(plain);
+    await cut(plain, []);
+    assert.match((await idleOpen(plain)).result.stdout[0] ?? '', /^REOPENED app-alpha \(session alpha\) for work handed to it since its close: T1/);
+
+    const stopped = await closedAlpha(40_000, { ...TEAM, budget });
+    await handWork(stopped);
+    await cut(stopped, ['--stop']);
+    const kept = await idleOpen(stopped);
+    assert.equal(kept.result.code, 0, kept.result.stderr.join('\n'));
+    assert.deepEqual(kept.result.stdout, ['KEPT app-alpha (session alpha): still closed, nothing it can start']);
+    assert.deepEqual(kept.argv, []);
+    assert.deepEqual(await logOf(stopped), [CLOSED]);
   });
 
   it('keeps it closed when the host has no room, and fails, logged, when it cannot weigh it or no terminal opens', async () => {

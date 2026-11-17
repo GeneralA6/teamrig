@@ -82,7 +82,7 @@ function lift(overrides: Partial<Lift> = {}): Lift {
 
 /** The lead's cut of alpha until the end of the budget day of 10-15. */
 function cut(): Cut {
-  return { session: 'alpha', endsAt: Date.parse('2026-10-16T00:00:00Z'), reason: 'over on a p3', by: 'lead', at: Date.parse('2026-10-15T09:00:00Z') };
+  return { session: 'alpha', endsAt: Date.parse('2026-10-16T00:00:00Z'), stop: false, reason: 'over on a p3', by: 'lead', at: Date.parse('2026-10-15T09:00:00Z') };
 }
 
 /** The cut's clause in the lines, by the lead. */
@@ -167,6 +167,12 @@ describe('isPastDailyBudget and sessionQuietSpan', () => {
   it('holds a session a leader cut once past its own budget, whatever room the team has (T1616)', () => {
     assert.equal(isHeld(facts(1.1, BEHIND, DAY, { teamDay: ROOM, cut: cut(), cutBy: LEAD })), true);
     assert.equal(isHeld(facts(0.9, BEHIND, DAY, { teamDay: ROOM, cut: cut(), cutBy: LEAD })), false);
+  });
+
+  it('holds a session a leader stopped whatever its use, at none too (T3455)', () => {
+    const stop = { ...cut(), stop: true };
+    assert.equal(isHeld(facts(0, BEHIND, DAY, { teamDay: ROOM, cut: stop, cutBy: LEAD })), true);
+    assert.equal(isHeld(facts(0.5, AHEAD, DAY, { cut: stop, cutBy: LEAD })), true);
   });
 
   it('holds a cut session under a lift only past its lifted budget', () => {
@@ -457,6 +463,8 @@ describe('promptWarning', () => {
     );
     const bySubLead = { teamDay: ROOM, leader: SUB_LEAD, cut: { ...cut(), by: 'bravo' }, cutBy: SUB_LEAD };
     assert.match(promptWarning(facts(1.1, BEHIND, DAY, bySubLead), BUDGET, undefined).line ?? '', /past today's budget and your leader app-bravo cut you to it until 00:00 UTC/);
+    const stopped = { teamDay: ROOM, cut: { ...cut(), stop: true }, cutBy: LEAD };
+    assert.match(promptWarning(facts(1.1, BEHIND, DAY, stopped), BUDGET, undefined).line ?? '', /past today's budget and the lead stopped you until 00:00 UTC/);
   });
 
   it('tells the lead to lift itself only with a stop %', () => {

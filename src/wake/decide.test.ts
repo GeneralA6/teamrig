@@ -377,9 +377,17 @@ describe('wakeRestOf', () => {
   });
 
   it('holds a session a leader cut once past its part, whatever room the team has (T1616)', () => {
-    const cut = { session: 'alpha', endsAt: NOW + 60 * MINUTE, reason: 'over on a p3', by: 'lead', at: NOW - MINUTE };
+    const cut = { session: 'alpha', endsAt: NOW + 60 * MINUTE, stop: false, reason: 'over on a p3', by: 'lead', at: NOW - MINUTE };
     const cutBy = { id: 'lead', name: 'lead', isLead: true };
     assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 1.5, teamDay: { usedPct: 4.9, pacePct: 5 }, cut, cutBy }), undefined, NOW, 0), { held: true, quiet: false });
+  });
+
+  it('holds a session a leader stopped from its first W, whatever room the team has (T3455)', () => {
+    const cutBy = { id: 'lead', name: 'lead', isLead: true };
+    const room = { usedPct: 1, pacePct: 5 };
+    const cut = { session: 'alpha', endsAt: NOW + 60 * MINUTE, stop: false, reason: 'stopped until the reset', by: 'lead', at: NOW - MINUTE };
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, teamDay: room, cut, cutBy }), undefined, NOW, 0), { held: false, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, teamDay: room, cut: { ...cut, stop: true }, cutBy }), undefined, NOW, 0), { held: true, quiet: false });
   });
 
   it('holds a session a short day pauses, whatever room the team has and before any use today (T1598)', () => {
