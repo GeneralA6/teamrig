@@ -357,7 +357,7 @@
       "properties": {
         "ttlMs": { "description": "The longest, in ms, a holder keeps a lock: one older than this is taken over even while a process with its pid runs, since that pid may be another process's by then. A lock whose process is gone is taken over at once.", "type": "integer", "minimum": 1000, "default": 300000 },
         "pollMs": { "description": "How often, in ms, a waiter retries.", "type": "integer", "minimum": 10, "default": 50 },
-        "waitMs": { "description": "How long, in ms, a waiter tries before it gives up.", "type": "integer", "minimum": 0, "default": 20000 }
+        "waitMs": { "description": "How long, in ms, a waiter tries before it gives up. A hook gives up sooner, 3 seconds before its own time limit, so it still answers.", "type": "integer", "minimum": 0, "default": 20000 }
       }
     },
     "pushGuard": {

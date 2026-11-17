@@ -199,7 +199,7 @@ The file lock each write of the team's state files takes (the task list, the exe
 | --- | --- | --- | --- |
 | `ttlMs` | integer (at least 1000) | `300000` | The longest, in ms, a holder keeps a lock: one older than this is taken over even while a process with its pid runs, since that pid may be another process's by then. A lock whose process is gone is taken over at once. |
 | `pollMs` | integer (at least 10) | `50` | How often, in ms, a waiter retries. |
-| `waitMs` | integer (at least 0) | `20000` | How long, in ms, a waiter tries before it gives up. |
+| `waitMs` | integer (at least 0) | `20000` | How long, in ms, a waiter tries before it gives up. A hook gives up sooner, 3 seconds before its own time limit, so it still answers. |
 
 ## `pushGuard`
 
