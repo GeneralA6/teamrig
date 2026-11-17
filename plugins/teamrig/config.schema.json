@@ -917,7 +917,7 @@
           "default": 20
         },
         "passEnv": {
-          "description": "Credential variables the programs teamrig starts still get. teamrig leaves a fixed list (GH_TOKEN, GITHUB_TOKEN, NPM_TOKEN, NODE_AUTH_TOKEN, cloud and AI provider keys) out of the environment of queued and tested commands, merge, deploy and worktree hooks, refresh.endCommand and the team's sessions; a name here passes that one on, as a private registry's npm ci needs NPM_TOKEN. Only the owner sets it.",
+          "description": "Credential variables the programs teamrig starts still get. teamrig leaves a fixed list (GH_TOKEN, GITHUB_TOKEN, NPM_TOKEN, NODE_AUTH_TOKEN, cloud and AI provider keys) out of the environment of queued and tested commands, merge, deploy and worktree hooks, refresh.endCommand and the team's sessions, and from all but the sessions also any variable whose name ends in TOKEN, SECRET, PASSWORD, PASSWD, API_KEY, APIKEY, PRIVATE_KEY, ACCESS_KEY, SECRET_KEY or CREDENTIALS; a name here passes that one on, as a private registry's npm ci needs NPM_TOKEN. Only the owner sets it.",
           "type": "array",
           "maxItems": 32,
           "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$" },

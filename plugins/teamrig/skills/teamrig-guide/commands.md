@@ -4997,9 +4997,12 @@ at a time instead of competing for its CPU and memory. The step starts without t
 (`GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `NPM_TOKEN`, `NODE_AUTH_TOKEN`,
 `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`,
 `GOOGLE_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `SLACK_TOKEN`, `SLACK_BOT_TOKEN`,
-`STRIPE_SECRET_KEY`, named in any case) but those the owner lists in [delivery.passEnv], as does each program teamrig
-starts for the team's code: `test`, the hooks of `merge`, `deploy` and `worktree add`, [refresh.endCommand] and the
-sessions `launch` starts. A build or a test runs the repository's code, which needs none of the session's tokens. It waits for the lock until its line has not moved
+`STRIPE_SECRET_KEY`, named in any case), nor any variable whose name ends in `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`,
+`API_KEY`, `APIKEY`, `PRIVATE_KEY`, `ACCESS_KEY`, `SECRET_KEY` or `CREDENTIALS`, but those the owner lists in
+[delivery.passEnv]; its log names the ones held back (`credentials held back from the step ...`). So does each program
+teamrig starts for the team's code: `test` and the hooks of `merge`, `deploy` and `worktree add`, and
+[refresh.endCommand]. The sessions `launch` starts leave out only the named list, as their own tools may need a key of
+the user's. A build or a test runs the repository's code, which needs none of the session's tokens. It waits for the lock until its line has not moved
 for `delivery.queue.waitMinutes` (60 by default). Waiters take it in their turn: each joins a line of tickets in `<lock>.queue` and only the
 first live one may take the lock, looking every 2 s; the rest look every `delivery.wait.pollSeconds` (30). With
 `delivery.queue.admission` `pipeline` the line is in admission order: a step of the task its lead put at the
