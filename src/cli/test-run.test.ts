@@ -5,8 +5,11 @@ import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts
 import { FakeShell } from '../testing/fake-shell.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { NODE_SPEC_FAILED } from '../testing/test-output.ts';
+import { runsOneSpecFile } from './commands/test.ts';
 
 const LOGS = join(TEAM_HOME, 'state', 'logs');
+/** The harness's own CLI (`runtime.self`), which a run in a team starts as `teamrig queue`. */
+const QUEUE = '/usr/bin/node /opt/teamrig/dist/cli/main.js queue --kind test';
 const PASSED = '▶ parseArgs\n  ✔ splits a command (0.5ms)\n▶ parseArgs (1ms)\nℹ tests 1532\nℹ suites 1\nℹ pass 1532\nℹ fail 0\nℹ cancelled 0\n';
 
 /** TAP output with `count` failing tests of about `size` characters each. */
@@ -33,7 +36,7 @@ describe('teamrig test', () => {
     const { kit, shell } = harness();
     await kit.run(['test', '--', 'node', '--test', 'src/**/*.test.ts'], { shell, env: { PROBE: 'yes' } });
     const [request] = shell.ran;
-    assert.equal(request?.command, "node --test 'src/**/*.test.ts'");
+    assert.equal(request?.command, `${QUEUE} --what 'test: node --test src/**/*.test.ts' -- node --test 'src/**/*.test.ts'`);
     assert.equal(request?.cwd, APP);
     assert.equal(request?.env['PROBE'], 'yes');
   });
@@ -50,7 +53,7 @@ describe('teamrig test', () => {
     const { kit, shell } = harness();
     const result = await kit.run(['test', '--', 'npm test -- --help'], { shell });
     assert.equal(result.code, 0);
-    assert.equal(shell.ran[0]?.command, 'npm test -- --help');
+    assert.ok(shell.ran[0]?.command.endsWith(" -- 'npm test -- --help'"), shell.ran[0]?.command);
   });
 
   it('prints FAIL with how many failed, then each failing test in full, and exits 1', async () => {
@@ -113,9 +116,28 @@ describe('teamrig test', () => {
 
   it("works outside a team, with the kit home's logs folder and the default cap", async () => {
     const kit = new CliHarness(TEAM, null);
-    const result = await kit.run(['test', '--', 'npm test'], { shell: new FakeShell().prints(tapFailures(3, 300), 1) });
+    const shell = new FakeShell().prints(tapFailures(3, 300), 1);
+    const result = await kit.run(['test', '--', 'npm test'], { shell });
+    assert.equal(shell.ran[0]?.command, 'npm test', 'outside a team there is no host queue to take its turn in');
     assert.ok(result.stdout[0]?.endsWith(`Log: ${join(KIT, 'logs', 'test-1.log')}`));
     assert.equal(result.stdout.filter((line) => line.startsWith('not ok')).length, 3);
+  });
+
+  it('in a team, runs through the host queue: one spec file as a small step, anything more as a heavy one, for its session (T2323)', async () => {
+    const { kit, shell } = harness();
+    const one = await kit.run(['test', '--session', 'alpha', '--', 'node', '--test', 'src/a.test.ts'], { shell: shell.prints(PASSED, 0, 1_000) });
+    assert.equal(shell.ran[0]?.command, `${QUEUE} --small --what 'test: node --test src/a.test.ts' --session alpha -- node --test src/a.test.ts`);
+    assert.equal(kit.files.get(join(LOGS, 'test-alpha-1.log'))?.split('\n')[0], '$ node --test src/a.test.ts', 'the log names the command as given');
+    assert.equal(one.stdout[0], `PASS node --test src/a.test.ts: 1,532 tests in 1.0 s. Log: ${join(LOGS, 'test-alpha-1.log')}`);
+    await kit.run(['test', '--session', 'alpha', '--', 'npm test'], { shell });
+    assert.equal(shell.ran[1]?.command, `${QUEUE} --what 'test: npm test' --session alpha -- 'npm test'`);
+  });
+
+  it("runs bare when the team's config cannot be read, as the queue could not read it either", async () => {
+    const kit = new CliHarness('{ not json');
+    const shell = new FakeShell();
+    await kit.run(['test', '--', 'npm test'], { shell });
+    assert.equal(shell.ran[0]?.command, 'npm test');
   });
 
   it("uses the team's logs folder and the default cap when its config cannot be read", async () => {
@@ -190,5 +212,21 @@ describe('teamrig test', () => {
     const result = await new CliHarness().run(['test', '--help']);
     assert.equal(result.code, 0);
     assert.ok(result.stdout[0]?.includes('test [--session <id|name>] -- <command ...>'));
+  });
+});
+
+describe('runsOneSpecFile', () => {
+  it('is a node run of one spec file, flags and a quoted path allowed', () => {
+    assert.deepEqual(
+      [['node', '--test', 'src/a.test.ts'], ['node --test --test-name-pattern=x "src/a b/c.test.ts"'], ['C:\\node\\node.exe','--test', 'a.test.mjs']].map(runsOneSpecFile),
+      [true, true, true],
+    );
+  });
+
+  it('is not a glob, two files, a folder, a package script or another program, which may run the whole suite', () => {
+    assert.deepEqual(
+      [['node', '--test', 'src/**/*.test.ts'], ['node', '--test', 'a.test.ts', 'b.test.ts'], ['node', '--test', 'src/'], ['npm test -- a.test.ts'], ['npx', 'tsx', 'a.test.ts'], []].map(runsOneSpecFile),
+      [false, false, false, false, false, false],
+    );
   });
 });

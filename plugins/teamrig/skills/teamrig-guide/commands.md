@@ -5147,8 +5147,8 @@ by `--detach` and the hand-over only.
 
 Everything after `--` is the command, read as `teamrig test` reads it: one quoted word runs as a shell line, several
 run as one command with each word passed as is, and a word that is only `&&`, `||` or `;` is REFUSED (exit 64) before
-the step joins the line. Run a test run as
-`teamrig queue ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
+the step joins the line. In a team, `teamrig test` queues its own command (`--small` for one spec file, else heavy);
+wrap it as `teamrig queue ... -- teamrig test -- <command>` only to set the queue's flags yourself.
 
 A step's processes get `$TEAMRIG_HOST_LOCK`, the lock's id, and so do `merge`'s push, `deploy`'s
 afterPull hooks and command, and a `deploy --targets` run's command. A `teamrig queue` started under a lock that id still names runs at once, in the
@@ -5971,7 +5971,14 @@ model little. The whole output goes to a numbered log, `test-<session>-<n>.log` 
 the counts, the time and the log's path, and for a failed run each failing test in full within
 `tests.maxFailureChars` (4,000 characters by default), or the output's last 40 lines when no test runner is
 recognised. It reads the Node.js test runner (spec and TAP), Jest and Vitest. Exit 0 when the command passed,
-1 otherwise. The command starts without the credential variables (see [teamrig queue](#teamrig-queue)) but those
+1 otherwise.
+
+In a team, the command runs through [teamrig queue](#teamrig-queue) `--kind test`, so it waits its turn for host
+memory and the host lock and runs below normal priority, as every queued step does: one spec file run by node
+(`node --test src/a.test.ts`, flags allowed) as a `--small` step, anything more (a glob, a folder, a second file, a
+package script such as `npm test`) as a heavy one. The queue's wait lines go to the log too. Under a queued step
+(`teamrig queue ... -- teamrig test -- <command>`) it runs at once, as part of that step. Outside a team, or when the
+team's config cannot be read, it runs bare. The command starts without the credential variables (see [teamrig queue](#teamrig-queue)) but those
 [delivery.passEnv] names.
 
 Everything after `--` is the command. One quoted word runs as written, so `"npm run build && npm test"` works;
