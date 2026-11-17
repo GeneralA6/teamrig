@@ -4,6 +4,13 @@ import { delimiter } from 'node:path';
 import { gitUsrBin, posixShellEnvironment, type ShellProbe } from './posix-shell.ts';
 
 const GIT_BIN = 'C:/Program Files/Git/usr/bin';
+/**
+ * A Git install with no drive letter, for the specs that split PATH: on Linux and macOS the delimiter is `:`, which
+ * would cut a `C:/` folder in two.
+ */
+const ROOT = '/opt/Git';
+const ROOT_BIN = `${ROOT}/usr/bin`;
+const ROOT_EXEC = `${ROOT}/mingw64/libexec/git-core`;
 
 /** A probe where `sh` runs only when PATH holds one of `shellFolders`. */
 function probeOf(shellFolders: readonly string[], execPath: string | undefined): ShellProbe & { readonly asked: string[] } {
@@ -38,20 +45,20 @@ describe('posixShellEnvironment', () => {
   });
 
   it("puts Git's usr/bin first on PATH, under the name the environment holds it by, where sh is missing (T4103)", () => {
-    const env = { Path: 'C:/Program Files/Git/cmd', HOME: 'h' };
-    const probe = probeOf([GIT_BIN], 'C:/Program Files/Git/mingw64/libexec/git-core');
-    assert.deepEqual(posixShellEnvironment(env, probe), { Path: `${GIT_BIN}${delimiter}C:/Program Files/Git/cmd`, HOME: 'h' });
-    assert.deepEqual(probe.asked, ['C:/Program Files/Git/cmd', `${GIT_BIN}${delimiter}C:/Program Files/Git/cmd`]);
+    const env = { Path: `${ROOT}/cmd`, HOME: 'h' };
+    const probe = probeOf([ROOT_BIN], ROOT_EXEC);
+    assert.deepEqual(posixShellEnvironment(env, probe), { Path: `${ROOT_BIN}${delimiter}${ROOT}/cmd`, HOME: 'h' });
+    assert.deepEqual(probe.asked, [`${ROOT}/cmd`, `${ROOT_BIN}${delimiter}${ROOT}/cmd`]);
   });
 
   it("makes Git's usr/bin the whole PATH where the environment has none", () => {
-    const probe = probeOf([GIT_BIN], 'C:/Program Files/Git/mingw64/libexec/git-core');
-    assert.deepEqual(posixShellEnvironment({}, probe), { PATH: GIT_BIN });
+    const probe = probeOf([ROOT_BIN], ROOT_EXEC);
+    assert.deepEqual(posixShellEnvironment({}, probe), { PATH: ROOT_BIN });
   });
 
   it('finds none where git does not answer or its usr/bin runs no sh', () => {
     assert.equal(posixShellEnvironment({ PATH: '/x' }, probeOf([], undefined)), undefined);
-    assert.equal(posixShellEnvironment({ PATH: '/x' }, probeOf([], 'C:/Program Files/Git/mingw64/libexec/git-core')), undefined);
-    assert.equal(posixShellEnvironment({ PATH: '/x' }, probeOf([GIT_BIN], '/usr/lib/git-core')), undefined);
+    assert.equal(posixShellEnvironment({ PATH: '/x' }, probeOf([], ROOT_EXEC)), undefined);
+    assert.equal(posixShellEnvironment({ PATH: '/x' }, probeOf([ROOT_BIN], '/usr/lib/git-core')), undefined);
   });
 });
