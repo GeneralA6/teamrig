@@ -73,19 +73,30 @@ test('keeps the plan when it names the version the files set, raises no version,
 });
 
 const VERSIONS = ['plugins/teamrig/.claude-plugin/plugin.json', 'src/core/version.ts'];
+const STAMP = 'src/config/migrate.ts';
+const RAISE_PATHS = { versions: VERSIONS, stamps: [STAMP] };
 const WORK_A = { files: ['src/a.ts'], subject: 'core: a', body: 'a' };
 const WORK_B = { files: ['docs/b.md'], subject: 'docs: b', body: 'b' };
 const RAISE = { files: VERSIONS, subject: 'plugin: version 0.2.0, a', body: 'raise' };
 const MIXED = { files: ['src/c.ts', 'src/core/version.ts'], subject: 'core: c', body: 'c' };
+const STAMPED_RAISE = { files: [...VERSIONS, STAMP], subject: 'plugin: version 0.2.0, a migration', body: 'raise and stamp' };
+const MIGRATION = { files: [STAMP], subject: 'config: v9 migration', body: 'migration' };
 
 test('isRaiseOnly: a chunk of version files only, not one that also commits other files', () => {
-  assert.equal(isRaiseOnly(RAISE, VERSIONS), true);
-  assert.equal(isRaiseOnly(MIXED, VERSIONS), false);
-  assert.equal(isRaiseOnly(WORK_A, VERSIONS), false);
+  assert.equal(isRaiseOnly(RAISE, RAISE_PATHS), true);
+  assert.equal(isRaiseOnly(MIXED, RAISE_PATHS), false);
+  assert.equal(isRaiseOnly(WORK_A, RAISE_PATHS), false);
 });
 
-test('withRaiseLast moves the version-only chunks after the rest, each side in its own order', () => {
-  assert.deepEqual(withRaiseLast([WORK_A, RAISE, WORK_B], VERSIONS), [WORK_A, WORK_B, RAISE]);
-  assert.deepEqual(withRaiseLast([RAISE, MIXED, WORK_A], VERSIONS), [MIXED, WORK_A, RAISE]);
-  assert.deepEqual(withRaiseLast([WORK_A, WORK_B], VERSIONS), [WORK_A, WORK_B]);
+test('isRaiseOnly: a raise that also sets a release stamp is the raise; a chunk of stamp files alone is work (T4171)', () => {
+  assert.equal(isRaiseOnly(STAMPED_RAISE, RAISE_PATHS), true);
+  assert.equal(isRaiseOnly(MIGRATION, RAISE_PATHS), false);
+  assert.equal(isRaiseOnly({ files: [STAMP, 'src/c.ts', 'src/core/version.ts'], subject: 'core: c', body: 'c' }, RAISE_PATHS), false);
+});
+
+test('withRaiseLast moves the raise chunks after the rest, each side in its own order', () => {
+  assert.deepEqual(withRaiseLast([WORK_A, RAISE, WORK_B], RAISE_PATHS), [WORK_A, WORK_B, RAISE]);
+  assert.deepEqual(withRaiseLast([RAISE, MIXED, WORK_A], RAISE_PATHS), [MIXED, WORK_A, RAISE]);
+  assert.deepEqual(withRaiseLast([WORK_A, WORK_B], RAISE_PATHS), [WORK_A, WORK_B]);
+  assert.deepEqual(withRaiseLast([STAMPED_RAISE, MIGRATION, WORK_A], RAISE_PATHS), [MIGRATION, WORK_A, STAMPED_RAISE]);
 });

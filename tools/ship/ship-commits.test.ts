@@ -214,6 +214,22 @@ test('without --merge, the review head holds the work alone: the raise and the d
   assert.ok(logs.some((line) => line.includes('left for review: the work commits')));
 });
 
+test('without --merge, a raise that also stamps a migration\'s firstRelease is committed last and taken back whole (T4171)', async () => {
+  const stamped: Chunk = { files: [...RAISE.files, 'src/config/migrate.ts'], subject: 'plugin: version 0.134.0, a migration', body: 'raises 0.134.0' };
+  const { deps, events, takenBack } = fake({ numstat: DIST_STAT });
+  assert.equal(await shipCommits(ARGS, [stamped, WORK], deps), 0);
+  assert.deepEqual(takenBack, [['core: a', 'plugin: version 0.134.0, a migration']]);
+  assert.deepEqual(events.filter((event) => event.startsWith('git commit')), [
+    committed('core: a', 'why a, since 0.134.0'),
+    committed('plugin: version 0.134.0, a migration', 'raises 0.134.0'),
+    committed('build: rebuild the plugin dist', 'Compiled from the commits above by npm run build.'),
+  ]);
+  assert.deepEqual(
+    events.filter((event) => event.startsWith('git reset') || event.startsWith('git restore')),
+    ['git reset -q --soft HEAD~2', `git restore --staged -- ${VERSION_FILES} src/config/migrate.ts`, `git restore --source=HEAD --staged --worktree -- ${DIST}`],
+  );
+});
+
 test('without --merge and with no rebuilt dist, only the raise is taken back', async () => {
   const { deps, events } = fake();
   await shipCommits(ARGS, RAISING, deps);
