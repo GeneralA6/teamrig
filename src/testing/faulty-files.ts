@@ -95,6 +95,11 @@ export class FaultyFiles implements Files {
     return this.inner.modifiedAt(path);
   }
 
+  async size(path: string): Promise<number | undefined> {
+    await this.check('size', path);
+    return this.inner.size(path);
+  }
+
   private async check(operation: FileOperation, path: string): Promise<void> {
     const key = keyOf(operation, path);
     const error = this.faults.get(key);

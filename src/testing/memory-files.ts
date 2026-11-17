@@ -136,6 +136,11 @@ export class MemoryFiles implements Files {
     return this.changedAt.get(normalisePath(path));
   }
 
+  async size(path: string): Promise<number | undefined> {
+    const text = this.contents.get(normalisePath(path));
+    return text === undefined ? undefined : Buffer.byteLength(text, 'utf8');
+  }
+
   private put(key: string, text: string): void {
     this.changes += 1;
     this.contents.set(key, text);

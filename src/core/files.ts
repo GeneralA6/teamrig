@@ -163,6 +163,8 @@ export interface Files {
   stamp(path: string): Promise<string | undefined>;
   /** When the file last changed, in epoch milliseconds, or undefined when there is no file there. */
   modifiedAt(path: string): Promise<number | undefined>;
+  /** The file's size in bytes, without reading it, or undefined when there is no file there (a missing path or a folder). */
+  size(path: string): Promise<number | undefined>;
 }
 
 /**
@@ -254,6 +256,9 @@ export function nodeFiles(sleep: Sleep): Files {
     },
     async modifiedAt(path) {
       return (await fileStatsOf(path))?.mtimeMs;
+    },
+    async size(path) {
+      return (await fileStatsOf(path))?.size;
     },
   };
 }

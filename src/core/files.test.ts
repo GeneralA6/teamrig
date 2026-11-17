@@ -191,6 +191,15 @@ describe('nodeFiles', () => {
     assert.equal(await files.stamp(folder), undefined);
   });
 
+  it('tells a file its size in bytes, and nothing for a missing path or a folder', async () => {
+    const folder = join(root, 'z');
+    const path = join(folder, 'sized.txt');
+    assert.equal(await files.size(path), undefined);
+    await files.write(path, 'four');
+    await files.append(path, '€');
+    assert.deepEqual([await files.size(path), await files.size(folder)], [7, undefined]);
+  });
+
   it('tells when a file last changed, and nothing for a missing path or a folder', async () => {
     const folder = join(root, 'm');
     const path = join(folder, 'changed.txt');
