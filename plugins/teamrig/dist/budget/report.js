@@ -237,7 +237,8 @@ function outsideLine(outside, peers, all) {
  * only as the hooks hold it (`holdsPastPart`): while the team has no room today, or while a leader's cut of it is in
  * force. While the team has room, the team past its part of the account's day and the uncut sessions past theirs are
  * named apart, not held, and the cut ones on a held line of their own. A hold for want of room gives the team's use
- * today against its in-day pace, so it never reads as a fixed cap next to the team's daily budget.
+ * today against its in-day pace, so it never reads as a fixed cap next to the team's daily budget. A session a leader
+ * stopped and still within its part is named on a line of its own: the hooks hold it all the same.
  */
 function pastLines(report, teamPast) {
     const { week, sessions } = report;
@@ -253,6 +254,10 @@ function pastLines(report, teamPast) {
     if (held.length > 0) {
         const warnOnly = report.overAction === 'warn';
         lines.push(`${heldLead(teamDay, warnOnly)}: ${held.join(', ')}${heldWhy(teamDay)}. ${warnOnly ? WARN_ONLY_ADVICE : OVER_BUDGET_ADVICE}`);
+    }
+    const stopped = sessions.filter((session) => session.stopped && !isPast(session.w, session.budgetPct, week)).map((session) => session.name);
+    if (stopped.length > 0) {
+        lines.push(`Stopped by a leader, held whatever their use: ${stopped.join(', ')}.`);
     }
     return lines;
 }

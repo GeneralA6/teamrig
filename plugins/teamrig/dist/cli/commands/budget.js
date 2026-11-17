@@ -124,7 +124,8 @@ function sessionsToday(reading, roster, budget, split, others) {
         const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
         const inBurst = burstNow !== undefined && burstNow.burst.sessions.includes(id) ? burstNow : undefined;
         const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split, others), inBurst?.floorPct);
-        return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, ...liftNamesOf({ split, others }, reading.week.allowancePct, roster, id, lift), inBurst, paused: isPaused(split, id), cut: activeCut(reading.cuts, reading.lifts, id, reading.now) !== undefined };
+        const cut = activeCut(reading.cuts, reading.lifts, id, reading.now);
+        return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, ...liftNamesOf({ split, others }, reading.week.allowancePct, roster, id, lift), inBurst, paused: isPaused(split, id), cut: cut !== undefined, stopped: cut?.stop === true };
     });
 }
 /** Each sub-lead's group today: its part of the day (`groupPartsOf`) and its group lift by name. */
@@ -467,9 +468,10 @@ async function crossTeamLift(runtime, lifting, target, ask) {
     return EXIT.ok;
 }
 /**
- * `budget cut <session> [--until <time>] --reason "<text>"`: a leader cuts a session under it, as a lift goes
+ * `budget cut <session> [--until <time>] [--stop] --reason "<text>"`: a leader cuts a session under it, as a lift goes
  * (`sessionRefusalOf`), to its own daily budget for today at most; past it the hooks hold the session whatever room
- * the team has (src/budget/cut.ts). Only its own team's sessions: a team below cuts its own.
+ * the team has (src/budget/cut.ts). `--stop` holds it whatever its use, up to the week's reset. Only its own team's
+ * sessions: a team below cuts its own.
  */
 export async function cut(args, runtime) {
     const caller = callerOf(args.flags, runtime.env);
@@ -495,7 +497,10 @@ export async function cut(args, runtime) {
     if (refusal !== undefined) {
         throw new RefusedError(refusal);
     }
-    const decision = decideCut({ session: id, until, reason, by, now }, zone);
+    const stop = args.switches.has('stop');
+    // The week's reading takes thousands of file reads: only a stop, which may last to the reset, needs it.
+    const reset = stop ? (await readBudget(runtime, kit, config, roster, { recountDay: undefined })).week.reset : undefined;
+    const decision = decideCut({ session: id, until, stop, reset, reason, by, now }, zone);
     if (decision.kind === 'refused') {
         throw new RefusedError(decision.reason);
     }
