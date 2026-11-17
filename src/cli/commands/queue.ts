@@ -665,7 +665,8 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       watching.stop,
       lock.acquire(
         session,
-        `heavy: ${what}`,
+        // The purpose is what withdraw's list and other steps' wait lines show, so it names the step's real weight (#1511).
+        `${small ? 'small' : 'heavy'}: ${what}`,
         delivery.queue.waitMinutes * MINUTE_MS,
         delivery.wait.pollSeconds * 1_000,
         (holder, ahead, arrivedAfter) => {
