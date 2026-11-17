@@ -5,10 +5,12 @@ import {
   CLAUDE_SESSION_VARIABLES,
   CREDENTIAL_VARIABLES,
   dispatchedEnvOf,
+  heldBackCredentials,
   PARKED_SESSION_VARIABLES,
   PARKED_VARIABLES,
   parkedEnvOf,
   withoutCredentials,
+  withoutListedCredentials,
 } from './child-env.ts';
 
 const VALUE = 'not-a-real-credential';
@@ -33,6 +35,67 @@ describe('withoutCredentials', () => {
 
   it("lists Claude Code's own login among the credentials", () => {
     assert.ok(CLAUDE_LOGIN_VARIABLES.every((name) => CREDENTIAL_VARIABLES.includes(name)));
+  });
+
+  it('leaves out a credential the list does not name, by the ending of its name', () => {
+    const named = {
+      GITHUB_PACKAGE_TOKEN: VALUE,
+      CLAUDE_CODE_MESSAGING_TOKEN: VALUE,
+      npm_config__authToken: VALUE,
+      DB_PASSWORD: VALUE,
+      PGPASSWD: VALUE,
+      SENTRY_API_KEY: VALUE,
+      MAPS_APIKEY: VALUE,
+      DEPLOY_PRIVATE_KEY: VALUE,
+      AZURE_STORAGE_ACCESS_KEY: VALUE,
+      JWT_SECRET: VALUE,
+      GOOGLE_APPLICATION_CREDENTIALS: VALUE,
+    };
+    assert.deepEqual(withoutCredentials({ ...named, PATH: '/usr/bin' }, []), { PATH: '/usr/bin' });
+  });
+
+  it('keeps a name that only holds a credential word inside it or past its end', () => {
+    const kept = {
+      CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS: '25000',
+      TOKENIZERS_PARALLELISM: 'false',
+      KEYBOARD_LAYOUT: 'us',
+      SECRETS_DIR: '/run/secrets',
+      PASSWORD_STORE_DIR: '/store',
+      SSH_AUTH_SOCK: '/tmp/agent.sock',
+    };
+    assert.deepEqual(withoutCredentials(kept, []), kept);
+  });
+
+  it('keeps a credential named by its ending that pass names', () => {
+    assert.deepEqual(withoutCredentials({ GITHUB_PACKAGE_TOKEN: VALUE, DB_PASSWORD: VALUE }, ['github_package_token']), {
+      GITHUB_PACKAGE_TOKEN: VALUE,
+    });
+  });
+});
+
+describe('withoutListedCredentials', () => {
+  it('leaves out only the listed credentials, keeping a key of the user under another name for a session', () => {
+    assert.deepEqual(withoutListedCredentials({ GH_TOKEN: VALUE, SENTRY_API_KEY: VALUE, PATH: '/usr/bin' }, []), {
+      SENTRY_API_KEY: VALUE,
+      PATH: '/usr/bin',
+    });
+  });
+
+  it('keeps the listed credentials pass names, in any case', () => {
+    assert.deepEqual(withoutListedCredentials({ ANTHROPIC_API_KEY: VALUE, GH_TOKEN: VALUE }, ['anthropic_api_key']), {
+      ANTHROPIC_API_KEY: VALUE,
+    });
+  });
+});
+
+describe('heldBackCredentials', () => {
+  it('names the variables a program does not get, sorted, and none that pass keeps', () => {
+    const env = { PATH: '/usr/bin', NPM_TOKEN: VALUE, DB_PASSWORD: VALUE, GITHUB_PACKAGE_TOKEN: VALUE };
+    assert.deepEqual(heldBackCredentials(env, ['db_password']), ['GITHUB_PACKAGE_TOKEN', 'NPM_TOKEN']);
+  });
+
+  it('names none when the environment holds no credential', () => {
+    assert.deepEqual(heldBackCredentials({ PATH: '/usr/bin' }, []), []);
   });
 });
 

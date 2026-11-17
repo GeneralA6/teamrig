@@ -17,7 +17,7 @@ import { endedText, startedByGit, type StarterWatching } from '../../delivery/st
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd } from '../../delivery/steps.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
-import { parkedEnvOf, withoutCredentials } from '../../core/child-env.ts';
+import { heldBackCredentials, parkedEnvOf, withoutCredentials } from '../../core/child-env.ts';
 import { PARKED_FORMAT } from '../../delivery/parked.ts';
 import { DISPATCH_SWITCH, dispatch, parkStep } from './queue-dispatch.ts';
 import { ENV, type Env } from '../../core/home.ts';
@@ -643,6 +643,11 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const watching = detachedId === undefined ? await watchStarters(runtime, say) : unwatched();
   try {
     const step: Step = { what, words, maxRunMinutes, watching, reporting, env: withoutCredentials(runtime.env, delivery.passEnv) };
+    const heldBack = heldBackCredentials(runtime.env, delivery.passEnv);
+    if (heldBack.length > 0) {
+      // Names only: a step that fails for want of one shows which, and delivery.passEnv is how its owner hands it on.
+      say(`credentials held back from the step (delivery.passEnv passes one): ${heldBack.join(', ')}`);
+    }
     const prePush: PrePush | undefined = args.switches.has('pre-push') ? { command: commandLine(words, runtime.platform), before: runtime.trees.checked(runtime.cwd) } : undefined;
     if (prePush !== undefined && (await reusedPass(runtime, say, prePush, zone))) {
       return EXIT.ok;
