@@ -99,13 +99,15 @@ function commit(deps: ShipDeps, files: readonly string[], subject: string, body:
  *      on main's version; a conflict stops before any check. On every run the plan's subjects and bodies
  *      follow the version the files set, which a rerun after a failed run finds set already (T1472). A chunk
  *      whose files hold no uncommitted change (a version chunk with no raise) is refused here (T2823);
- *   2. typecheck and the coverage gate (stops before any commit when either fails);
+ *   2. no check of its own: the gate in step 5 runs the typecheck and the coverage suite on the committed tree, and a
+ *      run before the commits ran both twice per ship, the heaviest part of every queued ship step (T4064). A failed
+ *      gate leaves the commits, which the rerun takes back (step 0);
  *   3. one signed-off commit per chunk of the plan, in order, the chunks that commit only version files last;
  *   4. the steps of the repo's `npm run build` (build-steps.ts) and a `build: rebuild the plugin dist` commit (with a Large-commit line when the
  *      generated files go over the size rule);
- *   5. the local gate (local-gate.ts) on the new HEAD: every local check repos.json lists for the repo that
- *      steps 2 and 4 did not already run on this content (scrub, DCO, the size rule, dist, docs), then a
- *      pass record for the tree, which merge and the pre-push hook reuse;
+ *   5. the local gate (local-gate.ts) on the new HEAD: every local check repos.json's runner lists for the repo, the
+ *      typecheck and the coverage suite among them, then a pass record for the tree, which merge and the pre-push
+ *      hook reuse;
  *   6. without --merge: take back the version raise and the dist commit (leaveForReview), so the head its approver
  *      reviews holds the work alone; the --merge run raises the version and commits the dist once, on the base it lands on.
  *      With --merge: refuse a change that is no longer the approved one, the regenerated version files and dist
@@ -187,8 +189,8 @@ function sharedWithMain(deps: ShipDeps, tip: string): string[] {
 }
 
 /**
- * Refuses a chunk none of whose files holds an uncommitted change, before any check: its commit would fail only after
- * the typecheck and the coverage run, at `nothing to commit`. The usual one is a version chunk with no raise in the
+ * Refuses a chunk none of whose files holds an uncommitted change, before any commit: its commit would fail only after
+ * the chunks before it were committed, at `nothing to commit`. The usual one is a version chunk with no raise in the
  * tree, as the sync then keeps main's version (T2823).
  */
 function refuseEmptyChunks(deps: ShipDeps, chunks: readonly Chunk[], versionPaths: readonly string[]): void {
@@ -225,8 +227,6 @@ async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDep
   const chunks = withRaiseLast(withRaisedVersion(written, versionPaths, deps.sync().sets), versionPaths);
   refuseEmptyChunks(deps, chunks, versionPaths);
 
-  deps.node(['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json']);
-  deps.node(['tools/ci/coverage-cli.ts']);
   for (const chunk of chunks) commit(deps, chunk.files, chunk.subject, chunk.body);
 
   for (const step of deps.buildSteps()) deps.node(step);

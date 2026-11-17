@@ -18,7 +18,6 @@ const CHUNKS: readonly Chunk[] = [
 ];
 const PASS: GateVerdict = { passed: true, tree: 'tree000', record: 'C:/records/tree000.json', reused: false };
 const TRAILER = 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>';
-const TSC = 'node node_modules/typescript/bin/tsc -p tsconfig.json';
 
 interface FakeOptions {
   readonly sync?: SyncResult;
@@ -125,7 +124,7 @@ function fake(options: FakeOptions = {}): Fake {
 const committed = (subject: string, body: string, ...extra: string[]): string =>
   ['git commit -q -s -m', subject, '-m', body, ...extra.flatMap((line) => ['-m', line]), '-m', TRAILER].join(' ');
 
-test('takes back an earlier run first, then syncs, typechecks, runs the coverage gate, commits each chunk, builds and proves the tree, and stops there without --merge', async () => {
+test('takes back an earlier run first, then syncs, commits each chunk, builds and proves the tree, and stops there without --merge', async () => {
   const { deps, events } = fake();
   assert.equal(await shipCommits(ARGS, CHUNKS, deps), 0);
   assert.deepEqual(events, [
@@ -133,8 +132,6 @@ test('takes back an earlier run first, then syncs, typechecks, runs the coverage
     'sync',
     'git status --porcelain -- src/a.ts',
     'git status --porcelain -- src/b.ts src/b.test.ts',
-    TSC,
-    'node tools/ci/coverage-cli.ts',
     'git add -- src/a.ts',
     committed('core: a', 'why a'),
     'git add -- src/b.ts src/b.test.ts',
@@ -194,7 +191,7 @@ test('without --merge, the review head holds the work alone: the raise and the d
   const { deps, events, logs, takenBack } = fake({ numstat: DIST_STAT });
   assert.equal(await shipCommits(ARGS, RAISE_FIRST, deps), 0);
   assert.deepEqual(takenBack, [['core: a', 'plugin: version 0.134.0, a']]);
-  assert.deepEqual(events.slice(events.indexOf(TSC) + 2), [
+  assert.deepEqual(events.slice(events.indexOf('git add -- src/a.ts')), [
     'git add -- src/a.ts',
     committed('core: a', 'why a, since 0.134.0'),
     `git add -- ${VERSION_FILES}`,
@@ -275,31 +272,35 @@ test("leaveForReview in a real repo: the work commit stays, the raise is left un
   }
 });
 
-test('a version chunk whose files hold no raise is refused before the typecheck, naming the fix (T2823)', async () => {
+test('a version chunk whose files hold no raise is refused before any commit, naming the fix (T2823)', async () => {
   const { deps, events } = fake({ answers: { 'status --porcelain -- plugins/teamrig/.claude-plugin/plugin.json src/core/version.ts': '' } });
   await assert.rejects(
     shipCommits(ARGS, RAISING, deps),
     /^Error: REFUSED the plan's chunk "plugin: version 0\.134\.0, a" commits nothing: plugins\/teamrig\/\.claude-plugin\/plugin\.json, src\/core\/version\.ts hold no uncommitted change; raise the version in plugins\/teamrig\/\.claude-plugin\/plugin\.json and src\/core\/version\.ts, left uncommitted, then ship again$/,
   );
-  assert.ok(!events.includes(TSC));
   assert.ok(!events.some((event) => event.startsWith('git add') || event.startsWith('git commit')));
 });
 
-test('any other chunk with nothing to commit is refused before the typecheck too (T2823)', async () => {
+test('any other chunk with nothing to commit is refused before any commit too (T2823)', async () => {
   const { deps, events } = fake({ answers: { 'status --porcelain -- src/a.ts': ' \n' } });
   await assert.rejects(
     shipCommits(ARGS, CHUNKS, deps),
     /^Error: REFUSED the plan's chunk "core: a" commits nothing: src\/a\.ts hold no uncommitted change; leave its change uncommitted, or take the chunk out of the plan, then ship again$/,
   );
-  assert.ok(!events.includes(TSC));
+  assert.ok(!events.some((event) => event.startsWith('git add') || event.startsWith('git commit')));
 });
 
-test('a failed typecheck or coverage gate stops before any commit', async () => {
-  for (const failOn of [TSC, 'node tools/ci/coverage-cli.ts']) {
-    const { deps, events } = fake({ failOn });
-    await assert.rejects(shipCommits(ARGS, CHUNKS, deps), new RegExp(`^Error: ${failOn} failed$`));
-    assert.ok(!events.some((event) => event.startsWith('git add') || event.startsWith('git commit')), failOn);
-  }
+test('runs no typecheck or coverage suite of its own: the gate runs each once on the committed tree (T4064)', async () => {
+  const { deps, events } = fake();
+  await shipCommits(ARGS, CHUNKS, deps);
+  assert.ok(!events.some((event) => event.includes('typescript/bin/tsc') || event.includes('coverage-cli')));
+  assert.equal(events.filter((event) => event === 'prove').length, 1);
+});
+
+test('a failed build step stops before the gate', async () => {
+  const { deps, events } = fake({ failOn: 'node tools/build/bundle.ts' });
+  await assert.rejects(shipCommits(ARGS, CHUNKS, deps), /^Error: node tools\/build\/bundle\.ts failed$/);
+  assert.ok(!events.includes('prove'));
 });
 
 test('a tree the gate does not pass is refused before any push, with --merge too', async () => {
@@ -437,7 +438,7 @@ test('when main moved past the branch touching other files, renames the branch a
     'sync',
     'git status --porcelain -- src/a.ts',
     'git status --porcelain -- src/b.ts src/b.test.ts',
-    TSC,
+    'git add -- src/a.ts',
   ]);
   assert.deepEqual(again.slice(-2), ['push', 'merge t827-ship-tool']);
   assert.equal(events.filter((event) => event === 'sync').length, 2);
