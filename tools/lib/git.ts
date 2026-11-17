@@ -47,13 +47,14 @@ export class GitError extends Error {
 
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
-export function createGit(cwd: string): Git {
+/** An async git in `cwd`, run with `env` when given (a spec's isolated config), else this process's environment. */
+export function createGit(cwd: string, env?: Readonly<Record<string, string>>): Git {
   const run = (args: readonly string[]): Promise<Buffer> =>
     new Promise((resolve, reject) => {
       execFile(
         'git',
         [...args],
-        { cwd, encoding: 'buffer', maxBuffer: MAX_OUTPUT_BYTES, windowsHide: true },
+        { cwd, encoding: 'buffer', maxBuffer: MAX_OUTPUT_BYTES, windowsHide: true, ...(env === undefined ? {} : { env }) },
         (error, stdout, stderr) => {
           if (error) {
             reject(new GitError(args, stderr.toString('utf8'), error, stdout.toString('utf8')));
