@@ -1,5 +1,5 @@
 import { isRecord, recordField, stringField } from "../core/guards.js";
-import { connectionPage, loginOf, plainLine, repoPage, runRead, timeField, WEB_URL } from "./issues.js";
+import { connectionPage, kindOf, loginOf, nodesOf, plainLine, postOf, repoPage, runRead, timeField, WEB_URL } from "./issues.js";
 import { pullPageArgs } from "./queries.js";
 /** How a failed pull request read is worded, and the permission a fine-grained token needs for it. */
 export const PULL_READ = { noun: 'pull requests', permission: 'Pull requests', command: 'gh api graphql' };
@@ -85,6 +85,8 @@ export function pullOf(item, repo) {
         closedAt: timeField(item, 'closedAt'),
         authorAssociation: stringField(item, 'authorAssociation') ?? '',
         author: loginOf(recordField(item, 'author')),
+        authorKind: kindOf(recordField(item, 'author')),
+        posts: postsOf(item),
         head,
         fork: item['isCrossRepository'] === true,
         mergeable: MERGEABLE[stringField(item, 'mergeable') ?? ''] ?? 'unknown',
@@ -106,6 +108,12 @@ function closedIssuesOf(references, repo) {
         }
     }
     return numbers;
+}
+/** Its comments and submitted reviews, oldest first; a review still pending has no time and is left out. */
+function postsOf(item) {
+    const comments = nodesOf(item['comments']).flatMap((post) => postOf(post, 'createdAt'));
+    const reviews = nodesOf(item['reviews']).flatMap((post) => postOf(post, 'submittedAt'));
+    return [...comments, ...reviews].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }
 /** How a check run ends that counts as failed: each makes the rollup fail, and each may leave a log to read. */
 const FAILED_CONCLUSIONS = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'STARTUP_FAILURE']);

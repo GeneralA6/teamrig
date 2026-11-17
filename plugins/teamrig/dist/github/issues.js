@@ -206,7 +206,7 @@ function issueOf(item, repo) {
         labelEvents: events.flatMap(labelEventOf),
         renamedAt: latestRename(events),
         createdAt: timeField(item, 'createdAt'),
-        comments: nodesOf(item['comments']).flatMap(commentOf),
+        comments: nodesOf(item['comments']).flatMap((comment) => postOf(comment, 'createdAt')),
         linkedPulls: countOf(recordField(item, 'closedByPullRequestsReferences')),
     };
 }
@@ -226,11 +226,14 @@ function labelEventOf(event) {
     const actor = recordField(event, 'actor');
     return [{ label: name, at, actor: loginOf(actor), actorKind: kindOf(actor) }];
 }
-/** A comment's time and author, or nothing when it lacks its time; a deleted author reads as an empty login and kind. */
-function commentOf(comment) {
-    const at = timeField(comment, 'createdAt');
-    const author = recordField(comment, 'author');
-    return at === undefined ? [] : [{ at, login: loginOf(author), authorAssociation: stringField(comment, 'authorAssociation') ?? '', authorKind: kindOf(author) }];
+/**
+ * A post's time (its `timeKey` field: a comment's `createdAt`, a review's `submittedAt`) and author, or nothing when it
+ * lacks its time, as a review not yet submitted does; a deleted author reads as an empty login and kind.
+ */
+export function postOf(post, timeKey) {
+    const at = timeField(post, timeKey);
+    const author = recordField(post, 'author');
+    return at === undefined ? [] : [{ at, login: loginOf(author), authorAssociation: stringField(post, 'authorAssociation') ?? '', authorKind: kindOf(author) }];
 }
 /** The time of the newest change of title among the timeline events. */
 function latestRename(events) {
@@ -241,7 +244,7 @@ export function loginOf(account) {
     return account === undefined ? '' : (stringField(account, 'login') ?? '');
 }
 /** The account's kind (`User`, `Bot`, `Organization`), empty when GitHub gives none. */
-function kindOf(account) {
+export function kindOf(account) {
     return account === undefined ? '' : (stringField(account, '__typename') ?? '');
 }
 /** A time GitHub sends (`2030-01-07T09:00:00Z`); undefined when missing or not a time. */

@@ -1,5 +1,5 @@
 import { SecretScanner } from "../../core/secrets.js";
-import { formatClocks, issueThread, parseClocks, reminderText, stepClocks } from "../../github/clock.js";
+import { formatClocks, issueThread, parseClocks, pullThread, reminderText, stepClocks } from "../../github/clock.js";
 import { issueOwner, issueRef } from "../../github/map.js";
 import { postLine } from "../../inbox/inbox.js";
 import { GITHUB_ACTOR } from "../../register/policy.js";
@@ -8,7 +8,7 @@ import { teamZone } from "../kit.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
  * The response clock's part of a sync that writes (T3028, github/clock.ts): from each repository it read, the open
- * threads and who answers each, then the clocks kept in their own file under the sync's lock, and one unwoken inbox
+ * threads (issues and pull requests) and who answers each, then the clocks kept in their own file under the sync's lock, and one unwoken inbox
  * line to each owner whose thread reached 75% of its answer target. GH-LATE at 100% is `check`'s (issue-clock-check.ts).
  */
 /**
@@ -26,6 +26,22 @@ export function repoThreads(issues, tasks, rules, ours) {
         const ref = issueRef(issue.repo, issue.number);
         const holder = holders.get(ref);
         return issueThread(issue, ref, holder ?? issueOwner(issue, rules), holder !== undefined, ours) ?? [];
+    });
+}
+/**
+ * The open pull requests of one repository read as `pull` threads, each once, answered by whom its news goes to: the
+ * owner of the task one of our own branches names, else `watcher` (github/pull-news.ts pullRecipient). Give it the
+ * open read's pull requests: only that read carries their posts (github/queries.ts).
+ */
+export function pullThreads(pulls, recipientOf, ours) {
+    const seen = new Set();
+    return pulls.flatMap((pull) => {
+        const ref = issueRef(pull.repo, pull.number);
+        if (seen.has(ref)) {
+            return [];
+        }
+        seen.add(ref);
+        return pullThread(pull, ref, recipientOf(pull), ours) ?? [];
     });
 }
 /**

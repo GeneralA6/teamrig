@@ -21,7 +21,7 @@ import { openTeamKit, requireConfig } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { teamRegister } from "../team-register.js";
 import { claimBudget, recordClaims } from "./issue-claim.js";
-import { recordClocks, repoThreads } from "./issue-clock.js";
+import { pullThreads, recordClocks, repoThreads } from "./issue-clock.js";
 import { issuePush, pushEndLine, pushRepos } from "./issue-push.js";
 import { GITHUB_OFF, githubOff, readSyncState, reportAutoSync } from "./issue-sync-auto.js";
 import { githubWatcher } from "../../github/watcher.js";
@@ -143,11 +143,11 @@ export async function issueSync(args, runtime) {
         }
         const leftOutText = leftOutLines(repo, plan.leftOut, rules.acceptLabel);
         let end = 'ok';
+        let issueThreads = [];
         if (write) {
             const outcomes = await applySteps(register, plan.steps);
             // Against the tasks as written, so an issue the import just took is held by its new task.
-            threads.push(...repoThreads(read.issues, [...(await register.snapshot()).state.tasks.values()], rules, ours));
-            clocked.add(repo);
+            issueThreads = repoThreads(read.issues, [...(await register.snapshot()).state.tasks.values()], rules, ours);
             claimRead.set(repo, read.issues);
             [...resultLines(repo, plan, outcomes), ...leftOutText].forEach(say);
             written += outcomes.filter((outcome) => outcome.result.ok).length;
@@ -172,6 +172,12 @@ export async function issueSync(args, runtime) {
         }
         pulls.set(repo, watch.after);
         pullNews.push(...watch.events);
+        if (write) {
+            // Only once both reads are in: a repository whose pull requests could not be read keeps every clock it had.
+            const ownerOf = (id) => tasks.find((held) => held.id === id)?.owner;
+            threads.push(...issueThreads, ...pullThreads(watch.open, (pull) => pullRecipient(pull, ours, ownerOf, watcher), ours));
+            clocked.add(repo);
+        }
         if (auto) {
             const items = mentionItems(repo, { issues: read.issues, pulls: watch.pulls }, { ofRef: (ref) => holders.get(ref)?.owner, ofTask: (id) => tasks.find((held) => held.id === id)?.owner }, ours);
             const audienceOf = config.github.activity ? (number) => ({ owner: items(number).taskOwner, followers: followers.get(issueRef(repo, number)) ?? [] }) : undefined;
@@ -264,7 +270,7 @@ async function readPulls(host, repo, before) {
         return { kind: 'failed', reason, lines: [`FAILED ${repo} ${reason}; what was last read of them stays`] };
     }
     const step = pullEvents(before, read.open, read.changed);
-    return { kind: 'read', after: step.after, events: step.events, pulls: [...read.open, ...read.changed], lines: read.notes.map((note) => `NOTE ${repo}: ${note}`) };
+    return { kind: 'read', after: step.after, events: step.events, pulls: [...read.open, ...read.changed], open: read.open, lines: read.notes.map((note) => `NOTE ${repo}: ${note}`) };
 }
 /**
  * Reads `repo`'s posts changed since `before`, the watch the last `--auto` run kept, and routes their new mentions

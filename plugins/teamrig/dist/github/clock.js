@@ -71,10 +71,20 @@ export function issueThread(issue, ref, owner, held, ours) {
     if (issue.state !== 'open') {
         return undefined;
     }
-    const opening = issue.createdAt === undefined || issue.authorKind === BOT ? [] : [{ at: issue.createdAt, association: issue.authorAssociation, login: issue.author }];
-    const comments = issue.comments.filter((comment) => comment.authorKind !== BOT).map((comment) => ({ at: comment.at, association: comment.authorAssociation, login: comment.login }));
-    const posts = [...opening, ...comments].map((post) => ({ at: Date.parse(post.at), ours: postIsOurs(post.association, post.login, ours) }));
-    return { repo: issue.repo, ref, kind: issueKind(issue.labels, held), owner, posts };
+    const opening = issue.createdAt === undefined ? [] : [{ at: issue.createdAt, login: issue.author, authorAssociation: issue.authorAssociation, authorKind: issue.authorKind }];
+    return { repo: issue.repo, ref, kind: issueKind(issue.labels, held), owner, posts: threadPosts([...opening, ...issue.comments], ours) };
+}
+/**
+ * An open pull request as a `pull` thread: its opening and its comments and reviews read, a bot's left out, each ours
+ * by postIsOurs, as on an issue; `owner` answers it. Undefined for a merged or closed one, and for a draft: it asks
+ * nobody to look yet, so its wait starts once it is marked ready.
+ */
+export function pullThread(pull, ref, owner, ours) {
+    if (pull.state !== 'open' || pull.draft) {
+        return undefined;
+    }
+    const opening = { at: pull.createdAt, login: pull.author, authorAssociation: pull.authorAssociation, authorKind: pull.authorKind };
+    return { repo: pull.repo, ref, kind: 'pull', owner, posts: threadPosts([opening, ...pull.posts], ours) };
 }
 /**
  * Whether a post is the team's answer. With `github.owners` naming the team's people, only their logins and the
@@ -87,6 +97,10 @@ export function postIsOurs(association, login, ours) {
 }
 /** An app's or a workflow's account kind: its posts are no one's answer and no one's ask. */
 const BOT = 'Bot';
+/** A thread's posts with a bot's left out, each ours by postIsOurs. */
+function threadPosts(posts, ours) {
+    return posts.filter((post) => post.authorKind !== BOT).map((post) => ({ at: Date.parse(post.at), ours: postIsOurs(post.authorAssociation, post.login, ours) }));
+}
 function issueKind(labels, held) {
     const has = (name) => labels.some((label) => label.toLowerCase() === name);
     if (has('security')) {
