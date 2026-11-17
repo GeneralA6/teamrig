@@ -472,8 +472,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       [--issue "<public title>" --issue-body "<public text>" [--issue-repo <owner/repo>] | --local "<why>"]
       --issue: opens the task's GitHub issue with this public wording, labelled by --type and --priority, in
       --issue-repo, else github.issueAtAdd, else the one repo of github.repos, and points the task's ref at it
-      (no task id, secret, private data or second line in the title); a failure keeps the task, without its
-      issue
+      (no task id, secret, private data or second line in the title); the task is written once its issue
+      opened, so a failure writes neither
       --local: why the task gets no issue, written as its ref "local: <why>"; a security hole is always added
       with --local; while github.issueAtAdd is set, an add gives --issue or --local (or a --ref to an issue),
       else it is refused

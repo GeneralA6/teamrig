@@ -5,7 +5,7 @@ import { AFFECTS_USAGE, CARD_FLAGS, GATE_FLAG, proofWordOf, RUN_FLAG, whyAskUsag
 import { taskNumber } from "./fold.js";
 import { auditOf, runFileDrift } from "./hand-step.js";
 import { leaderHolds, waitedMinutes } from "./leader-wait.js";
-import { ACTIVE_STATUSES, priorityText } from "./model.js";
+import { ACTIVE_STATUSES, hasIssueOrReason, priorityText } from "./model.js";
 import { isProofAsk, isUngated, unreviewedSecurityWord } from "./owner-waits.js";
 import { isUntriaged } from "./park.js";
 import { loopFix, NO_TASKS_ELSEWHERE, pathText, planBand, TaskTree } from "./tree.js";
@@ -42,6 +42,7 @@ export const FLAG_KINDS = [
     'DUE-UNPLANNED',
     'OFF-GOAL',
     'UNTRIAGED',
+    'NO-ISSUE',
     'NO-PROGRESS',
     'STOPGAP-DONE',
     'STALE',
@@ -218,6 +219,26 @@ export function leaderWaitFlags(tasks, tree, focus, at) {
 export function untriagedFlags(tasks, leaders) {
     return [...tasks].flatMap((task) => ACTIVE_STATUSES.includes(task.status) && isUntriaged(task, leaders)
         ? [{ kind: 'UNTRIAGED', task, detail: `no class, added by ${task.createdBy}: class it (update ${task.id} --class <name>)` }]
+        : []);
+}
+/**
+ * NO-ISSUE: while `github.issueAtAdd` names a repository, an active task whose ref neither points at its issue nor
+ * says why it stays local ({@link hasIssueOrReason}): one added before the key was set, from another team, or whose
+ * issue failed to open at add. None with the key unset, as the team then keeps no issue for every task. Apart from
+ * {@link checkTasks}, whose register config does not hold the GitHub keys.
+ */
+export function noIssueFlags(tasks, issueAtAdd) {
+    if (issueAtAdd === undefined) {
+        return [];
+    }
+    return [...tasks].flatMap((task) => ACTIVE_STATUSES.includes(task.status) && !hasIssueOrReason(task.ref)
+        ? [
+            {
+                kind: 'NO-ISSUE',
+                task,
+                detail: `no issue in ${issueAtAdd} and no reason to stay local: open it (issue migrate <rows>), or update ${task.id} --ref gh:<repo>#<n> or --ref "local: <reason>"`,
+            },
+        ]
         : []);
 }
 function weekPlan(week, lengthDays, zone) {

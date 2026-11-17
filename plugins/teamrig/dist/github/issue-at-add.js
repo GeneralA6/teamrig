@@ -1,13 +1,5 @@
-import { ISSUE_REF_PREFIX } from "../register/model.js";
+import { ISSUE_REF_PREFIX, LOCAL_REF_PREFIX } from "../register/model.js";
 import { issueLabels, priorityLabelOf, publicIssueText } from "./migrate.js";
-/**
- * What `teamrig add` does about the new task's GitHub issue (T3132): open one with the public wording given, record
- * why the task stays local, or nothing. While `github.issueAtAdd` names a repository, an add must say one or the
- * other (or point `--ref` at an issue it has), so no task starts without its issue unless someone wrote why. Judged
- * before the task is written, so a refused add writes nothing.
- */
-/** The ref a task kept local holds: this, then the reason, so the reason is on the task and never posted. */
-export const LOCAL_REF_PREFIX = 'local: ';
 /** The name a refusal gives the task, which has no id before it is written. */
 const NEW_TASK = 'the new task';
 /** The plan for an add's issue under the team's GitHub settings, or why the add is refused. */

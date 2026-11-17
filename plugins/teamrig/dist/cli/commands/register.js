@@ -18,7 +18,7 @@ import { formatTaskLines, taskLinesOf } from "../../inbox/task-lines.js";
 import { WakeAsks } from "../../wake/asks.js";
 import { teamDayStartAt } from "../../wake/day-start.js";
 import { waitAnswerersOf } from "../../register/approval.js";
-import { byFlagKind, checkTasks, leaderWaitFlags, peerWaitFlags, runFileFlags, untriagedFlags } from "../../register/check.js";
+import { byFlagKind, checkTasks, leaderWaitFlags, noIssueFlags, peerWaitFlags, runFileFlags, untriagedFlags } from "../../register/check.js";
 import { currentWeekOf } from "../../register/week.js";
 import { fitLines, leftOfWeek, overLimitFlag, weekFit } from "../../register/fit.js";
 import { heldFirst } from "../../register/leader-wait.js";
@@ -58,7 +58,7 @@ import { rollUp } from "../roll-up.js";
 import { splitUnowned } from "../unowned.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { addIssuePlan } from "../../github/issue-at-add.js";
-import { ADD_ISSUE_FLAGS, addIssueAskOf, openAddedIssue } from "./add-issue.js";
+import { ADD_ISSUE_FLAGS, addIssueAskOf, addIssueHost, addWithIssue } from "./add-issue.js";
 import { loadTree, skillOwnersElsewhere } from "../tree.js";
 import { readBursts } from "../burst-reading.js";
 import { readScaleOutBudget } from "../hire-cost.js";
@@ -185,8 +185,8 @@ export async function add(args, runtime) {
 }
 /**
  * A task of the caller's own team, owned by `--owner`, else by the caller. Its issue flags (github/issue-at-add.ts)
- * are judged first, so a refused one writes nothing; a local task is written with its reason as its ref, and an
- * issue opens once the task is written (add-issue.ts).
+ * are judged first, so a refused one writes nothing; a local task is written with its reason as its ref, and a task
+ * with its issue is written only once the issue opened, its ref pointing at it (add-issue.ts).
  */
 async function addHere(args, runtime, caller) {
     const team = await openTeam(runtime, 'write');
@@ -197,17 +197,22 @@ async function addHere(args, runtime, caller) {
         throw new RefusedError(issue.error);
     }
     const by = sessionIdOf(team.roster, caller);
-    const written = issue.value.kind === 'local' ? { ...input, ref: issue.value.ref } : input;
-    const verdict = await team.register.add(by, addInputIds(team, written));
-    const code = report(runtime, verdict, 'ADDED', team);
-    if (verdict.ok) {
-        noteBugHint(runtime, team, verdict.value.task);
+    const ids = addInputIds(team, issue.value.kind === 'local' ? { ...input, ref: issue.value.ref } : input);
+    const end = issue.value.kind === 'open'
+        ? await addWithIssue((line) => runtime.out.stdout(line), team.register, addIssueHost(runtime, scanner), by, ids, issue.value.draft)
+        : { kind: 'written', verdict: await team.register.add(by, ids), ref: undefined };
+    if (end.kind === 'stopped') {
+        return end.code;
     }
-    await tellNewOwner(runtime, team, by, verdict);
-    if (!verdict.ok || issue.value.kind !== 'open') {
-        return code;
+    const code = report(runtime, end.verdict, 'ADDED', team);
+    if (end.verdict.ok) {
+        noteBugHint(runtime, team, end.verdict.value.task);
+        if (end.ref !== undefined) {
+            runtime.out.stdout(`OPENED ${end.verdict.value.task.id} ${end.ref}`);
+        }
     }
-    return openAddedIssue(runtime, team, by, verdict.value.task.id, issue.value.draft, scanner);
+    await tellNewOwner(runtime, team, by, end.verdict);
+    return code;
 }
 /** A NOTE asking to mark the task a bug when its text reads like one and no one gave it a type (register/bug-hint.ts). */
 function noteBugHint(runtime, team, task) {
@@ -917,6 +922,7 @@ function checkRegister({ snapshot, config, elsewhere, above, ranking }, now, zon
         // In plan order, so the leader reads the most urgent wait first.
         ...leaderWaitFlags(tree.inPlanOrder(tasks), leads, config.focus, now.getTime()),
         ...untriagedFlags(tasks, leads),
+        ...noIssueFlags(tasks, config.github.issueAtAdd),
         ...(progress === undefined ? [] : [progress]),
     ];
     return { team, flags: flags.sort(byFlagKind), tree };
