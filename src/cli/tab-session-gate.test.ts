@@ -68,4 +68,15 @@ describe("runCli: a write runs only as its tab's own session (T3082)", () => {
     assert.equal((await kit.run(['inbox', 'read', '--session', 'bravo'], { env: fresh })).code, EXIT.ok, 'its first read binds it');
     assert.equal((await kit.run(['approve', 'T1', '--note', 'ok', '--session', 'lead'], { env: fresh })).code, EXIT.refused, 'and then it is bravo\'s');
   });
+
+  it('leaves a tab with no team found, or a team config that does not load, to the command\'s own refusal', async () => {
+    for (const [what, kit] of [
+      ['no team', new CliHarness(TEAM, null)],
+      ['a config that does not load', new CliHarness('{ not json')],
+    ] as const) {
+      const run = await kit.run(['approve', 'T1', '--note', 'ok', '--session', 'lead'], { env: TAB });
+      assert.notEqual(run.code, EXIT.ok, what);
+      assert.doesNotMatch([...run.stdout, ...run.stderr].join('\n'), /this tab is/, what);
+    }
+  });
 });
