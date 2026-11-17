@@ -13,10 +13,17 @@ const FORCE_PUSH = JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'g
 /** The limit a copy runs with when its spec waits for the limit, so a hang ends the spec in half a second, not 12. */
 const HANG_LIMIT_MS = 500;
 /**
- * The limit a copy runs with when its spec waits for an answer, a crash or an exit. The limit counts the guard
- * thread's load too, which took past 0.5 s on a loaded host (T2433: a ship run's spec saw a timeout, not the crash).
+ * The limit a copy runs with when its spec waits for an answer, a crash or an exit: just under the kill time, since
+ * such a copy ends at its outcome and the longer limit costs no time. The limit counts the guard thread's load too,
+ * which took past 0.5 s on a loaded host (T2433) and past 5 s on one running many queued gates, where a copy ending
+ * with exit 1 took 16.6 s (#1505).
  */
-const ANSWER_LIMIT_MS = 5_000;
+const ANSWER_LIMIT_MS = 45_000;
+/**
+ * The limits a run that lingers after its answer is tried at, shortest first: that spec waits for the limit itself, so
+ * it takes a longer one only when the host gave no answer within the shorter.
+ */
+const LINGER_LIMITS_MS = [5_000, 15_000, 45_000];
 /**
  * When a run that never ends is killed, so a guard the runner cannot stop fails its spec instead of hanging it. It
  * counts the copy's start too: in a ship run's coverage pass beside another ship's suite, copies that crash at once
@@ -72,6 +79,22 @@ async function throughCopy(nodeMain: string, limitMs = ANSWER_LIMIT_MS): Promise
   }
 }
 
+/**
+ * Runs a copy that lingers after its answer at each of LINGER_LIMITS_MS in turn, until one gives its answer in time;
+ * the last run is returned as it ended.
+ */
+async function lingeringCopy(nodeMain: string): Promise<Ended> {
+  let ended: Ended | undefined;
+  for (const limitMs of LINGER_LIMITS_MS) {
+    ended = await throughCopy(nodeMain, limitMs);
+    if (!/gave no answer within /.test(ended.stderr)) {
+      return ended;
+    }
+  }
+  assert.ok(ended !== undefined);
+  return ended;
+}
+
 function assertBlocked(ended: Ended, why: RegExp): void {
   assert.equal(ended.status, 2, ended.stderr);
   assert.equal(ended.stdout, '');
@@ -122,8 +145,14 @@ describe('guard-main, on broken copies of the CLI', () => {
     assert.deepEqual([deny.status, deny.stdout, deny.stderr], [0, `${DENY}\n`, '']);
     const quiet = await throughCopy('export async function runWithNode() { return 0; }\n');
     assert.deepEqual([quiet.status, quiet.stdout, quiet.stderr], [0, '', '']);
-    const lingering = await throughCopy(`export async function runWithNode(argv, entry) { setInterval(() => {}, 1000); entry.out.stdout(${JSON.stringify(DENY)}); return 0; }\n`);
+    const lingering = await lingeringCopy(`export async function runWithNode(argv, entry) { setInterval(() => {}, 1000); entry.out.stdout(${JSON.stringify(DENY)}); return 0; }\n`);
     assert.deepEqual([lingering.status, lingering.stdout], [0, `${DENY}\n`]);
+  });
+
+  it('reads a CLI that takes 6 s to load as its own exit, not as no answer (#1505)', async () => {
+    const slow = await throughCopy("Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 6_000);\nexport async function runWithNode(argv, entry) { entry.out.stderr('FAILED slow to load'); return 1; }\n");
+    assertBlocked(slow, /ended with exit 1/);
+    assert.match(slow.stderr, /^FAILED slow to load\n/);
   });
 });
 
