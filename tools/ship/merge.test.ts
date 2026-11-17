@@ -764,8 +764,35 @@ test(`main moving past ${MERGE_ATTEMPTS} heads in one merge is refused, each new
       [NEXT, BRANCH],
     ],
   );
-  assert.deepEqual(err, [`REFUSED main moved to moved00, which ${NEXT} rebased does not contain: rebase ${NEXT} onto origin/main, push it and run merge again (main moved past ${MERGE_ATTEMPTS} heads during this merge)`]);
+  assert.deepEqual(err, [`REFUSED main moved to moved00, which ${NEXT} rebased does not contain: rebase ${NEXT} onto origin/main, push it and run merge again (main moved ${MERGE_ATTEMPTS} times during this merge)`]);
   assert.equal(sweep.mock.callCount(), 0);
+});
+
+/** A catch-up whose push failed as main moved again, to AGAIN (T4131). */
+const AGAIN = 'again00ddd';
+const MOVED_AGAIN: CatchUp = { kind: 'moved', tip: AGAIN, reason: `${BRANCH} abc1234 was caught up, and main moved again to again00 while it was pushed rebased as ${NEXT}, and that push failed: pre-push: version taken` };
+
+test('a head whose catch-up push lost to a merge landing meanwhile is caught up again on the new tip and merges (T4131)', async () => {
+  const { deps, out, err, catchUp, sweep } = runFixture({ mainTip: MOVED, catchUp: [MOVED_AGAIN, CAUGHT_UP] });
+  assert.equal(await runMerge(ARGS, deps), 0);
+  assert.deepEqual(err, []);
+  assert.deepEqual(
+    catchUp.mock.calls.map(call => call.arguments[0]),
+    [
+      { head: BRANCH, stem: BRANCH, tip: MOVED, main: 'main', regenerated: ['out/'] },
+      { head: BRANCH, stem: BRANCH, tip: AGAIN, main: 'main', regenerated: ['out/'] },
+    ],
+  );
+  assert.equal(out.at(-1), 'MERGED #3 into main, now at main999');
+  assert.deepEqual(sweep.mock.calls.map(call => call.arguments[0]), [{ repo: REPO, head: NEXT, sha: REBASED }]);
+});
+
+test(`each move during a catch-up counts toward the ${MERGE_ATTEMPTS} a merge allows (T4131)`, async () => {
+  const { deps, err, catchUp, ghWrites } = runFixture({ mainTip: MOVED, catchUp: [MOVED_AGAIN] });
+  assert.equal(await runMerge(ARGS, deps), 1);
+  assert.equal(catchUp.mock.callCount(), MERGE_ATTEMPTS - 1);
+  assert.deepEqual(err, [`REFUSED ${MOVED_AGAIN.kind === 'moved' ? MOVED_AGAIN.reason : ''} (main moved ${MERGE_ATTEMPTS} times during this merge)`]);
+  assert.equal(ghWrites.length, 0);
 });
 
 test("on the ci gate the step's host share is set aside for the checks' wait and the merge call, never taken back once merged (T3336)", async () => {
