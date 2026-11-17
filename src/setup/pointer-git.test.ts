@@ -47,4 +47,25 @@ describe('GIT_POINTER', () => {
       repo.remove();
     }
   });
+
+  it("reads the repository the pointer is in, never the one a caller's git hook names in GIT_DIR", () => {
+    const repo = new TempRepo('pointer-own').init();
+    const other = new TempRepo('pointer-other').init();
+    const before = process.env['GIT_DIR'];
+    try {
+      repo.write('.teamrig.json', '{"team": "shop"}');
+      repo.git('add', '.teamrig.json');
+      repo.git('commit', '-q', '-m', 'pointer');
+      process.env['GIT_DIR'] = join(other.dir, '.git');
+      assert.deepEqual(GIT_POINTER.state(join(repo.dir, '.teamrig.json')), { kind: 'tracked' });
+    } finally {
+      if (before === undefined) {
+        delete process.env['GIT_DIR'];
+      } else {
+        process.env['GIT_DIR'] = before;
+      }
+      repo.remove();
+      other.remove();
+    }
+  });
 });
