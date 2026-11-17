@@ -127,7 +127,7 @@ be on the task list. When a task will not be done, set it `dropped` with a note 
 
 When the change is merged or deployed but what proves it does not exist yet (a night's flow, a run on another
 machine, a number to measure), set it `verifying` with `--proof` naming that proof, `--waits` when it runs (a time,
-or a task in progress or verifying whose end runs it) and `--due` the date to verify it by:
+or a task in progress or verifying, or an open one of your own, whose end runs it) and `--due` the date to verify it by:
 
 ```sh
 teamrig set T4 --session api --status verifying --note "new parser merged" --proof "tonight's import runs clean on the new parser" --waits "time:2026-10-17 06:00" --due 2026-10-17 --followups none
