@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
+import { withStampFooter } from '../core/stamp.ts';
 import { foldEvents, type Task } from '../register/fold.ts';
 import { readEvents } from '../register/snapshot.ts';
 import { CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
@@ -31,11 +32,19 @@ describe('teamrig add with its issue', () => {
     assert.equal(result.stdout.at(-1), 'OPENED T1 gh:acme/web#1');
     assert.deepEqual(
       gh.ran.map((request) => request.args),
-      [['api', 'repos/acme/web/issues', '-X', 'POST', '-f', 'title=Add a health check', '-f', 'body=A probe the load balancer reads.', '-f', 'labels[]=bug', '-f', 'labels[]=p2']],
+      [['api', 'repos/acme/web/issues', '-X', 'POST', '-f', 'title=Add a health check', '-f', `body=${withStampFooter('A probe the load balancer reads.')}`, '-f', 'labels[]=bug', '-f', 'labels[]=p2']],
     );
     assert.deepEqual(gh.ran.map((request) => request.env['GH_TOKEN']), ['acme-issues-token']);
     const task = tasksOf(kit).get('T1');
     assert.deepEqual([task?.title, task?.ref], ['Private health check', 'gh:acme/web#1']);
+  });
+
+  it('opens the issue with its body as given, with no footer, for a team that turned github.stamp off', async () => {
+    const kit = new CliHarness({ ...AT_ADD_TEAM, github: { repos: ['acme/web', 'acme/api'], issueAtAdd: 'acme/web', stamp: false } });
+    const gh = new FakeGh().holds('acme/web', []);
+    const result = await kit.run([...TASK, ...ISSUE], { ...AS_LEAD, gh, credentials: withToken() });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.deepEqual(gh.ran.map((request) => request.args.find((arg) => arg.startsWith('body='))), ['body=A probe the load balancer reads.']);
   });
 
   it('opens in --issue-repo when it names another of github.repos', async () => {

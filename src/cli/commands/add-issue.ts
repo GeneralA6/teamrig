@@ -36,9 +36,12 @@ export interface IssueAddRegister {
 /** How an add with its issue ended: stopped with nothing written, or the register's answer to the task with its ref. */
 export type IssueAddEnd = { readonly kind: 'stopped'; readonly code: ExitCode } | { readonly kind: 'written'; readonly verdict: Verdict<WriteResult>; readonly ref: string };
 
-/** The host a new task's issue opens on: GitHub, with the token saved for the repository's owner, or none while GitHub is off here. */
-export function addIssueHost(runtime: CliRuntime, scanner: SecretScanner): IssueHost | undefined {
-  return githubOff(runtime.env) ? undefined : hostOf('github', runtime, scanner);
+/**
+ * The host a new task's issue opens on: GitHub, with the token saved for the repository's owner, or none while GitHub is
+ * off here. stamp is the team's github.stamp: whether the issue's body ends with the made-with-teamrig footer.
+ */
+export function addIssueHost(runtime: CliRuntime, scanner: SecretScanner, stamp: boolean): IssueHost | undefined {
+  return githubOff(runtime.env) ? undefined : hostOf('github', runtime, scanner, stamp);
 }
 
 /**

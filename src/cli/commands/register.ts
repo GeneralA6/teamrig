@@ -226,7 +226,7 @@ async function addHere(args: ParsedArgs, runtime: CliRuntime, caller: string): P
   const ids = addInputIds(team, issue.value.kind === 'local' ? { ...input, ref: issue.value.ref } : input);
   const end =
     issue.value.kind === 'open'
-      ? await addWithIssue((line) => runtime.out.stdout(line), team.register, addIssueHost(runtime, scanner), by, ids, issue.value.draft)
+      ? await addWithIssue((line) => runtime.out.stdout(line), team.register, addIssueHost(runtime, scanner, team.config.github.stamp), by, ids, issue.value.draft)
       : { kind: 'written' as const, verdict: await team.register.add(by, ids), ref: undefined };
   if (end.kind === 'stopped') {
     return end.code;
