@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { credentialsOf } from '../../core/child-env.ts';
+import { dispatchedEnvOf } from '../../core/child-env.ts';
 import { errorMessage, isRecord, numberField, stringField } from '../../core/guards.ts';
 import { claimParked, hasParked, park, parkedDirOf, type ParkedStep } from '../../delivery/parked.ts';
 import { parseArgs, UsageError, type ParsedArgs } from '../args.ts';
@@ -121,15 +121,14 @@ function logOutput(runtime: CliRuntime, log: string): Output & { flushed(): Prom
 }
 
 /**
- * The runtime a parked step runs in: its own folder, its own environment with the dispatcher's credentials added back
- * (the step's `delivery.passEnv` then keeps only those its team lets through, as for any queued step), its lines
- * and its command's output in its log.
+ * The runtime a parked step runs in: its own folder, the dispatcher's environment under its own parked variables
+ * (`dispatchedEnvOf`), its lines and its command's output in its log.
  */
 function stepRuntimeOf(runtime: CliRuntime, step: ParkedStep, out: Output): CliRuntime {
   return {
     ...runtime,
     cwd: step.cwd,
-    env: { ...step.env, ...credentialsOf(runtime.env) },
+    env: dispatchedEnvOf(runtime.env, step.env),
     out,
     steps: { run: (request) => runtime.steps.run({ ...request, log: request.log ?? step.log }) },
   };

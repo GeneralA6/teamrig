@@ -43,7 +43,68 @@ export function withoutCredentials(env: Env, pass: readonly string[]): Env {
   );
 }
 
-/** Only the credential variables of `env`, names compared without case: what `withoutCredentials` leaves out. */
-export function credentialsOf(env: Env): Env {
-  return Object.fromEntries(Object.entries(env).filter(([name]) => CREDENTIAL_VARIABLES.includes(name.toUpperCase())));
+/**
+ * The variables a parked queue step keeps on disk (T4093): where programs, the home and temp folders are, the locale,
+ * and Node's own settings. An allow-list, so a secret under a name no list knows never lands in a file; every other
+ * variable the step gets comes from the dispatcher's environment in memory (`dispatchedEnvOf`).
+ */
+export const PARKED_VARIABLES: readonly string[] = [
+  'PATH',
+  'PATHEXT',
+  'COMSPEC',
+  'SYSTEMROOT',
+  'SYSTEMDRIVE',
+  'WINDIR',
+  'OS',
+  'PROCESSOR_ARCHITECTURE',
+  'NUMBER_OF_PROCESSORS',
+  'TEMP',
+  'TMP',
+  'TMPDIR',
+  'HOME',
+  'USERPROFILE',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'PROGRAMDATA',
+  'PROGRAMFILES',
+  'PROGRAMFILES(X86)',
+  'PROGRAMW6432',
+  'USERNAME',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'LANG',
+  'LC_ALL',
+  'TZ',
+  'NODE_OPTIONS',
+  'NODE_ENV',
+  'NODE_PATH',
+  'NO_COLOR',
+  'FORCE_COLOR',
+];
+
+/** teamrig's own variables (the session, the team, a held lock): a parked step keeps its parker's, never the dispatcher's. */
+export const TEAMRIG_VARIABLE_PREFIX = 'TEAMRIG_';
+
+function isTeamrigVariable(name: string): boolean {
+  return name.toUpperCase().startsWith(TEAMRIG_VARIABLE_PREFIX);
+}
+
+/** What of `env` a parked step writes to disk: the `PARKED_VARIABLES` and teamrig's own, names compared without case. */
+export function parkedEnvOf(env: Env): Env {
+  return Object.fromEntries(Object.entries(env).filter(([name]) => isTeamrigVariable(name) || PARKED_VARIABLES.includes(name.toUpperCase())));
+}
+
+/**
+ * The environment a parked step runs with: the dispatcher's, held in memory, with the step's parked variables over it.
+ * The dispatcher's teamrig variables are left out, so the step is never read as the session that started the
+ * dispatcher; its credentials stay, and the step's `delivery.passEnv` then keeps only those its team lets through,
+ * as for any queued step. Dispatcher and parker are the same OS user on the same host.
+ */
+export function dispatchedEnvOf(dispatcher: Env, parked: Env): Env {
+  const parkedNames = new Set(Object.keys(parked).map((name) => name.toUpperCase()));
+  const base = Object.entries(dispatcher).filter(([name]) => !isTeamrigVariable(name) && !parkedNames.has(name.toUpperCase()));
+  return { ...Object.fromEntries(base), ...parked };
 }

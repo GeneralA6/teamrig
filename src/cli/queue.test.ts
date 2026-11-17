@@ -986,7 +986,7 @@ describe('teamrig queue --detach (T2227)', () => {
   it('parks the step as a queue --detached-run, its session resolved and its output in its log, starts the dispatcher and prints QUEUED at once (T4093)', async () => {
     const { kit, steps } = harness();
     const processes = new FakeProcesses();
-    const result = await kit.run(DETACH_BUILD, { steps, processes, env: { TEAMRIG_SESSION: 'alpha', PROBE: 'yes', GH_TOKEN: 'secret-token' } });
+    const result = await kit.run(DETACH_BUILD, { steps, processes, env: { TEAMRIG_SESSION: 'alpha', PATH: '/usr/bin', PROBE: 'yes', GH_TOKEN: 'secret-token' } });
     assert.deepEqual(result, {
       code: 0,
       stdout: [`QUEUED ${DETACHED_ID}: build api runs detached; log ${DETACHED_LOG}; alpha's inbox gets a line when it starts and when it ends`],
@@ -994,7 +994,11 @@ describe('teamrig queue --detach (T2227)', () => {
     });
     const parked = parkedOf(kit, DETACHED_ID);
     const argv = ['queue', '--detached-run', DETACHED_ID, '--session', 'alpha', '--what', 'build api', '--max-minutes', '90', '--exclusive', '--', 'npm', 'run', 'build'];
-    assert.deepEqual([parked?.argv, parked?.cwd, parked?.log, parked?.session, parked?.team, parked?.env['PROBE'], parked?.env['GH_TOKEN']], [argv, APP, DETACHED_LOG, 'alpha', 'app', 'yes', undefined], 'its credentials never reach the disk');
+    assert.deepEqual(
+      [parked?.argv, parked?.cwd, parked?.log, parked?.session, parked?.team, parked?.env],
+      [argv, APP, DETACHED_LOG, 'alpha', 'app', { TEAMRIG_HOME: KIT, TEAMRIG_SESSION: 'alpha', PATH: '/usr/bin' }],
+      'only allow-listed variables reach the disk: no credential, no variable of a name the list does not know',
+    );
     const [hidden] = processes.hidden;
     assert.deepEqual([processes.hidden.length, hidden?.command, hidden?.args, hidden?.log, hidden?.env['GH_TOKEN']], [1, '/usr/bin/node', DISPATCHER, join(DETACHED_DIR, 'dispatcher.log'), 'secret-token'], 'the dispatcher gets them in memory');
     assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER), await alphaLines(kit)], [[], undefined, undefined, []], 'the caller waits for nothing and runs nothing');

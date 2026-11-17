@@ -16,7 +16,7 @@ import { endedText, startedByGit, type StarterWatching } from '../../delivery/st
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd } from '../../delivery/steps.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
-import { withoutCredentials } from '../../core/child-env.ts';
+import { parkedEnvOf, withoutCredentials } from '../../core/child-env.ts';
 import { PARKED_FORMAT } from '../../delivery/parked.ts';
 import { DISPATCH_SWITCH, dispatch, parkStep } from './queue-dispatch.ts';
 import { ENV, type Env } from '../../core/home.ts';
@@ -392,8 +392,8 @@ interface DetachedPlaces {
  * Parks this step for the host's dispatcher (`queue --dispatch`, T4093), which runs it as a `queue --detached-run`
  * that outlives this command and its shell, its output and the queue's lines in its log, then prints QUEUED: a step
  * longer than a Bash tool's wait no longer holds one open, nor dies with the shell Claude Code's reaper ends, and
- * while it waits for its turn it holds a file, not a node process. Its credentials stay off the disk: the dispatcher
- * adds its own back.
+ * while it waits for its turn it holds a file, not a node process. Only allow-listed variables go on disk
+ * (`parkedEnvOf`), so no secret does: the rest, credentials too, the step gets from the dispatcher's environment.
  */
 async function startDetached(runtime: CliRuntime, places: DetachedPlaces, args: ParsedArgs, run: DetachedStart): Promise<ExitCode> {
   const { id, session, what, words, arrivedAt } = run;
@@ -406,7 +406,7 @@ async function startDetached(runtime: CliRuntime, places: DetachedPlaces, args: 
     log: places.log,
     argv: detachedArgsOf(args, words, session, id, arrivedAt),
     cwd: runtime.cwd,
-    env: withoutCredentials(runtime.env, []),
+    env: parkedEnvOf(runtime.env),
     parkedAt: new Date(runtime.clock.now()).toISOString(),
   });
   runtime.out.stdout(`QUEUED ${id}: ${what} runs detached; log ${places.log}; ${session}'s inbox gets a line when it starts and when it ends`);
