@@ -17,6 +17,8 @@ import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd } from '../../de
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { withoutCredentials } from '../../core/child-env.ts';
+import { PARKED_FORMAT } from '../../delivery/parked.ts';
+import { DISPATCH_SWITCH, dispatch, parkStep } from './queue-dispatch.ts';
 import { ENV, type Env } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
@@ -379,25 +381,54 @@ function detachedArgsOf(args: ParsedArgs, words: readonly string[], session: str
 /** A detached run to start: its id, session, label and command, and for a hand-over when its step joined the line. */
 type DetachedStart = Omit<DetachedRun, 'log'> & { readonly words: readonly string[]; readonly arrivedAt?: number };
 
+/** Where a detached run goes: its team, the detached folder its step is parked in and its log. */
+interface DetachedPlaces {
+  readonly team: string;
+  readonly dir: string;
+  readonly log: string;
+}
+
 /**
- * Starts this step as a hidden `queue --detached-run` that outlives this command and its shell, its output and the
- * queue's lines in its log, then prints QUEUED: a step longer than a Bash tool's wait no longer holds one open, nor
- * dies with the shell Claude Code's reaper ends.
+ * Parks this step for the host's dispatcher (`queue --dispatch`, T4093), which runs it as a `queue --detached-run`
+ * that outlives this command and its shell, its output and the queue's lines in its log, then prints QUEUED: a step
+ * longer than a Bash tool's wait no longer holds one open, nor dies with the shell Claude Code's reaper ends, and
+ * while it waits for its turn it holds a file, not a node process. Its credentials stay off the disk: the dispatcher
+ * adds its own back.
  */
-async function startDetached(runtime: CliRuntime, places: { readonly log: string }, args: ParsedArgs, run: DetachedStart): Promise<ExitCode> {
+async function startDetached(runtime: CliRuntime, places: DetachedPlaces, args: ParsedArgs, run: DetachedStart): Promise<ExitCode> {
   const { id, session, what, words, arrivedAt } = run;
-  const started = await runtime.processes.startHidden({
-    command: runtime.self.node,
-    args: [runtime.self.script, ...detachedArgsOf(args, words, session, id, arrivedAt)],
-    cwd: runtime.cwd,
-    env: runtime.env,
+  await parkStep(runtime, places.dir, {
+    v: PARKED_FORMAT,
+    id,
+    team: places.team,
+    session,
+    what,
     log: places.log,
+    argv: detachedArgsOf(args, words, session, id, arrivedAt),
+    cwd: runtime.cwd,
+    env: withoutCredentials(runtime.env, []),
+    parkedAt: new Date(runtime.clock.now()).toISOString(),
   });
-  if (started.kind !== 'started') {
-    throw new RefusedError(`${what} did not start detached: ${started.kind === 'missing' ? `${runtime.self.node} was not found` : started.error}`);
-  }
   runtime.out.stdout(`QUEUED ${id}: ${what} runs detached; log ${places.log}; ${session}'s inbox gets a line when it starts and when it ends`);
   return EXIT.ok;
+}
+
+/** The detached places of run `id` of the team `kit`. */
+function detachedPlacesOf(kit: Kit, config: KitConfig, id: string): DetachedPlaces {
+  return { team: kit.paths.team, dir: detachedDirOf(config.delivery, kit.paths), log: detachedLogOf(config.delivery, kit.paths, id) };
+}
+
+/**
+ * `queue --dispatch`: runs as the host's dispatcher of the team's detached folder; `queue --detach` starts it. It
+ * takes no other flag or command: what it runs comes from the parked steps.
+ */
+async function dispatchParked(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  if (args.flags.size > 0 || args.switches.size > 1 || args.rest.length > 0 || args.positionals.length > 0) {
+    throw new UsageError('--dispatch is started by --detach and runs the parked steps: give it alone');
+  }
+  const kit = await openTeamKit(runtime);
+  const config = requireConfig(kit, runtime, 'read');
+  return dispatch(runtime, detachedDirOf(config.delivery, kit.paths), queue);
 }
 
 /**
@@ -460,9 +491,10 @@ async function handOver(runtime: CliRuntime, context: HandOverContext, run: Omit
   const { kit, config, say, args, ended } = context;
   const { session, what } = run;
   const id = detachedIdOf(runtime.clock.now(), runtime.pid);
-  const log = detachedLogOf(config.delivery, kit.paths, id);
+  const places = detachedPlacesOf(kit, config, id);
+  const { log } = places;
   try {
-    await startDetached(runtime, { log }, args, { ...run, id });
+    await startDetached(runtime, places, args, { ...run, id });
   } catch (error) {
     return { kind: 'failed', why: errorMessage(error) };
   }
@@ -569,6 +601,9 @@ interface Step {
  * Exit 0 when the command passed, 1 when it failed, was killed or was stopped, 2 refused.
  */
 export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  if (args.switches.has(DISPATCH_SWITCH)) {
+    return dispatchParked(args, runtime);
+  }
   const words = shellWordsOf(args, runtime.platform);
   const what = requiredFlag(args.flags, 'what');
   const request = requestOf(args, words, what);
@@ -598,7 +633,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     }
     await refuseUnstartable(runtime, gate);
     const id = detachedIdOf(runtime.clock.now(), runtime.pid);
-    return await startDetached(runtime, { log: detachedLogOf(delivery, kit.paths, id) }, args, { id, session, what, words });
+    return await startDetached(runtime, detachedPlacesOf(kit, config, id), args, { id, session, what, words });
   }
   const reporting =
     detachedId === undefined

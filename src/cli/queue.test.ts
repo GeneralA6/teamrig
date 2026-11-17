@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { FIRST_IN_LINE_POLL_MS } from '../delivery/host-lock.ts';
 import type { QueuedStepRecord, RefusalOutcome, RefusalRecord } from '../delivery/ledger.ts';
 import { recordPass } from '../delivery/push-pass.ts';
+import { parkedDirOf, parseParked, PARKED_SUFFIX, type ParkedStep } from '../delivery/parked.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { APP, CliHarness, CONFIG_PATH, KIT, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { BUSY_HOLDERS, BUSY_HOLDERS_TEXT, FakeHostMemory } from '../testing/fake-host-memory.ts';
@@ -959,6 +960,14 @@ const ALPHA_INBOX = join(TEAM_HOME, 'state', 'inbox', 'alpha.md');
 const ASKS = join(TEAM_HOME, 'state', 'wake-asks');
 const DETACH_BUILD = ['queue', '--what', 'build api', '--max-minutes', '90', '--exclusive', '--detach', '--', 'npm', 'run', 'build'];
 const DETACHED_BUILD = ['queue', '--detached-run', DETACHED_ID, '--session', 'alpha', '--what', 'build api', '--', 'npm', 'run', 'build'];
+const DETACHED_DIR = join(TEAM_HOME, 'state', 'deploys', 'detached');
+const DISPATCHER = ['/opt/teamrig/dist/cli/main.js', 'queue', '--dispatch'];
+
+/** The parked step `id` (T4093), read back as the dispatcher would. */
+function parkedOf(kit: CliHarness, id: string): ParkedStep | undefined {
+  const text = kit.files.get(join(parkedDirOf(DETACHED_DIR), `${id}${PARKED_SUFFIX}`));
+  return text === undefined ? undefined : parseParked(text);
+}
 
 /** The texts of the lines in alpha's inbox, without their stamps and senders. */
 async function alphaLines(kit: CliHarness): Promise<string[]> {
@@ -974,18 +983,20 @@ async function alphaWakes(kit: CliHarness): Promise<string[]> {
 }
 
 describe('teamrig queue --detach (T2227)', () => {
-  it('starts the step as a hidden queue --detached-run, its session resolved and its output in its log, and prints QUEUED at once', async () => {
+  it('parks the step as a queue --detached-run, its session resolved and its output in its log, starts the dispatcher and prints QUEUED at once (T4093)', async () => {
     const { kit, steps } = harness();
     const processes = new FakeProcesses();
-    const result = await kit.run(DETACH_BUILD, { steps, processes, env: { TEAMRIG_SESSION: 'alpha', PROBE: 'yes' } });
+    const result = await kit.run(DETACH_BUILD, { steps, processes, env: { TEAMRIG_SESSION: 'alpha', PROBE: 'yes', GH_TOKEN: 'secret-token' } });
     assert.deepEqual(result, {
       code: 0,
       stdout: [`QUEUED ${DETACHED_ID}: build api runs detached; log ${DETACHED_LOG}; alpha's inbox gets a line when it starts and when it ends`],
       stderr: [],
     });
+    const parked = parkedOf(kit, DETACHED_ID);
+    const argv = ['queue', '--detached-run', DETACHED_ID, '--session', 'alpha', '--what', 'build api', '--max-minutes', '90', '--exclusive', '--', 'npm', 'run', 'build'];
+    assert.deepEqual([parked?.argv, parked?.cwd, parked?.log, parked?.session, parked?.team, parked?.env['PROBE'], parked?.env['GH_TOKEN']], [argv, APP, DETACHED_LOG, 'alpha', 'app', 'yes', undefined], 'its credentials never reach the disk');
     const [hidden] = processes.hidden;
-    const args = ['/opt/teamrig/dist/cli/main.js', 'queue', '--detached-run', DETACHED_ID, '--session', 'alpha', '--what', 'build api', '--max-minutes', '90', '--exclusive', '--', 'npm', 'run', 'build'];
-    assert.deepEqual([hidden?.command, hidden?.args, hidden?.cwd, hidden?.log, hidden?.env['PROBE']], ['/usr/bin/node', args, APP, DETACHED_LOG, 'yes']);
+    assert.deepEqual([processes.hidden.length, hidden?.command, hidden?.args, hidden?.log, hidden?.env['GH_TOKEN']], [1, '/usr/bin/node', DISPATCHER, join(DETACHED_DIR, 'dispatcher.log'), 'secret-token'], 'the dispatcher gets them in memory');
     assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER), await alphaLines(kit)], [[], undefined, undefined, []], 'the caller waits for nothing and runs nothing');
   });
 
@@ -1015,7 +1026,7 @@ describe('teamrig queue --detach (T2227)', () => {
       const processes = new FakeProcesses().onStart('/usr/bin/node', outcome);
       const result = await kit.run(DETACH_BUILD, { steps, processes, env: { TEAMRIG_SESSION: 'alpha' } });
       assert.deepEqual(result, { code: 2, stdout: [`REFUSED build api did not start detached: ${why}`], stderr: [] });
-      assert.deepEqual(steps.ran, []);
+      assert.deepEqual([steps.ran, parkedOf(kit, DETACHED_ID)], [[], undefined], 'no step is left parked with no dispatcher');
     });
   }
 
@@ -1050,7 +1061,7 @@ describe('teamrig queue --detached-run (T2227)', () => {
     const { kit, steps } = harness();
     const processes = new FakeProcesses();
     assert.equal((await kit.run(DETACH_BUILD, { steps, processes, env: { TEAMRIG_SESSION: 'alpha' } })).code, 0);
-    const [, ...hiddenArgs] = processes.hidden[0]?.args ?? [];
+    const hiddenArgs = parkedOf(kit, DETACHED_ID)?.argv ?? [];
     const starters = new FakeStarterWatch();
     steps.ends(0, MINUTE).whileRunning(async () => starters.end());
     const result = await kit.run(hiddenArgs, { steps, starters });
@@ -1135,8 +1146,9 @@ describe('teamrig queue hands a waiting step over when its shell ended under a l
       ],
       stderr: [],
     });
-    const args = ['/opt/teamrig/dist/cli/main.js', 'queue', '--detached-run', HANDED_ID, '--session', 'alpha', '--arrived-at', ARRIVED, '--what', 'build api', '--', 'npm', 'run', 'build'];
-    assert.deepEqual([processes.hidden[0]?.args, processes.hidden[0]?.log, steps.ran, kit.files.get(LOCK), ledgerOf(kit), starters.openWatches], [args, HANDED_LOG, [], heldBy(), [], 0]);
+    const args = ['queue', '--detached-run', HANDED_ID, '--session', 'alpha', '--arrived-at', ARRIVED, '--what', 'build api', '--', 'npm', 'run', 'build'];
+    const parked = parkedOf(kit, HANDED_ID);
+    assert.deepEqual([parked?.argv, parked?.log, processes.hidden[0]?.args, steps.ran, kit.files.get(LOCK), ledgerOf(kit), starters.openWatches], [args, HANDED_LOG, DISPATCHER, [], heldBy(), [], 0]);
     assert.deepEqual([await alphaLines(kit), await alphaWakes(kit)], [[HANDED], [`alpha: ${HANDED}`]]);
 
     const seen: string[] = [];
@@ -1145,7 +1157,7 @@ describe('teamrig queue hands a waiting step over when its shell ended under a l
       await kit.clock.sleep(ms);
       await kit.files.remove(LOCK);
     };
-    const [, ...hiddenArgs] = processes.hidden[0]?.args ?? [];
+    const hiddenArgs = parked?.argv ?? [];
     const ran = await kit.run(hiddenArgs, { steps: steps.ends(0, MINUTE), sleep: look, sessionProcesses: otherRuns() });
     assert.deepEqual([ran.code, steps.ran.length, new Set(seen).size], [0, 1, 1], 'one ticket, however many looks the wait took');
     assert.ok(seen[0]?.startsWith(`${ARRIVED.padStart(15, '0')}-`), `the detached run's ticket is named by the first arrival: ${seen[0] ?? 'none'}`);
