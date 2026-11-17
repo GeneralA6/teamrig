@@ -1345,7 +1345,7 @@ unmerged, or one that starts to conflict with its base, to fail its checks, or g
 and with [github.activity] on one whose checks pass after failing or running; each is told once, never again while
 it lasts, and the first read of a repository only marks what is there. It goes to the owner of the task the pull
 request's branch names (`t<id>-...`) when an author inside the repository pushed that branch to the repository
-itself, else to `[github.watcher]` (unset: the first holder of a service role holding `issue comment`, else the
+itself, else to `[github.watcher]` (unset: the first holder of a service role holding `issue close`, else the
 lead). With [github.activity] on, an unwoken copy also goes to the owner of the task holding the pull request or a
 same-repository issue it closes, and to each session following it (`teamrig follow`). A run by hand prints a
 `PULL NEWS <session>` line per session and keeps nothing; `--auto` posts it. Titles are outside input, quoted as data.
