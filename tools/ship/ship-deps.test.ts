@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { TempRepo } from '../lib/temp-repo.ts';
 import { profileFor, readProfiles } from './repos.ts';
@@ -51,6 +52,31 @@ describe('realShipDeps', () => {
   it("reads the build's steps from the repo's package.json", () => {
     repo.write('package.json', JSON.stringify({ scripts: { build: 'node a.ts && node b.ts --x' } }));
     assert.deepEqual(realShipDeps(repo.dir, null).buildSteps(), [['a.ts'], ['b.ts', '--x']]);
+  });
+
+  it('syncs, sees main move and pushes the branch against origin, here a bare repo beside the temp repo', () => {
+    repo.write('plugins/teamrig/.claude-plugin/plugin.json', '{ "version": "0.1.0" }\n');
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '-m', 'version');
+    // The profile is read from origin's URL once, when the deps are made: origin then moves to a bare repo, so the
+    // fetches and the push stay on this machine. A global core.hooksPath must not run a real hook on the push.
+    const deps = realShipDeps(repo.dir, null);
+    const origin = join(repo.outside, 'origin.git');
+    repo.git('init', '-q', '--bare', origin);
+    repo.git('config', 'core.hooksPath', join(repo.outside, 'no-hooks'));
+    repo.git('remote', 'set-url', 'origin', origin);
+    repo.git('push', '-q', 'origin', 'HEAD:refs/heads/main');
+    repo.git('checkout', '-q', '-b', 'feat/change');
+
+    assert.deepEqual(deps.sync(), { kind: 'current', sets: '0.1.0' });
+    assert.equal(deps.mainMove(), null);
+    assert.equal(deps.push(), 'feat/change');
+    assert.equal(repo.git('ls-remote', origin, 'refs/heads/feat/change').split('\t')[0], repo.git('rev-parse', 'HEAD').trim());
+
+    repo.git('commit', '-q', '--allow-empty', '-m', 'main moves');
+    repo.git('push', '-q', 'origin', 'HEAD:refs/heads/main');
+    repo.git('reset', '-q', '--hard', 'HEAD~1');
+    assert.match(deps.mainMove()?.reason ?? '', /^origin\/main moved to [0-9a-f]{7}, which the branch does not contain$/);
   });
 
   it("reads a head's work commits and its patch against origin's main", () => {
