@@ -37,6 +37,10 @@ describe('check RESET-EXPIRING (T2450)', () => {
     assert.deepEqual(await expiryRows({ enabled: true, resets: [used, expired] }), []);
   });
 
+  it('says nothing of the other accounts, which never expire (T939)', async () => {
+    assert.deepEqual(await expiryRows({ enabled: true, resets: [{ kind: 'account', count: 2, usedUtc: [] }] }), []);
+  });
+
   it('says nothing with the budget off', async () => {
     assert.deepEqual(await expiryRows({ enabled: false, resets: [NEAR] }), []);
   });

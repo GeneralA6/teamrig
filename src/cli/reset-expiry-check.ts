@@ -21,7 +21,11 @@ export function resetExpiryWarnings(budget: Pick<BudgetConfig, 'enabled' | 'rese
     return [];
   }
   return budget.resets.flatMap((stock) => {
-    const left = resetsLeft(stock);
+    // Another account never expires, so it has nothing to warn of.
+    if (stock.kind === 'account') {
+      return [];
+    }
+    const left = resetsLeft(stock, now);
     const expires = parseUtcDeadline(stock.expiresUtc);
     const days = daysToExpiry(stock, now);
     if (left === 0 || expires === undefined || days === undefined || expires.getTime() <= now || days >= RESET_EXPIRY_WARN_DAYS) {

@@ -486,7 +486,7 @@ The weekly token budget: the pace line the team is measured against and each ses
 | `modelWeights` | array (at most 10 items) of [object](#budgetmodelweights) | `[]` | What one W of each model's calls moves the weekly meter, against 1 for a model unlisted: the account's limit counts models at their own rates, so the meter multiplies each call's W by its model's weight, on top of subagentWeight. The rollup keeps raw W. Unset in a team under another on its account: the team above's; else none, every model alike. |
 | `extraWPerUsd` | integer (1000 to 1000000000) |  | W per US dollar of extra usage, standing in until two spent readings past 100% of the week teach the rate. Unset: the team above's, in a team under another on its account; else the extra-usage pool shows in dollars only until then, with no allowance. |
 | `reset` | [object](#budgetreset) |  | When the weekly limit resets, for a team without a status line. Unset: the team above's, in a team under another on its account; else the reset time the status line reports. |
-| `resets` | array (at most 20 items) of [object](#budgetresets) | `[]` | The resets the account holds beside its weekly one, each grant with its expiry and the uses taken from it; Claude Code does not tell a session about them, so the team writes them down as they are granted and used. teamrig budget shows what is left of each. Unset: the team above's, in a team under another on its account; else none. |
+| `resets` | array (at most 20 items) of [object](#budgetresets) | `[]` | The resets the account holds beside its weekly one, each grant with its expiry and the uses taken from it, and the person's other Claude accounts; Claude Code does not tell a session about them, so the team writes them down as they are granted and used. teamrig budget shows what is left of each. Unset: the team above's, in a team under another on its account; else none. |
 | `targetPct` | number (1 to 100) | `99.5` | Use the week up to this share of the weekly limit. |
 | `reservePct` | number (0 to 50) | `0.5` | Kept back for incidents until shortly before the reset; targetPct plus reservePct is at most 100. |
 | `shareFloorPct` | integer (0 to 50) | `10` | The least share of each weekly split a team with planned work gets, in % of the part being split; when the floors do not fit, each team gets an equal part. 0: no floor. The team's own, never taken from the team above. The lead's rules print it while the budget is enabled. |
@@ -523,14 +523,14 @@ When the weekly limit resets, for a team without a status line. Unset: the team 
 
 ## `budget.resets[]`
 
-The resets the account holds beside its weekly one, each grant with its expiry and the uses taken from it; Claude Code does not tell a session about them, so the team writes them down as they are granted and used. teamrig budget shows what is left of each. Unset: the team above's, in a team under another on its account; else none.
+The resets the account holds beside its weekly one, each grant with its expiry and the uses taken from it, and the person's other Claude accounts; Claude Code does not tell a session about them, so the team writes them down as they are granted and used. teamrig budget shows what is left of each. Unset: the team above's, in a team under another on its account; else none.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `kind` (required) | one of `"fable"`, `"full"` |  | fable refills the Fable bar and gives back what Fable used of the weekly limit; full clears all of the week's usage. |
-| `count` (required) | integer (1 to 20) |  | How many resets the grant holds. |
-| `expiresUtc` (required) | string (matching `^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$`) |  | When the grant's unused resets expire, YYYY-MM-DD HH:MM UTC. |
-| `usedUtc` | array (at most 20 items) of string (matching `^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$`) |  | When each use was taken, YYYY-MM-DD HH:MM UTC; at most count. Unset: none used. |
+| `kind` (required) | one of `"fable"`, `"full"`, `"account"` |  | fable refills the Fable bar and gives back what Fable used of the weekly limit; full clears all of the week's usage; account is another Claude account the user can sign in to, which the meter reads as a full reset and which is free again a week after its use. |
+| `count` (required) | integer (1 to 20) |  | How many resets the grant holds, or how many other accounts. |
+| `expiresUtc` | string (matching `^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$`) |  | When the grant's unused resets expire, YYYY-MM-DD HH:MM UTC. Required for fable and full; refused for account, which never expires. |
+| `usedUtc` | array (at most 20 items) of string (matching `^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$`) |  | When each use was taken, YYYY-MM-DD HH:MM UTC; at most count. For account, the last switch to each account. Unset: none used. |
 | `note` | string (1 to 100 characters, matching `^[^\r\n]+$`) |  | One short line about the grant, such as where it came from. |
 
 ## `budget.sessions.*`

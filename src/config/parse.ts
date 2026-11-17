@@ -123,6 +123,7 @@ import {
   isSecretWrites,
   isSkipHooks,
   isTerminalChoice,
+  isExpiringResetKind,
   isResetKind,
   isReviewMode,
   isVerifyGate,
@@ -1411,16 +1412,24 @@ function parseResetStock(read: ConfigReader, value: unknown, path: string): Rese
   if (section['count'] === undefined) {
     read.report(`${path}.count`, 'is required');
   }
-  const expiresUtc = read.requiredString(section, 'expiresUtc', path, isUtcMinute);
+  // Another account never expires (types.ts RESET_KINDS), so an expiry on one is a mistake worth naming.
+  const expiresUtc = kind === 'account' ? undefined : read.requiredString(section, 'expiresUtc', path, isUtcMinute);
+  if (kind === 'account' && section['expiresUtc'] !== undefined) {
+    read.report(`${path}.expiresUtc`, 'is not for kind account: another account never expires, each comes back a week after its use');
+  }
   const usedUtc = read.stringList(section, 'usedUtc', path, [], isUtcMinute, CONFIG_LIMITS.budgetResetCount.max);
   const note = read.optionalString(section, 'note', path, shortLine(RESET_NOTE_MAX_LENGTH));
   if (count !== undefined && usedUtc.length > count) {
     read.report(`${path}.usedUtc`, `lists ${usedUtc.length} uses of a grant of ${count}`);
   }
-  if (read.issues.length > issues || !isResetKind(kind) || count === undefined) {
+  if (read.issues.length > issues || count === undefined) {
     return undefined;
   }
-  return { kind, count, expiresUtc, usedUtc, ...(note === undefined ? {} : { note }) };
+  const base = { count, usedUtc, ...(note === undefined ? {} : { note }) };
+  if (kind === 'account') {
+    return { kind, ...base };
+  }
+  return isExpiringResetKind(kind) && expiresUtc !== undefined ? { kind, expiresUtc, ...base } : undefined;
 }
 
 /** A model prefix: one short line, as model ids are. */
