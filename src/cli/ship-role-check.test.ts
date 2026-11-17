@@ -50,9 +50,20 @@ describe('toolCodeAt reads the code a ship tool runs at a commit (T3419)', () =>
     for (const [path, text] of Object.entries(files)) {
       git.files.set(`c:${path}`, text);
     }
-    git.blobs.set('c:tools/ship/ship.roots.json', files['tools/ship/ship.roots.json'] === undefined ? undefined : 'roots-blob');
     return git;
   }
+
+  it('reads each level of imports in one git read, never one read per file (T4035)', () => {
+    const git = gitWith({
+      'tools/ship/ship.ts': "import './a.ts';\nimport './b.ts';\nimport './c.ts';\n",
+      'tools/ship/a.ts': "import './d.ts';\nimport './b.ts';\n",
+      'tools/ship/b.ts': "import './d.ts';\n",
+      'tools/ship/c.ts': "import './ship.ts';\n",
+      'tools/ship/d.ts': "export {};\n",
+    });
+    assert.deepEqual(toolCodeAt(git, '/repo', 'c', 'tools/ship/ship.ts'), ['tools/ship/a.ts', 'tools/ship/b.ts', 'tools/ship/c.ts', 'tools/ship/d.ts', 'tools/ship/ship.roots.json', 'tools/ship/ship.ts']);
+    assert.deepEqual(git.fileReads, [1, 1, 3, 1], 'the roots file, the tool, its three imports, then d once');
+  });
 
   it('follows the imports through a cycle to every file, sorted, each once, with the path of the roots file it lacks', () => {
     const git = gitWith({
