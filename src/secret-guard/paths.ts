@@ -75,6 +75,19 @@ interface CompiledGlob {
   readonly wildcardAlone: boolean;
 }
 
+/**
+ * Where the content check (#875) reads a `.pub.pem` file's text from: the file on disk, for a call that prints the
+ * working file itself; nowhere, so the file is judged by its name, for a call that prints another revision of it
+ * (`git show <rev>:<path>`, `git diff`, `git log -p`); or the blob a commit or a push holds, read by `text`.
+ */
+export type KeySource = { readonly from: 'disk' } | { readonly from: 'name' } | { readonly from: 'blob'; readonly text: () => string | undefined };
+
+/** The content check reads the file on disk. */
+export const FROM_DISK: KeySource = { from: 'disk' };
+
+/** No content check: the file is judged by its name. */
+export const BY_NAME: KeySource = { from: 'name' };
+
 /** The secret files of a team: the defaults, then its own globs. */
 export class SecretPaths {
   private readonly globs: readonly CompiledGlob[];
@@ -92,9 +105,9 @@ export class SecretPaths {
     this.globs = globs.map((glob) => compileGlob(glob, anchor, ignoreCase));
   }
 
-  /** True when the file at `path`, an absolute path, holds a secret. */
-  listed(path: string): boolean {
-    return this.decideFile(path, normalisePath(path));
+  /** True when the file at `path`, an absolute path, holds a secret; a `.pub.pem` file's text is read from `source`. */
+  listed(path: string, source: KeySource = FROM_DISK): boolean {
+    return this.decideFile(path, normalisePath(path), source);
   }
 
   /**
@@ -104,10 +117,10 @@ export class SecretPaths {
    * of wildcards alone (`dir/*`) is tried only against the globs that let it (see `CompiledGlob.wildcardAlone`), else
    * every `grep x *` would name a `*.pem` it cannot see.
    */
-  mayName(path: string, reading: WordReading): boolean {
+  mayName(path: string, reading: WordReading, source: KeySource = FROM_DISK): boolean {
     const normal = normalisePath(path);
     if (!hasWildcard(normal, reading.sets)) {
-      return this.decideFile(path, normal);
+      return this.decideFile(path, normal, source);
     }
     const word = new GlobAutomaton(globNodes(normal, { ...reading, ignoreCase: this.ignoreCase }), this.ignoreCase);
     const onlyWildcards = /^(?:[*?]|\[[^\]/]+\])+$/.test(normal.slice(normal.lastIndexOf('/') + 1));
@@ -119,18 +132,19 @@ export class SecretPaths {
   /**
    * The globs' decision on one file, except that a `.pub.pem` file listed by `**\/*.pem` alone, no later glob of the
    * team's naming it, is no secret while its text holds public keys and nothing else (#875). The text is read here,
-   * so a private key saved under that name, a file that cannot be read and a word with wildcards stay refused.
+   * from `source`, so a private key saved under that name, a file that cannot be read and a word with wildcards stay
+   * refused; a call that prints another revision than the one read is judged by name.
    */
-  private decideFile(path: string, normal: string): boolean {
+  private decideFile(path: string, normal: string, source: KeySource): boolean {
     const deciding = this.decidingGlob(normal);
     if (deciding === undefined || deciding.keep) {
       return false;
     }
     const name = this.ignoreCase ? normal.toLowerCase() : normal;
-    if (this.readKey === undefined || deciding.source !== PEM_GLOB || !name.endsWith(PUBLIC_PEM_SUFFIX)) {
+    if (source.from === 'name' || this.readKey === undefined || deciding.source !== PEM_GLOB || !name.endsWith(PUBLIC_PEM_SUFFIX)) {
       return true;
     }
-    const text = this.readKey(path);
+    const text = source.from === 'blob' ? source.text() : this.readKey(path);
     return text === undefined || !holdsPublicKeysOnly(text);
   }
 

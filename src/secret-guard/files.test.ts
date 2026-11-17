@@ -1,13 +1,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { generateKeyPairSync } from 'node:crypto';
 import { DEFAULT_SECRET_GUARD } from '../config/defaults.ts';
 import { programsOf } from '../package-guard/programs.ts';
 import type { ShellDialect } from '../push-guard/tokenizer.ts';
 import { fileFindings, isPrinter } from './files.ts';
 import { describeFinding } from './findings.ts';
+import { DEFAULT_SECRET_PATHS, SecretPaths } from './paths.ts';
 import { secretRulesOf } from './rules.ts';
 
 const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
+// Made at run time, so no key-shaped text sits in the source.
+const PUBLIC = generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString();
 
 /** What the line's programs print by file, each program's output taken as printed. */
 function printed(command: string, dialect: ShellDialect = 'bash'): string[] {
@@ -58,6 +62,21 @@ describe('fileFindings', () => {
       'the content of .env',
     ]);
     assert.deepEqual(printed('git log -- .env; git status; git add .env; git -c core.pager=cat log --stat'), []);
+  });
+
+  it('judges a .pub.pem a git call prints by name, as it prints another revision than the working copy (#875)', () => {
+    // The working copy of every .pub.pem holds a public key: a direct read passes, a git call does not.
+    const keyed = { ...rules, paths: new SecretPaths(DEFAULT_SECRET_PATHS, 'C:/u', true, () => PUBLIC) };
+    const keyedPrinted = (command: string): string[] =>
+      programsOf(command, { cwd: 'C:/w', home: 'C:/u', dialect: 'bash' })
+        .flatMap((run) => fileFindings(run, keyed))
+        .map(describeFinding);
+    assert.deepEqual(keyedPrinted('cat k.pub.pem'), []);
+    assert.deepEqual(keyedPrinted('git show HEAD~1:k.pub.pem; git diff HEAD~1 -- k.pub.pem; git log -p -- k.pub.pem'), [
+      'the content of k.pub.pem',
+      'the content of k.pub.pem',
+      'the content of k.pub.pem',
+    ]);
   });
 
   it('reads PowerShell and cmd printers', () => {
