@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
 import { FakeIssueHost } from '../testing/fake-issue-host.ts';
+import { areaLabelSpec } from './managed-labels.ts';
 import { editIssueBody, labelIssue, labelRefusal, MAX_COMMENT, MAX_LABEL, postRefusal, writeIssue, type IssueWrite, type LabelWrite } from './write.ts';
 
 const TARGET = { repo: 'acme/web', number: 7 };
@@ -224,6 +225,30 @@ describe('labelIssue', () => {
       { kind: 'label-create', repo: 'acme/web', label: docs },
     ]);
     assert.deepEqual(host.labelFileReads, ['acme/web']);
+  });
+
+  it("makes a missing label the team's github.areaOwners names in the area look, its label file's spec first (T4053)", async () => {
+    const host = new FakeIssueHost().hasLabels('p2');
+    assert.deepEqual(await label(host, { add: ['Area:Pane', 'p2'], remove: [], areaLabels: ['area:pane'] }), {
+      done: true,
+      lines: ['ACCESS acme: writes as the test', `MADE acme/web: the label "area:pane", as the team config's github.areaOwners names it`, 'LABELED acme/web#7: "Area:Pane", "p2"'],
+    });
+    assert.deepEqual(host.calls[0], { kind: 'label-create', repo: 'acme/web', label: areaLabelSpec('area:pane') });
+    const filed = { name: 'area:pane', color: '1d76db', description: 'Area: the pane' };
+    const both = new FakeIssueHost().holdsLabelFile('acme/web', { kind: 'read', labels: [filed] });
+    assert.equal((await label(both, { add: ['area:pane'], remove: [], areaLabels: ['area:pane'] })).done, true);
+    assert.deepEqual(both.calls[0], { kind: 'label-create', repo: 'acme/web', label: filed });
+  });
+
+  it('makes no area label the repository has, nor one github.areaOwners does not name (T4053)', async () => {
+    const has = new FakeIssueHost().hasLabels('area:pane');
+    assert.equal((await label(has, { add: ['area:pane'], remove: [], areaLabels: ['area:pane'] })).done, true);
+    assert.ok(has.calls.every((call) => call.kind !== 'label-create'));
+    const other = new FakeIssueHost();
+    assert.deepEqual((await label(other, { add: ['area:cli'], remove: [], areaLabels: ['area:pane'] })).lines.slice(1), [
+      'FAILED acme/web#7: acme/web has no label "area:cli", and it has no .github/labels.json: add it to that file or make it there first, as adding it here would make a new one; nothing was changed',
+    ]);
+    assert.deepEqual(other.calls, []);
   });
 
   it('reads no label file for a label the repository has or one teamrig makes', async () => {

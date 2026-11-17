@@ -12,3 +12,17 @@ export const MANAGED_LABEL_SPECS: readonly LabelSpec[] = [...STATUS_LABEL_SPECS,
 export function managedLabel(name: string): LabelSpec | undefined {
   return MANAGED_LABEL_SPECS.find((spec) => spec.name === name);
 }
+
+/** The colour every area label is made in (github.areaOwners): one look for every area, as the label file's areas. */
+export const AREA_LABEL_COLOR = 'c5def5';
+
+/** The description every area label is made with: what teamrig does with an issue that carries one. */
+export const AREA_LABEL_DESCRIPTION = 'Area: teamrig gives an issue with this label to the session of its area';
+
+/**
+ * The spec teamrig makes the area label `name` with, one the team's github.areaOwners names that a repository lacks
+ * (issues/write.ts): the one area look under that name, so a new area needs no colour or description picked.
+ */
+export function areaLabelSpec(name: string): LabelSpec {
+  return { name, color: AREA_LABEL_COLOR, description: AREA_LABEL_DESCRIPTION };
+}

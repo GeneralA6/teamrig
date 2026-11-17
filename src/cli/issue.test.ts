@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { withStampFooter } from '../core/stamp.ts';
-import { isIssueAssign, isIssueAssigneeRead, isIssueBodyEdit, isIssueClose, isIssueComment, isIssueRead, isIssueUnassign, isLabelAdd, isLabelFileRead, isLabelRead, isLabelRemove, isUserRead } from '../github/gh.ts';
+import { isAreaLabelCreate, isIssueAssign, isIssueAssigneeRead, isIssueBodyEdit, isIssueClose, isIssueComment, isIssueRead, isIssueUnassign, isLabelAdd, isLabelFileRead, isLabelRead, isLabelRemove, isUserRead, labelCreateArgs } from '../github/gh.ts';
+import { areaLabelSpec } from '../issues/managed-labels.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
@@ -189,6 +190,16 @@ describe('teamrig issue label', () => {
     assert.ok(result.stdout.includes('MADE acme/web: the label "area:cli", as its .github/labels.json names it'), result.stdout.join('\n'));
     const create = gh.ran.find((request) => request.args.includes('-X') && request.args.includes('repos/acme/web/labels'));
     assert.deepEqual(create?.args, ['api', 'repos/acme/web/labels', '-X', 'POST', '-f', 'name=area:cli', '-f', 'color=1d76db', '-f', 'description=Area: the teamrig command line']);
+    assert.ok(gh.ran.some((request) => isLabelAdd(request.args)));
+  });
+
+  it("makes a missing label the team config's github.areaOwners names, in the area look, then adds it (T4053)", async () => {
+    const team: JsonRecord = { ...TEAM, github: { repos: ['acme/web'], areaOwners: { 'Area:Pane': 'lead' } } };
+    const gh = new FakeGh().hasLabels('acme/web', ['p1']);
+    const result = await new CliHarness(team).run(['issue', 'label', 'acme/web#7', '--add', 'area:pane'], { ...AS_LEAD, gh });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.ok(result.stdout.includes(`MADE acme/web: the label "area:pane", as the team config's github.areaOwners names it`), result.stdout.join('\n'));
+    assert.deepEqual(gh.ran.find((request) => isAreaLabelCreate(request.args))?.args, labelCreateArgs('acme/web', areaLabelSpec('area:pane')));
     assert.ok(gh.ran.some((request) => isLabelAdd(request.args)));
   });
 

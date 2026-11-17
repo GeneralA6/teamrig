@@ -3,7 +3,8 @@ import type { Env } from '../core/home.ts';
 import { endOf, type ShellEnd } from '../test-run/shell.ts';
 import type { CloseReason, IssueDraft, LabelSpec } from '../issues/host.ts';
 import { LABEL_FILE, parseLabelFile } from '../issues/label-file.ts';
-import { MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
+import { areaLabelSpec, MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
+import { labelRefusal } from '../issues/write.ts';
 import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
 
 /**
@@ -429,11 +430,23 @@ export type FileLabels = (repo: string) => readonly LabelSpec[];
 /**
  * True for the command line labelCreateArgs builds for one of the labels teamrig makes (MANAGED_LABEL_SPECS: the
  * status push's own and the design label) and nothing more: its name, colour and description word for word, in that
- * order. So the runner makes no other label (beside one isFileLabelCreate takes), and edits or deletes none, whatever
- * a caller passes.
+ * order. So the runner makes no other label (beside one isAreaLabelCreate or isFileLabelCreate takes), and edits or
+ * deletes none, whatever a caller passes.
  */
 export function isLabelCreate(args: readonly string[]): boolean {
   return labelCreateIn(args, () => MANAGED_LABEL_SPECS);
+}
+
+/**
+ * True for the command line labelCreateArgs builds for an area label (areaLabelSpec): a name a host takes, in the one
+ * area colour and description, word for word. Which names are areas is the team's github.areaOwners, which issue label
+ * checks before the create (issues/write.ts); the runner holds the create to that one look, so it makes no label in a
+ * look of the caller's choosing.
+ */
+export function isAreaLabelCreate(args: readonly string[]): boolean {
+  const field = args[5] ?? '';
+  const name = field.startsWith('name=') ? field.slice('name='.length) : '';
+  return labelRefusal(name) === undefined && labelCreateIn(args, () => [areaLabelSpec(name)]);
 }
 
 /**
@@ -760,7 +773,7 @@ export class GhRefusedError extends Error {
   }
 }
 
-/** True for each fixed command line the runner starts; it also makes a label a read label file named (isFileLabelCreate). */
+/** True for each fixed command line the runner starts, an area label's create among them; it also makes a label a read label file named (isFileLabelCreate). */
 export function isAllowedGh(args: readonly string[]): boolean {
   return (
     isIssueQuery(args) ||
@@ -781,6 +794,7 @@ export function isAllowedGh(args: readonly string[]): boolean {
     isUserRead(args) ||
     isViewerRead(args) ||
     isLabelCreate(args) ||
+    isAreaLabelCreate(args) ||
     isLinkAdd(args) ||
     isFieldValueSet(args) ||
     isIssueTypeSet(args) ||

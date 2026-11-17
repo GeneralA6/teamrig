@@ -4,7 +4,7 @@ import type { SecretScanner } from '../core/secrets.ts';
 import { targetText, type CloseReason, type IssueHost, type IssueTarget } from './host.ts';
 import type { HostLabelFile, LabelSpec } from './host.ts';
 import { LABEL_FILE } from './label-file.ts';
-import { managedLabel } from './managed-labels.ts';
+import { areaLabelSpec, managedLabel } from './managed-labels.ts';
 import { taskIdIn } from './posted.ts';
 
 /** The longest comment GitHub takes; another host's limit is checked by the host itself. */
@@ -58,6 +58,8 @@ export interface LabelWrite {
   readonly target: IssueTarget;
   readonly add: readonly string[];
   readonly remove: readonly string[];
+  /** The labels the team's github.areaOwners names (lowercase): one the repository lacks is made in the area look (T4053). */
+  readonly areaLabels?: readonly string[];
 }
 
 /** Why `label` is no label name a host takes, or undefined when it is one: holding a control character, empty, padded or too long. */
@@ -87,10 +89,11 @@ interface LabelToMake {
 
 /**
  * How `label`, which `repo` lacks, is made: as teamrig's own (managedLabel, its case exact), else as the repository's
- * label file names it (its case aside, as GitHub's label names ignore case). Else the reason it is not made, so a
- * typo never makes a new label. `labelFile` reads that file, at most once a run.
+ * label file names it (its case aside, as GitHub's label names ignore case), else in the area look when it is one of
+ * `areaLabels` (lowercase, as the config keeps them). Else the reason it is not made, so a typo never makes a new
+ * label. `labelFile` reads that file, at most once a run.
  */
-async function missingLabel(repo: string, label: string, labelFile: () => Promise<HostLabelFile>): Promise<LabelToMake | string> {
+async function missingLabel(repo: string, label: string, labelFile: () => Promise<HostLabelFile>, areaLabels: readonly string[]): Promise<LabelToMake | string> {
   const managed = managedLabel(label);
   if (managed !== undefined) {
     return { label: managed, source: 'one teamrig makes' };
@@ -103,6 +106,10 @@ async function missingLabel(repo: string, label: string, labelFile: () => Promis
   if (named !== undefined) {
     return { label: named, source: `as its ${LABEL_FILE} names it` };
   }
+  const area = areaLabels.find((name) => name === label.toLowerCase());
+  if (area !== undefined) {
+    return { label: areaLabelSpec(area), source: "as the team config's github.areaOwners names it" };
+  }
   const where = file.kind === 'read' ? `its ${LABEL_FILE} does not name it` : `it has no ${LABEL_FILE}`;
   return `${repo} has no label ${JSON.stringify(label)}, and ${where}: add it to that file or make it there first, as adding it here would make a new one`;
 }
@@ -110,8 +117,8 @@ async function missingLabel(repo: string, label: string, labelFile: () => Promis
 /**
  * Adds and takes off labels through `host`, one line said for each step: ACCESS, then MADE, LABELED and UNLABELED, or
  * FAILED with the reason. Every label to add must already be one of the repository's, read before any write, or one
- * teamrig makes, or one the repository's label file names (made first), so a typo never makes a new label; the first
- * failure stops it, and a failure after a write says what was done. True when every step was done.
+ * teamrig makes, or one its label file or the team's github.areaOwners names (made first), so a typo never makes a
+ * new label; the first failure stops it, and a failure after a write says what was done. True when every step was done.
  */
 export async function labelIssue(host: IssueHost, write: LabelWrite, say: (line: string) => void): Promise<boolean> {
   const shown = targetText(write.target);
@@ -129,7 +136,7 @@ export async function labelIssue(host: IssueHost, write: LabelWrite, say: (line:
     if (found.kind === 'found') {
       continue;
     }
-    const make = found.kind === 'failed' ? found.reason : await missingLabel(write.target.repo, label, labelFile);
+    const make = found.kind === 'failed' ? found.reason : await missingLabel(write.target.repo, label, labelFile, write.areaLabels ?? []);
     if (typeof make === 'string') {
       say(`FAILED ${shown}: ${make}; nothing was changed`);
       return false;

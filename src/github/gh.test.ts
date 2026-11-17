@@ -15,6 +15,7 @@ import {
   GhOutputCapError,
   GhRefusedError,
   isAllowedGh,
+  isAreaLabelCreate,
   isAssigneeRead,
   isCommentsRead,
   isIssueAssign,
@@ -68,7 +69,7 @@ import {
   type IssueNumber,
 } from './gh.ts';
 import type { IssueDraft, LabelSpec } from '../issues/host.ts';
-import { MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
+import { areaLabelSpec, MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
 import { CLOSED_ISSUES_QUERY, closedPageArgs, OPEN_ISSUES_QUERY, openPageArgs, PULL_REQUESTS_QUERY, pullPageArgs } from './queries.ts';
 
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-gh-'));
@@ -402,6 +403,37 @@ describe('the managed label create (T2999, T3096)', () => {
       ['api', 'repos/acme/web/labels', '-X', 'POST', '--input', 'labels.json'],
     ]) {
       assert.equal(isLabelCreate(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+  });
+});
+
+describe('the area label create (T4053)', () => {
+  const AREA = areaLabelSpec('area:cli');
+
+  it('takes the create of a label name a host takes, in the one area colour and description', () => {
+    for (const name of ['area:cli', 'Area: The Pane', 'a'.repeat(50)]) {
+      const args = labelCreateArgs('acme/web', areaLabelSpec(name));
+      assert.ok(isAreaLabelCreate(args) && isAllowedGh(args), name);
+    }
+  });
+
+  it('refuses another colour or description, a name no host takes, and any other method, field or path', () => {
+    const good = labelCreateArgs('acme/web', AREA);
+    for (const args of [
+      labelCreateArgs('acme/web', { ...AREA, color: '000000' }),
+      labelCreateArgs('acme/web', { ...AREA, description: 'x' }),
+      labelCreateArgs('acme/web', areaLabelSpec('')),
+      labelCreateArgs('acme/web', areaLabelSpec(' area:cli')),
+      labelCreateArgs('acme/web', areaLabelSpec('area:\ncli')),
+      labelCreateArgs('acme/web', areaLabelSpec('a'.repeat(51))),
+      labelCreateArgs('acme/..', AREA),
+      good.map((arg) => (arg === 'POST' ? 'PATCH' : arg)),
+      good.map((arg) => (arg === '-f' ? '-F' : arg)),
+      [...good, '-f', 'new_name=x'],
+      good.map((arg, at) => (at === 1 ? 'repos/acme/web/labels/area%3Acli' : arg)),
+    ]) {
+      assert.equal(isAreaLabelCreate(args), false, args.slice(1).join(' '));
       assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
     }
   });
