@@ -8,9 +8,10 @@ import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import type { Task } from '../../register/fold.ts';
 import type { Register } from '../../register/register.ts';
-import { assignedNotice } from '../../register/views.ts';
+import { assignedNotice, dueTime } from '../../register/views.ts';
 import { WakeAsks } from '../../wake/asks.ts';
 import { HELD_PRIORITY } from '../../wake/decide.ts';
+import { closedByTeamrig, closedWakeLine, wakeClosedSession } from '../closed-wake.ts';
 import { openTeamKit, requireConfig, rosterOf, teamZone, type Access, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { leadAboveOf } from '../tree.ts';
@@ -46,11 +47,41 @@ export async function openTeam(runtime: CliRuntime, access: Access): Promise<Tea
  * `inbox add --wake now` (T2686).
  */
 export async function tellAssigned(runtime: CliRuntime, team: Team, by: string, task: Task, shown = task.owner): Promise<boolean> {
-  const posted = await tellLine(runtime, team, by, task.owner, assignedNotice(task, team.zone), `${shown} was not told of ${task.id}`, shown);
+  const text = assignedNotice(task, team.zone);
+  const posted = await tellLine(runtime, team, by, task.owner, text, `${shown} was not told of ${task.id}`, shown);
+  if (posted) {
+    await reopenForDueToday(runtime, team, by, task, text, shown);
+  }
   if (posted && task.priority === HELD_PRIORITY && team.config.wake.enabled) {
     runtime.out.stderr(`NOTE ${shown} is woken at its idle prompt for ${task.id}, a p0, so no --wake now is needed`);
   }
   return posted;
+}
+
+/**
+ * A task due today (or overdue) handed to a session teamrig closed (#1581): a closed session reopens for work only
+ * within `wake.priority` or at its next day start, so a p2 due this afternoon waited for tomorrow. Its line gets a
+ * wake ask, as `inbox add --wake now` does, and its reopen starts at once through the idle pass's own act
+ * (src/cli/closed-wake.ts), the line saying REOPENS or CLOSED with why. Nothing for an open session, a task with no due
+ * time or one due a later day, or with the team's wakes off.
+ */
+async function reopenForDueToday(runtime: CliRuntime, team: Team, by: string, task: Task, text: string, shown: string): Promise<void> {
+  const due = dueTime(task, team.zone);
+  const now = runtime.clock.now();
+  const today = due !== undefined && (due <= now || team.zone.day(new Date(due)) === team.zone.day(new Date(now)));
+  if (!today || !team.config.wake.enabled || !(await closedByTeamrig(runtime, team, task.owner))) {
+    return;
+  }
+  try {
+    await new WakeAsks(runtime.files, team.paths.wakeAsks).post(task.owner, { from: by, text, at: now });
+  } catch (error) {
+    runtime.out.stderr(`WARN ${shown} is closed and its line has no wake ask (${errorMessage(error)}): ${KIT_NAME} open ${task.owner}`);
+    return;
+  }
+  const said = closedWakeLine(await wakeClosedSession(runtime, team, team.config, team.roster, task.owner), shown, task.owner);
+  if (said !== undefined) {
+    runtime.out.stderr(`${said} (${task.id} is due today)`);
+  }
 }
 
 /**

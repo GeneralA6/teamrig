@@ -38,6 +38,8 @@ Flags:
   says so (`NOTE api has an inbox line: ...`). A p0 also wakes the owner at its idle prompt, its team's wake check
   reading the task from its register (on another team's too), and stderr says so: `NOTE api is woken at its idle
   prompt for T1, a p0, so no --wake now is needed` (none while the owner's team has `wake.enabled` false).
+  A task due today (or overdue) handed to a session teamrig closed gets a wake ask and its reopen at once, whatever
+  its priority, and stderr says `REOPENS <id>` or `CLOSED: <id> was not woken: <why>`, ending `(T1 is due today)`.
 - `--source <session>|owner`: who asked; default you. `--source owner` marks an order from the human
   (`register.ownerSource`).
 - `--ref <where it was asked>`: a pointer to the ask, such as a file and line or an inbox date; at most 300
@@ -1858,12 +1860,15 @@ Flags:
   most, within how many minutes, what that costs (a warm cache is about 27k W, a cold one about 210k W, and the
   share of the week at today's W per percent, as `teamrig budget` prices today's rows, once teamrig knows it) and
   whose budget line pays. A receiver whose team has
-  `wake.enabled` false gets the line and no wake, and the `WAKES` line says so.
+  `wake.enabled` false gets the line and no wake, and the `WAKES` line says so. A receiver teamrig closed has no tab
+  to wake, so it is never counted in `WAKES`: its reopen starts at once through the idle pass's own reopen, judged and
+  limited as the pass does, and `REOPENS <id>` says so, or `CLOSED: <id> was not woken: <why>` when the host has no room,
+  an install is not settled or the idle pass is off; the next pass tries again each minute, or `teamrig open <id>`.
 - `--wake-by <time>`: wakes each receiver at that time instead (`HH:MM` on the team's clock, or `YYYY-MM-DD HH:MM`),
   and only if it has not seen the line by then: a receiver that read it, or was shown it at a prompt or a tool
   call's end, before the time is not woken. One idle at its prompt then is woken at its tab's next wake check, one busy in a
-  turn is shown the line at its next tool call's end, and a closed one is reopened at the next idle pass. The
-  `WAKES` line names the time; a wake long after the receiver's last turn is priced cold. Until the time, the line
+  turn is shown the line at its next tool call's end, and a closed one is reopened at the first idle pass after it,
+  which a `CLOSED` line says in place of `WAKES`. The `WAKES` line names the time; a wake long after the receiver's last turn is priced cold. Until the time, the line
   keeps no idle session open. It takes the same gate as `--wake now`, and one or the other, not both.
 - `--from host:<job>`: the sender is a host scheduled job (cron, launchd, Task Scheduler), which runs as no session;
   `<job>` names it, as an id does. It takes no `--session` and no `--wake` or `--wake-by`, and `--to` names sessions

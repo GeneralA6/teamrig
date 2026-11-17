@@ -5,7 +5,8 @@ import { inboxLineOf, postLine } from '../inbox/inbox.ts';
 import { lineHash } from '../inbox/line-hash.ts';
 import { WakeAsks, type WakeAsk } from '../wake/asks.ts';
 import { inboxDepsOf } from './commands/inbox.ts';
-import type { Kit } from './kit.ts';
+import { closedByTeamrig, closedWakeLine, wakeClosedSession } from './closed-wake.ts';
+import { rosterOf, type Kit } from './kit.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
 /**
@@ -50,6 +51,13 @@ export async function postUrgentLine(runtime: CliRuntime, kit: Kit, config: KitC
     await new WakeAsks(runtime.files, kit.paths.wakeAsks).post(line.to, urgentAskOf(line, text, at));
   } catch (error) {
     return `posted to the inbox, but it does not wake ${line.to}: ${errorMessage(error)}`;
+  }
+  // A session teamrig closed has no tab to take the ask: its reopen starts now, or the caller is told why not (#1581).
+  if (await closedByTeamrig(runtime, kit, line.to)) {
+    const said = closedWakeLine(await wakeClosedSession(runtime, kit, config, await rosterOf(runtime, kit, config), line.to), line.to, line.to);
+    if (said !== undefined) {
+      runtime.out.stderr(said);
+    }
   }
   return undefined;
 }
