@@ -1,6 +1,8 @@
 import { freeBranch } from './branch-names.ts';
+import type { MainMove } from './merge.ts';
 import { pushOwnBranch } from './push.ts';
 import { type Regeneration, type ReplayPlan, planReplay, regenerate, regenerationFor, workPathspec } from './regenerate.ts';
+import { mainMovedPast } from './sync.ts';
 
 /**
  * Brings a pushed change branch that main moved past up to main, for `ship.ts merge` (T2809). A merge queued
@@ -42,7 +44,11 @@ export interface CatchUpRequest {
   readonly regenerated: readonly string[];
 }
 
-export type CatchUp = { readonly kind: 'rebased'; readonly head: string; readonly sha: string } | { readonly kind: 'refused'; readonly reason: string };
+/** Pushed as a new head; main moved again before that push went through (the repo dir back on the head); or refused. */
+export type CatchUp =
+  | { readonly kind: 'rebased'; readonly head: string; readonly sha: string }
+  | ({ readonly kind: 'moved' } & MainMove)
+  | { readonly kind: 'refused'; readonly reason: string };
 
 /** A hunk header's line numbers, which move with any line main added above; the counts and the context stay. */
 const HUNK_LINES = /^@@ -\d+(,\d+)? \+\d+(,\d+)? @@/;
@@ -86,11 +92,30 @@ export function catchUp(deps: CatchUpDeps, request: CatchUpRequest): CatchUp {
   try {
     pushOwnBranch(git, main);
   } catch (error) {
+    const how = `${caught.done === null ? 'rebased' : 'caught up'} as ${next}`;
+    const moved = movedAgain(git, main);
     caught.undo();
-    return refuse(`pushing it ${caught.done === null ? 'rebased' : 'caught up'} as ${next} failed: ${messageOf(error)}`);
+    if (moved === null) return refuse(`pushing it ${how} failed: ${messageOf(error)}`);
+    const again = `${main} moved again to ${moved.tip.slice(0, 7)} while it was pushed ${how}, and that push failed: ${messageOf(error)}`;
+    log(`${past}; ${again}: catching it up again`);
+    return { kind: 'moved', tip: moved.tip, reason: `${head} ${sha.slice(0, 7)} was caught up, and ${again}` };
   }
   log(`${past}: ${caught.done === null ? 'rebased it cleanly with the same diff' : `replayed its work with the same diff, ${caught.done},`} and pushed it as ${next} ${rebased.slice(0, 7)}; merging that`);
   return { kind: 'rebased', head: next, sha: rebased };
+}
+
+/**
+ * main's move past the caught-up head checked out, read after its push failed; null when main holds still or cannot
+ * be read. The pre-push gate runs the local checks for minutes, and a merge that lands meanwhile (one whose host
+ * share was set aside for its CI wait, T3336) takes the version this catch-up raised to: the plugin version gate then
+ * fails the push (T4131). Another catch-up on the new tip raises the version again, as a ship's run does (T2725).
+ */
+function movedAgain(git: CatchUpDeps['git'], main: string): MainMove | null {
+  try {
+    return mainMovedPast(git, main);
+  } catch {
+    return null;
+  }
 }
 
 const WITH_PLAN = "ship it again with its plan (ship.ts <dir> <plan.json> --merge), which sets the raise on main's version";
