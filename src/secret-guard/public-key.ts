@@ -14,10 +14,18 @@ const BEGIN = /^-----BEGIN (PUBLIC KEY|RSA PUBLIC KEY)-----$/;
 const END = /^-----END (PUBLIC KEY|RSA PUBLIC KEY)-----$/;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
-/** Whether the PEM block `lines` is a public key Node's crypto reads: base64 that only looks like one does not parse. */
-function parsesAsPublicKey(lines: readonly string[]): boolean {
+/**
+ * Whether the base64 `body` of a block labelled `label` is exactly one public key Node's crypto reads: base64 that
+ * only looks like one does not parse, and the key read back must give the same bytes and the same base64, since the
+ * parse alone would pass a key with other bytes behind it, and the decoder drops text behind a padding `=`.
+ */
+function parsesAsPublicKey(label: string, body: readonly string[]): boolean {
   try {
-    return createPublicKey({ key: `${lines.join('\n')}\n`, format: 'pem' }).type === 'public';
+    const text = body.join('');
+    const der = Buffer.from(text, 'base64');
+    const type = label === 'RSA PUBLIC KEY' ? 'pkcs1' : 'spki';
+    const key = createPublicKey({ key: der, format: 'der', type });
+    return key.type === 'public' && der.toString('base64') === text && key.export({ type, format: 'der' }).equals(der);
   } catch {
     return false;
   }
@@ -44,9 +52,9 @@ export function holdsPublicKeysOnly(text: string): boolean {
       if (open === undefined) {
         return false;
       }
-      block = [line];
+      block = [];
     } else if (END.exec(line)?.[1] === open) {
-      if (!parsesAsPublicKey([...block, line])) {
+      if (!parsesAsPublicKey(open, block)) {
         return false;
       }
       open = undefined;

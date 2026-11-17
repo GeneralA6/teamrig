@@ -172,6 +172,8 @@ describe('SecretPaths: a .pub.pem file holding public keys alone (#875)', () => 
   const relabel = (pem: string, label: string): string => pem.replace(/BEGIN [A-Z ]+-/u, `BEGIN ${label}-`).replace(/END [A-Z ]+-/u, `END ${label}-`);
   const bodyOf = (pem: string): string[] => pem.split('\n').slice(1, -1);
   const block = (label: string, body: readonly string[]): string => [`${dashes}BEGIN ${label}${dashes}`, ...body, `${dashes}END ${label}${dashes}`].join('\n');
+  const wrap = (label: string, der: Buffer): string => block(label, der.toString('base64').match(/.{1,64}/gu) ?? []);
+  const EXTRA = Buffer.from('extra bytes after the key');
   const files: Readonly<Record<string, string>> = {
     [`${REPO}/keys/archive.pub.pem`]: PUBLIC,
     [`${REPO}/keys/two.pub.pem`]: `${PUBLIC}\r\n\r\n${PKCS1}\n\n${ED}\n`,
@@ -191,6 +193,10 @@ describe('SecretPaths: a .pub.pem file holding public keys alone (#875)', () => 
     [`${REPO}/keys/token.pub.pem`]: block('PUBLIC KEY', ['A'.repeat(20) + 'b'.repeat(20)]),
     [`${REPO}/keys/hex.pub.pem`]: block('PUBLIC KEY', ['0123456789abcdef'.repeat(2) + '01234567']),
     [`${REPO}/keys/cut.pub.pem`]: block('PUBLIC KEY', bodyOf(PUBLIC).slice(1)),
+    // A real public key's DER with other bytes behind it, or base64 behind its padding: the key must be the whole body.
+    [`${REPO}/keys/tail.pub.pem`]: wrap('PUBLIC KEY', Buffer.concat([rsa.publicKey.export({ type: 'spki', format: 'der' }), EXTRA])),
+    [`${REPO}/keys/tail-rsa.pub.pem`]: wrap('RSA PUBLIC KEY', Buffer.concat([rsa.publicKey.export({ type: 'pkcs1', format: 'der' }), EXTRA])),
+    [`${REPO}/keys/padded.pub.pem`]: block('PUBLIC KEY', [...bodyOf(ED), EXTRA.toString('base64')]),
   };
   const read = (path: string): string | undefined => files[path];
   const keyed = new SecretPaths(DEFAULT_SECRET_PATHS, HOME, true, read);
@@ -203,7 +209,7 @@ describe('SecretPaths: a .pub.pem file holding public keys alone (#875)', () => 
   });
 
   it('refuses one with a private key block, other text, an open block, no block, one that cannot be read, or a key-shaped label around anything but a public key', () => {
-    for (const name of ['mistake', 'rsa', 'both', 'noted', 'open', 'empty', 'cert', 'gone', 'label', 'sealed', 'relabelled', 'relabelled-rsa', 'token', 'hex', 'cut']) {
+    for (const name of ['mistake', 'rsa', 'both', 'noted', 'open', 'empty', 'cert', 'gone', 'label', 'sealed', 'relabelled', 'relabelled-rsa', 'token', 'hex', 'cut', 'tail', 'tail-rsa', 'padded']) {
       assert.equal(keyed.listed(`${REPO}/keys/${name}.pub.pem`), true, name);
       assert.equal(keyed.mayName(`${REPO}/keys/${name}.pub.pem`, BASH_WORD), true, name);
     }
