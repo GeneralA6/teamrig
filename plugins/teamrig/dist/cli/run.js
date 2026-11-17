@@ -745,7 +745,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   issue label <owner/name#n> [--add <label,...>] [--remove <label,...>]   adds labels to and takes
       labels off one issue or pull request of the team's repositories, with the same access; each
       label to add must already be one of the repository's, but design (talk only, not work to take
-      until agreed), which it makes first (MADE); the first failure stops it
+      until agreed) and a label the repository's .github/labels.json defines, which it makes first
+      (MADE); the first failure stops it
   pr conflicts <owner/name#n> [--base <branch>]   in a clone of that repository, fetches the pull
       request's head and prints the files it conflicts on against origin's newest base (its default
       branch unless --base) and the rebase it needs; changes no local branch or file of the clone and
