@@ -28,6 +28,8 @@ Approve only when every line holds:
 - Its own, finished change: the requester's task and branch, never another session's work, as only the session
   that made a change merges it.
 - Its tests are green, the run named in the note, and new behaviour comes with new tests.
+- A changed threshold, limit or trigger can still fire: ask "can this still fire?" and want a test of it firing in
+  the real flow, through whatever resets its count (a compaction, a `/clear`, a restart), not only the comparison.
 - One logical change per commit, each within the size rule or with a `Large-commit:` reason [commits].
 - No unaudited dependency change: a changed manifest or lockfile names the exact versions it resolves and the
   advisories checked.
