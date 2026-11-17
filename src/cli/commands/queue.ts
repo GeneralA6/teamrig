@@ -668,8 +668,8 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
         `heavy: ${what}`,
         delivery.queue.waitMinutes * MINUTE_MS,
         delivery.wait.pollSeconds * 1_000,
-        (holder, ahead) => {
-          const text = `${waiting}: ${waitText(holder, ahead, zone)}`;
+        (holder, ahead, arrivedAfter) => {
+          const text = `${waiting}: ${waitText(holder, ahead, zone, arrivedAfter)}`;
           waits.tell({ cause: causeOfLockWait(holder), text });
           say(text);
         },
