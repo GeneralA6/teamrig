@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
+import { STAGED } from './commit-scan.ts';
+import { PUBLIC_KEY_MAX_BYTES } from './public-key.ts';
 import { MAX_TAG_DEPTH, gitSecrets } from './secrets-git.ts';
 
 /** Runs git in the repo under `env`, as a hook's git would, and fails the test when it fails. */
@@ -34,6 +36,31 @@ describe('gitSecrets', () => {
         ],
       });
       assert.equal(slashed(git.root(join(repo.dir, 'src'))), slashed(repo.dir));
+    } finally {
+      repo.remove();
+    }
+  });
+
+  it("reads a file as the index or a commit holds it, never the disk's copy, and nothing past the key cap (#875)", () => {
+    const repo = new TempRepo('secrets-blob').init();
+    try {
+      const git = gitSecrets(repo.env);
+      repo.write('keys/a.pub.pem', 'committed\n');
+      repo.git('add', 'keys/a.pub.pem');
+      repo.git('commit', '-q', '-m', 'key');
+      const sha = repo.git('rev-parse', 'HEAD').trim();
+      repo.write('keys/a.pub.pem', 'staged\n');
+      repo.git('add', 'keys/a.pub.pem');
+      repo.write('keys/a.pub.pem', 'on disk\n');
+      repo.write('big.pub.pem', 'x'.repeat(PUBLIC_KEY_MAX_BYTES + 1));
+      repo.write('cap.pub.pem', 'x'.repeat(PUBLIC_KEY_MAX_BYTES));
+      repo.git('add', 'big.pub.pem', 'cap.pub.pem');
+      assert.equal(git.blob(join(repo.dir, 'keys'), STAGED, 'keys/a.pub.pem'), 'staged\n');
+      assert.equal(git.blob(repo.dir, sha, 'keys/a.pub.pem'), 'committed\n');
+      assert.equal(git.blob(repo.dir, STAGED, 'big.pub.pem')?.length, undefined, 'past the cap');
+      assert.equal(git.blob(repo.dir, STAGED, 'cap.pub.pem')?.length, PUBLIC_KEY_MAX_BYTES, 'at the cap');
+      assert.equal(git.blob(repo.dir, STAGED, 'gone.pub.pem'), undefined);
+      assert.equal(git.blob(repo.dir, 'HEAD', 'keys/a.pub.pem'), undefined, 'a full commit id only');
     } finally {
       repo.remove();
     }
