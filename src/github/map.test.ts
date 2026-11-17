@@ -4,7 +4,8 @@ import { testConfig } from '../testing/config.ts';
 import type { HostIssue } from '../issues/issue.ts';
 import { MAX_DESCRIPTION } from '../config/defaults.ts';
 import { SecretScanner } from '../core/secrets.ts';
-import { importRules, issueOutcome, issueOwner, issuePriority, issueRef, issueTask, SECRET_BODY, taskDescription, taskTitle, type ImportRules } from './map.ts';
+import { importRules, issueOutcome, issueOwner, issuePriority, issueRef, issueTask, taskDescription, taskTitle, type ImportRules } from './map.ts';
+import { SECRET_BODY } from '../issues/issue.ts';
 
 const RULES: ImportRules = importRules(testConfig({ github: { repos: ['acme/web'], owners: { octocat: 'bravo', hubot: 'alpha' } } }));
 const SECRETS = new SecretScanner();

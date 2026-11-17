@@ -2,14 +2,11 @@ import { MAX_DESCRIPTION } from '../config/defaults.ts';
 import type { KitConfig } from '../config/types.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { ISSUE_REF_PREFIX } from '../register/model.ts';
-import type { HostIssue } from '../issues/issue.ts';
+import { SECRET_BODY, type HostIssue } from '../issues/issue.ts';
 import { plainLine } from '../core/printable.ts';
 
 /** The priority of an issue with no priority label of the team's: p2, or the team's least urgent level when it has no p2. */
 export const ISSUE_PRIORITY = 2;
-
-/** The description of an issue whose body looks like it holds a secret: the body stays on GitHub only. */
-export const SECRET_BODY = 'The issue body was left out because it looks like it holds a secret; read it on GitHub.';
 
 /** A priority label: `p1`, `P2`. */
 const PRIORITY_LABEL = /^p([1-9]\d?)$/i;
