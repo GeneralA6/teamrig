@@ -4,12 +4,17 @@ import { lowerStep, NODE_PRIORITIES } from "../delivery/priority.js";
 import { NOT_STARTED_EXIT } from "../delivery/recorded-step.js";
 import { exitCodeOf } from "../delivery/steps.js";
 import { nodeTreeKill } from "../delivery/tree-kill.js";
+import { withoutCredentials } from "../core/child-env.js";
 import { endOf } from "../test-run/shell.js";
 /**
  * Every hook's exit codes say the same: 0 done, this one (`EX_TEMPFAIL`) wait and come back later, anything else
  * failed; a deploy check also reads 2 as a refusal.
  */
 export const HOOK_WAIT_EXIT = 75;
+/** `hooks`, each hook started without the credential variables (core/child-env.ts) but those `pass` names. */
+export function credentialFreeHooks(hooks, pass) {
+    return { run: (request) => hooks.run({ ...request, env: withoutCredentials(request.env, pass) }) };
+}
 /** True when the hook exited 0. */
 export function succeeded(end) {
     return end.kind === 'exited' && end.code === 0;

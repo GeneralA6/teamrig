@@ -13,6 +13,7 @@ import { queueCutoffReason, minutesText } from "../../delivery/schedule.js";
 import { endedText, startedByGit } from "../../delivery/starter-watch.js";
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT } from "../../delivery/steps.js";
 import { errorMessage } from "../../core/guards.js";
+import { withoutCredentials } from "../../core/child-env.js";
 import { ENV } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
@@ -352,10 +353,10 @@ async function sessionOf(args, runtime, kit, roster, parent) {
  * holder as `holderText` writes it.
  */
 async function runUnderParent(runtime, say, parent, step) {
-    const { what, words, maxRunMinutes, watching } = step;
+    const { what, words, maxRunMinutes, watching, env } = step;
     say(`running: ${what} under the host lock of ${parent} (killed after ${minutesText(maxRunMinutes)})`);
     await step.reporting.started();
-    const end = await runtime.steps.run({ command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: runtime.env, timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop });
+    const end = await runtime.steps.run({ command: commandLine(words, runtime.platform), cwd: runtime.cwd, env, timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop });
     return report(runtime, say, end, step);
 }
 /**
@@ -496,7 +497,7 @@ export async function queue(args, runtime) {
         : await detachedReporting(runtime, kit, config, say, { id: detachedId, session, what, log: detachedLogOf(delivery, kit.paths, detachedId), record: runRecordPathOf(detachedDirOf(delivery, kit.paths), detachedId) });
     const watching = detachedId === undefined ? await watchStarters(runtime, say) : unwatched();
     try {
-        const step = { what, words, maxRunMinutes, watching, reporting };
+        const step = { what, words, maxRunMinutes, watching, reporting, env: withoutCredentials(runtime.env, delivery.passEnv) };
         const prePush = args.switches.has('pre-push') ? { command: commandLine(words, runtime.platform), before: runtime.trees.checked(runtime.cwd) } : undefined;
         if (prePush !== undefined && (await reusedPass(runtime, say, prePush, zone))) {
             return EXIT.ok;
@@ -550,7 +551,7 @@ export async function queue(args, runtime) {
             }
             say(`running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
             await reporting.started();
-            const run = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
+            const run = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(step.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
             const mark = { ...owner, what, ...waited, ...(taking.sharing === undefined || taking.sharing.heavy ? {} : { shared: true }), request: run };
             const end = await runRecorded(runtime, { places, delivery, opened: (start) => reporting.opened({ ledger: places.ledger, start }) }, mark);
             const code = await report(runtime, say, end, step);

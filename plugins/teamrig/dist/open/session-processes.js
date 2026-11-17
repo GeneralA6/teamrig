@@ -203,7 +203,7 @@ function feedProgram(request, timeoutMs) {
     return new Promise((resolve) => {
         let child;
         try {
-            child = spawn(request.command, request.args, { cwd: request.cwd, stdio: ['pipe', 'ignore', 'pipe'], timeout: timeoutMs, windowsHide: true });
+            child = spawn(request.command, request.args, { cwd: request.cwd, env: request.env, stdio: ['pipe', 'ignore', 'pipe'], timeout: timeoutMs, windowsHide: true });
         }
         catch (error) {
             resolve(outcomeOfError(error));

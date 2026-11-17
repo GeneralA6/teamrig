@@ -349,6 +349,8 @@ export const DEFAULT_QUEUE = {
 export const DEFAULT_DELIVERY_WAIT = { pollSeconds: 30, maxMinutes: 60 };
 /** A deploy's check answers within 20 seconds, else the deploy waits. */
 export const DEFAULT_CHECK_TIMEOUT_SECONDS = 20;
+/** No credential variable reaches a program teamrig starts until the owner names it. */
+export const DEFAULT_PASS_ENV = [];
 /** A deploy freeze lasts at most two hours. */
 export const DEFAULT_FREEZES = { maxMinutes: 120 };
 /** A target measures cleanly 30 minutes after a deploy; a deploy the ledger knows only by its ledger.md line ran for 20 minutes; a stable period under 15 minutes is left out. */

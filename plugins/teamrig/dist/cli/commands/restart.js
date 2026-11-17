@@ -1,6 +1,7 @@
 import { launchOf } from "../../config/launch.js";
 import { autoRestartOf } from "../../config/refresh.js";
 import { errorMessage } from "../../core/guards.js";
+import { withoutCredentials } from "../../core/child-env.js";
 import { KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
@@ -96,7 +97,7 @@ export async function restart(args, runtime) {
             const load = await reloadTeamConfig(runtime, kit);
             return load.status === 'loaded' ? launchOf(load.config, id).effort : undefined;
         },
-    }, { team, id, at, delayMs: config.refresh.restartDelaySeconds * 1000, endCommand: config.refresh.endCommand, fallbackCwd: project, hold: personHoldOf(config.refresh) });
+    }, { team, id, at, delayMs: config.refresh.restartDelaySeconds * 1000, endCommand: config.refresh.endCommand, endEnv: withoutCredentials(runtime.env, config.delivery.passEnv), fallbackCwd: project, hold: personHoldOf(config.refresh) });
     const line = inboxLineOf(result);
     if (line !== undefined) {
         const secrets = new SecretScanner(config.register.secretPatterns);

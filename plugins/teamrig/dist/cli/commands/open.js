@@ -13,7 +13,7 @@ import { launchFlags } from "../../open/launch-flags.js";
 import { openTab } from "../../open/open-tab.js";
 import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem, recoverPrompt, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from "../../open/prompt.js";
 import { shellCommand } from "../../open/quote.js";
-import { sessionEnv } from "../../open/session-env.js";
+import { sessionCredentialFree, sessionEnv } from "../../open/session-env.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { noRoomText } from "../../sessions/headroom.js";
 import { closedOf, SessionLog } from "../../sessions/log.js";
@@ -390,11 +390,12 @@ export async function launch(args, runtime) {
     const sessionRuntime = { ...runtime, env };
     const kit = await openKit(sessionRuntime, team);
     const config = requireConfig(kit, sessionRuntime, 'read');
+    const claudeEnv = sessionCredentialFree(env, config.delivery.passEnv);
     const roster = await rosterOf(sessionRuntime, kit, config);
     if (!roster.ids.includes(id)) {
         throw new RefusedError(`${id} is not a session of team ${team}`);
     }
-    const { command, prefix } = await claudeProgramOf(runtime, env);
+    const { command, prefix } = await claudeProgramOf(runtime, claudeEnv);
     const name = roster.nameOf(id) ?? id;
     let settings = effort === undefined ? launchOf(config, id) : { ...launchOf(config, id), effort };
     const resumed = resume === undefined ? '' : `, resuming Claude Code session ${resume}`;
@@ -409,7 +410,7 @@ export async function launch(args, runtime) {
         const resumeArgs = resuming === undefined ? [] : ['--resume', resuming];
         const args = [...prefix, ...launchFlags(settings), ...listing.args, ...resumeArgs, '--name', name, ...(first === undefined ? [] : [first])];
         const startedAt = runtime.clock.now();
-        const result = await runtime.processes.run({ command, args, cwd: project, env });
+        const result = await runtime.processes.run({ command, args, cwd: project, env: claudeEnv });
         if (!(await restartTaken(store, id))) {
             const close = await closeSince(runtime, closes, id, result, startedAt);
             if (close === undefined) {

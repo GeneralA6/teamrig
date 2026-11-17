@@ -12,6 +12,7 @@ import { createWorktree } from "../../worktree/add.js";
 import { isBranchType, taskBranchName } from "../../worktree/branch-name.js";
 import { removalRefusal } from "../../worktree/owner.js";
 import { carryOut, clearLeftover, describeLeftover, describePlan, planRemoval } from "../../worktree/remove.js";
+import { credentialFreeHooks } from "../../deploy/hooks.js";
 import { onePositional, UsageError } from "../args.js";
 import { taskIdOf } from "../inputs.js";
 import { openKit, requireConfig, rosterOf, teamFolders } from "../kit.js";
@@ -30,7 +31,7 @@ export async function add(args, runtime) {
     const branch = await branchToAdd(args, runtime, team);
     const place = addPlace(args.flags.get('repo'), runtime, team);
     const { git, files } = runtime.worktrees;
-    const end = await createWorktree({ branch, ...place, env: runtime.env }, { git, files, hooks: runtime.hooks }, (line) => runtime.out.stdout(line));
+    const end = await createWorktree({ branch, ...place, env: runtime.env }, { git, files, hooks: credentialFreeHooks(runtime.hooks, team?.config.delivery.passEnv ?? []) }, (line) => runtime.out.stdout(line));
     switch (end.kind) {
         case 'refused':
             throw new RefusedError(end.reason);

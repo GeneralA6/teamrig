@@ -124,6 +124,7 @@ export const CONFIG_LIMITS = {
     deliveryPollSeconds: { min: 1, max: 600 },
     deliveryWaitMaxMinutes: { min: 0, max: 1440 },
     checkTimeoutSeconds: { min: 1, max: 600 },
+    passEnv: { maxItems: 32 },
     freezeMaxMinutes: { min: 1, max: 1440 },
     branchSlugMax: { min: 8, max: 100 },
     settleMinutes: { min: 0, max: 1440 },

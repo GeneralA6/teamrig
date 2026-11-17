@@ -9,6 +9,7 @@ import { callerOf, commandWordsOf, listOf } from "../inputs.js";
 import { findTeam, openKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { refuseUnderParentLock } from "../parent-lock.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { credentialFreeHooks } from "../../deploy/hooks.js";
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
 /** The deploy `--targets` asks for, with its `--what` and the command after `--`; undefined for a plain deploy. */
 function redeployPartsOf(args) {
@@ -51,7 +52,7 @@ export async function deploy(args, runtime) {
         const setup = { team, delivery, places, zone, inTeam: (path) => teamPlace(kit.paths, path), focus: config.focus };
         const ports = {
             git: runtime.mergeGit,
-            hooks: stoppableHooks(runtime.hooks, stop),
+            hooks: credentialFreeHooks(stoppableHooks(runtime.hooks, stop), delivery.passEnv),
             files: runtime.files,
             memory: runtime.memory,
             pid: runtime.pid,

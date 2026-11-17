@@ -1,5 +1,6 @@
 import { KIT_NAME } from "../core/home.js";
 import { secretValueOf } from "../core/secret-key.js";
+import { isHttpsUrl } from "../core/webhook.js";
 import { loginPageText } from "../restore/login.js";
 import { openKit, teamZone } from "./kit.js";
 /**
@@ -114,9 +115,6 @@ function keyedUrl(text, key) {
         return { problem: `the file alerts.pageWebhookFile names has no ${key} line, or its quote is not closed` };
     }
     return url === '' ? { problem: `the file alerts.pageWebhookFile names gives ${key} no value` } : { url };
-}
-function isHttpsUrl(text) {
-    return URL.canParse(text) && new URL(text).protocol === 'https:';
 }
 /** Posts the page; undefined once it is posted, else why not. It never throws, so a claim is never left held by one. */
 export async function sendLoginPage(page, runtime) {

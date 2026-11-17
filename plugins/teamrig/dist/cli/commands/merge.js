@@ -12,6 +12,7 @@ import { callerOf } from "../inputs.js";
 import { openTeamKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { refuseUnderParentLock } from "../parent-lock.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { credentialFreeHooks } from "../../deploy/hooks.js";
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
 /**
  * `teamrig merge [--keep-remote] [--no-delete-local]`: merges the branch checked out in the current folder into origin's
@@ -52,7 +53,7 @@ export async function merge(args, runtime) {
         }, {
             git: runtime.mergeGit,
             steps: stoppableSteps(runtime.steps, stop),
-            hooks: stoppableHooks(runtime.hooks, stop),
+            hooks: credentialFreeHooks(stoppableHooks(runtime.hooks, stop), config.delivery.passEnv),
             scanner: new SecretScanner(config.register.secretPatterns),
             files: runtime.files,
             memory: runtime.memory,

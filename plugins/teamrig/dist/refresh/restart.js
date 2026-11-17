@@ -56,7 +56,7 @@ async function runEndCommand(deps, plan, request) {
         hook_event_name: 'SessionEnd',
         reason: 'clear',
     });
-    return deps.processes.feed({ command, args, cwd: request.cwd ?? plan.fallbackCwd, input });
+    return deps.processes.feed({ command, args, cwd: request.cwd ?? plan.fallbackCwd, env: plan.endEnv, input });
 }
 /**
  * The SessionEnd hooks a hard end skips. teamrig's own restore tracker forgets the ended session, which the fresh
