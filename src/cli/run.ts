@@ -9,6 +9,7 @@ import { CommandHelp } from './help.ts';
 import { parseArgs, UsageError, type CommandEffect, type CommandEffects, type CommandFlags, type CommandRest, type CommandSwitches, type ParsedArgs } from './args.ts';
 import { RENAMED } from './renamed.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from './runtime.ts';
+import { hookLockDeadline } from './hook-timeouts.ts';
 import type { CommandTable } from '../slash/plan.ts';
 
 type Command = (args: ParsedArgs, runtime: CliRuntime) => Promise<ExitCode>;
@@ -1152,7 +1153,8 @@ export async function runCli(given: readonly string[], runtime: CliRuntime): Pro
       await (await tabSessionCommands()).refuseAnotherTabSession(args, runtime);
     }
     const command = await spec.load();
-    return await command(args, runtime);
+    const lockDeadline = hookLockDeadline(args.command, runtime.clock.now());
+    return await command(args, lockDeadline === undefined ? runtime : { ...runtime, lockDeadline });
   } catch (error) {
     if (error instanceof UsageError) {
       runtime.out.stderr(COMMAND_HELP.usageError(error.message, error.command ?? named));

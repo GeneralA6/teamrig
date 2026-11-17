@@ -30,8 +30,8 @@ export interface Mutex {
 }
 
 export class LockBusyError extends Error {
-  constructor(path: string, waitMs: number) {
-    super(`${path} is held by another process (waited ${waitMs} ms); retry`);
+  constructor(path: string, waitMs: number, cutByDeadline = false) {
+    super(`${path} is held by another process (waited ${waitMs} ms${cutByDeadline ? ", all the hook's time limit leaves" : ''}); retry`);
     this.name = 'LockBusyError';
   }
 }
@@ -45,6 +45,11 @@ export interface FileLockDeps {
   alive(pid: number): boolean;
   /** A new id, unique to each taking of a lock. */
   newId(): string;
+  /**
+   * The time (ms since the epoch) by which a wait gives up even when `waitMs` has not passed: a hook's, so a busy lock
+   * never outlasts the hook's time limit (#737). Undefined waits the whole `waitMs`.
+   */
+  readonly deadline?: number | undefined;
 }
 
 /** What a lock file holds: who took it, when, and the id of that taking (absent in a lock an older kit took). */
@@ -89,7 +94,10 @@ export class FileLock implements Mutex {
   private async acquire(): Promise<string> {
     const { files, clock, sleep } = this.deps;
     const id = this.deps.newId();
-    const deadline = clock.now() + this.timings.waitMs;
+    const startedAt = clock.now();
+    const own = startedAt + this.timings.waitMs;
+    const cut = this.deps.deadline !== undefined && this.deps.deadline < own;
+    const deadline = cut && this.deps.deadline !== undefined ? this.deps.deadline : own;
     for (;;) {
       if (await this.create(this.path, id)) {
         return id;
@@ -98,10 +106,11 @@ export class FileLock implements Mutex {
       if (seen !== undefined && this.isStale(seen) && (await this.takeOver(seen, id))) {
         continue;
       }
-      if (clock.now() >= deadline) {
-        throw new LockBusyError(this.path, this.timings.waitMs);
+      const now = clock.now();
+      if (now >= deadline) {
+        throw new LockBusyError(this.path, cut ? now - startedAt : this.timings.waitMs, cut);
       }
-      await sleep(this.timings.pollMs);
+      await sleep(Math.min(this.timings.pollMs, deadline - now));
     }
   }
 
