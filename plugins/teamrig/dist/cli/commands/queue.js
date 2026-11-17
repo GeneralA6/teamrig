@@ -1,11 +1,12 @@
 import { QUEUE_TTL_MARGIN_MINUTES } from "../../config/defaults.js";
 import { busyText, holderText, isHeavyShare, underLock, waitText } from "../../delivery/host-lock.js";
 import { parseLedger } from "../../delivery/ledger.js";
+import { teamRequestsOf } from "../../delivery/line-requests.js";
 import { pipelineFrozenRefusal } from "../../delivery/pipeline-freezes.js";
 import { formatRunRecord, RUN_RECORD_FORMAT, runRecordPathOf } from "../../delivery/detached-runs.js";
 import { deliveryPlaces, detachedDirOf, detachedLogOf } from "../../delivery/places.js";
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass } from "../../delivery/push-pass.js";
-import { isStepKind, kindOfCommand, lineRequestOf, processRequest, STEP_KINDS, taskOfLabel } from "../../delivery/process-request.js";
+import { isStepKind, kindOfCommand, processRequest, STEP_KINDS, taskOfLabel } from "../../delivery/process-request.js";
 import { recordRefusal, runRecorded } from "../../delivery/recorded-step.js";
 import { stepNeedOf } from "../../delivery/step-need.js";
 import { causeOfLockWait, WaitLog } from "../../delivery/wait-log.js";
@@ -20,7 +21,6 @@ import { ENV } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
 import { TASK_ID } from "../../register/model.js";
-import { JsonlEventLog } from "../../register/store.js";
 import { commandLine } from "../../test-run/shell.js";
 import { requiredFlag, UsageError } from "../args.js";
 import { hostLockOf, logLineOf, teamAdmissionOf } from "../delivery-ports.js";
@@ -506,7 +506,8 @@ export async function queue(args, runtime) {
     const exclusive = exclusiveOf(args, small);
     const maxRunMinutes = maxRunMinutesOf(args, delivery.queue, small);
     const places = deliveryPlaces(delivery, kit.paths);
-    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
+    const requests = teamRequestsOf(runtime.files, kit.paths, config.focus);
+    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone, requests);
     const parent = await parentLockOf(runtime, lock, say);
     const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
     const gate = { cutoffUtc: delivery.schedule.queueCutoffUtc, pipelineFreezes: places.pipelineFreezes, kind: request.kind, zone, shipTool: shipToolCheckOf(runtime, kit, config, words, request.kind) };
@@ -533,10 +534,9 @@ export async function queue(args, runtime) {
             return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, 0);
         }
         await refuseUnstartable(runtime, gate);
-        // The register is read only for a step that queues: a nested step or one refused at once records nothing.
-        const register = new JsonlEventLog(runtime.files, kit.paths.events);
+        // The register and the front are read only for a step that queues: a nested step or one refused at once records nothing.
         const shipped = withShipTask(request, () => shipTaskOfWords(runtime.mergeGit, kit, config, words, runtime.cwd));
-        const line = await lineRequestOf(shipped, async (id) => (await register.read()).state.tasks.get(id), config.focus);
+        const line = await requests.current(shipped);
         // Only the ticket carries the class for now: the ledger's start and refusal records keep the fields their readers take.
         const owner = { session, ...processRequest(line.kind, line.task, line.priority) };
         const waits = new WaitLog(runtime.clock, runtime.memory.freeMb());

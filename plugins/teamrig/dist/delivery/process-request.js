@@ -1,6 +1,6 @@
 import { isNonNegativeInteger, isRecord } from "../core/guards.js";
 import { classOf } from "../register/focus.js";
-import { TASK_ID } from "../register/model.js";
+import { ACTIVE_STATUSES, TASK_ID } from "../register/model.js";
 /**
  * What kind of work a queued step is: given with `queue --kind`, else read from its command (`kindOfCommand`); merge and
  * deploy name their own, and a ship tool's merge (it pushes and merges a change) says so with `--kind ship`; its run without --merge only
@@ -28,33 +28,43 @@ export function processRequest(kind, task, priority) {
     }
     return priority === undefined ? { kind, task } : { kind, task, priority };
 }
-/** `request` in the line: the class of its register `task` (the default class without one) and that class's share. */
-export function lineRequest(request, task, focus) {
+/** Whether a task the register lacks (undefined) or names counts for a front: only while it is still active. */
+function frontCounts(task) {
+    return task?.status === undefined || ACTIVE_STATUSES.includes(task.status);
+}
+/**
+ * `request` in the line: the class of its register `task` (the default class without one) and that class's share, and
+ * the time its task was put at the front when `front` names that task and it is still active.
+ */
+export function lineRequest(request, task, focus, front) {
     const workClass = task === undefined ? focus.defaultClass : classOf(task, focus);
-    return { ...request, class: workClass, classPct: focus.allocation[workClass] ?? 0 };
+    const line = { ...request, class: workClass, classPct: focus.allocation[workClass] ?? 0 };
+    const fronted = front !== undefined && request.task === front.task && task !== undefined && frontCounts(task);
+    return fronted ? { ...line, frontAt: front.at } : line;
 }
 /**
  * `request` in the line, its priority and class read from the register task it names by `taskOf`, with one read: a
  * request that names none asks the register nothing, and one whose task the register lacks (another team's, or a
- * typo) keeps no priority and counts as the default class.
+ * typo) keeps no priority, counts as the default class and is never fronted.
  */
-export async function lineRequestOf(request, taskOf, focus) {
+export async function lineRequestOf(request, taskOf, focus, front) {
     const task = request.task === undefined ? undefined : await taskOf(request.task);
-    return lineRequest(processRequest(request.kind, request.task, task?.priority), task, focus);
+    return lineRequest(processRequest(request.kind, request.task, task?.priority), task, focus, front);
 }
 /** A line request as a ticket or share stores it; a field another kit adds is ignored. */
 export function isLineRequest(value) {
     if (!isRecord(value)) {
         return false;
     }
-    const { kind, task, priority, class: workClass, classPct } = value;
+    const { kind, task, priority, class: workClass, classPct, frontAt } = value;
     return (isStepKind(kind) &&
         (task === undefined || typeof task === 'string') &&
         (priority === undefined || isNonNegativeInteger(priority)) &&
         typeof workClass === 'string' &&
         typeof classPct === 'number' &&
         Number.isFinite(classPct) &&
-        classPct >= 0);
+        classPct >= 0 &&
+        (frontAt === undefined || (typeof frontAt === 'string' && !Number.isNaN(Date.parse(frontAt)))));
 }
 /** A command word's program: its last path part in lower case, without a launcher's or a script's extension. */
 function programOf(word) {

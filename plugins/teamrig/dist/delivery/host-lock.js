@@ -22,6 +22,15 @@ export const FIRST_IN_LINE_POLL_MS = 2_000;
  * ticket meanwhile, so a step whose live ticket is gone knows it was withdrawn.
  */
 export const TICKET_GRACE_MS = 10_000;
+/**
+ * How often, at most, a waiting step reads its task's priority, class and front again (T4082): a change is rare, and
+ * each read folds the team's register, while a minute is short beside the wait of a step behind a long run.
+ */
+export const REQUEST_REFRESH_MS = 60_000;
+/** Whether two line requests order a step the same: the same priority, class, share and front. */
+function sameLinePlace(a, b) {
+    return a.priority === b.priority && a.class === b.class && a.classPct === b.classPct && a.frontAt === b.frontAt;
+}
 /** A ticket's `expiresAt` for a wait that runs out at `deadline`. */
 function ticketExpiry(deadline) {
     return new Date(deadline + TICKET_GRACE_MS).toISOString();
@@ -670,8 +679,15 @@ export class HostLock {
     async waitInLine(ticket, patience, pollMs, reports, ask, stop) {
         const { clock, sleep } = this.ports;
         let unknownSince;
+        let requestReadAt = clock.now();
         for (;;) {
             stop?.throwIfAborted();
+            if (clock.now() - requestReadAt >= REQUEST_REFRESH_MS) {
+                requestReadAt = clock.now();
+                if (!(await this.readRequestAgain(ticket))) {
+                    return { kind: 'withdrawn' };
+                }
+            }
             const removeUnknown = unknownSince !== undefined && clock.now() - unknownSince >= HostLock.UNREADABLE_GRACE_MS;
             let looked;
             try {
@@ -925,6 +941,34 @@ export class HostLock {
         }
         const expiresAt = ticketExpiry(patience.deadline);
         return this.rewrite(ticket, waitingOn === undefined ? { ...ticket.waiter, expiresAt } : { ...ticket.waiter, expiresAt, waitingOn });
+    }
+    /**
+     * Reads this step's line request again from {@link HostLockPorts.requests} (T4082), and writes its ticket again only
+     * when its place would change: a priority, class or front moved. The MB, weight and hold its ticket asks stay as they
+     * joined. A ticket with no task, or a lock with no source, is left as it is. A transient file error passes this read,
+     * as it says nothing of the task; the next one tries again. False when its ticket was withdrawn.
+     */
+    async readRequestAgain(ticket) {
+        const source = this.ports.requests;
+        const held = ticket.waiter.request;
+        if (source === undefined || held?.task === undefined) {
+            return true;
+        }
+        let current;
+        try {
+            current = await source.current(held);
+        }
+        catch (error) {
+            if (isTransientFileError(error)) {
+                return true;
+            }
+            throw error;
+        }
+        if (sameLinePlace(held, current)) {
+            return true;
+        }
+        const { needMb, heavy, exclusive } = held;
+        return this.rewrite(ticket, { ...ticket.waiter, request: { ...current, needMb, heavy, exclusive } });
     }
     /**
      * Writes this step's ticket again as `waiter`, keeping its place: its wait's new end, or what it now waits on. The

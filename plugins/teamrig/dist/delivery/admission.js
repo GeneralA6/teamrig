@@ -38,8 +38,15 @@ function byName(a, b) {
     }
     return a.name < b.name ? -1 : 1;
 }
+/** When a waiter's task was put at the front of the line, in ms; undefined for one never put there, or a time that does not parse. */
+function frontOf(waiter) {
+    const at = waiter.request?.frontAt;
+    const ms = at === undefined ? Number.NaN : Date.parse(at);
+    return Number.isNaN(ms) ? undefined : ms;
+}
 /**
- * The line in admission order. `serial` (or no rules): arrival order. `pipeline`: p0 steps first, in arrival order; then
+ * The line in admission order. `serial` (or no rules): arrival order. `pipeline`: the steps of a task its lead put at
+ * the front (T4082), the earliest put first; then p0 steps, in arrival order; then
  * the class whose turn it is (least virtual time in `turns`); inside a class, the aged priority; then arrival. A ticket
  * that names no request counts as `defaultClass` at {@link UNNAMED_PRIORITY}. A class `turns` lacks starts at the least
  * virtual time of the waiting classes it has (0 when it has none), so a class that had no step waiting banks no turns.
@@ -57,6 +64,7 @@ export function admissionOrder(line, now, rules, turns) {
     const ranked = byArrival.map((ticket) => {
         const priority = ticket.waiter.request?.priority;
         const rank = {
+            front: frontOf(ticket.waiter),
             urgent: priority !== undefined && priority <= NOW_PRIORITY.id,
             turn: turns.get(classOf(ticket.waiter, rules)) ?? fresh,
             priority: agedPriority(priority, now - Date.parse(ticket.waiter.arrivedAt), rules.agingMinutes),
@@ -65,8 +73,17 @@ export function admissionOrder(line, now, rules, turns) {
     });
     return ranked.sort((a, b) => compareRanks(a.rank, b.rank) || byName(a.ticket, b.ticket)).map(({ ticket }) => ticket);
 }
-/** Urgent first; between two urgent ones, neither (arrival decides); else the least turn, then the most urgent aged priority. */
+/**
+ * Fronted first, the earliest put there first; then urgent; between two urgent ones, neither (arrival decides); else the
+ * least turn, then the most urgent aged priority.
+ */
 function compareRanks(a, b) {
+    if (a.front !== undefined || b.front !== undefined) {
+        if (a.front === undefined || b.front === undefined) {
+            return a.front === undefined ? 1 : -1;
+        }
+        return a.front - b.front;
+    }
     if (a.urgent !== b.urgent) {
         return a.urgent ? -1 : 1;
     }

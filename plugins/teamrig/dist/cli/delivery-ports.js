@@ -23,13 +23,14 @@ export function logLineOf(runtime, zone) {
  * lock (`tabHoldsDir(path)`, written by `open`) holding their MB of both. Its line is ordered by the rules `admission`
  * gives at each look ({@link teamAdmissionOf}); a heavy step joins another
  * heavy one only while `delivery.queue.heavyIdleCpuPct` of the host's CPU is idle. A waiter's ticket says what it waits
- * on with the times on `zone`'s clock.
+ * on with the times on `zone`'s clock. A step that waits in line reads its request again from `requests`, when given
+ * (T4082): a command that queues a step passes its team's (`teamRequestsOf`), one that only reads the line none.
  */
-export function hostLockOf(runtime, path, queue, headroom, admission, zone) {
+export function hostLockOf(runtime, path, queue, headroom, admission, zone, requests) {
     const tabs = new TabHolds(tabHoldsDir(path), runtime);
     const memory = new MemoryGate(runtime.memory, runtime.sleep, { floorMb: queue.memoryFloorMb, heavyReserveMb: queue.heavyReserveMb, commitMaxPct: headroom.commitMaxPct }, () => tabs.live());
     const cpu = new CpuGate(runtime.cpu, runtime.sleep, queue.heavyIdleCpuPct);
-    return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, zone, { memory, cpu, admission });
+    return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, zone, { memory, cpu, admission, ...(requests === undefined ? {} : { requests }) });
 }
 /** The rules the host lock's line is ordered by: `delivery.queue.admission` and its keys, a ticket naming no class counting as `focus.defaultClass`. */
 export function admissionRulesOf(queue, focus) {
