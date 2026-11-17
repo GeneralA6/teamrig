@@ -46,6 +46,26 @@ async function pathExists(path) {
         throw error;
     }
 }
+/**
+ * What `opening` gives, or undefined for a missing file. A file one process removes while another still holds it open
+ * stays on Windows, pending its delete, until the last holder closes it: meanwhile every open of it is refused with
+ * EPERM, and a reader of the host lock's line, where each waiter removes and rewrites its own ticket while the others
+ * poll them all, met that and failed its whole wait (T3201). The open is repeated through such codes, so the file reads
+ * as missing once it is gone.
+ */
+function openedOrMissing(opening, sleep) {
+    return retryTransient(async () => {
+        try {
+            return await opening();
+        }
+        catch (error) {
+            if (errorCode(error) === 'ENOENT') {
+                return undefined;
+            }
+            throw error;
+        }
+    }, sleep);
+}
 /** Removes a file: true when this call removed it, false when it was missing. Repeated while another process holds it open. */
 function removeFile(path, sleep) {
     return retryTransient(async () => {
@@ -96,32 +116,18 @@ export async function createOnce(path, data, sleep) {
     }
 }
 /**
- * The real filesystem. Windows refuses to rename or remove a file another process holds open, so
- * those steps are repeated for about a second (`sleep` paces them) before the error is thrown.
+ * The real filesystem. Windows refuses to rename or remove a file another process holds open, and to open one removed
+ * while still held, so those steps are repeated for about a second (`sleep` paces them) before the error is thrown.
  */
 export function nodeFiles(sleep) {
     return {
-        async read(path) {
-            try {
-                return await readFile(path, 'utf8');
-            }
-            catch (error) {
-                if (errorCode(error) === 'ENOENT') {
-                    return undefined;
-                }
-                throw error;
-            }
+        read(path) {
+            return openedOrMissing(() => readFile(path, 'utf8'), sleep);
         },
         async readTail(path, maxBytes) {
-            let handle;
-            try {
-                handle = await open(path, 'r');
-            }
-            catch (error) {
-                if (errorCode(error) === 'ENOENT') {
-                    return undefined;
-                }
-                throw error;
+            const handle = await openedOrMissing(() => open(path, 'r'), sleep);
+            if (handle === undefined) {
+                return undefined;
             }
             try {
                 const stats = await handle.stat();
@@ -140,15 +146,9 @@ export function nodeFiles(sleep) {
             }
         },
         async readHead(path, maxBytes) {
-            let handle;
-            try {
-                handle = await open(path, OPEN_READ_NONBLOCKING);
-            }
-            catch (error) {
-                if (errorCode(error) === 'ENOENT') {
-                    return undefined;
-                }
-                throw error;
+            const handle = await openedOrMissing(() => open(path, OPEN_READ_NONBLOCKING), sleep);
+            if (handle === undefined) {
+                return undefined;
             }
             try {
                 const stats = await handle.stat();
