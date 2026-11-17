@@ -24,6 +24,7 @@ import { claimBudget, recordClaims } from "./issue-claim.js";
 import { recordClocks, repoThreads } from "./issue-clock.js";
 import { issuePush, pushEndLine, pushRepos } from "./issue-push.js";
 import { GITHUB_OFF, githubOff, readSyncState, reportAutoSync } from "./issue-sync-auto.js";
+import { githubWatcher } from "../../github/watcher.js";
 /** The rows of steps a repository prints; the rest are counted. */
 export const SHOWN_STEPS = 10;
 /** The left-out issue numbers a repository's LEFT OUT line names; the rest are counted. */
@@ -94,7 +95,7 @@ export async function issueSync(args, runtime) {
     // Read once, without the lock: a follow made while this run reads is heard from the next run.
     const followers = auto && config.github.activity ? followersOf(parseFollows((await runtime.files.read(kit.paths.githubFollows)) ?? '')) : new Map();
     const ours = ourLogins(config.github);
-    const watcher = config.github.watcher ?? config.roles.lead;
+    const watcher = githubWatcher(config);
     const routing = { ours, self: undefined, rules, watcher, secrets: new SecretScanner(config.register.secretPatterns) };
     const pulls = new Map();
     const pullNews = [];

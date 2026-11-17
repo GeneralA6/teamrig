@@ -16,6 +16,7 @@ import { GITHUB_ACTOR } from "../../register/policy.js";
 import { postUrgentLine } from "../urgent-line.js";
 import { inboxDepsOf } from "./inbox.js";
 import { fileLockOf } from "../file-locks.js";
+import { githubWatcher } from "../../github/watcher.js";
 /**
  * The automatic GitHub sync's report: `issue watch` (issue-watch.ts) runs `issue sync --auto` when GitHub changed,
  * and that run tells each owner's inbox the tasks it added, the lead's when the failing repositories change or an
@@ -86,7 +87,7 @@ export async function reportAutoSync(runtime, kit, config, run) {
     for (const [to, routes] of issueRoutesBySession(run.issueRoutes)) {
         posts.push({ to, text: issueChangeLine(routes), wake: false });
     }
-    const watcher = config.github.watcher ?? config.roles.lead;
+    const watcher = githubWatcher(config);
     for (const [repo, cutAt] of run.mentionCuts) {
         posts.push({ to: watcher, text: mentionCutLine(repo, cutAt), wake: false });
     }

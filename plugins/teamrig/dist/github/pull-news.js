@@ -127,11 +127,12 @@ const EVENT_WORDS = {
  * The inbox line for `events`, one entry per pull request in the order first seen, at most NAMED_PULLS named and
  * the rest counted. A title is outside input: quoted, as data, and cut short. Failing checks with an excerpt name
  * each failed job and step, quoted and cut the same way, and the file holding its log's end. It wakes the session only for what
- * needs its hand now (T3021 section 3): an outsider's new pull request, and a conflict, failing checks or changes
- * requested on a session's own pull request (one of our authors' branch that names a task, `ownBranchTask`). The rest
- * (a merge, a close, an approval, checks passing, an outsider's conflict or red checks, which are the outsider's to
- * fix, and anything a follower hears) waits for the session's next turn. Anyone not one of `ours` counts as an
- * outsider, a collaborator too.
+ * needs its hand now (T3021 section 3): a conflict, failing checks or changes requested on a session's own pull
+ * request (one of our authors' branch that names a task, `ownBranchTask`). The rest (a merge, a close, an approval,
+ * checks passing, an outsider's conflict or red checks, which are the outsider's to fix, anything a follower hears,
+ * and an outsider's new pull request, which is intake work for the watcher, githubWatcher, answered by its target, not
+ * at once; waking the lead for each cost a full turn of its context) waits for the session's next turn. Anyone not
+ * one of `ours` counts as an outsider, a collaborator too.
  */
 export function pullNewsText(events, ours) {
     const byPull = new Map();
@@ -151,12 +152,11 @@ export function pullNewsText(events, ours) {
 /** Whether `kind` on `pull` wakes its recipient (pullNewsText). */
 function wakes(kind, pull, ours) {
     switch (kind) {
-        case 'opened':
-            return !isOurAuthor(pull.authorAssociation, pull.author, ours);
         case 'conflict':
         case 'checks-failing':
         case 'changes-requested':
             return ownBranchTask(pull, ours) !== undefined;
+        case 'opened':
         case 'merged':
         case 'closed':
         case 'checks-passing':
