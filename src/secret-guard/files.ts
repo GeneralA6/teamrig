@@ -2,7 +2,7 @@ import type { ProgramRun } from '../package-guard/programs.ts';
 import type { ShellWord } from '../push-guard/tokenizer.ts';
 import type { SecretFinding } from './findings.ts';
 import { fileOperands } from './operands.ts';
-import { wordPath, type WordPlace } from './paths.ts';
+import { BY_NAME, FROM_DISK, wordPath, type WordPlace } from './paths.ts';
 import type { SecretRules } from './rules.ts';
 
 /** Programs that print the content of the files they name, or of what they read on stdin. */
@@ -101,7 +101,9 @@ export function fileFindings(run: ProgramRun, rules: SecretRules): SecretFinding
     if (ENVIRON.test(text)) {
       return [{ kind: 'environment' }];
     }
-    return rules.paths.mayName(path, { dotfiles: run.dialect !== 'bash', sets: 'bash' }) ? [{ kind: 'file', path: text }] : [];
+    // A git call prints a revision, or a diff against one, not only the working file the content check would read.
+    const source = run.name === 'git' ? BY_NAME : FROM_DISK;
+    return rules.paths.mayName(path, { dotfiles: run.dialect !== 'bash', sets: 'bash' }, source) ? [{ kind: 'file', path: text }] : [];
   });
 }
 
