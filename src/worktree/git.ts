@@ -103,9 +103,21 @@ export function parseStatus(text: string): string[] {
 /** Runs one git command in `dir` with its words and timeout, as {@link runGit} does. */
 export type GitRunner = (dir: string, args: readonly string[], timeout?: number) => GitRun;
 
-/** The worktree port over `run`. */
+/**
+ * A runner for queries that runs a query git gave no answer of its own to (stopped at its timeout on a loaded host,
+ * or it could not start) once more, so the first stall never reads as git's "no" or as "git could not tell" (#847).
+ * Only for queries: a step that changes something is never run twice.
+ */
+export function retryUnanswered(run: GitRunner): GitRunner {
+  return (dir, args, timeout) => {
+    const first = run(dir, args, timeout);
+    return first.unanswered === undefined ? first : run(dir, args, timeout);
+  };
+}
+
+/** The worktree port over `run`: its queries through {@link retryUnanswered}, its changing steps run once. */
 export function worktreeGit(run: GitRunner): WorktreeGit {
-  const ask = run;
+  const ask = retryUnanswered(run);
   /** A query's stdout when git exits 0, else undefined. */
   const query = (dir: string, args: readonly string[]): string | undefined => {
     const result = ask(dir, args);
