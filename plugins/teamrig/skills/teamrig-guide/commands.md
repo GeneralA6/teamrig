@@ -4908,9 +4908,12 @@ when git stops partway: the branch was proven on its base before the removal. A 
 the end of the failure, with the `git branch -D` to run by hand.
 
 It refuses (exit 2) before any change for: the main checkout; a path inside a worktree instead of its top folder;
-a locked worktree; a run from inside the worktree; a real `node_modules` folder (removing the worktree would delete
-it); a link with tracked files under it; and uncommitted changes or untracked files, the files behind a link left
-out. It resolves `<path>` against the current folder.
+a locked worktree; a run from inside the worktree; another program whose working folder is inside it, named by its
+process id and name (Windows cannot delete a folder a program runs in, so git would stop partway); a real
+`node_modules` folder (removing the worktree would delete it); a link with tracked files under it; and uncommitted
+changes or untracked files, the files behind a link left out. It reads other programs' working folders from `/proc`
+on Linux and with `lsof` on macOS; where it cannot (Windows), a `NOTE` line says so and the removal goes on. It
+resolves `<path>` against the current folder.
 
 In a team, a session removes only its own worktrees and those of the sessions it leads; the lead removes any. A
 worktree is the session's whose branch names a task it owns: `t12-parser` is T12's. One on a branch that names no

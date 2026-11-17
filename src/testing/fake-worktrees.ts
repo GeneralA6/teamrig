@@ -1,5 +1,5 @@
 import { basename, dirname, resolve } from 'node:path';
-import type { EntryKind, TreeEntry, WorktreeFiles } from '../worktree/files.ts';
+import type { EntryKind, ProgramsRead, TreeEntry, WorktreeFiles } from '../worktree/files.ts';
 import type { GitOutcome, WorktreeEntry, WorktreeGit } from '../worktree/git.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
 
@@ -23,6 +23,8 @@ export class FakeWorktreeFiles implements WorktreeFiles {
   readonly removedFolders: string[] = [];
   /** Folders a program keeps, whose removal fails with EBUSY as Windows fails one a program has as its working folder. */
   readonly busy = new Set<string>();
+  /** The other programs and the folders they run in; none by default. */
+  programs: ProgramsRead = { kind: 'read', programs: [] };
 
   constructor(nodes: Readonly<Record<string, FakeNode>> = {}) {
     for (const [path, node] of Object.entries(nodes)) {
@@ -122,6 +124,10 @@ export class FakeWorktreeFiles implements WorktreeFiles {
   async canonical(path: string): Promise<string | undefined> {
     const key = resolve(path);
     return this.nodes.has(key) ? key : undefined;
+  }
+
+  async workingFolders(): Promise<ProgramsRead> {
+    return this.programs;
   }
 }
 
