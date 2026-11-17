@@ -119,6 +119,34 @@ describe('FileLock', () => {
     assert.equal(files.get(PATH), lockText(7, 10_000), 'the live holder keeps its lock');
   });
 
+  it("gives up by its deadline, before the wait ends, when a live holder keeps the lock: a hook's time limit (#737)", async () => {
+    const clock = new FakeClock(10_000);
+    const files = new MemoryFiles({ [PATH]: lockText(7, 10_000) });
+    const lock = new FileLock(PATH, TIMINGS, { files, clock, sleep: clock.sleep, pid: 42, alive: (other) => RUNNING.has(other), newId: () => 'take-42', deadline: 10_120 });
+    await assert.rejects(lock.run(async () => 'never'), (error: unknown) => {
+      assert.ok(error instanceof LockBusyError);
+      assert.match(error.message, /waited 120 ms, all the hook's time limit leaves/);
+      return true;
+    });
+    assert.equal(clock.now(), 10_120, 'the wait ends at the deadline, not at the full wait');
+    assert.deepEqual(clock.sleeps, [50, 50, 20], 'the last sleep is cut to the deadline');
+  });
+
+  it('waits its whole wait when the deadline is later, and takes a lock freed meanwhile', async () => {
+    const clock = new FakeClock(10_000);
+    const files = new MemoryFiles({ [PATH]: lockText(7, 10_000) });
+    const sleep: Sleep = async (ms) => {
+      await clock.sleep(ms);
+      if (clock.now() >= 10_300) await files.remove(PATH);
+    };
+    const lock = new FileLock(PATH, TIMINGS, { files, clock, sleep, pid: 42, alive: (other) => RUNNING.has(other), newId: () => 'take-42', deadline: 60_000 });
+    assert.equal(await lock.run(async () => 'ran'), 'ran');
+    assert.equal(clock.now(), 10_300);
+    const late = new FileLock(PATH, TIMINGS, { files: new MemoryFiles({ [PATH]: lockText(7, 10_300) }), clock, sleep: clock.sleep, pid: 42, alive: (other) => RUNNING.has(other), newId: () => 'take-42', deadline: 60_000 });
+    await assert.rejects(late.run(async () => 'never'), /waited 1000 ms\); retry/);
+    assert.equal(clock.now(), 11_300, 'a later deadline leaves the wait as it was');
+  });
+
   it('takes over at once a lock whose process is gone (T1584)', async () => {
     const clock = new FakeClock(10_000);
     const files = new MemoryFiles({ [PATH]: lockText(9, 10_000) });
