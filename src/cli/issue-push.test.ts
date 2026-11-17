@@ -4,7 +4,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import { isIssueQuery } from '../github/gh.ts';
 import { PUSH_WRITES_PER_RUN } from '../issues/status-push.ts';
 import { CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
-import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
+import { FakeGh, ghIssue, ghPull } from '../testing/fake-gh.ts';
 import { SHOWN_CHANGES } from './commands/issue-push.ts';
 import { USAGE } from './run.ts';
 import { EXIT } from './runtime.ts';
@@ -107,6 +107,27 @@ describe('teamrig issue sync --push', () => {
       'SHARED acme/web#7 T1, T2: two or more team tasks hold it, so the push writes nothing; give the ref to one of them',
       `PREVIEW nothing was written; a push would send 0 write(s) now, at most ${PUSH_WRITES_PER_RUN} a run, and plan the rest again on the next`,
     ]);
+  });
+
+  it('reads the pull requests only when an active task holds a number the issue list left out, and names an open one as a pull request (#1451)', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    await addHolding(kit, 'Land the login fix', 'gh:acme/web#11');
+    await addHolding(kit, 'Land the old change', 'gh:acme/web#12');
+    const gh = issues().holdsPulls('acme/web', [ghPull('acme/web', 11), ghPull('acme/web', 12, { state: 'MERGED', updatedAt: '2030-01-02T00:00:00Z' })]);
+    const lines = await expectRun(kit, ['issue', 'sync', '--push', '--repo', 'acme/web'], gh, EXIT.ok);
+    assert.deepEqual(lines.slice(0, 1), ['PUSH acme/web: 0 to change, 0 unchanged, 1 on an open pull request, 1 not listed']);
+    assert.deepEqual(lines.slice(1, 3), [
+      'PULL acme/web#11 T1 open: an open pull request, not an issue; the push writes only issues',
+      'UNLISTED acme/web#12 T2 open: not open on the host (closed before github.closedDays, or gone) while the task is active; the push never reopens an issue',
+    ]);
+
+    const unread = await expectRun(kit, ['issue', 'sync', '--push', '--repo', 'acme/web'], issues().failsPulls('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 502: Bad gateway\n' }), EXIT.ok);
+    assert.match(unread[0] ?? '', /^NOTE acme\/web: its pull requests could not be read \(.*\), so a number below may be one$/);
+    assert.equal(unread[1], 'PUSH acme/web: 0 to change, 0 unchanged, 2 not listed');
+
+    const none = issues();
+    await expectRun(new CliHarness(GITHUB_TEAM), ['issue', 'sync', '--push', '--repo', 'acme/web'], none, EXIT.ok);
+    assert.ok(none.ran.every((request) => isIssueQuery(request.args) && !request.args.join(' ').includes('pullRequests')), 'no task held a number the list left out, so no pull request read');
   });
 
   it('plans only the repository --repo names', async () => {
