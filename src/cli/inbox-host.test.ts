@@ -57,4 +57,14 @@ describe('teamrig inbox add --from host:<job> (#930)', () => {
     assert.match([...result.stdout, ...result.stderr].join('\n'), /CLAUDECODE/);
     assert.equal(inboxOf(kit, 'alpha'), undefined);
   });
+
+  it("refuses a job named as a role or as a session of the team, by id or by name, so the line never reads as that sender's", async () => {
+    const kit = new CliHarness(TEAM);
+    for (const job of ['owner', 'lead', 'alpha', 'app-bravo']) {
+      const result = await kit.run(['inbox', 'add', '--from', `host:${job}`, '--to', 'alpha', '--text', 'hi'], NO_SESSION);
+      assert.equal(result.code, EXIT.refused, job);
+      assert.match([...result.stdout, ...result.stderr].join('\n'), /--from/, job);
+    }
+    assert.equal(inboxOf(kit, 'alpha'), undefined);
+  });
 });

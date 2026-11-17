@@ -271,12 +271,16 @@ function postedLine(recipients: readonly Recipient[]): string {
 /** The sender a host scheduled job names (#930): `host:<job>`, the job named as a session is. */
 const HOST_SENDER = /^host:[a-z][a-z0-9-]{0,64}$/;
 
+/** Job names a reader could take for a person or a role rather than a host job. */
+const HOST_ROLE_WORDS: readonly string[] = ['owner', 'lead'];
+
 /**
  * `inbox add --from host:<job>` (#930): a line from a host scheduled job (cron, launchd, Task Scheduler), which runs as
  * no session of the team, so the line names the job as its sender. It posts to sessions of the team by id or name
  * only, wakes no one (the line waits for the session's next prompt) and takes no `--session`; the line itself meets
  * the inbox's rules as any other, and a `--to` that names no session is refused as `inbox add` refuses it. It is
- * refused where Claude Code runs it, so an agent's tool call cannot post as a job.
+ * refused where Claude Code runs it, so an agent's tool call cannot post as a job, and for a job named as a role or
+ * a session of the team, so the line never reads as that sender's.
  */
 async function addFromHost(args: ParsedArgs, runtime: CliRuntime, from: string): Promise<ExitCode> {
   if (!HOST_SENDER.test(from)) {
@@ -303,6 +307,10 @@ async function addFromHost(args: ParsedArgs, runtime: CliRuntime, from: string):
   const kit = await openKit(runtime, team);
   const config = requireConfig(kit, runtime, 'write');
   const roster = await rosterOf(runtime, kit, config);
+  const job = from.slice('host:'.length);
+  if (HOST_ROLE_WORDS.includes(job) || roster.ids.includes(job) || roster.allNames().has(job)) {
+    throw new RefusedError(`--from ${from} names a role or a session of team ${team}, so its line would read as theirs: name the job for what it does`);
+  }
   const ids: string[] = [];
   for (const item of items) {
     if (item.kind !== 'session' || (item.address.team !== undefined && item.address.team !== team)) {
