@@ -181,6 +181,13 @@ describe('planPush (T2682)', () => {
     assert.equal(plan.unchanged, 0);
   });
 
+  it('names an active task on an open pull request apart from the unlisted ones; one on a closed pull request stays unlisted (#1451)', () => {
+    const plan = planPush(REPO, [], [holding('T1', 9), holding('T2', 10, { status: 'in-progress' })], SESSION_PUSH, undefined, new Set([9]));
+    assert.deepEqual(plan.openPulls, [{ target: { repo: REPO, number: 9 }, task: 'T1', status: 'open' }]);
+    assert.deepEqual(plan.unlisted, [{ target: { repo: REPO, number: 10 }, task: 'T2', status: 'in-progress' }]);
+    assert.deepEqual([plan.changes, plan.unchanged], [[], 0]);
+  });
+
   it('counts a closed task whose issue the list left out as unchanged: the list holds every open issue', () => {
     const plan = planPush(REPO, [], [holding('T1', 9, { status: 'done' }), holding('T2', 10, { status: 'dropped' })]);
     assert.deepEqual(plan.unlisted, []);
