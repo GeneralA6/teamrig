@@ -613,12 +613,38 @@ The team's GitHub repositories. teamrig issue sync reads their issues into the r
 | `probeSeconds` | integer (0 to 3600) | `60` | How often teamrig issue watch asks GitHub whether a listed repository changed, in seconds: a conditional read that costs no rate limit when nothing changed, the sync running only when something did. One watch runs for the whole team, started by the hooks. 0 runs no watch and leaves the sync to teamrig issue sync --yes; otherwise at least 30. It replaced everyMinutes, which is reported until deleted. |
 | `statusPush` | boolean | `false` | Whether the automatic sync also sends the status push (teamrig issue sync --push --yes), so each issue a task holds shows the task's status without a session running it, and assigns an outside person who claims an open issue by a /take comment, for 7 days unless a pull request links it. It sends labels, assignees and the claim replies only: a close waits for a session's teamrig issue sync --push --yes. Off by default: read the push's dry run (teamrig issue sync --push) first. |
 | `stamp` | boolean | `true` | Whether each text teamrig posts to GitHub (a comment, a close comment, a claim reply, a migrated issue, a replaced body) ends with a one-line footer naming teamrig, its version and a link to the project, then a hidden marker that keeps a rerun or an edit to one footer. On by default; false posts the text as given. |
+| `fields` | [object](#githubfields) |  | What the status push writes to the issue fields and the type of each open issue a task holds, one way from the task list, on a repository that has issue fields or types: the priority, the day the task first went in progress, its due day and its score, each only when it differs from what the issue holds. Labels stay as they are. A field the repository lacks, or of another kind, is skipped and said so. |
 | `similarThreshold` | number (0 to 1) | `0.35` | The score, from 0 to 1, at which a mirrored issue counts as a duplicate candidate of a new one: the cosine of their TF-IDF word vectors. Higher lists fewer, closer candidates. |
 | `activity` | boolean | `true` | Whether the automatic sync tells a task's owner each new comment, review, CI result, label, close and merge on the issue or pull request the task holds, and each session the same on the issues and pull requests it follows (teamrig follow). What asks the session to act (changes requested, a failed check, a question, a mention) wakes it; the rest are quiet inbox lines. It reads nothing more from GitHub than the sync already does. Off, a session hears only mentions and the pull request news of its own branches. |
 | `followMax` | integer (0 to 100) | `20` | The most issues and pull requests one session follows at once with teamrig follow. 0 turns following off. |
 | `watcher` | [session name](#shared-types) |  | The session that hears the pull request news no task owner takes: a pull request from a fork or by an author outside the repository, or from a branch that names no task, and a mention no one else takes. Unset, the first holder of a service role holding issue comment, the session that answers on GitHub, else the lead. |
 | `issueAtAdd` | string (at least 1 character) |  | The repository, one of repos, a new task's issue opens in. While set, teamrig add opens the task's issue there with the public wording given (--issue and --issue-body), or records why the task stays local (--local), and adds no task with neither, so every task has its issue from the start. Unset, the default: an add opens an issue only when asked. |
 | `acceptLabel` | string (1 to 50 characters, matching `^[^\r\n]+$`) | `"teamrig"` | The label that lets an issue by an author outside the repository (not its owner, an organization member or a collaborator) become a task: it counts when someone other than the author added it last and the title and body were not edited after that. Matched without case. |
+
+## `github.fields`
+
+What the status push writes to the issue fields and the type of each open issue a task holds, one way from the task list, on a repository that has issue fields or types: the priority, the day the task first went in progress, its due day and its score, each only when it differs from what the issue holds. Labels stay as they are. A field the repository lacks, or of another kind, is skipped and said so.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `push` | boolean | `true` | Whether the push writes fields and types at all. |
+| `priority` | string (at most 100 characters) | `"Priority"` | The single-select field the task's priority goes to, as the option priorityOptions names for its level. Empty writes none. |
+| `priorityOptions` | map from string (matching `^p[0-9]{1,2}$`) to array (at most 5 items) of string (1 to 100 characters) | `{"p0":["P0","Urgent"],"p1":["P1","Urgent"],"p2":["P2","High"],"p3":["P3","Medium"],"p4":["P4","Low"],"p5":["P5","Low"]}` | The options each priority level (p0, p1 and so on) is written as: the first one the field has wins, case aside, or an option that starts with it, such as P1 - high. A level listed here replaces its default list; a level not listed by default is written as its P\<n> option, and an empty list writes no priority for it. By default P\<n>, else GitHub's own Priority options: p0 and p1 Urgent, p2 High, p3 Medium, p4 and p5 Low. |
+| `startDate` | string (at most 100 characters) | `"Start date"` | The date field the day the task first went in progress goes to, on the team's clock. Empty writes none. |
+| `targetDate` | string (at most 100 characters) | `"Target date"` | The date field the task's due day goes to. Empty writes none. |
+| `score` | string (at most 100 characters) | `"Score"` | The number field the task's score goes to, rounded to a whole number, so it is written only when that changed. Empty writes none. |
+| `types` | [object](#githubfieldstypes) |  | The issue types each kind of task is set as, the first one the repository has winning: a design issue (it carries the design label), a goal (a task planned after its parts), a bug, else a task. An empty list sets no type for that kind. |
+
+## `github.fields.types`
+
+The issue types each kind of task is set as, the first one the repository has winning: a design issue (it carries the design label), a goal (a task planned after its parts), a bug, else a task. An empty list sets no type for that kind.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `task` | array (at most 5 items) of string (1 to 100 characters) | `["Task"]` | The types a task is set as. |
+| `bug` | array (at most 5 items) of string (1 to 100 characters) | `["Bug"]` | The types a bug is set as. |
+| `goal` | array (at most 5 items) of string (1 to 100 characters) | `["Feature","Goal"]` | The types a goal is set as: a Feature, as an issue opened for one is typed, else a Goal where the organization made that type. |
+| `design` | array (at most 5 items) of string (1 to 100 characters) | `["Design"]` | The types a design issue is set as. |
 
 ## `serviceRoles.*`
 

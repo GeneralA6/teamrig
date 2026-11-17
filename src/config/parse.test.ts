@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_RUSH, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_FOCUS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_MEETING, DEFAULT_BRANCHES } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_RUSH, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_FOCUS, DEFAULT_ISSUE_FIELDS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_MEETING, DEFAULT_BRANCHES } from './defaults.ts';
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { GITHUB_LABEL_MAX_LENGTH } from './limits.ts';
 import { parseConfig } from './parse.ts';
@@ -28,7 +28,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.needsYou, { enabled: true, kinds: ['permission', 'question', 'elicitation', 'decision'], osToast: false });
     assert.deepEqual(config.meetingNotices, { enabled: true, beforeMinutes: 10, atStart: true, missedAfterMinutes: 5, osToast: true, tabToast: true, leadInbox: true });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
-    assert.deepEqual(config.github, { repos: [], owners: {}, areaOwners: {}, sessions: {}, closedDays: 14, probeSeconds: 60, statusPush: false, acceptLabel: 'teamrig', similarThreshold: 0.35, activity: true, followMax: 20, stamp: true });
+    assert.deepEqual(config.github, { repos: [], owners: {}, areaOwners: {}, sessions: {}, closedDays: 14, probeSeconds: 60, statusPush: false, acceptLabel: 'teamrig', similarThreshold: 0.35, activity: true, followMax: 20, stamp: true, fields: DEFAULT_ISSUE_FIELDS });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.delivery, {
@@ -423,6 +423,45 @@ describe('parseConfig', () => {
     }
   });
 
+  it("reads github.fields: the push switch, a field name or an empty one that writes none, each priority level's options over the default's, and each kind's type list (T3406)", () => {
+    assert.deepEqual(parseConfig(ROSTER).config.github.fields, {
+      push: true,
+      priority: 'Priority',
+      priorityOptions: { p0: ['P0', 'Urgent'], p1: ['P1', 'Urgent'], p2: ['P2', 'High'], p3: ['P3', 'Medium'], p4: ['P4', 'Low'], p5: ['P5', 'Low'] },
+      startDate: 'Start date',
+      targetDate: 'Target date',
+      score: 'Score',
+      types: { task: ['Task'], bug: ['Bug'], goal: ['Feature', 'Goal'], design: ['Design'] },
+    });
+    const { config, issues } = parseConfig({ ...ROSTER, github: { fields: { push: false, score: '', priority: 'Urgency', priorityOptions: { p2: ['Normal'], p6: ['Lowest'] }, types: { goal: ['Epic'], design: [] } } } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.github.fields, {
+      push: false,
+      priority: 'Urgency',
+      priorityOptions: { ...DEFAULT_ISSUE_FIELDS.priorityOptions, p2: ['Normal'], p6: ['Lowest'] },
+      startDate: 'Start date',
+      targetDate: 'Target date',
+      score: '',
+      types: { task: ['Task'], bug: ['Bug'], goal: ['Epic'], design: [] },
+    });
+    const wrongs: ReadonlyArray<readonly [unknown, string]> = [
+      [{ push: 'yes' }, 'github.fields.push'],
+      [{ priority: 'a\u0007b' }, 'github.fields.priority'],
+      [{ startDate: 'x'.repeat(101) }, 'github.fields.startDate'],
+      [{ targetDate: 3 }, 'github.fields.targetDate'],
+      [{ types: { bug: ['A', 'B', 'C', 'D', 'E', 'F'] } }, 'github.fields.types.bug'],
+      [{ types: { task: ['Task', 'line\nbreak'] } }, 'github.fields.types.task[1]'],
+      [{ types: 'Task' }, 'github.fields.types'],
+      [{ priorityOptions: { high: ['High'] } }, 'github.fields.priorityOptions.high'],
+      [{ priorityOptions: { p1: 'Urgent' } }, 'github.fields.priorityOptions.p1'],
+    ];
+    for (const [fields, path] of wrongs) {
+      const parsed = parseConfig({ ...ROSTER, github: { fields } });
+      assert.deepEqual(paths(parsed.issues), [path], path);
+      assert.deepEqual(parsed.config.github.fields, DEFAULT_ISSUE_FIELDS, path);
+    }
+  });
+
   it('reads github repos and owners in lowercase, closedDays within 1 to 365 and probeSeconds 0 or within 30 to 3600', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
@@ -437,6 +476,7 @@ describe('parseConfig', () => {
       closedDays: 365,
       probeSeconds: 0,
       statusPush: false,
+      fields: DEFAULT_ISSUE_FIELDS,
       acceptLabel: 'teamrig',
       similarThreshold: 0.35,
       activity: true,
