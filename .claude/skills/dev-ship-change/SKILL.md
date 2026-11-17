@@ -39,7 +39,8 @@ description: Land a finished teamrig change through small signed commits, a dist
   in a commit of their own (`tools/ship/merge.ts`). When it refuses, rebase onto `origin/main` by hand and
   set the version raise again from main's version.
 - `tools/ship` run without `--merge`, for an approval, leaves the work alone on the head: it raises the version and
-  builds the dist only to run the checks, then takes both back, the raise left uncommitted. The `--merge` run commits
+  builds the dist only to run the checks, then takes both back, the raise left uncommitted (a new migration's
+  `firstRelease` stamp in `src/config/migrate.ts` goes in the raise chunk and comes back with it). The `--merge` run commits
   both once, on the base it lands on, and the approval still holds, as it reads the change apart from those files.
 - The local gate proves a committed tree, so it refuses uncommitted changes: commit or stash them first.
 - With `"mergeChecks": "changed"` on the repository in `tools/ship/repos.json`, the pre-push hook and the `--merge`
