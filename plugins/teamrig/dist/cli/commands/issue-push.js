@@ -118,6 +118,7 @@ export function planLines(plan) {
         ...(plan.deferred.length === 0 ? [] : [`${plan.deferred.length} left for the next run`]),
         ...(plan.heldCloses.length === 0 ? [] : [`${plan.heldCloses.length} close(s) held for a session's push`]),
         ...(plan.closedActive.length === 0 ? [] : [`${plan.closedActive.length} closed on the host while the task is active`]),
+        ...(plan.keptOpen.length === 0 ? [] : [`${plan.keptOpen.length} left open: not the finished task's to close`]),
         ...(plan.unlisted.length === 0 ? [] : [`${plan.unlisted.length} not listed`]),
     ];
     const changes = plan.changes.map(changeLine);
@@ -127,6 +128,7 @@ export function planLines(plan) {
         ...(more > 0 ? [...changes.slice(0, SHOWN_CHANGES), `... and ${more} more`] : changes),
         ...plan.heldCloses.map((held) => `${changeLine(held).replace(/^CLOSE/u, 'HELD')}; the automatic push never closes: a session's teamrig issue sync --push --yes sends the close`),
         ...plan.closedActive.map((closed) => `KEPT ${targetText(closed.target)} ${closed.task} ${closed.status}: closed on the host${closed.stateReason === '' ? '' : ` (${closed.stateReason.toLowerCase()})`} while the task is active; the push never reopens an issue, so set the task to match or reopen the issue`),
+        ...plan.keptOpen.map((kept) => `OPEN ${targetText(kept.target)} ${kept.task} ${kept.status}: ${kept.why.kind === 'design' ? 'a design issue, which ends by its maintainers\' Agreed' : `taken by ${kept.why.assignees.join(', ')}, outside the team`}; the push leaves it open, for its taker or a person to close`),
         ...plan.unlisted.map((held) => `UNLISTED ${targetText(held.target)} ${held.task} ${held.status}: not open on the host (closed before github.closedDays, or gone) while the task is active; the push never reopens an issue`),
     ];
 }
