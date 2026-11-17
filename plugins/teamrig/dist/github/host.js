@@ -1,6 +1,7 @@
 import { targetText, } from "../issues/host.js";
+import { LABEL_FILE, parseLabelFile } from "../issues/label-file.js";
 import { exitText } from "../open/processes.js";
-import { assigneeReadArgs, blockedByAddArgs, commentsReadArgs, issueAssignArgs, issueUnassignArgs, issueBodyArgs, issueCloseArgs, issueCommentArgs, issueCreateArgs, issueLabelAddArgs, issueLabelRemoveArgs, issueReadArgs, jobLogArgs, labelReadArgs, isLogin, labelCreateArgs, subIssueAddArgs, WATCH_PATHS, watchProbeArgs, userReadArgs, } from "./gh.js";
+import { assigneeReadArgs, blockedByAddArgs, commentsReadArgs, issueAssignArgs, issueUnassignArgs, issueBodyArgs, issueCloseArgs, issueCommentArgs, issueCreateArgs, issueLabelAddArgs, issueLabelRemoveArgs, issueReadArgs, jobLogArgs, labelReadArgs, isLogin, labelCreateArgs, labelFileReadArgs, subIssueAddArgs, WATCH_PATHS, watchProbeArgs, userReadArgs, } from "./gh.js";
 import { probeAnswerOf } from "./probe.js";
 import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, readCommentsIn, runRead, startFailureText } from "./issues.js";
 import { failedLogExcerpt } from "./job-log.js";
@@ -187,6 +188,24 @@ export class GitHubIssueHost {
     async labelExists(repo, label) {
         const read = await this.read(repo, labelReadArgs(repo, label), `the label ${JSON.stringify(label)} of ${repo}`);
         return read.kind === 'found' ? { kind: 'found' } : read;
+    }
+    /**
+     * Reads the repository's label file raw, as it stands on the default branch: read with the labels it names; missing
+     * on Not Found (no such file, or a repository the access cannot see); failed with gh's line, or with what is wrong in
+     * the file. The runner allows the create of a label this read named, and of no other beside teamrig's own (gh.ts).
+     */
+    async labelFile(repo) {
+        const what = `${LABEL_FILE} of ${repo}`;
+        const read = await this.read(repo, labelFileReadArgs(repo), what);
+        if (read.kind !== 'found') {
+            return read;
+        }
+        try {
+            return { kind: 'read', labels: parseLabelFile(read.stdout) };
+        }
+        catch (error) {
+            return { kind: 'failed', reason: plainLine(`the ${what} does not parse: ${error instanceof Error ? error.message : String(error)}`) };
+        }
     }
     /**
      * Reads one page of the issue's comments updated at or after `since`, oldest first (gh.ts commentsReadArgs), each

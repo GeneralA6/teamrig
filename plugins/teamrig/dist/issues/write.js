@@ -1,6 +1,7 @@
 import { KIT_NAME } from "../core/home.js";
 import { privateShapeIn } from "../core/private-shapes.js";
 import { targetText } from "./host.js";
+import { LABEL_FILE } from "./label-file.js";
 import { managedLabel } from "./managed-labels.js";
 import { taskIdIn } from "./posted.js";
 /** The longest comment GitHub takes; another host's limit is checked by the host itself. */
@@ -46,10 +47,31 @@ function labelsText(labels) {
     return labels.map((label) => JSON.stringify(label)).join(', ');
 }
 /**
- * Adds and takes off labels through `host`, one line said for each step: ACCESS, then LABELED and UNLABELED, or
- * FAILED with the reason. Every label to add must already be one of the repository's, read before any write, so a
- * typo never makes a new label; the first failure stops it, and a failure after a write says what was done. True
- * when every step was done.
+ * How `label`, which `repo` lacks, is made: as teamrig's own (managedLabel, its case exact), else as the repository's
+ * label file names it (its case aside, as GitHub's label names ignore case). Else the reason it is not made, so a
+ * typo never makes a new label. `labelFile` reads that file, at most once a run.
+ */
+async function missingLabel(repo, label, labelFile) {
+    const managed = managedLabel(label);
+    if (managed !== undefined) {
+        return { label: managed, source: 'one teamrig makes' };
+    }
+    const file = await labelFile();
+    if (file.kind === 'failed') {
+        return file.reason;
+    }
+    const named = file.kind === 'read' ? file.labels.find((spec) => spec.name.toLowerCase() === label.toLowerCase()) : undefined;
+    if (named !== undefined) {
+        return { label: named, source: `as its ${LABEL_FILE} names it` };
+    }
+    const where = file.kind === 'read' ? `its ${LABEL_FILE} does not name it` : `it has no ${LABEL_FILE}`;
+    return `${repo} has no label ${JSON.stringify(label)}, and ${where}: add it to that file or make it there first, as adding it here would make a new one`;
+}
+/**
+ * Adds and takes off labels through `host`, one line said for each step: ACCESS, then MADE, LABELED and UNLABELED, or
+ * FAILED with the reason. Every label to add must already be one of the repository's, read before any write, or one
+ * teamrig makes, or one the repository's label file names (made first), so a typo never makes a new label; the first
+ * failure stops it, and a failure after a write says what was done. True when every step was done.
  */
 export async function labelIssue(host, write, say) {
     const shown = targetText(write.target);
@@ -60,17 +82,19 @@ export async function labelIssue(host, write, say) {
     }
     say(`ACCESS ${reach.access}`);
     const toMake = [];
+    let fileRead;
+    const labelFile = () => (fileRead ??= host.labelFile(write.target.repo));
     for (const label of write.add) {
         const found = await host.labelExists(write.target.repo, label);
-        const managed = managedLabel(label);
-        if (found.kind === 'missing' && managed !== undefined) {
-            toMake.push(managed);
+        if (found.kind === 'found') {
+            continue;
         }
-        else if (found.kind !== 'found') {
-            const why = found.kind === 'failed' ? found.reason : `${write.target.repo} has no label ${JSON.stringify(label)}: make it there first, as adding it here would make a new one`;
-            say(`FAILED ${shown}: ${why}; nothing was changed`);
+        const make = found.kind === 'failed' ? found.reason : await missingLabel(write.target.repo, label, labelFile);
+        if (typeof make === 'string') {
+            say(`FAILED ${shown}: ${make}; nothing was changed`);
             return false;
         }
+        toMake.push(make);
     }
     // A label made stays in the repository, so a later failure names it rather than saying nothing changed.
     const done = [];
@@ -78,12 +102,12 @@ export async function labelIssue(host, write, say) {
         say(`FAILED ${shown}: ${reason}${done.length === 0 ? '; nothing was changed' : `; it already ${done.join(', ')}`}`);
         return false;
     };
-    for (const label of toMake) {
+    for (const { label, source } of toMake) {
         const made = await host.createLabel(write.target.repo, label);
         if (made.kind === 'failed') {
             return failed(made.reason);
         }
-        say(`MADE ${write.target.repo}: the label ${JSON.stringify(label.name)}, one teamrig makes`);
+        say(`MADE ${write.target.repo}: the label ${JSON.stringify(label.name)}, ${source}`);
         done.push(`made the label ${JSON.stringify(label.name)}`);
     }
     if (write.add.length > 0) {
