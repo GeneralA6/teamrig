@@ -1529,7 +1529,7 @@
           "default": 20
         },
         "watcher": {
-          "description": "The session that hears the pull request news no task owner takes: a pull request from a fork or by an author outside the repository, or from a branch that names no task, and a mention no one else takes. Unset, the first holder of a service role holding issue comment, the session that answers on GitHub, else the lead.",
+          "description": "The session that hears the pull request news no task owner takes: a pull request from a fork or by an author outside the repository, or from a branch that names no task, and a mention no one else takes. Unset, the first holder of a service role holding issue comment, the session that answers on GitHub, else the lead. Who watches is staffing, so the lead may set it with teamrig config set, to one of the sessions.",
           "$ref": "#/$defs/sessionName"
         },
         "issueAtAdd": {

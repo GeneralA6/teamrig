@@ -95,6 +95,19 @@ describe('config set', () => {
     }
   });
 
+  it('lets the lead name the GitHub watcher, one of the sessions, and refuses a name not on the roster', async () => {
+    const kit = await teamWithSchema();
+    const named = await kit.run(['config', 'set', 'github.watcher', 'bravo', '--yes'], AS_LEAD);
+    assert.equal(named.code, EXIT.ok, named.stdout.join('\n'));
+    const github = (await fileOf(kit))['github'];
+    assert.equal(isRecord(github) ? github['watcher'] : undefined, 'bravo');
+    const before = await kit.files.read(CONFIG_PATH);
+    const stranger = await kit.run(['config', 'set', 'github.watcher', 'zulu', '--yes'], AS_LEAD);
+    assert.notEqual(stranger.code, EXIT.ok);
+    assert.match(stranger.stdout.join('\n'), /github\.watcher.*"zulu" is not one of the sessions/);
+    assert.equal(await kit.files.read(CONFIG_PATH), before);
+  });
+
   it('refuses a value the key does not take, naming what it takes', async () => {
     const kit = await teamWithSchema();
     const result = await kit.run(['config', 'set', 'messages.maxLines', '99', '--yes'], AS_LEAD);
