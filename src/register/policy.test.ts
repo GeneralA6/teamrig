@@ -652,10 +652,11 @@ describe('RegisterPolicy.setStatus to verifying', () => {
     assert.equal(policy.setStatus(TASK, 'alpha', verifying([...approval, ...RUN_TONIGHT]), CTX).ok, true);
   });
 
-  it('waits a proof only on a task in progress or verifying, whose end runs it', () => {
+  it("waits a proof only on a task in progress or verifying, or an open one of its own owner's, whose end runs it", () => {
     const started = '2030-01-07T10:00:00.000Z';
     const tasks = [
       testTask({ id: 'T4', owner: 'bravo', status: 'open' }),
+      testTask({ id: 'T8', owner: 'alpha', status: 'open' }),
       testTask({ id: 'T5', owner: 'bravo', status: 'waiting', startedAt: started, waits: OWNER_DECISION }),
       testTask({ id: 'T6', owner: 'bravo', status: 'in-progress', startedAt: started }),
       testTask({ id: 'T7', owner: 'bravo', status: 'verifying', startedAt: started, proof: 'the nightly run' }),
@@ -664,9 +665,10 @@ describe('RegisterPolicy.setStatus to verifying', () => {
     const onTask = (id: string): StatusInput => ({ status: 'verifying', note: 'shipped', proof: 'p', waits: [{ kind: 'task', id }], followups: [] });
     assert.equal(
       error(policy.setStatus(TASK, 'alpha', onTask('T4'), context)),
-      'T4 is open: a proof waits only on a task in progress or verifying; until it starts, set T1 waiting on it (--status waiting --waits task:T4)',
+      "T4 is open and bravo's: a proof waits only on a task in progress or verifying, or an open one of its own owner's; until it starts, set T1 waiting on it (--status waiting --waits task:T4)",
     );
-    assert.match(error(policy.setStatus(TASK, 'alpha', onTask('T5'), context)), /^T5 is waiting: a proof waits only on a task in progress or verifying;/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', onTask('T5'), context)), /^T5 is waiting: a proof waits only on a task in progress or verifying, or an open one of its own owner's;/);
+    assert.equal(policy.setStatus(TASK, 'alpha', onTask('T8'), context).ok, true, "an open task of the proof's own owner, startable now (#1544)");
     assert.equal(policy.setStatus(TASK, 'alpha', onTask('T6'), context).ok, true);
     assert.equal(policy.setStatus(TASK, 'alpha', onTask('T7'), context).ok, true);
     const waiting = policy.setStatus(TASK, 'alpha', { status: 'waiting', note: 'needs the schema', waits: [{ kind: 'task', id: 'T4' }] }, context);
