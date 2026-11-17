@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createGit, GitError, gitSyncIn } from './git.ts';
+import { createGit, GitError, gitSyncIn, STDOUT_TAIL_LINES } from './git.ts';
 import { TempRepo } from './temp-repo.ts';
 
 describe('createGit', () => {
@@ -37,6 +37,7 @@ describe('createGit', () => {
     await assert.rejects(git.bytes(args), (error: unknown) => {
       assert.ok(error instanceof GitError);
       assert.equal(error.stderr, '');
+      assert.equal(error.stdoutTail, '');
       assert.equal(error.message, `git ${args.join(' ')} failed: ${String(error.cause)}`);
       return true;
     });
@@ -67,9 +68,44 @@ describe('gitSyncIn', () => {
     assert.match(repo.git('ls-remote', '--heads', 'origin', 'refs/heads/t-bounded'), /\trefs\/heads\/t-bounded\n$/);
   });
 
-  it('returns stdout as text and throws when git fails', () => {
+  it('returns stdout as text and throws a GitError with no stdout tail when git fails silently', () => {
     const git = gitSyncIn(repo.dir, repo.env);
     assert.equal(git(['rev-parse', 'HEAD']).trim(), repo.git('rev-parse', 'HEAD').trim());
-    assert.throws(() => git(['rev-parse', '--verify', '-q', 'teamrig-no-such-ref']));
+    const args = ['rev-parse', '--verify', '-q', 'teamrig-no-such-ref'];
+    assert.throws(() => git(args), (error: unknown) => {
+      assert.ok(error instanceof GitError);
+      assert.deepEqual(error.args, args);
+      assert.equal(error.stdoutTail, '');
+      assert.equal(error.message, `git ${args.join(' ')} failed: ${String(error.cause)}`);
+      return true;
+    });
+  });
+});
+
+describe('a push its pre-push hook refuses', () => {
+  const repo = new TempRepo('git-refused').init();
+  after(() => repo.remove());
+  const origin = join(repo.outside, 'origin.git');
+  repo.git('init', '-q', '--bare', origin);
+  repo.git('remote', 'add', 'origin', origin);
+  repo.write('a.txt', 'a\n');
+  repo.git('add', 'a.txt');
+  repo.git('commit', '-q', '-m', 'a');
+  // The local gate's shape: many lines of checks on stdout, its reason last, then a failing exit.
+  const node = process.execPath.replaceAll('\\', '/');
+  const gate = "for (let i = 1; i <= 100; i++) console.log('check ' + i); console.log('local checks: REFUSED coverage gate failed'); process.exit(1)";
+  chmodSync(repo.write('.git/hooks/pre-push', `#!/bin/sh\n"${node}" -e "${gate}"\n`), 0o755);
+  const push = ['push', '-q', 'origin', 'HEAD:refs/heads/t-refused'];
+  const tail = [...Array.from({ length: STDOUT_TAIL_LINES - 1 }, (_, i) => `check ${100 - STDOUT_TAIL_LINES + 2 + i}`), 'local checks: REFUSED coverage gate failed'].join('\n');
+
+  it('names the last lines the hook printed, its REFUSED reason with them (T4130)', () => {
+    assert.throws(() => gitSyncIn(repo.dir, repo.env)(push), (error: unknown) => {
+      assert.ok(error instanceof GitError);
+      assert.equal(error.stdoutTail, tail);
+      assert.match(error.message, /^git push -q origin HEAD:refs\/heads\/t-refused failed: error: failed to push some refs/);
+      assert.ok(error.message.endsWith(`\n${tail}`), error.message);
+      assert.doesNotMatch(error.message, new RegExp(`^check ${100 - STDOUT_TAIL_LINES + 1}$`, 'm'));
+      return true;
+    });
   });
 });
