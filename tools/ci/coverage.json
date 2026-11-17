@@ -6,9 +6,8 @@
   "typeOnly": { "src/issues/issue.ts": "the HostIssue and LabelEvent types only", "src/issues/post.ts": "the HostPost and HostPosts types only", "src/restore/ports.ts": "the RestorePorts interface only", "src/exec/ports.ts": "the ExecPorts interface only" },
   "exceptions": {
     "tools/ship/ship-deps.ts": {
-      "lines": 56,
-      "functions": 50,
-      "reason": "realShipDeps wires real git, GitHub and the local gate, which a spec must not run; each piece is tested in its own module, ship-command.test.ts drives the command with fakes, ship.test.ts runs the tool's refusals, and every teamrig ship runs the wiring"
+      "functions": 66,
+      "reason": "realShipDeps wires real git, GitHub and the local gate: ship-deps.test.ts runs the deps that stay in a temp repo, while sync, mainMove, proveTree, push and merge reach origin or run the checks, which a spec must not; each is tested in its own module, and every teamrig ship runs the wiring"
     }
   }
 }
