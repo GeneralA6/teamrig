@@ -1,5 +1,6 @@
 import { snapshotDirOf } from '../../budget/snapshot.ts';
 import { LeadTree } from '../../config/lead-tree.ts';
+import { teamRequestsOf } from '../../delivery/line-requests.ts';
 import { deliveryPlaces, teamPlace } from '../../delivery/places.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { GateHolds } from '../../merge/gate-holds.ts';
@@ -38,7 +39,7 @@ export async function merge(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const places = deliveryPlaces(delivery, kit.paths);
   const say = logLineOf(runtime, zone);
   const tree = new LeadTree(config);
-  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
+  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone, teamRequestsOf(runtime.files, kit.paths, config.focus));
   await refuseUnderParentLock(runtime, lock, say, zone, 'teamrig merge');
   const watching = await watchStarters(runtime, say);
   try {

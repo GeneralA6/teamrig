@@ -9,6 +9,7 @@ import { FREEZES_LOCK_TTL_MS } from '../delivery/freeze-store.ts';
 import { HostLock, type HostLockPorts } from '../delivery/host-lock.ts';
 import { MemoryGate } from '../delivery/memory-gate.ts';
 import { PIPELINE_FREEZES_LOCK_TTL_MS } from '../delivery/pipeline-freezes.ts';
+import type { RequestSource } from '../delivery/process-request.ts';
 import type { ResetTime } from '../delivery/schedule.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { TabHolds, tabHoldsDir } from '../sessions/tab-holds.ts';
@@ -37,7 +38,8 @@ type LockRuntime = Pick<CliRuntime, 'files' | 'clock' | 'sleep' | 'pid' | 'sessi
  * lock (`tabHoldsDir(path)`, written by `open`) holding their MB of both. Its line is ordered by the rules `admission`
  * gives at each look ({@link teamAdmissionOf}); a heavy step joins another
  * heavy one only while `delivery.queue.heavyIdleCpuPct` of the host's CPU is idle. A waiter's ticket says what it waits
- * on with the times on `zone`'s clock.
+ * on with the times on `zone`'s clock. A step that waits in line reads its request again from `requests`, when given
+ * (T4082): a command that queues a step passes its team's (`teamRequestsOf`), one that only reads the line none.
  */
 export function hostLockOf(
   runtime: LockRuntime & Pick<CliRuntime, 'memory' | 'cpu'>,
@@ -46,11 +48,12 @@ export function hostLockOf(
   headroom: Pick<HeadroomConfig, 'commitMaxPct'>,
   admission: AdmissionSource,
   zone: TimeZone,
+  requests?: RequestSource,
 ): HostLock {
   const tabs = new TabHolds(tabHoldsDir(path), runtime);
   const memory = new MemoryGate(runtime.memory, runtime.sleep, { floorMb: queue.memoryFloorMb, heavyReserveMb: queue.heavyReserveMb, commitMaxPct: headroom.commitMaxPct }, () => tabs.live());
   const cpu = new CpuGate(runtime.cpu, runtime.sleep, queue.heavyIdleCpuPct);
-  return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, zone, { memory, cpu, admission });
+  return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, zone, { memory, cpu, admission, ...(requests === undefined ? {} : { requests }) });
 }
 
 /** The `delivery.queue` keys that order the host lock's line. */
@@ -101,8 +104,11 @@ export function pipelineFreezesLockOf(runtime: LockRuntime, path: string, zone: 
   return lockAt(runtime, path, PIPELINE_FREEZES_LOCK_TTL_MS, zone, {});
 }
 
-/** What gates a lock that guards steps: the memory gate, the CPU gate for a heavy step, and the rules its line is ordered by. */
-type StepGates = Pick<HostLockPorts, 'memory' | 'cpu' | 'admission'>;
+/**
+ * What gates a lock that guards steps: the memory gate, the CPU gate for a heavy step, the rules its line is ordered
+ * by, and where a waiting step reads its request again.
+ */
+type StepGates = Pick<HostLockPorts, 'memory' | 'cpu' | 'admission' | 'requests'>;
 
 function lockAt(runtime: LockRuntime, path: string, ttlMs: number, zone: TimeZone, gates: StepGates): HostLock {
   return new HostLock(path, ttlMs, {

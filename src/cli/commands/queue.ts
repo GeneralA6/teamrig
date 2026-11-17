@@ -3,11 +3,12 @@ import type { Roster } from '../../config/roster.ts';
 import type { QueueConfig } from '../../config/types.ts';
 import { busyText, holderText, isHeavyShare, underLock, waitText, type HostLockInfo, type StepNeed, type Taking } from '../../delivery/host-lock.ts';
 import { parseLedger } from '../../delivery/ledger.ts';
+import { teamRequestsOf } from '../../delivery/line-requests.ts';
 import { pipelineFrozenRefusal } from '../../delivery/pipeline-freezes.ts';
 import { formatRunRecord, RUN_RECORD_FORMAT, runRecordPathOf, type DetachedRunRecord, type LedgerStep } from '../../delivery/detached-runs.ts';
 import { deliveryPlaces, detachedDirOf, detachedLogOf } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
-import { isStepKind, kindOfCommand, lineRequestOf, processRequest, STEP_KINDS, taskOfLabel, type ProcessRequest, type StepKind } from '../../delivery/process-request.ts';
+import { isStepKind, kindOfCommand, processRequest, STEP_KINDS, taskOfLabel, type ProcessRequest, type StepKind } from '../../delivery/process-request.ts';
 import { recordRefusal, runRecorded, type RefusalMark, type StepOwner } from '../../delivery/recorded-step.ts';
 import { stepNeedOf, type NeedAsk } from '../../delivery/step-need.ts';
 import { causeOfLockWait, WaitLog } from '../../delivery/wait-log.ts';
@@ -24,7 +25,6 @@ import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { TASK_ID } from '../../register/model.ts';
-import { JsonlEventLog } from '../../register/store.ts';
 import { commandLine } from '../../test-run/shell.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { hostLockOf, logLineOf, type Say, teamAdmissionOf } from '../delivery-ports.ts';
@@ -623,7 +623,8 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const exclusive = exclusiveOf(args, small);
   const maxRunMinutes = maxRunMinutesOf(args, delivery.queue, small);
   const places = deliveryPlaces(delivery, kit.paths);
-  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
+  const requests = teamRequestsOf(runtime.files, kit.paths, config.focus);
+  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone, requests);
   const parent = await parentLockOf(runtime, lock, say);
   const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
   const gate: StartGate = { cutoffUtc: delivery.schedule.queueCutoffUtc, pipelineFreezes: places.pipelineFreezes, kind: request.kind, zone, shipTool: shipToolCheckOf(runtime, kit, config, words, request.kind) };
@@ -651,10 +652,9 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, 0);
     }
     await refuseUnstartable(runtime, gate);
-    // The register is read only for a step that queues: a nested step or one refused at once records nothing.
-    const register = new JsonlEventLog(runtime.files, kit.paths.events);
+    // The register and the front are read only for a step that queues: a nested step or one refused at once records nothing.
     const shipped = withShipTask(request, () => shipTaskOfWords(runtime.mergeGit, kit, config, words, runtime.cwd));
-    const line = await lineRequestOf(shipped, async (id) => (await register.read()).state.tasks.get(id), config.focus);
+    const line = await requests.current(shipped);
     // Only the ticket carries the class for now: the ledger's start and refusal records keep the fields their readers take.
     const owner: StepOwner = { session, ...processRequest(line.kind, line.task, line.priority) };
     const waits = new WaitLog(runtime.clock, runtime.memory.freeMb());

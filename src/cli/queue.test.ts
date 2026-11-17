@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { FIRST_IN_LINE_POLL_MS } from '../delivery/host-lock.ts';
 import type { QueuedStepRecord, RefusalOutcome, RefusalRecord } from '../delivery/ledger.ts';
+import { lineFrontPath, LineFrontStore } from '../delivery/line-front.ts';
+import { isRecord } from '../core/guards.ts';
 import { recordPass } from '../delivery/push-pass.ts';
 import { parkedDirOf, parseParked, PARKED_SUFFIX, type ParkedStep } from '../delivery/parked.ts';
 import { KIT_VERSION } from '../core/version.ts';
@@ -605,6 +607,39 @@ describe('teamrig queue', () => {
     assert.equal(result.code, 2, 'po holds the lock past the wait');
     const request = { kind: 'build', task: 'T1', priority: 2, class: 'Maintenance', classPct: 25, needMb: 2048, heavy: true, exclusive: false };
     assert.deepEqual([requests.length > 0, requests.filter((seen) => !isDeepStrictEqual(seen, request))], [true, []]);
+  });
+
+  it("marks a fronted task's step on its ticket, from the start or once the lead fronts it while the step waits (T4082)", async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 3, admission: 'pipeline' }, wait: { pollSeconds: 30 } } });
+    for (const title of ['Ship the build', 'Fix the gate']) {
+      const added = await kit.run(['add', '--title', title, '--description', 'what and why', '--priority', 'p2', '--class', 'Maintenance', '--session', 'alpha']);
+      assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    }
+    const front = new LineFrontStore(kit.files, lineFrontPath(join(TEAM_HOME, 'state')));
+    await front.put({ task: 'T2', at: '2030-01-08T09:00:00.000Z', by: 'lead' });
+    await kit.files.write(LOCK, heldBy());
+    const LATER = '2030-01-08T10:05:00.000Z';
+    /** The front each look at the line sees on the step's ticket, the lead fronting T1 after the first look when `frontT1` says so. */
+    const fronts = async (label: string, frontT1: boolean): Promise<(string | undefined)[]> => {
+      const seen: (string | undefined)[] = [];
+      const sleep = async (ms: number): Promise<void> => {
+        for (const request of await lineRequests(kit.files, LOCK)) {
+          const frontAt = isRecord(request) ? request['frontAt'] : undefined;
+          seen.push(typeof frontAt === 'string' ? frontAt : undefined);
+        }
+        if (frontT1 && seen.length > 0) {
+          await front.put({ task: 'T1', at: LATER, by: 'lead' });
+        }
+        await kit.clock.sleep(ms);
+      };
+      const result = await kit.run(['queue', '--session', 'alpha', '--what', label, '--', 'npm', 'run', 'build'], { steps, sessionProcesses: otherRuns(), sleep });
+      assert.equal(result.code, 2, `po holds the lock past the wait (${label})`);
+      return seen;
+    };
+    const fromStart = await fronts('T2 build', false);
+    assert.deepEqual([fromStart.length > 0, fromStart.filter((at) => at !== '2030-01-08T09:00:00.000Z')], [true, []], 'fronted when it queued');
+    const later = await fronts('T1 build', true);
+    assert.deepEqual([later[0], later.at(-1)], [undefined, LATER], 'fronted at its next read of the register');
   });
 
   for (const [flag, value, message] of [
