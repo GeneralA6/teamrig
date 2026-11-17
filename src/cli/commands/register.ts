@@ -514,6 +514,10 @@ async function runOf(flags: Flags, runtime: CliRuntime): Promise<Pick<StatusInpu
 
 export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = taskIdOf(onePositional(args, 'id'));
+  // A note alone is progress, not a status: `update --note` keeps the answer a restated `set` would clear (#701).
+  if (!args.flags.has('status') && args.flags.has('note')) {
+    throw new UsageError(`--status is required; a note alone goes through ${KIT_NAME} update ${id} --note "..", which keeps the status and any answer given (a set restating the same waits asks again)`);
+  }
   const caller = callerOf(args.flags, runtime.env);
   const team = await openTeam(runtime, 'write');
   const typed = setInputOf(args.flags, typedTimes(runtime, team.zone));
