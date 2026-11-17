@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { ChangeQuery, ChangeRead, ResolvedPoint } from '../source.ts';
 import { changeDepsOf, commitOf, FakeChangeGit, registerTaskOf, taskReaderOf } from '../../testing/fake-change-git.ts';
 import { MemoryFiles } from '../../testing/memory-files.ts';
+import { assertWithin } from '../../testing/time-bound.ts';
 import { GIT_SOURCE } from './git.ts';
 import { NOTES_SOURCE, readNote } from './notes.ts';
 import { REGISTER_SOURCE } from './register.ts';
@@ -122,6 +123,11 @@ describe('the notes source', () => {
     const read = readNote('changes/a.md', note('area: setup\nkind: action\naudience: all\naction: teamrig setup --repair'));
     assert.equal(read.kind, 'entry');
     assert.equal(read.kind === 'entry' ? read.entry.action : undefined, 'teamrig setup --repair');
+  });
+
+  it('reads a front matter line of any length in linear time', async () => {
+    const read = await assertWithin(1000, () => readNote('changes/a.md', note(`area:${' '.repeat(120_000)}open web`)));
+    assert.equal(read.kind === 'entry' ? read.entry.area : read.warning, 'open web');
   });
 
   it('names what is wrong with a bad note, by file and line', () => {
