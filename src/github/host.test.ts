@@ -27,6 +27,8 @@ import {
   isLabelFileRead,
   isLabelRead,
   isLabelRemove,
+  isFieldValueSet,
+  isIssueTypeSet,
   isLinkAdd,
   isWatchProbe,
   isUserRead,
@@ -557,6 +559,53 @@ describe('GitHubIssueHost links', () => {
     assert.deepEqual(await host.links('acme/web'), { kind: 'failed', reason });
     assert.deepEqual(await host.addSubIssue(TARGET, 1008), { kind: 'failed', reason });
     assert.deepEqual(await host.addBlockedBy(TARGET, 1008), { kind: 'failed', reason });
+    assert.deepEqual(gh.ran, []);
+  });
+});
+
+describe('GitHubIssueHost fields (T3406)', () => {
+  const PRIORITY = { name: 'Priority', kind: 'single-select', id: 11, options: ['P1'] } as const;
+
+  it("reads the fields with the owner's token, and sets a field's value and an issue's type through the allowlisted calls", async () => {
+    const stdout = JSON.stringify({
+      data: {
+        repository: {
+          issueTypes: { nodes: [{ name: 'Bug', isEnabled: true }] },
+          issueFields: { nodes: [{ __typename: 'IssueFieldSingleSelect', name: 'Priority', fullDatabaseId: '11', options: [{ name: 'P1' }] }] },
+          issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [{ number: 7, issueType: null, issueFieldValues: { nodes: [] } }] },
+        },
+      },
+    });
+    const reader = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 0 }, stdout, stderr: '' });
+    const read = await hostWith(reader, new FakeCredentials().saves('teamrig-gh-acme', 'acme-issues-token')).fields.read('acme/web');
+    assert.deepEqual(read, { kind: 'read', fields: [PRIORITY], types: ['Bug'], issues: [{ number: 7, type: undefined, values: new Map() }], notes: [] });
+    assert.ok(isIssueQuery(reader.ran[0]?.args ?? []) && reader.ran[0]?.env['GH_TOKEN'] === 'acme-issues-token');
+    const gh = new FakeGh();
+    const host = hostWith(gh, new FakeCredentials().saves('teamrig-gh-acme', 'acme-issues-token'));
+    assert.deepEqual(await host.fields.setField(TARGET, PRIORITY, 'P1'), { kind: 'done' });
+    assert.deepEqual(await host.fields.setType(TARGET, 'Bug'), { kind: 'done' });
+    assert.deepEqual(gh.ran.map((request) => request.args), [
+      ['api', 'repos/acme/web/issues/7/issue-field-values', '-X', 'POST', '-F', 'issue_field_values[][field_id]=11', '-f', 'issue_field_values[][value]=P1'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'type=Bug'],
+    ]);
+    assert.ok(isFieldValueSet(gh.ran[0]?.args ?? []) && isIssueTypeSet(gh.ran[1]?.args ?? []));
+    assert.ok(gh.ran.every((request) => request.env['GH_TOKEN'] === 'acme-issues-token'));
+  });
+
+  it('names the field or type a refusal was for, and runs no gh when the store cannot read the key', async () => {
+    const denied = new FakeGh().failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by personal access token (HTTP 403)\n' });
+    const host = hostWith(denied);
+    assert.deepEqual(await host.fields.setField(TARGET, PRIORITY, 'P1'), {
+      kind: 'failed',
+      reason: 'the token saved as teamrig-gh-acme may not set the field "Priority" of acme/web#7: on GitHub, edit that token and set Issues and Pull requests to Read and write; its text stays the same, so nothing needs saving again',
+    });
+    const refused = new FakeGh().failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Validation Failed (HTTP 422)\n' });
+    assert.deepEqual(await hostWith(refused).fields.setType(TARGET, 'Bug'), { kind: 'failed', reason: 'gh api to set the type of acme/web#7 exited with code 1: gh: Validation Failed (HTTP 422)' });
+    const gh = new FakeGh();
+    const locked = hostWith(gh, new FakeCredentials().failsOn('teamrig-gh-acme', 'the keyring is locked'));
+    const reason = 'could not read teamrig-gh-acme from the test store: the keyring is locked; unlock the store and rerun, or save the key again with: save teamrig-gh-acme';
+    assert.deepEqual(await locked.fields.read('acme/web'), { kind: 'failed', reason });
+    assert.deepEqual(await locked.fields.setType(TARGET, 'Bug'), { kind: 'failed', reason });
     assert.deepEqual(gh.ran, []);
   });
 });

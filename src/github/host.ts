@@ -23,6 +23,7 @@ import {
   type IssueTarget,
   type WatchMarks,
 } from '../issues/host.ts';
+import type { FieldValue, HostField, HostFieldRead, IssueFields } from '../issues/fields.ts';
 import type { IssueState } from '../issues/issue.ts';
 import type { HostPosts } from '../issues/post.ts';
 import { LABEL_FILE, parseLabelFile } from '../issues/label-file.ts';
@@ -33,6 +34,7 @@ import {
   assigneeReadArgs,
   blockedByAddArgs,
   commentsReadArgs,
+  fieldValueSetArgs,
   issueAssignArgs,
   issueUnassignArgs,
   issueBodyArgs,
@@ -42,6 +44,7 @@ import {
   issueLabelAddArgs,
   issueLabelRemoveArgs,
   issueReadArgs,
+  issueTypeSetArgs,
   jobLogArgs,
   labelReadArgs,
   isLogin,
@@ -57,6 +60,7 @@ import {
 } from './gh.ts';
 import { type ProbeAnswer, probeAnswerOf } from './probe.ts';
 import { ghFailureKind, ISSUE_LIMIT, type IssueList, listIssues, plainLine, readCommentsIn, type ReadKind, runRead, startFailureText } from './issues.ts';
+import { readFields } from './fields.ts';
 import { failedLogExcerpt } from './job-log.ts';
 import { listLinks } from './links.ts';
 import { createdNumber } from './migrate.ts';
@@ -408,6 +412,20 @@ export class GitHubIssueHost implements IssueHost {
    * reads as changed again later); failed when none changed and one failed, with that line, any secret shape
    * redacted; else unchanged. GitHub answers an unchanged probe 304, which does not count against the rate limit.
    */
+  /**
+   * Issue fields and types: a read of the shipped fields query with the same access as a list, and each write one
+   * field's value or the type of one issue (gh.ts isFieldValueSet, isIssueTypeSet).
+   */
+  readonly fields: IssueFields = {
+    read: async (repo: string): Promise<HostFieldRead> => {
+      const access = await this.tokens.accessFor(repo);
+      return access instanceof NoAccessError ? { kind: 'failed', reason: access.message } : readFields(this.gh, access, repo);
+    },
+    setField: (target: IssueTarget, field: HostField, value: FieldValue): Promise<HostEnd> =>
+      this.write(target, fieldValueSetArgs(target, field.id, value), `set the field ${JSON.stringify(field.name)} of`),
+    setType: (target: IssueTarget, type: string): Promise<HostEnd> => this.write(target, issueTypeSetArgs(target, type), 'set the type of'),
+  };
+
   async watch(repo: string, marks: WatchMarks): Promise<HostWatch> {
     const access = await this.tokens.accessFor(repo);
     if (access instanceof NoAccessError) {

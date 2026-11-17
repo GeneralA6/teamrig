@@ -8,7 +8,9 @@ import {
   isIssueUnassign,
   isIssueBodyEdit,
   isIssueClose,
+  isFieldValueSet,
   isIssueComment,
+  isIssueTypeSet,
   isIssueCreate,
   isIssueRead,
   isJobLogRead,
@@ -33,7 +35,7 @@ import {
   type WatchPath,
 } from '../github/gh.ts';
 import { nodesOf } from '../github/issues.ts';
-import { CLOSED_ISSUES_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, OPEN_PULLS_QUERY, PULL_PAGE_SIZE, PULL_REQUESTS_QUERY, RAW_FIELD } from '../github/queries.ts';
+import { CLOSED_ISSUES_QUERY, ISSUE_FIELDS_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, OPEN_PULLS_QUERY, PULL_PAGE_SIZE, PULL_REQUESTS_QUERY, RAW_FIELD } from '../github/queries.ts';
 
 /** What a test sets on an issue; the rest takes a plain default. */
 export interface IssueSpec {
@@ -295,6 +297,13 @@ const MENTION_PAGE = /^repos\/([^/]+\/[^/]+)\/(issues\/comments|pulls\/comments|
 /** A pull request's reviews path: its repository and number. */
 const REVIEW_PAGE = /^repos\/([^/]+\/[^/]+)\/pulls\/([0-9]+)\/reviews\?/;
 
+/** A repository's issue fields, its issue types and its open issues' values, each node as the fields query prints it. */
+export interface FakeFields {
+  readonly fields: readonly JsonRecord[];
+  readonly types: readonly JsonRecord[];
+  readonly issues: readonly JsonRecord[];
+}
+
 /**
  * A gh that reaches no network: each request is recorded, so a test can hold every one to a read. A page of the
  * open or closed issue query gets the issues `holds` set for the repository in that state, closed ones changed
@@ -305,6 +314,7 @@ const REVIEW_PAGE = /^repos\/([^/]+\/[^/]+)\/pulls\/([0-9]+)\/reviews\?/;
 export class FakeGh implements GhRunner {
   readonly ran: GhRequest[] = [];
   private readonly issues = new Map<string, readonly JsonRecord[]>();
+  private readonly fielded = new Map<string, FakeFields>();
   private readonly pulls = new Map<string, readonly JsonRecord[]>();
   private readonly canned = new Map<string, GhResult>();
   private readonly pullFailures = new Map<string, GhResult>();
@@ -329,6 +339,26 @@ export class FakeGh implements GhRunner {
   /** How often each `<repo> <probe path>` changed: its entity tag is `W/"v<count>"`. */
   private readonly versions = new Map<string, number>();
   private readonly probeFailures = new Map<string, GhResult>();
+
+  /**
+   * From now on, `repo` has these issue fields and types, and its open issues these values, as the fields query
+   * prints them (github/queries.ts ISSUE_FIELDS_QUERY); a repository a test gave none has no fields and no types.
+   */
+  holdsFields(repo: string, fields: FakeFields): this {
+    this.fielded.set(repo, fields);
+    return this;
+  }
+
+  /** The one page of the fields query for `repo`. */
+  private fieldsRead(repo: string): GhResult {
+    const held = this.fielded.get(repo);
+    const repository = {
+      issueTypes: { nodes: held?.types ?? [] },
+      issueFields: { nodes: held?.fields ?? [] },
+      issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: held?.issues ?? [] },
+    };
+    return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ data: { repository } }), stderr: '' };
+  }
 
   /** From now on, `repo` holds these issues (as ghIssue builds them). */
   holds(repo: string, issues: readonly JsonRecord[]): this {
@@ -513,7 +543,7 @@ export class FakeGh implements GhRunner {
       const log = this.jobLogs.get(Number(request.args[3]));
       return this.canned.get(repo) ?? (log === undefined ? notVisible(repo) : { end: { kind: 'exited', code: 0 }, stdout: log, stderr: '' });
     }
-    if (isIssueComment(request.args) || isIssueBodyEdit(request.args) || isIssueClose(request.args) || isLabelAdd(request.args) || isLabelRemove(request.args) || isIssueAssign(request.args) || isIssueUnassign(request.args)) {
+    if (isIssueComment(request.args) || isIssueBodyEdit(request.args) || isIssueClose(request.args) || isLabelAdd(request.args) || isLabelRemove(request.args) || isIssueAssign(request.args) || isIssueUnassign(request.args) || isFieldValueSet(request.args) || isIssueTypeSet(request.args)) {
       return this.writeFailure ?? { end: { kind: 'exited', code: 0 }, stdout: '{}', stderr: '' };
     }
     if (isLinkAdd(request.args)) {
@@ -534,6 +564,9 @@ export class FakeGh implements GhRunner {
     const pulls = this.pulls.get(repo);
     if (issues === undefined && pulls === undefined) {
       return notVisible(repo);
+    }
+    if (query === ISSUE_FIELDS_QUERY) {
+      return this.fieldsRead(repo);
     }
     const since = Date.parse(fieldOf(request.args, 'since') ?? '');
     const held =
