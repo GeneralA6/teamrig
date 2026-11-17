@@ -165,7 +165,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   files: { effect: 'write', flags: ['session'], switches: ['notes'], load: async () => (await filesCommands()).files },
   'inbox read': { effect: 'write', bindsTab: true, flags: ['session'], load: async () => (await inboxCommands()).read },
   'inbox status': { effect: 'read', flags: ['session'], load: async () => (await inboxCommands()).status },
-  'inbox add': { effect: 'write', flags: ['session', 'to', 'text', 'wake', 'wake-by'], load: async () => (await inboxCommands()).add },
+  'inbox add': { effect: 'write', flags: ['session', 'from', 'to', 'text', 'wake', 'wake-by'], load: async () => (await inboxCommands()).add },
   'exec request': { effect: 'write', flags: ['session', 'file'], load: async () => (await execCommands()).request },
   'exec dry-run': { effect: 'write', flags: [], load: async () => (await execCommands()).dryRun },
   'exec approve': { effect: 'write', flags: ['session', 'note', 'team'], load: async () => (await execCommands()).approve },
@@ -663,6 +663,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       own, any team's lead, or a session its config names in roles
       --wake-by <time>: wakes each receiver at that time instead, only if it has not seen the line by
       then and its tab is idle; the same gate
+      --from host:<job>: a line from a host scheduled job, which runs as no session: no --session,
+      sessions of the team by id or name only, no wake; ~/.teamrig/bin/inbox-add.mjs runs it
   exec request --file <request.json>   asks to run a privileged command: the JSON names the command, its
       code binding, variables, dry run or preview, purpose, expected effect and rollback; logged as R<n>
   exec dry-run R<n>    runs the request's read-only dry run, logged for the reviewer
