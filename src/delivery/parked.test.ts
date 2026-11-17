@@ -71,6 +71,7 @@ describe('parking and claiming', () => {
     assert.equal(await hasParked(files, DIR), true);
     assert.deepEqual(await claimParked(files, DIR), { steps: [], unreadable: [torn] });
     assert.equal(files.get(torn), '{"v":1,');
+    assert.equal(await hasParked(files, DIR, new Set([torn])), false, 'a file already found no step keeps no dispatcher running');
   });
 
   it('finds nothing in a folder that does not exist', async () => {

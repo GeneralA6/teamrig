@@ -91,9 +91,12 @@ export async function park(files: Pick<Files, 'write'>, dir: string, step: Parke
   return path;
 }
 
-/** Whether the parked folder `dir` holds a step of any team, so a dispatcher is still needed. */
-export async function hasParked(files: Pick<Files, 'list'>, dir: string): Promise<boolean> {
-  return (await files.list(dir)).some((name) => name.endsWith(PARKED_SUFFIX) && !isTemporaryName(name));
+/**
+ * Whether the parked folder `dir` holds a step of any team, so a dispatcher is still needed. `skip` holds the paths a
+ * dispatcher already found are no step (`claimParked`'s unreadable): they would keep it running with nothing to run.
+ */
+export async function hasParked(files: Pick<Files, 'list'>, dir: string, skip: ReadonlySet<string> = new Set()): Promise<boolean> {
+  return (await files.list(dir)).some((name) => name.endsWith(PARKED_SUFFIX) && !isTemporaryName(name) && !skip.has(join(dir, name)));
 }
 
 /** What claiming the parked folder found: the steps this call took, oldest first, and the files that are no step. */
