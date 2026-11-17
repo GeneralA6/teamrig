@@ -441,6 +441,8 @@ PREVIEW nothing was written; a push would send 7 write(s) now, at most 40 a run,
   push writes nothing to it and a `SHARED` line names them, so a person gives the ref to one of them. A finished task
   often keeps its ref, so one active team task speaks over finished ones; with none active, the newest finished one
   speaks.
+- **A pull request is left as it is.** A task whose ref is an open pull request gets a `PULL` line and is counted on the
+  `PUSH` line: the push writes only issues. A task on a closed pull request stays `UNLISTED`.
 - **A taker's issue stays theirs.** A done or dropped task closes its issue only when the issue is unassigned or
   assigned to the team: the logins `github.owners` maps and the account that owns the repository. An issue assigned
   only to people outside the team is their work, and a task that only took part in it (a comment, an answer) ends

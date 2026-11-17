@@ -1396,7 +1396,8 @@ Flags:
   assigned to no one; a done task closes it as completed, a
   dropped one as not planned. It plans against the issues as GitHub lists them now, so a label someone changed by
   hand is set back and a run that stopped half way is planned again whole. It never reopens an issue a person
-  closed: a `KEPT` line names it, and an `UNLISTED` line an active task's issue that is not open on GitHub. A run
+  closed: a `KEPT` line names it, an `UNLISTED` line an active task's issue that is not open on GitHub, and a `PULL`
+  line a task on an open pull request, which the push leaves as it is. A run
   sends at most 40 writes (half GitHub's limit of 80 a minute), shared by the repositories in order, and leaves the
   rest for the next. On its own it only
   plans: it reads the issues and writes nothing. With `--yes` a session on the team sends the plan, a `SET` line for
