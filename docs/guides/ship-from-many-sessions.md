@@ -35,7 +35,8 @@ teamrig queue --session api --what "test api" -- teamrig test -- npm test
 DONE exit 0
 ```
 
-Waiting steps go in admission order, each told its place in line: an incident's (p0) step first, then the
+Waiting steps go in admission order, each told its place in line: a step of the task the lead put at the front
+(`teamrig pipeline front <task>`, say a blocker's fix) first, then an incident's (p0) step, then the
 work class whose turn it is, so each class gets its `focus.allocation` share of the host's run time, then the task's
 priority, raised a level for each `delivery.queue.agingMinutes` (15) waited, then arrival. A small step waits only behind
 earlier small steps, a heavy one only behind earlier heavy steps. A session runs at most

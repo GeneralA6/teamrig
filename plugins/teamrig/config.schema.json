@@ -861,7 +861,7 @@
               "default": 2048
             },
             "admission": {
-              "description": "How the host lock's line is ordered: pipeline lets the most urgent step in first (a p0 step at once, then by class turn, priority raised by agingMinutes waited, and arrival), with at most perSessionRunning heavy steps of one session running and maxHeavyParallel heavy steps sharing the host at once, small steps in a line of their own with at most maxSmallParallel of them at once, and is the default; serial keeps one line in arrival order with no cap and one heavy step at a time, for a team whose own deploy tool takes the lock file without first waiting for the shares to end. A step in line reads this key and the five after it again at each look, so an edit reaches the steps already waiting.",
+              "description": "How the host lock's line is ordered: pipeline lets the most urgent step in first (a step of the task the lead put at the front with teamrig pipeline front, then a p0 step at once, then by class turn, priority raised by agingMinutes waited, and arrival), with at most perSessionRunning heavy steps of one session running and maxHeavyParallel heavy steps sharing the host at once, small steps in a line of their own with at most maxSmallParallel of them at once, and is the default; serial keeps one line in arrival order with no cap and one heavy step at a time, for a team whose own deploy tool takes the lock file without first waiting for the shares to end. A step in line reads this key and the five after it again at each look, so an edit reaches the steps already waiting.",
               "enum": ["pipeline", "serial"],
               "default": "pipeline"
             },

@@ -618,6 +618,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       lead or the delivery owner only; REFUSED for a start in the past or a secret in the reason
   pipeline unfreeze <id> [--session <id|name>]   ends pipeline freeze <id> (F3) now, or drops one
       still to come; the lead or the delivery owner only
+  pipeline front <task>|--off [--session <id|name>]   puts one of the team's active tasks at the
+      front of the host line, say a blocker's fix: its queued steps go first, ahead of the steps
+      queued before them; a new front replaces the last, --off takes it off. Each team's lead fronts
+      only its own team's tasks, two teams' fronts in the order they were put; serial admission
+      ignores fronts. The lead only; REFUSED for a task the register lacks or not active
   merge [--session <id|name>] [--keep-remote] [--no-delete-local]   merges the branch checked out
       here into origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
       changes, nothing new, a dependency change delivery.repos.<name>.dependencyGate holds and

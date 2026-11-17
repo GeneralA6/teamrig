@@ -4809,7 +4809,8 @@ starts for the team's code: `test`, the hooks of `merge`, `deploy` and `worktree
 sessions `launch` starts. A build or a test runs the repository's code, which needs none of the session's tokens. It waits for the lock until its line has not moved
 for `delivery.queue.waitMinutes` (60 by default). Waiters take it in their turn: each joins a line of tickets in `<lock>.queue` and only the
 first live one may take the lock, looking every 2 s; the rest look every `delivery.wait.pollSeconds` (30). With
-`delivery.queue.admission` `pipeline` the line is in admission order: a p0 step first, then by class
+`delivery.queue.admission` `pipeline` the line is in admission order: a step of the task its lead put at the
+[front](#teamrig-pipeline-front) first, then a p0 step, then by class
 turn, then by priority, which rises a level for each `delivery.queue.agingMinutes` (15) waited but never to p0, then by
 arrival. Under `pipeline` a `--small` step and a heavy step stand in two lines, each in that order: a small step waits
 only behind earlier small steps, never behind a heavy one, and a heavy one only behind earlier heavy steps. Class turns
@@ -5232,6 +5233,35 @@ Output:
 
 ```text
 UNFROZEN F3 2030-01-09 02:00 IST → 2030-01-09 04:00 IST, all steps, by lead (backup)
+```
+
+### teamrig pipeline front
+
+Puts one of the team's active tasks at the front of the host line, say the fix of a blocker that holds other work: the
+steps queued for it (`teamrig queue --task`, `teamrig merge` on its branch) go first, ahead of the steps queued before
+them, instead of waiting their turn. A step already waiting moves at its next look at its task, within a minute. One
+task at a time: a new front replaces the last, `--off` takes it off, and fronting the task already there keeps its
+place. Each team's lead fronts only its own team's tasks; when two teams on the host front a task, the one put there
+first goes first. `delivery.queue.admission` `serial` keeps its plain order and ignores fronts.
+
+The lead only, since it moves every other session's steps back. REFUSED (exit 2) for a task the register lacks, one
+not active (open, in-progress, verifying, waiting), or another session.
+
+Flags:
+
+- `--off`: takes the task at the front off; its steps wait in the line's usual order again.
+- `--session <id|name>`: the lead; default `$TEAMRIG_SESSION`.
+
+Example:
+
+```sh
+teamrig pipeline front T5 --session lead
+```
+
+Output:
+
+```text
+FRONT T5: its queued steps go first in the host line (replaces T3)
 ```
 
 ### teamrig merge
