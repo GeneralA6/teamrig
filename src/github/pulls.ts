@@ -1,7 +1,8 @@
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
+import type { IssueComment } from '../issues/issue.ts';
 import type { FailedJob, HostPull, PullChecks, PullMergeable, PullReview, PullState } from '../issues/pull.ts';
 import type { GhRunner } from './gh.ts';
-import { connectionPage, loginOf, plainLine, repoPage, runRead, timeField, WEB_URL, type ReadKind } from './issues.ts';
+import { connectionPage, kindOf, loginOf, nodesOf, plainLine, postOf, repoPage, runRead, timeField, WEB_URL, type ReadKind } from './issues.ts';
 import { pullPageArgs, type PullRead } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
@@ -113,6 +114,8 @@ export function pullOf(item: unknown, repo: string): HostPull | null {
     closedAt: timeField(item, 'closedAt'),
     authorAssociation: stringField(item, 'authorAssociation') ?? '',
     author: loginOf(recordField(item, 'author')),
+    authorKind: kindOf(recordField(item, 'author')),
+    posts: postsOf(item),
     head,
     fork: item['isCrossRepository'] === true,
     mergeable: MERGEABLE[stringField(item, 'mergeable') ?? ''] ?? 'unknown',
@@ -135,6 +138,13 @@ function closedIssuesOf(references: JsonRecord | undefined, repo: string): numbe
     }
   }
   return numbers;
+}
+
+/** Its comments and submitted reviews, oldest first; a review still pending has no time and is left out. */
+function postsOf(item: JsonRecord): IssueComment[] {
+  const comments = nodesOf(item['comments']).flatMap((post) => postOf(post, 'createdAt'));
+  const reviews = nodesOf(item['reviews']).flatMap((post) => postOf(post, 'submittedAt'));
+  return [...comments, ...reviews].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }
 
 /** How a check run ends that counts as failed: each makes the rollup fail, and each may leave a log to read. */

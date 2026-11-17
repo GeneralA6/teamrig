@@ -124,6 +124,17 @@ export function commentNode(at: string, association: string, kind = 'User', text
   return { createdAt: at, authorAssociation: association, author: { __typename: kind, ...(text.login === undefined ? {} : { login: text.login }) }, body: text.body ?? '' };
 }
 
+/** A pull request as the changed read gives it: that query asks for no comments or reviews (github/queries.ts). */
+function withoutPosts(pull: JsonRecord): JsonRecord {
+  const { comments: _comments, reviews: _reviews, ...rest } = pull;
+  return rest;
+}
+
+/** A pull request review as the pull request query reads it: submitted at `at` (null while pending), by an author of that tie, kind and login. */
+export function reviewNode(at: string | null, association: string, kind = 'User', login = kind === 'Bot' ? 'ci-bot' : 'reviewer'): JsonRecord {
+  return { submittedAt: at, authorAssociation: association, author: { __typename: kind, login } };
+}
+
 /** A timeline item: the issue's title was changed at `at`. */
 export function renamedEvent(at: string): JsonRecord {
   return { __typename: 'RenamedTitleEvent', createdAt: at };
@@ -142,6 +153,12 @@ export interface PullSpec {
   readonly authorAssociation?: string;
   /** The author's login, `maintainer` unless set. */
   readonly author?: string;
+  /** The author's account kind, `User` unless set. */
+  readonly authorKind?: string;
+  /** Its comments, as commentNode builds them; none unless set. */
+  readonly comments?: readonly JsonRecord[];
+  /** Its reviews, as reviewNode builds them; none unless set. */
+  readonly reviews?: readonly JsonRecord[];
   /** The head branch, `t1-change` unless set. */
   readonly head?: string;
   readonly fork?: boolean;
@@ -171,7 +188,9 @@ export function ghPull(repo: string, number: number, spec: PullSpec = {}): JsonR
     closedAt: endedAt,
     mergedAt: state === 'MERGED' ? endedAt : null,
     authorAssociation: spec.authorAssociation ?? 'OWNER',
-    author: { __typename: 'User', login: spec.author ?? 'maintainer' },
+    author: { __typename: spec.authorKind ?? 'User', login: spec.author ?? 'maintainer' },
+    comments: { nodes: [...(spec.comments ?? [])] },
+    reviews: { nodes: [...(spec.reviews ?? [])] },
     headRefName: spec.head ?? 't1-change',
     isCrossRepository: spec.fork ?? false,
     mergeable: spec.mergeable ?? 'MERGEABLE',
@@ -525,7 +544,7 @@ export class FakeGh implements GhRunner {
           : query === ISSUE_LINKS_QUERY
             ? (issues ?? [])
             : query === PULL_REQUESTS_QUERY
-              ? (pulls ?? [])
+              ? (pulls ?? []).map(withoutPosts)
               : query === OPEN_PULLS_QUERY
                 ? (pulls ?? []).filter((pull) => pull['state'] === 'OPEN')
                 : undefined;

@@ -5,6 +5,7 @@ import {
   CHECK_CONTEXTS,
   CLOSING_REFS,
   CLOSED_ISSUES_QUERY,
+  COMMENTS_READ,
   closedPageArgs,
   ISSUE_LINKS_QUERY,
   ISSUE_PAGE_SIZE,
@@ -68,7 +69,7 @@ describe('the shipped queries', () => {
 
   it('read pull requests newest change first, with no body or comment text', () => {
     assert.match(PULL_REQUESTS_QUERY, /^query\(/);
-    assert.doesNotMatch(PULL_REQUESTS_QUERY, /mutation|body|comments/i);
+    assert.doesNotMatch(PULL_REQUESTS_QUERY, /mutation|body/i);
     assert.ok(PULL_REQUESTS_QUERY.includes(`first: ${PULL_PAGE_SIZE}`));
     assert.ok(PULL_REQUESTS_QUERY.includes('orderBy: {field: UPDATED_AT, direction: DESC}'));
     for (const field of ['updatedAt', 'mergedAt', 'authorAssociation', 'isCrossRepository', 'mergeable', 'reviewDecision', 'statusCheckRollup { state', 'CheckRun { name conclusion databaseId }', `contexts(first: ${CHECK_CONTEXTS})`, `closingIssuesReferences(first: ${CLOSING_REFS}) { nodes { number repository { nameWithOwner } } }`]) {
@@ -77,10 +78,20 @@ describe('the shipped queries', () => {
     assert.deepEqual(pullPageArgs({ ...PAGE, after: 'Y3Vyc29y' }, 'changed'), ['api', 'graphql', '-f', `query=${PULL_REQUESTS_QUERY}`, '-f', 'owner=acme', '-f', 'name=web', '-f', 'after=Y3Vyc29y']);
   });
 
-  it('read the open pull requests alone, with the same fields', () => {
+  it("ask, in the open read only, for each pull request comment's and review's time and author, never its text (#1351, #1366)", () => {
+    const comments = `comments(last: ${COMMENTS_READ}) { nodes { createdAt authorAssociation author { __typename login } } }`;
+    const reviews = `reviews(last: ${COMMENTS_READ}) { nodes { submittedAt authorAssociation author { __typename login } } }`;
+    assert.ok(OPEN_PULLS_QUERY.includes(comments), OPEN_PULLS_QUERY);
+    assert.ok(OPEN_PULLS_QUERY.includes(reviews), OPEN_PULLS_QUERY);
+    // The changed read also pages merged and closed ones, which never become threads: their posts would only cost nodes.
+    assert.doesNotMatch(PULL_REQUESTS_QUERY, /comments\(|reviews\(/);
+  });
+
+  it('read the open pull requests alone, with the same fields and their posts', () => {
     assert.ok(OPEN_PULLS_QUERY.includes('states: [OPEN]'));
-    assert.doesNotMatch(OPEN_PULLS_QUERY, /mutation|body|comments/i);
-    assert.equal(OPEN_PULLS_QUERY.replace('states: [OPEN], ', ''), PULL_REQUESTS_QUERY);
+    assert.doesNotMatch(OPEN_PULLS_QUERY, /mutation|body/i);
+    const withoutPosts = OPEN_PULLS_QUERY.replace('states: [OPEN], ', '').replace(/\n\s*comments\(last: [^\n]*\n\s*reviews\(last: [^\n]*/, '');
+    assert.equal(withoutPosts, PULL_REQUESTS_QUERY);
     assert.deepEqual(pullPageArgs(PAGE, 'open'), ['api', 'graphql', '-f', `query=${OPEN_PULLS_QUERY}`, '-f', 'owner=acme', '-f', 'name=web']);
   });
 

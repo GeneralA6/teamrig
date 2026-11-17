@@ -91,15 +91,24 @@ export const CLOSING_REFS = 5;
  * What both pull request reads get of one: no body and no comment text, only what tells a monitor that something
  * happened to it, and who opened it from where (`isCrossRepository`: a fork). Each check run of its last commit
  * gives its name, how it ended and its id (an Actions job's id), so a failed one's log can be read (pulls.ts). The
- * issues it closes once merged route its news to the tasks holding them, whatever its branch is named.
+ * issues it closes once merged route its news to the tasks holding them, whatever its branch is named. With `posts`
+ * (the open read only: the changed read also pages merged and closed ones, which never become threads), its newest
+ * comments and reviews give only when and by whom, so the response clock sees who spoke last (clock.ts).
  */
-const PULL_NODE = `nodes {
+function pullNode(posts: boolean): string {
+  const postFields = posts
+    ? `
+        comments(last: ${COMMENTS_READ}) { nodes { createdAt authorAssociation author { __typename login } } }
+        reviews(last: ${COMMENTS_READ}) { nodes { submittedAt authorAssociation author { __typename login } } }`
+    : '';
+  return `nodes {
         number title url state isDraft createdAt updatedAt closedAt mergedAt authorAssociation
-        author { __typename login }
+        author { __typename login }${postFields}
         headRefName isCrossRepository mergeable reviewDecision
         closingIssuesReferences(first: ${CLOSING_REFS}) { nodes { number repository { nameWithOwner } } }
         commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: ${CHECK_CONTEXTS}) { nodes { __typename ... on CheckRun { name conclusion databaseId } } } } } } }
       }`;
+}
 
 /**
  * Pull requests in any state, the most recently changed first, so a reader stops at the first one changed before
@@ -109,7 +118,7 @@ export const PULL_REQUESTS_QUERY = `query($owner: String!, $name: String!, $afte
   repository(owner: $owner, name: $name) {
     pullRequests(first: ${PULL_PAGE_SIZE}, after: $after, orderBy: {field: UPDATED_AT, direction: DESC}) {
       pageInfo { hasNextPage endCursor }
-      ${PULL_NODE}
+      ${pullNode(false)}
     }
   }
 }`;
@@ -123,7 +132,7 @@ export const OPEN_PULLS_QUERY = `query($owner: String!, $name: String!, $after: 
   repository(owner: $owner, name: $name) {
     pullRequests(first: ${PULL_PAGE_SIZE}, after: $after, states: [OPEN], orderBy: {field: UPDATED_AT, direction: DESC}) {
       pageInfo { hasNextPage endCursor }
-      ${PULL_NODE}
+      ${pullNode(true)}
     }
   }
 }`;

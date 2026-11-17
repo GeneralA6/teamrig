@@ -101,7 +101,11 @@ describe('teamrig issue sync --auto', () => {
         'GitHub sync added 1 task(s) for you: T1 gh:acme/web#7 "Fix login"',
         'GitHub pull requests: gh:acme/web#20 "Change 20": conflicts with its base',
       ]);
-      assert.deepEqual(githubLines(kit, 'alpha'), ['GitHub pull requests: gh:acme/web#22 "Change 22": opened by stranger (outside, fork); gh:acme/web#21 "Change 21": merged']);
+      assert.deepEqual(githubLines(kit, 'alpha'), [
+        // The outsider's pull request waits on the watcher's answer from its opening (#1351): the response clock's unwoken reminder.
+        'GitHub gh:acme/web#22 (pull) has waited 130 h for an answer of ours, since 01-03 00:00 UTC; answer it in words on GitHub by 01-04 00:00 UTC, its 24 h target, or GH-LATE goes to the lead',
+        'GitHub pull requests: gh:acme/web#22 "Change 22": opened by stranger (outside, fork); gh:acme/web#21 "Change 21": merged',
+      ]);
       assert.deepEqual(githubLines(kit, 'lead'), []);
       const asks = new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks'));
       assert.deepEqual([(await asks.read('bravo')).length, (await asks.read('alpha')).length], wake ? [1, 0] : [0, 0], `wake ${wake}: an outsider's new pull request is intake work, told without a wake`);
@@ -365,6 +369,9 @@ describe('teamrig issue sync --auto, the activity on a task\'s or a followed ite
     assert.deepEqual([await asks(kit, 'alpha'), await asks(kit, 'charlie')], [0, 0]);
   });
 
+  /** The response clock's reminder for that pull request: it waits on its recipient from its opening (#1351). */
+  const OUTSIDE_PULL_WAITS = 'GitHub gh:acme/web#9 (pull) has waited 178 h for an answer of ours, since 01-01 00:00 UTC; answer it in words on GitHub by 01-02 00:00 UTC, its 24 h target, or GH-LATE goes to the lead';
+
   /** An outsider's pull request #9, first with its checks running, then green with changes requested. */
   const outsidePull = (checks: 'PENDING' | 'SUCCESS', reviewDecision: 'CHANGES_REQUESTED' | null, updatedAt: string): JsonRecord =>
     ghPull('acme/web', 9, { head: 'feature', author: 'visitor', authorAssociation: 'CONTRIBUTOR', checks, reviewDecision, updatedAt });
@@ -375,7 +382,8 @@ describe('teamrig issue sync --auto, the activity on a task\'s or a followed ite
     await run(kit, new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [outsidePull('SUCCESS', 'CHANGES_REQUESTED', '2030-01-02T00:00:00Z')]));
     const news = 'GitHub pull requests: gh:acme/web#9 "Change 9": checks passing, changes requested';
     for (const id of ['lead', 'alpha', 'charlie']) {
-      assert.deepEqual(githubLines(kit, id), [news], id);
+      // Its recipient also answers it: the response clock's unwoken reminder (#1351).
+      assert.deepEqual(githubLines(kit, id), id === 'lead' ? [OUTSIDE_PULL_WAITS, news] : [news], id);
       assert.equal(await asks(kit, id), 0, id);
     }
   });
@@ -385,7 +393,7 @@ describe('teamrig issue sync --auto, the activity on a task\'s or a followed ite
     await run(kit, new FakeGh().holds('acme/web', [openNine]).holdsPulls('acme/web', [outsidePull('PENDING', null, '2030-01-01T00:00:00Z')]));
     const pull = outsidePull('SUCCESS', 'CHANGES_REQUESTED', '2030-01-02T00:00:00Z');
     await run(kit, new FakeGh().holds('acme/web', [closedNine]).holdsPulls('acme/web', [pull]).holdsPosts('acme/web', 'issues/comments', [ask]));
-    assert.deepEqual(githubLines(kit, 'lead'), ['GitHub pull requests: gh:acme/web#9 "Change 9": changes requested']);
+    assert.deepEqual(githubLines(kit, 'lead'), [OUTSIDE_PULL_WAITS, 'GitHub pull requests: gh:acme/web#9 "Change 9": changes requested']);
     assert.deepEqual(githubLines(kit, 'alpha'), []);
     assert.deepEqual(githubLines(kit, 'charlie'), []);
   });

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseClocks } from '../github/clock.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
-import { commentNode, FakeGh, ghIssue } from '../testing/fake-gh.ts';
+import { commentNode, FakeGh, ghIssue, ghPull, reviewNode } from '../testing/fake-gh.ts';
 import { EXIT } from './runtime.ts';
 
 const GITHUB_TEAM: JsonRecord = { ...TEAM, github: { repos: ['acme/web'], owners: { octocat: 'bravo' } } };
@@ -77,6 +77,83 @@ describe('the response clock in issue sync (T3028)', () => {
     await sync(kit, new FakeGh().holds('acme/web', [ghIssue('acme/web', 3, { assignees: ['octocat'], comments: [commentNode(said, 'NONE')] })]));
     const clock = parseClocks(kit.files.get(CLOCKS) ?? '').get('gh:acme/web#3');
     assert.deepEqual(clock && { kind: clock.kind, owner: clock.owner, since: clock.since }, { kind: 'comment', owner: 'bravo', since: kit.clock.now() });
+  });
+
+  it("times an outsider's pull request as a pull thread of the watcher, reminds at 18 h and is GH-LATE at 24 h (#1351)", async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const opened = new Date(kit.clock.now()).toISOString();
+    const gh = new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [ghPull('acme/web', 12, { authorAssociation: 'CONTRIBUTOR', author: 'stranger', head: 'patch-1', fork: true, createdAt: opened, updatedAt: opened })]);
+    await sync(kit, gh);
+    const clock = parseClocks(kit.files.get(CLOCKS) ?? '').get('gh:acme/web#12');
+    assert.deepEqual(clock && { kind: clock.kind, owner: clock.owner, since: clock.since }, { kind: 'pull', owner: 'lead', since: kit.clock.now() });
+
+    kit.clock.advance(18 * HOUR);
+    assert.ok((await sync(kit, gh)).includes('REMINDED lead: gh:acme/web#12 waits on an answer'));
+    kit.clock.advance(6 * HOUR);
+    const check = await kit.run(['check', '--all'], { env: { TEAMRIG_SESSION: 'lead' } });
+    assert.ok(
+      check.stdout.some((line) => line.includes('GH-LATE gh:acme/web#12 (pull, lead) has waited 24 h')),
+      check.stdout.join('\n'),
+    );
+  });
+
+  it('stops a pull request clock at our comment or review; a bot neither starts nor stops it', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const at = (hours: number): string => new Date(kit.clock.now() + hours * HOUR).toISOString();
+    const pull = (spec: { readonly comments?: readonly JsonRecord[]; readonly reviews?: readonly JsonRecord[] }): FakeGh =>
+      new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [ghPull('acme/web', 12, { authorAssociation: 'NONE', author: 'stranger', createdAt: at(0), updatedAt: at(0), ...spec })]);
+    const running = (): readonly string[] => [...parseClocks(kit.files.get(CLOCKS) ?? '').keys()];
+
+    await sync(kit, pull({ comments: [commentNode(at(0), 'MEMBER', 'Bot')], reviews: [reviewNode(at(0), 'NONE', 'Bot')] }));
+    assert.deepEqual(running(), ['gh:acme/web#12'], "a bot's post is no answer of ours");
+    await sync(kit, pull({ reviews: [reviewNode(at(0), 'MEMBER', 'User', 'octocat')] }));
+    assert.deepEqual(running(), [], 'our review answers it');
+    await sync(kit, pull({ reviews: [reviewNode(null, 'MEMBER', 'User', 'octocat')] }));
+    assert.deepEqual(running(), ['gh:acme/web#12'], 'a review still pending answers nothing');
+    await sync(kit, pull({ comments: [commentNode(at(0), 'OWNER')] }));
+    assert.deepEqual(running(), [], 'our comment answers it');
+    await sync(kit, new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [ghPull('acme/web', 13, { authorAssociation: 'NONE', author: 'stranger', comments: [commentNode(at(0), 'NONE', 'Bot')] }), ghPull('acme/web', 14, { authorAssociation: 'NONE', authorKind: 'Bot', state: 'CLOSED' })]));
+    assert.deepEqual(running(), ['gh:acme/web#13'], 'an open one waits from its opening; a closed one keeps no clock');
+  });
+
+  it("times a collaborator's pull request as an outsider's: it starts a clock and their own follow-up is no answer (#1366)", async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const at = (hours: number): string => new Date(kit.clock.now() + hours * HOUR).toISOString();
+    const pull = (comments: readonly JsonRecord[]): FakeGh =>
+      new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [ghPull('acme/web', 12, { authorAssociation: 'COLLABORATOR', author: 'contrib', createdAt: at(0), updatedAt: at(0), comments })]);
+    const running = (): readonly string[] => [...parseClocks(kit.files.get(CLOCKS) ?? '').keys()];
+
+    await sync(kit, pull([]));
+    assert.deepEqual(running(), ['gh:acme/web#12'], 'a collaborator outside github.owners waits on us');
+    await sync(kit, pull([commentNode(at(1), 'COLLABORATOR', 'User', { login: 'contrib' })]));
+    assert.deepEqual(running(), ['gh:acme/web#12'], 'their follow-up is no answer');
+    await sync(kit, pull([commentNode(at(2), 'MEMBER', 'User', { login: 'octocat' })]));
+    assert.deepEqual(running(), [], 'a login of github.owners answers it');
+  });
+
+  it('keeps no clock on a draft pull request; its wait starts once it is marked ready (#1366)', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const opened = new Date(kit.clock.now()).toISOString();
+    const pull = (draft: boolean): FakeGh =>
+      new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [ghPull('acme/web', 12, { authorAssociation: 'NONE', author: 'stranger', createdAt: opened, updatedAt: opened, isDraft: draft })]);
+    const running = (): readonly string[] => [...parseClocks(kit.files.get(CLOCKS) ?? '').keys()];
+
+    await sync(kit, pull(true));
+    assert.deepEqual(running(), [], 'a draft asks nobody to look yet');
+    kit.clock.advance(30 * HOUR);
+    await sync(kit, pull(true));
+    assert.deepEqual(running(), [], 'still a draft past its target: no clock');
+    await sync(kit, pull(false));
+    assert.deepEqual(running(), ['gh:acme/web#12'], 'marked ready: it waits on us');
+  });
+
+  it("keeps a repository's clocks when its pull requests could not be read", async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const issue = ghIssue('acme/web', 9, { authorAssociation: 'NONE', createdAt: new Date(kit.clock.now()).toISOString() });
+    await sync(kit, new FakeGh().holds('acme/web', [issue]).holdsPulls('acme/web', [ghPull('acme/web', 12, { authorAssociation: 'NONE', author: 'stranger' })]));
+    const failed = await kit.run(['issue', 'sync', '--yes'], { gh: new FakeGh().holds('acme/web', []).failsPulls('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 502\n' }) });
+    assert.equal(failed.code, EXIT.failed);
+    assert.deepEqual([...parseClocks(kit.files.get(CLOCKS) ?? '').keys()].sort(), ['gh:acme/web#12', 'gh:acme/web#9']);
   });
 
   it('keeps no clock on a preview, nor for a repository it could not read', async () => {

@@ -24,6 +24,8 @@ function pull(number: number, overrides: Partial<HostPull> = {}): HostPull {
     closedAt: undefined,
     authorAssociation: 'OWNER',
     author: 'maintainer',
+    authorKind: 'User',
+    posts: [],
     head: 't1-change',
     fork: false,
     mergeable: 'mergeable',

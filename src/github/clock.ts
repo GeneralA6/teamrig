@@ -8,7 +8,8 @@
 import { isRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import type { TimeZone } from '../core/zone.ts';
-import type { HostIssue } from '../issues/issue.ts';
+import type { HostIssue, IssueComment } from '../issues/issue.ts';
+import type { HostPull } from '../issues/pull.ts';
 import { isInsideAuthor, isOurAuthor, type OurLogins } from './trust.ts';
 
 /** The kinds of thread, each with its own answer target. */
@@ -119,10 +120,21 @@ export function issueThread(issue: HostIssue, ref: string, owner: string, held: 
   if (issue.state !== 'open') {
     return undefined;
   }
-  const opening = issue.createdAt === undefined || issue.authorKind === BOT ? [] : [{ at: issue.createdAt, association: issue.authorAssociation, login: issue.author }];
-  const comments = issue.comments.filter((comment) => comment.authorKind !== BOT).map((comment) => ({ at: comment.at, association: comment.authorAssociation, login: comment.login }));
-  const posts = [...opening, ...comments].map((post) => ({ at: Date.parse(post.at), ours: postIsOurs(post.association, post.login, ours) }));
-  return { repo: issue.repo, ref, kind: issueKind(issue.labels, held), owner, posts };
+  const opening = issue.createdAt === undefined ? [] : [{ at: issue.createdAt, login: issue.author, authorAssociation: issue.authorAssociation, authorKind: issue.authorKind }];
+  return { repo: issue.repo, ref, kind: issueKind(issue.labels, held), owner, posts: threadPosts([...opening, ...issue.comments], ours) };
+}
+
+/**
+ * An open pull request as a `pull` thread: its opening and its comments and reviews read, a bot's left out, each ours
+ * by postIsOurs, as on an issue; `owner` answers it. Undefined for a merged or closed one, and for a draft: it asks
+ * nobody to look yet, so its wait starts once it is marked ready.
+ */
+export function pullThread(pull: HostPull, ref: string, owner: string, ours: OurLogins): Thread | undefined {
+  if (pull.state !== 'open' || pull.draft) {
+    return undefined;
+  }
+  const opening = { at: pull.createdAt, login: pull.author, authorAssociation: pull.authorAssociation, authorKind: pull.authorKind };
+  return { repo: pull.repo, ref, kind: 'pull', owner, posts: threadPosts([opening, ...pull.posts], ours) };
 }
 
 /**
@@ -137,6 +149,11 @@ export function postIsOurs(association: string, login: string, ours: OurLogins):
 
 /** An app's or a workflow's account kind: its posts are no one's answer and no one's ask. */
 const BOT = 'Bot';
+
+/** A thread's posts with a bot's left out, each ours by postIsOurs. */
+function threadPosts(posts: readonly IssueComment[], ours: OurLogins): ThreadPost[] {
+  return posts.filter((post) => post.authorKind !== BOT).map((post) => ({ at: Date.parse(post.at), ours: postIsOurs(post.authorAssociation, post.login, ours) }));
+}
 
 function issueKind(labels: readonly string[], held: boolean): ThreadKind {
   const has = (name: string): boolean => labels.some((label) => label.toLowerCase() === name);

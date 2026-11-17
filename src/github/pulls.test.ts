@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { FakeGh, ghPull } from '../testing/fake-gh.ts';
+import { commentNode, FakeGh, ghPull, reviewNode } from '../testing/fake-gh.ts';
 import { isIssueQuery } from './gh.ts';
 import type { HostPull } from '../issues/pull.ts';
 import { listPulls, pullOf, type PullListRequest } from './pulls.ts';
@@ -24,6 +24,8 @@ function readPull(number: number, overrides: Partial<HostPull> = {}): HostPull {
     closedAt: undefined,
     authorAssociation: 'OWNER',
     author: 'maintainer',
+    authorKind: 'User',
+    posts: [],
     head: 't1-change',
     fork: false,
     mergeable: 'mergeable',
@@ -161,6 +163,20 @@ describe('pullOf', () => {
       { name: 'setup', id: 45 },
     ]);
     assert.deepEqual(pullOf(ghPull('acme/web', 1, { checks: null }), 'acme/web')?.failedJobs, []);
+  });
+
+  it('reads its comments and submitted reviews as posts, oldest first, without their text (#1351)', () => {
+    const item = ghPull('acme/web', 1, {
+      authorKind: 'Bot',
+      comments: [commentNode('2030-01-03T00:00:00Z', 'NONE', 'User', { login: 'stranger', body: 'any news?' }), { authorAssociation: 'NONE' }],
+      reviews: [reviewNode('2030-01-02T00:00:00Z', 'MEMBER'), reviewNode(null, 'MEMBER')],
+    });
+    const pull = pullOf(item, 'acme/web');
+    assert.equal(pull?.authorKind, 'Bot');
+    assert.deepEqual(pull?.posts, [
+      { at: '2030-01-02T00:00:00Z', login: 'reviewer', authorAssociation: 'MEMBER', authorKind: 'User' },
+      { at: '2030-01-03T00:00:00Z', login: 'stranger', authorAssociation: 'NONE', authorKind: 'User' },
+    ]);
   });
 
   it("reads the issues of its own repository it closes, once each, leaving out another repository's and a bad node", () => {

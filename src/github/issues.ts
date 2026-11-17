@@ -284,7 +284,7 @@ function issueOf(item: unknown, repo: string): HostIssue | null {
     labelEvents: events.flatMap(labelEventOf),
     renamedAt: latestRename(events),
     createdAt: timeField(item, 'createdAt'),
-    comments: nodesOf(item['comments']).flatMap(commentOf),
+    comments: nodesOf(item['comments']).flatMap((comment) => postOf(comment, 'createdAt')),
     linkedPulls: countOf(recordField(item, 'closedByPullRequestsReferences')),
   };
 }
@@ -307,11 +307,14 @@ function labelEventOf(event: JsonRecord): LabelEvent[] {
   return [{ label: name, at, actor: loginOf(actor), actorKind: kindOf(actor) }];
 }
 
-/** A comment's time and author, or nothing when it lacks its time; a deleted author reads as an empty login and kind. */
-function commentOf(comment: JsonRecord): IssueComment[] {
-  const at = timeField(comment, 'createdAt');
-  const author = recordField(comment, 'author');
-  return at === undefined ? [] : [{ at, login: loginOf(author), authorAssociation: stringField(comment, 'authorAssociation') ?? '', authorKind: kindOf(author) }];
+/**
+ * A post's time (its `timeKey` field: a comment's `createdAt`, a review's `submittedAt`) and author, or nothing when it
+ * lacks its time, as a review not yet submitted does; a deleted author reads as an empty login and kind.
+ */
+export function postOf(post: JsonRecord, timeKey: 'createdAt' | 'submittedAt'): IssueComment[] {
+  const at = timeField(post, timeKey);
+  const author = recordField(post, 'author');
+  return at === undefined ? [] : [{ at, login: loginOf(author), authorAssociation: stringField(post, 'authorAssociation') ?? '', authorKind: kindOf(author) }];
 }
 
 /** The time of the newest change of title among the timeline events. */
@@ -325,7 +328,7 @@ export function loginOf(account: JsonRecord | undefined): string {
 }
 
 /** The account's kind (`User`, `Bot`, `Organization`), empty when GitHub gives none. */
-function kindOf(account: JsonRecord | undefined): string {
+export function kindOf(account: JsonRecord | undefined): string {
   return account === undefined ? '' : (stringField(account, '__typename') ?? '');
 }
 

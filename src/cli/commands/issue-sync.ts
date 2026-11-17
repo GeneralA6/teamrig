@@ -37,7 +37,7 @@ import { teamRegister } from '../team-register.ts';
 import type { Thread } from '../../github/clock.ts';
 import type { HostIssue } from '../../issues/issue.ts';
 import { claimBudget, recordClaims } from './issue-claim.ts';
-import { recordClocks, repoThreads } from './issue-clock.ts';
+import { pullThreads, recordClocks, repoThreads } from './issue-clock.ts';
 import { issuePush, pushEndLine, pushRepos } from './issue-push.ts';
 import { GITHUB_OFF, githubOff, readSyncState, reportAutoSync } from './issue-sync-auto.ts';
 import { githubWatcher } from '../../github/watcher.ts';
@@ -165,11 +165,11 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     }
     const leftOutText = leftOutLines(repo, plan.leftOut, rules.acceptLabel);
     let end: RepoEnd = 'ok';
+    let issueThreads: Thread[] = [];
     if (write) {
       const outcomes = await applySteps(register, plan.steps);
       // Against the tasks as written, so an issue the import just took is held by its new task.
-      threads.push(...repoThreads(read.issues, [...(await register.snapshot()).state.tasks.values()], rules, ours));
-      clocked.add(repo);
+      issueThreads = repoThreads(read.issues, [...(await register.snapshot()).state.tasks.values()], rules, ours);
       claimRead.set(repo, read.issues);
       [...resultLines(repo, plan, outcomes), ...leftOutText].forEach(say);
       written += outcomes.filter((outcome) => outcome.result.ok).length;
@@ -193,6 +193,12 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     }
     pulls.set(repo, watch.after);
     pullNews.push(...watch.events);
+    if (write) {
+      // Only once both reads are in: a repository whose pull requests could not be read keeps every clock it had.
+      const ownerOf = (id: string): string | undefined => tasks.find((held) => held.id === id)?.owner;
+      threads.push(...issueThreads, ...pullThreads(watch.open, (pull) => pullRecipient(pull, ours, ownerOf, watcher), ours));
+      clocked.add(repo);
+    }
     if (auto) {
       const items = mentionItems(repo, { issues: read.issues, pulls: watch.pulls }, { ofRef: (ref) => holders.get(ref)?.owner, ofTask: (id) => tasks.find((held) => held.id === id)?.owner }, ours);
       const audienceOf = config.github.activity ? (number: number): ActivityAudience => ({ owner: items(number).taskOwner, followers: followers.get(issueRef(repo, number)) ?? [] }) : undefined;
@@ -282,7 +288,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
 /** One repository's pull request read: the lines it prints, and why it failed or what it read and the events since the last read. */
 type PullRead =
   | { readonly kind: 'failed'; readonly reason: string; readonly lines: readonly string[] }
-  | { readonly kind: 'read'; readonly after: PullWatch; readonly events: readonly PullEvent[]; readonly pulls: readonly HostPull[]; readonly lines: readonly string[] };
+  | { readonly kind: 'read'; readonly after: PullWatch; readonly events: readonly PullEvent[]; readonly pulls: readonly HostPull[]; readonly open: readonly HostPull[]; readonly lines: readonly string[] };
 
 /**
  * Reads `repo`'s pull requests and compares them with `before`, the watch the last `--auto` run kept (pull-news.ts).
@@ -295,7 +301,7 @@ async function readPulls(host: IssueHost, repo: string, before: PullWatch | unde
     return { kind: 'failed', reason, lines: [`FAILED ${repo} ${reason}; what was last read of them stays`] };
   }
   const step = pullEvents(before, read.open, read.changed);
-  return { kind: 'read', after: step.after, events: step.events, pulls: [...read.open, ...read.changed], lines: read.notes.map((note) => `NOTE ${repo}: ${note}`) };
+  return { kind: 'read', after: step.after, events: step.events, pulls: [...read.open, ...read.changed], open: read.open, lines: read.notes.map((note) => `NOTE ${repo}: ${note}`) };
 }
 
 /**

@@ -1,3 +1,5 @@
+import type { IssueComment } from './issue.ts';
+
 /**
  * A pull request as an issue host (host.ts) lists it for the monitor: what tells it that something happened to one
  * (opened, merged, closed, a conflict, failing checks, a review) and who opened it from where. Its title is outside
@@ -49,6 +51,14 @@ export interface HostPull {
   readonly authorAssociation: string;
   /** The author's login, empty when the host no longer has that account. */
   readonly author: string;
+  /** What kind of account the author is (`User`, `Bot`, `Organization`); empty when the host gives none. */
+  readonly authorKind: string;
+  /**
+   * Its newest comments and submitted reviews, as many of each as the host reads, oldest first: when and by whom,
+   * never their text; empty from a read of changed pull requests, which asks for none. The response clock reads who
+   * spoke last (src/github/clock.ts).
+   */
+  readonly posts: readonly IssueComment[];
   /** The branch it would merge. */
   readonly head: string;
   /** True when that branch lives in another repository (a fork): its name then says nothing about this team's tasks. */

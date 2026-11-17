@@ -117,6 +117,8 @@ describe('mentionItems', () => {
     closedAt: '2030-01-01T00:00:00Z',
     authorAssociation: 'CONTRIBUTOR',
     author,
+    authorKind: 'User',
+    posts: [],
     head,
     fork,
     mergeable: 'unknown',
