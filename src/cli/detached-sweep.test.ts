@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { formatRunRecord, RUN_RECORD_FORMAT, runRecordPathOf, type DetachedRunRecord } from '../delivery/detached-runs.ts';
 import { parseLedger, type QueuedStepRecord } from '../delivery/ledger.ts';
+import { park, PARKED_FORMAT, parkedDirOf } from '../delivery/parked.ts';
+import { FakeProcesses } from '../testing/fake-processes.ts';
+import { DISPATCHER_RECORD } from './commands/queue-dispatch.ts';
 import { CliHarness, TEAM_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { WakeAsks } from '../wake/asks.ts';
@@ -109,6 +112,28 @@ describe('the sweep of detached queue runs that died (T2742)', () => {
     assert.equal(started.code, EXIT.ok);
     assert.equal(started.stderr[0], `WARN queue ${ID}'s step was not closed in the ledger: EACCES: permission denied`);
     assert.deepEqual([parseLedger(kit.files.get(LEDGER) ?? ''), (await alphaWakes(kit)).length], [[START], 1]);
+  });
+
+  // As at a reboot: the dispatcher died, and its steps still parked would wait for ever (T4093).
+  it('starts a dispatcher for steps left parked with none running, and none while one runs', async () => {
+    const kit = new CliHarness();
+    await park(kit.files, parkedDirOf(DIR), { v: PARKED_FORMAT, id: ID, team: 'app', session: 'alpha', what: 'build api', log: LOG, argv: ['queue', '--detached-run', ID], cwd: TEAM_HOME, env: {}, parkedAt: '2030-01-08T09:30:00.000Z' });
+    const processes = new FakeProcesses();
+    assert.equal((await kit.run(['start'], { ...AS_ALPHA, processes })).code, EXIT.ok);
+    assert.deepEqual(processes.hidden.map(({ args }) => args.slice(1)), [['queue', '--dispatch']]);
+    await kit.files.write(join(DIR, DISPATCHER_RECORD), JSON.stringify({ pid: 5100, startedAt: '2030-01-08T10:00:00.000Z' }));
+    kit.sessionProcesses.add({ pid: 5100, parentPid: 1, name: 'node.exe', commandLine: 'node main.js queue --dispatch' });
+    assert.equal((await kit.run(['start'], { ...AS_ALPHA, processes })).code, EXIT.ok);
+    assert.equal(processes.hidden.length, 1);
+  });
+
+  it('warns when no dispatcher starts for parked steps, and the start goes on', async () => {
+    const kit = new CliHarness();
+    await park(kit.files, parkedDirOf(DIR), { v: PARKED_FORMAT, id: ID, team: 'app', session: 'alpha', what: 'build api', log: LOG, argv: ['queue', '--detached-run', ID], cwd: TEAM_HOME, env: {}, parkedAt: '2030-01-08T09:30:00.000Z' });
+    const processes = new FakeProcesses().onStart('/usr/bin/node', { kind: 'failed', error: 'spawn EPERM' });
+    const started = await kit.run(['start'], { ...AS_ALPHA, processes });
+    assert.equal(started.code, EXIT.ok);
+    assert.equal(started.stderr[0], 'WARN the parked queue steps have no dispatcher, and none started: spawn EPERM');
   });
 
   it('tells nothing of a run whose record another sweep or the run itself took first', async () => {

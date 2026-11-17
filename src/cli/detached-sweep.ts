@@ -2,7 +2,9 @@ import type { KitConfig } from '../config/types.ts';
 import { errorMessage } from '../core/guards.ts';
 import { deadRunsOf, diedEndOf, diedText, type DeadRun, type LedgerStep } from '../delivery/detached-runs.ts';
 import { appendRecord, parseLedger } from '../delivery/ledger.ts';
+import { hasParked, parkedDirOf } from '../delivery/parked.ts';
 import { detachedDirOf } from '../delivery/places.ts';
+import { ensureDispatcher } from './commands/queue-dispatch.ts';
 import { teamZone, type Kit } from './kit.ts';
 import type { CliRuntime } from './runtime.ts';
 import { postUrgentLine } from './urgent-line.ts';
@@ -72,5 +74,22 @@ export async function sweepDeadDetachedRuns(runtime: CliRuntime, kit: Kit, confi
       }
     }
   }
-  return { told, problems };
+  const restart = await restartDispatcher(runtime, detachedDirOf(config.delivery, kit.paths));
+  return { told, problems: restart === undefined ? problems : [...problems, restart] };
+}
+
+/**
+ * Starts a dispatcher for steps left parked with none running (T4093): one whose dispatcher died, as at a reboot,
+ * would else wait for ever, as nothing else starts one until the next `queue --detach`. Returns the problem, if any.
+ */
+async function restartDispatcher(runtime: CliRuntime, dir: string): Promise<string | undefined> {
+  try {
+    if (!(await hasParked(runtime.files, parkedDirOf(dir)))) {
+      return undefined;
+    }
+    const problem = await ensureDispatcher(runtime, dir);
+    return problem === undefined ? undefined : `the parked queue steps have no dispatcher, and none started: ${problem}`;
+  } catch (error) {
+    return `the parked queue steps were not looked at: ${errorMessage(error)}`;
+  }
 }
