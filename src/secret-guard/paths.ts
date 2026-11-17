@@ -3,6 +3,7 @@ import { bashDrivePath, resolveDir } from '../push-guard/location.ts';
 import type { ShellDialect } from '../push-guard/tokenizer.ts';
 import { characterClasses, GlobAutomaton, telltaleCharacters } from './glob-automaton.ts';
 import { globNodes, globRegExp, hasWildcard, type GlobOptions } from './glob.ts';
+import { holdsPublicKeysOnly, PEM_GLOB, PUBLIC_PEM_SUFFIX } from './public-key.ts';
 import { fitsSecret, type WalkedGlob } from './secret-walk.ts';
 
 /**
@@ -58,6 +59,8 @@ const MAX_WALK_STATES = 20_000;
 export type WordReading = Pick<GlobOptions, 'dotfiles' | 'sets'>;
 
 interface CompiledGlob {
+  /** The glob as the list spells it, `!` included. */
+  readonly source: string;
   readonly keep: boolean;
   /** The glob anchored (`~/` at home, a relative one at any depth), as `pattern` and `automaton` read it. */
   readonly anchored: string;
@@ -76,17 +79,22 @@ interface CompiledGlob {
 export class SecretPaths {
   private readonly globs: readonly CompiledGlob[];
   private readonly ignoreCase: boolean;
+  private readonly readKey: ((path: string) => string | undefined) | undefined;
 
-  /** `home` anchors `~/`; `ignoreCase` is true on hosts whose file names ignore case. */
-  constructor(globs: readonly string[], home: string, ignoreCase: boolean) {
+  /**
+   * `home` anchors `~/`; `ignoreCase` is true on hosts whose file names ignore case. `readKey` reads a `.pub.pem`
+   * file's text for the public key check (#875); without it every `.pem` stays a secret, whatever it holds.
+   */
+  constructor(globs: readonly string[], home: string, ignoreCase: boolean, readKey?: (path: string) => string | undefined) {
     this.ignoreCase = ignoreCase;
+    this.readKey = readKey;
     const anchor = normalisePath(home);
     this.globs = globs.map((glob) => compileGlob(glob, anchor, ignoreCase));
   }
 
   /** True when the file at `path`, an absolute path, holds a secret. */
   listed(path: string): boolean {
-    return this.decide(normalisePath(path));
+    return this.decideFile(path, normalisePath(path));
   }
 
   /**
@@ -99,7 +107,7 @@ export class SecretPaths {
   mayName(path: string, reading: WordReading): boolean {
     const normal = normalisePath(path);
     if (!hasWildcard(normal, reading.sets)) {
-      return this.decide(normal);
+      return this.decideFile(path, normal);
     }
     const word = new GlobAutomaton(globNodes(normal, { ...reading, ignoreCase: this.ignoreCase }), this.ignoreCase);
     const onlyWildcards = /^(?:[*?]|\[[^\]/]+\])+$/.test(normal.slice(normal.lastIndexOf('/') + 1));
@@ -108,14 +116,33 @@ export class SecretPaths {
     return fitsSecret(word, walked, characterClasses(chars, [word, ...this.globs.map(({ automaton }) => automaton)]), MAX_WALK_STATES);
   }
 
-  private decide(path: string): boolean {
-    let secret = false;
+  /**
+   * The globs' decision on one file, except that a `.pub.pem` file listed by `**\/*.pem` alone, no later glob of the
+   * team's naming it, is no secret while its text holds public keys and nothing else (#875). The text is read here,
+   * so a private key saved under that name, a file that cannot be read and a word with wildcards stay refused.
+   */
+  private decideFile(path: string, normal: string): boolean {
+    const deciding = this.decidingGlob(normal);
+    if (deciding === undefined || deciding.keep) {
+      return false;
+    }
+    const name = this.ignoreCase ? normal.toLowerCase() : normal;
+    if (this.readKey === undefined || deciding.source !== PEM_GLOB || !name.endsWith(PUBLIC_PEM_SUFFIX)) {
+      return true;
+    }
+    const text = this.readKey(path);
+    return text === undefined || !holdsPublicKeysOnly(text);
+  }
+
+  /** The last glob that matches `path`, which decides it, as in a `.gitignore`; undefined when none does. */
+  private decidingGlob(path: string): CompiledGlob | undefined {
+    let deciding: CompiledGlob | undefined;
     for (const glob of this.globs) {
       if (glob.pattern.test(path)) {
-        secret = !glob.keep;
+        deciding = glob;
       }
     }
-    return secret;
+    return deciding;
   }
 }
 
@@ -131,6 +158,7 @@ function compileGlob(glob: string, home: string, ignoreCase: boolean): CompiledG
     .split('/')
     .some((part) => part !== '' && !hasWildcard(part, 'bash'));
   return {
+    source: glob,
     keep,
     anchored,
     pattern: globRegExp(anchored, options),

@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { TempRepo } from '../../tools/lib/temp-repo.ts';
 import { DEFAULT_SECRET_PATHS, normalisePath, SecretPaths, wordPath, type WordPlace, type WordReading } from './paths.ts';
+import { PUBLIC_KEY_MAX_BYTES, readKeyText } from './public-key.ts';
 
 const HOME = 'C:/u';
 const REPO = 'C:/work/app';
@@ -151,6 +155,67 @@ describe('SecretPaths.mayName', () => {
     const team = new SecretPaths([...DEFAULT_SECRET_PATHS, 'vault[z-a].txt'], HOME, true);
     assert.equal(team.listed(`${REPO}/vault[z-a].txt`), true);
     assert.equal(team.listed(`${REPO}/vaultb.txt`), false);
+  });
+});
+
+describe('SecretPaths: a .pub.pem file holding public keys alone (#875)', () => {
+  const dashes = '-----';
+  const block = (...label: string[]): string => [`${dashes}BEGIN ${label.join(' ')}${dashes}`, 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A', 'AwEAAQ==', `${dashes}END ${label.join(' ')}${dashes}`].join('\n');
+  const PUBLIC = block('PUBLIC', 'KEY');
+  const files: Readonly<Record<string, string>> = {
+    [`${REPO}/keys/archive.pub.pem`]: PUBLIC,
+    [`${REPO}/keys/two.pub.pem`]: `${PUBLIC}\r\n\r\n${block('RSA', 'PUBLIC', 'KEY')}\n`,
+    [`${REPO}/keys/mistake.pub.pem`]: block('PRIVATE', 'KEY'),
+    [`${REPO}/keys/rsa.pub.pem`]: block('RSA', 'PRIVATE', 'KEY'),
+    [`${REPO}/keys/both.pub.pem`]: `${PUBLIC}\n${block('PRIVATE', 'KEY')}`,
+    [`${REPO}/keys/noted.pub.pem`]: `${PUBLIC}\nnote: see the vault`,
+    [`${REPO}/keys/open.pub.pem`]: PUBLIC.slice(0, PUBLIC.lastIndexOf('\n')),
+    [`${REPO}/keys/empty.pub.pem`]: '',
+    [`${REPO}/keys/cert.pub.pem`]: block('CERTIFICATE'),
+    [`${REPO}/keys/archive.pem`]: PUBLIC,
+  };
+  const read = (path: string): string | undefined => files[path];
+  const keyed = new SecretPaths(DEFAULT_SECRET_PATHS, HOME, true, read);
+
+  it('allows one that holds PUBLIC KEY blocks and nothing else, by path and by a word naming it', () => {
+    for (const name of ['archive', 'two']) {
+      assert.equal(keyed.listed(`${REPO}/keys/${name}.pub.pem`), false, name);
+      assert.equal(keyed.mayName(`${REPO}/keys/${name}.pub.pem`, BASH_WORD), false, name);
+    }
+  });
+
+  it('refuses one with a private key block, both kinds, other text, an open block, no block, or that cannot be read', () => {
+    for (const name of ['mistake', 'rsa', 'both', 'noted', 'open', 'empty', 'cert', 'gone']) {
+      assert.equal(keyed.listed(`${REPO}/keys/${name}.pub.pem`), true, name);
+      assert.equal(keyed.mayName(`${REPO}/keys/${name}.pub.pem`, BASH_WORD), true, name);
+    }
+  });
+
+  it('keeps refusing any other .pem, a word with wildcards, and a .pub.pem a team glob names', () => {
+    assert.equal(keyed.listed(`${REPO}/keys/archive.pem`), true);
+    assert.equal(keyed.mayName(`${REPO}/keys/*.pub.pem`, BASH_WORD), true);
+    const named = new SecretPaths([...DEFAULT_SECRET_PATHS, 'keys/*.pub.pem'], HOME, true, read);
+    assert.equal(named.listed(`${REPO}/keys/archive.pub.pem`), true);
+  });
+
+  it('reads no file and refuses as before without a reader', () => {
+    assert.equal(secrets.listed(`${REPO}/keys/archive.pub.pem`), true);
+  });
+});
+
+describe('readKeyText (#875)', () => {
+  it('reads a small file, and nothing of a folder, a missing file or one past the limit', () => {
+    const repo = new TempRepo('pub-pem');
+    try {
+      writeFileSync(join(repo.dir, 'a.pub.pem'), 'text');
+      writeFileSync(join(repo.dir, 'big.pub.pem'), 'x'.repeat(PUBLIC_KEY_MAX_BYTES + 1));
+      assert.equal(readKeyText(join(repo.dir, 'a.pub.pem')), 'text');
+      assert.equal(readKeyText(join(repo.dir, 'big.pub.pem')), undefined);
+      assert.equal(readKeyText(join(repo.dir, 'gone.pub.pem')), undefined);
+      assert.equal(readKeyText(repo.dir), undefined);
+    } finally {
+      repo.remove();
+    }
   });
 });
 
