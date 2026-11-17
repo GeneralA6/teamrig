@@ -1,18 +1,33 @@
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
-import { availableParallelism, tmpdir } from 'node:os';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { availableParallelism, homedir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import { EXIT_CLEAN, EXIT_FINDINGS, EXIT_USAGE } from '../lib/exit.ts';
 import { readTextIfPresent } from '../lib/files.ts';
 import { createGit } from '../lib/git.ts';
 import { takeRoot } from '../lib/repo-root.ts';
 import { runMain } from '../lib/run-main.ts';
-import { coverageFindings, coverageRun, coverageTotals, parsePolicy, POLICY_FILE, SOURCE_DIRS, suiteArgs, suiteWorkers, suiteEnv } from './coverage.ts';
+import {
+  coverageFindings,
+  coverageRun,
+  coverageTempBase,
+  coverageTotals,
+  parsePolicy,
+  POLICY_FILE,
+  runDirPrefix,
+  SOURCE_DIRS,
+  staleRunDirs,
+  suiteArgs,
+  suiteEnv,
+  suiteWorkers,
+} from './coverage.ts';
 import { hangFinding, runSuite } from './suite-run.ts';
 
 /**
  * Runs the whole test suite of this repo (or `--root <repo>`) once with coverage, then fails on a failing, skipped or
  * todo test, a source file no test loads, or a file or total below the floors in tools/ci/coverage.json.
  * A suite that prints nothing for the policy's suiteIdleSeconds is stopped with its tree and fails as hung.
+ * The run keeps its temporary files, Node's coverage folder among them, in one folder under ~/.cache that it removes
+ * at the end; a later run removes the folders of runs that were killed before they could (#1585).
  */
 async function main(args: readonly string[]): Promise<number> {
   const { root: given, rest } = takeRoot(args);
@@ -27,12 +42,19 @@ async function main(args: readonly string[]): Promise<number> {
   // Untracked files count too, so a new file fails here before it is committed.
   const listed = await createGit(root).text(['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...SOURCE_DIRS]);
   const listing = listed.split('\0').filter((path) => path !== '' && existsSync(join(root, path)));
-  const out = mkdtempSync(join(tmpdir(), 'teamrig-coverage-'));
+  const base = coverageTempBase(process.env, homedir());
+  mkdirSync(base, { recursive: true });
+  for (const stale of staleRunDirs(readdirSync(base), isAlive)) {
+    rmSync(join(base, stale), { recursive: true, force: true });
+  }
+  const out = mkdtempSync(join(base, runDirPrefix(process.pid)));
+  const temp = join(out, 'tmp');
+  mkdirSync(temp);
   try {
     const lcovPath = join(out, 'lcov.info');
     const tapPath = join(out, 'tap.txt');
     const idleMs = policy.suiteIdleSeconds * 1000;
-    const end = await runSuite({ program: process.execPath, args: suiteArgs(policy, lcovPath, tapPath, suiteWorkers(availableParallelism())), cwd: root, env: suiteEnv(process.env), idleMs });
+    const end = await runSuite({ program: process.execPath, args: suiteArgs(policy, lcovPath, tapPath, suiteWorkers(availableParallelism())), cwd: root, env: suiteEnv(process.env, temp), idleMs });
     if (end.kind === 'idle') {
       console.log(`coverage: ${hangFinding(end.silentMs, process.versions.node)}`);
       return EXIT_FINDINGS;
@@ -53,6 +75,16 @@ async function main(args: readonly string[]): Promise<number> {
     return EXIT_FINDINGS;
   } finally {
     rmSync(out, { recursive: true, force: true });
+  }
+}
+
+/** Whether a process is alive; one this user may not signal (EPERM) is alive too. */
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !(error instanceof Error && 'code' in error && error.code === 'ESRCH');
   }
 }
 

@@ -257,8 +257,32 @@ export function suiteArgs(policy: CoveragePolicy, lcovPath: string, tapPath: str
  * The environment for the suite run. A run started from inside a test (the gate's own test does)
  * inherits NODE_TEST_CONTEXT, which makes `node --test` act as that runner's child and report to it.
  */
-export function suiteEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return Object.fromEntries(Object.entries(env).filter(([key]) => key !== 'NODE_TEST_CONTEXT'));
+export function suiteEnv(env: NodeJS.ProcessEnv, tempDir?: string): NodeJS.ProcessEnv {
+  const kept = Object.fromEntries(Object.entries(env).filter(([key]) => key !== 'NODE_TEST_CONTEXT'));
+  // `node --test --experimental-test-coverage` points NODE_V8_COVERAGE at a fresh `<tmpdir>/node-coverage-*` folder and
+  // removes it only when the run ends normally: a suite that is killed (a timeout, the idle stop, Ctrl-C) leaves it,
+  // and on a small RAM-backed /tmp a few dozen of those fill the user's quota (#1585). The run's own temporary folder
+  // takes it, and every temporary file the tests make, so the gate removes them all when the run ends.
+  return tempDir === undefined ? kept : { ...kept, TMPDIR: tempDir, TMP: tempDir, TEMP: tempDir };
+}
+
+/** Where coverage runs keep their temporary folders: `$XDG_CACHE_HOME/teamrig/coverage`, else `<home>/.cache/teamrig/coverage`. */
+export function coverageTempBase(env: NodeJS.ProcessEnv, userHome: string): string {
+  const cache = env['XDG_CACHE_HOME']?.trim();
+  return `${cache !== undefined && cache !== '' ? cache : `${userHome}/.cache`}/teamrig/coverage`;
+}
+
+/** The prefix of one run's temporary folder: `run-<pid>-`, so a later run can tell the folders of runs that died. */
+export function runDirPrefix(pid: number): string {
+  return `run-${pid}-`;
+}
+
+/** The run folders, by name, whose run is gone: its process is not alive. Names that are not run folders are kept. */
+export function staleRunDirs(names: readonly string[], alive: (pid: number) => boolean): string[] {
+  return names.filter((name) => {
+    const match = /^run-(\d+)-/.exec(name);
+    return match?.[1] !== undefined && !alive(Number(match[1]));
+  });
 }
 
 const LCOV_FIELDS:Readonly<Record<string, readonly [Metric, keyof Counts]>> = {
