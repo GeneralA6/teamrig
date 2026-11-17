@@ -11,6 +11,7 @@ import { rehiredFrom, type RetireRecord } from '../../hiring/record.ts';
 import type { ResumeVerdict } from '../../hiring/rehire.ts';
 import { CLAUDE_SESSION_ID } from '../../inbox/marks.ts';
 import { findClaude, type ClaudeProgram } from '../../open/claude.ts';
+import type { FocusOutcome } from '../../open/focus.ts';
 import { launchFlags } from '../../open/launch-flags.ts';
 import { openTab, type OpenOutcome } from '../../open/open-tab.ts';
 import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem, recoverPrompt, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from '../../open/prompt.ts';
@@ -43,6 +44,18 @@ export const TERMINAL_LABELS: Readonly<Record<Terminal, string>> = {
   konsole: 'Konsole tab',
   'x-terminal-emulator': 'terminal window',
 };
+
+/** What bringing the running tab of session `name`, titled `title`, to the front prints. */
+export function focusLine(outcome: FocusOutcome, name: string, title: string): string {
+  switch (outcome.kind) {
+    case 'focused':
+      return `FOCUSED ${name}'s ${TERMINAL_LABELS[outcome.terminal]}, ${title}`;
+    case 'behind':
+      return `SELECTED ${name}'s ${TERMINAL_LABELS[outcome.terminal]}, ${title}, in its window; Windows kept another app's window in front`;
+    case 'none':
+      return `NOT FOCUSED ${name}'s tab, ${title}: ${outcome.reasons.join('; ')}`;
+  }
+}
 
 /** The terminal `--terminal` names; undefined when it names none. */
 export function terminalFlag(flag: string | undefined): TerminalChoice | undefined {

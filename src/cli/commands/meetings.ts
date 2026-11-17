@@ -27,7 +27,7 @@ import { SPOTLIGHT_LOG, spotlightLine, startSpotlight, type SpotlightPlace } fro
 import { SpotlitStore, spotlitUntil } from '../../meeting/spotlit.ts';
 import { MeetingStore, phaseOf } from '../../meeting/state.ts';
 import { WAKE_TICK_MS } from '../../mod/wake-hand.ts';
-import { focusTab, type FocusOutcome } from '../../open/focus.ts';
+import { focusTab } from '../../open/focus.ts';
 import { shellCommand } from '../../open/quote.ts';
 import { WakeAsks, type WakeAsk } from '../../wake/asks.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
@@ -36,7 +36,7 @@ import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type
 import { liveRunOf } from '../live-run.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { inboxDepsOf } from './inbox.ts';
-import { openSession, TERMINAL_LABELS } from './open.ts';
+import { focusLine, openSession } from './open.ts';
 import { ownRegister } from './register.ts';
 import { sessionProjectOf } from './setup.ts';
 import { fileLockOf } from '../file-locks.ts';
@@ -382,18 +382,6 @@ async function spotlightMeeting(runtime: CliRuntime, mk: MeetingsKit, meeting: S
   };
   const { spotlight } = mk.config.meeting;
   return spotlightLine(await startSpotlight(runtime, spotlight, mk.config.open.terminal, place, runtime.cwd), place, spotlight.dim);
-}
-
-/** What bringing the running tab of session `name`, titled `title`, to the front prints. */
-function focusLine(outcome: FocusOutcome, name: string, title: string): string {
-  switch (outcome.kind) {
-    case 'focused':
-      return `FOCUSED ${name}'s ${TERMINAL_LABELS[outcome.terminal]}, ${title}`;
-    case 'behind':
-      return `SELECTED ${name}'s ${TERMINAL_LABELS[outcome.terminal]}, ${title}, in its window; Windows kept another app's window in front`;
-    case 'none':
-      return `NOT FOCUSED ${name}'s tab, ${title}: ${outcome.reasons.join('; ')}`;
-  }
 }
 
 /**
