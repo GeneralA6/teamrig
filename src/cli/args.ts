@@ -25,6 +25,12 @@ export interface ParsedArgs {
   readonly rest: readonly string[];
   /** `--help` or `-h` followed the command: print its help and nothing else; `command` may then be a group word. */
   readonly help: boolean;
+  /**
+   * `--session` and `--team` given to a command that does not declare them (`COMMON_FLAGS`, #654): kept out of `flags`,
+   * so every reader of the line (the command, `readable` in src/slash/plan.ts) sees it as the command runs it; only
+   * `runCli` checks them.
+   */
+  readonly common: Flags;
 }
 
 /** Each command's accepted flags, keyed by the command's words: `add`, `inbox read`. */
@@ -120,14 +126,15 @@ export function parseArgs(
   const switchable = commandSwitches[command] ?? [];
   const positionals: string[] = [];
   const flags = new Map<string, string>();
+  const common = new Map<string, string>();
   const switches = new Set<string>();
   for (let index = 0; index < tail.length; index += 1) {
     const token = tail[index] ?? '';
     if (HELP_FLAGS.has(token)) {
-      return { command, positionals: [], flags: new Map(), switches: new Set(), rest: [], help: true };
+      return { command, positionals: [], flags: new Map(), switches: new Set(), rest: [], help: true, common: new Map() };
     }
     if (token === REST_MARKER && restCommands.has(command)) {
-      return { command, positionals, flags, switches, rest: tail.slice(index + 1), help: false };
+      return { command, positionals, flags, switches, rest: tail.slice(index + 1), help: false, common };
     }
     if (!token.startsWith('--')) {
       positionals.push(token);
@@ -152,13 +159,13 @@ export function parseArgs(
     if (value === undefined || value.startsWith('--')) {
       throw new UsageError(`${token} needs a value`, command);
     }
-    if (flags.has(name)) {
+    if (flags.has(name) || common.has(name)) {
       throw new UsageError(`${token} is given twice`, command);
     }
-    flags.set(name, value);
+    (allowed.includes(name) ? flags : common).set(name, value);
     index += 1;
   }
-  return { command, positionals, flags, switches, rest: [], help: false };
+  return { command, positionals, flags, switches, rest: [], help: false, common };
 }
 
 export function noPositionals(args: ParsedArgs): void {
