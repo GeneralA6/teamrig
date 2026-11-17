@@ -268,6 +268,55 @@ function postedLine(recipients: readonly Recipient[]): string {
   return `POSTED to ${recipients.length} sessions (${recipients.map((recipient) => recipient.label).join(', ')}); each is reminded at its next prompt`;
 }
 
+/** The sender a host scheduled job names (#930): `host:<job>`, the job named as a session is. */
+const HOST_SENDER = /^host:[a-z][a-z0-9-]{0,64}$/;
+
+/**
+ * `inbox add --from host:<job>` (#930): a line from a host scheduled job (cron, launchd, Task Scheduler), which runs as
+ * no session of the team, so the line names the job as its sender. It posts to sessions of the team by id or name
+ * only, wakes no one (the line waits for the session's next prompt) and takes no `--session`; the line itself meets
+ * the inbox's rules as any other, and a `--to` that names no session is refused as `inbox add` refuses it.
+ */
+async function addFromHost(args: ParsedArgs, runtime: CliRuntime, from: string): Promise<ExitCode> {
+  if (!HOST_SENDER.test(from)) {
+    throw new UsageError(`--from takes host:<job>, the job ${NAME_RULE}, not "${from}"`);
+  }
+  if (args.flags.get('session') !== undefined) {
+    throw new UsageError(`--from ${from} is for a job that runs as no session: drop --session, or post as the session without --from`);
+  }
+  if (args.flags.get('wake') !== undefined || args.flags.get('wake-by') !== undefined) {
+    throw new UsageError(`--from ${from} wakes no one: drop --wake and --wake-by, and the line waits for the session's next prompt`);
+  }
+  const to = requiredFlag(args.flags, 'to');
+  const items = parseTo(to);
+  if (items === undefined) {
+    throw new UsageError(`--to "${to}" is not ${TO_FORMS} (${NAME_RULE})`);
+  }
+  const text = requiredFlag(args.flags, 'text');
+  const { team } = await findTeam(runtime);
+  const kit = await openKit(runtime, team);
+  const config = requireConfig(kit, runtime, 'write');
+  const roster = await rosterOf(runtime, kit, config);
+  const ids: string[] = [];
+  for (const item of items) {
+    if (item.kind !== 'session' || (item.address.team !== undefined && item.address.team !== team)) {
+      throw new RefusedError(`--from ${from} posts to sessions of team ${team} by id or name, one or a comma-separated list, not --to ${to}`);
+    }
+    const id = sessionIdOf(roster, item.address.session);
+    if (!ids.includes(id)) {
+      ids.push(id);
+    }
+  }
+  const recipients: Recipient[] = ids.map((id) => ({ team, paths: kit.paths, config, id, label: id, sender: from, crossing: false }));
+  const targets = recipients.map((recipient) => ({ inboxes: inboxDepsOf(runtime, recipient.paths).inboxes, to: recipient.id, from }));
+  const problem = await postLines(targets, new SecretScanner(config.register.secretPatterns), { text, now: new Date(runtime.clock.now()) });
+  if (problem !== undefined) {
+    throw new RefusedError(problem);
+  }
+  runtime.out.stdout(postedLine(recipients));
+  return EXIT.ok;
+}
+
 /**
  * The route reminders (T783) for the sessions of the sender's team that `--to` names one by one, each once. A group
  * (`all`, `leads`, `group:<leader>`, `team:<team>`, `tree:leads`, `task:T<n>`) is a broadcast, not work handed past a
@@ -381,6 +430,10 @@ const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>,
  */
 export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
+  const host = args.flags.get('from');
+  if (host !== undefined) {
+    return addFromHost(args, runtime, host);
+  }
   const caller = callerOf(args.flags, runtime.env);
   const to = requiredFlag(args.flags, 'to');
   const items = parseTo(to);
