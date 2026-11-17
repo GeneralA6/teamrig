@@ -108,4 +108,13 @@ describe('a push its pre-push hook refuses', () => {
       return true;
     });
   });
+
+  it('names the same tail from the async git (T4130)', async () => {
+    await assert.rejects(createGit(repo.dir, repo.env).text(push), (error: unknown) => {
+      assert.ok(error instanceof GitError);
+      assert.equal(error.stdoutTail, tail);
+      assert.ok(error.message.endsWith(`\n${tail}`), error.message);
+      return true;
+    });
+  });
 });
