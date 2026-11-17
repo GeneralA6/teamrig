@@ -10,6 +10,7 @@ import { parseArgs, UsageError } from "./args.js";
 import { RENAMED } from "./renamed.js";
 import { EXIT, RefusedError } from "./runtime.js";
 const registerCommands = () => import("./commands/register.js");
+const tabSessionCommands = () => import("./commands/tab-session.js");
 const statsCommands = () => import("./commands/stats.js");
 const reportCommands = () => import("./commands/report.js");
 const goalCommands = () => import("./commands/goal.js");
@@ -137,7 +138,7 @@ const COMMANDS = {
     'goal list': { effect: 'read', flags: ['session'], load: async () => (await goalCommands()).goalList },
     'goal show': { effect: 'read', flags: ['session'], load: async () => (await goalCommands()).goalShow },
     files: { effect: 'write', flags: ['session'], switches: ['notes'], load: async () => (await filesCommands()).files },
-    'inbox read': { effect: 'write', flags: ['session'], load: async () => (await inboxCommands()).read },
+    'inbox read': { effect: 'write', bindsTab: true, flags: ['session'], load: async () => (await inboxCommands()).read },
     'inbox status': { effect: 'read', flags: ['session'], load: async () => (await inboxCommands()).status },
     'inbox add': { effect: 'write', flags: ['session', 'to', 'text', 'wake', 'wake-by'], load: async () => (await inboxCommands()).add },
     'exec request': { effect: 'write', flags: ['session', 'file'], load: async () => (await execCommands()).request },
@@ -1092,6 +1093,10 @@ export async function runCli(given, runtime) {
             throw new UsageError(`unknown command "${args.command}"`);
         }
         refuseSettingsWrite(args.command, args.switches, runtime);
+        if (spec.effect === 'write' && spec.bindsTab !== true) {
+            // A write runs only as the tab's own session, whatever --session says (T3082); a tab's binding has its own rule.
+            await (await tabSessionCommands()).refuseAnotherTabSession(args, runtime);
+        }
         const command = await spec.load();
         return await command(args, runtime);
     }
