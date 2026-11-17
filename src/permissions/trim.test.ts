@@ -93,11 +93,14 @@ describe('planFile', () => {
 });
 
 describe('wideAllowOf', () => {
-  it('adds up what a wide plan removes over the files that hold any, shared ones too', async () => {
+  it('adds up what a wide plan removes over the files that hold any, shared ones apart', async () => {
     const files = new MemoryFiles({ [USER.path]: settings(['Read', 'Edit(src/x.ts)']), [SHARED.path]: settings(ALLOW), [LOCAL.path]: '[]' });
     const plans = await planScope(files, [USER, SHARED, LOCAL, { path: join('/none', 'settings.json'), kind: 'local' }], KEEP, 'wide', SECRETS);
-    assert.deepEqual(wideAllowOf(plans), { files: 2, counts: [['Read wide', 2], ['Bash credential', 1], ['Bash wide', 1]] });
-    assert.deepEqual(wideAllowOf([]), { files: 0, counts: [] });
+    assert.deepEqual(wideAllowOf(plans), {
+      local: { files: 1, counts: [['Read wide', 1]] },
+      committed: { files: 1, counts: [['Bash credential', 1], ['Bash wide', 1], ['Read wide', 1]] },
+    });
+    assert.deepEqual(wideAllowOf([]), { local: { files: 0, counts: [] }, committed: { files: 0, counts: [] } });
   });
 });
 

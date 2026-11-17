@@ -9,7 +9,11 @@ import { samePath } from '../core/paths.ts';
  * worked there).
  */
 
-/** `user` and `local` files are the person's own, so a trim rewrites them; a `shared` one is committed with its repo, so a trim only reports it. */
+/**
+ * `user` and `local` files are the person's own, so a trim rewrites them; a `shared` one is committed with its repo, so a
+ * trim only reports it. A project's `settings.json` is `shared` unless git says its repository does not track it
+ * (`ownUntracked`).
+ */
 export type SettingsKind = 'user' | 'local' | 'shared';
 
 export interface SettingsFile {
@@ -45,4 +49,20 @@ export async function settingsScope(files: Files, claudeDir: string, projects: r
     scope.push(...projectFiles(folder), ...names.flatMap((name) => worktreeFiles(folder, join(worktrees, name))));
   }
   return scope.filter((file, index) => scope.findIndex((other) => samePath(other.path, file.path, platform)) === index);
+}
+
+/** Where git holds a project's `settings.json`: committed, not (ignored, or never added), or unknown (no repository, or git could not tell). */
+export type SettingsInGit = 'tracked' | 'untracked' | 'unknown';
+
+/**
+ * The scope with each existing `shared` file that git does not track read as the person's own (`local`): a repository
+ * that ignores `.claude/` commits no `settings.json`, so no commit can change it, and only a trim can (#837). One git
+ * can not tell about stays `shared`, as does one not there (nothing to trim, and no git run spent on it).
+ */
+export async function ownUntracked(files: Files, scope: readonly SettingsFile[], inGit: (path: string) => SettingsInGit): Promise<SettingsFile[]> {
+  return Promise.all(
+    scope.map(async (file): Promise<SettingsFile> =>
+      file.kind === 'shared' && (await files.modifiedAt(file.path)) !== undefined && inGit(file.path) === 'untracked' ? { ...file, kind: 'local' } : file,
+    ),
+  );
 }

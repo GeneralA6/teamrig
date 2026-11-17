@@ -3,7 +3,7 @@ import { teamPlace } from '../delivery/places.ts';
 import { claudeConfigDir, type TeamPaths } from '../core/home.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { KeepList } from '../permissions/allow-rules.ts';
-import { settingsScope, type SettingsFile } from '../permissions/settings-scope.ts';
+import { ownUntracked, settingsScope, type SettingsFile, type SettingsInGit } from '../permissions/settings-scope.ts';
 import { planScope, wideAllowOf, type WideAllow } from '../permissions/trim.ts';
 import type { CliRuntime } from './runtime.ts';
 
@@ -21,7 +21,25 @@ export interface AllowScopeInput {
  */
 export async function teamSettingsScope(runtime: CliRuntime, { paths, config, project }: AllowScopeInput): Promise<SettingsFile[]> {
   const repos = Object.values(config.delivery.repos).map((repo) => teamPlace(paths, repo.mainCheckout));
-  return settingsScope(runtime.files, claudeConfigDir(runtime.env, runtime.userHome), [project, ...repos], runtime.platform);
+  return projectsSettingsScope(runtime, claudeConfigDir(runtime.env, runtime.userHome), [project, ...repos]);
+}
+
+/** The settings files of the user and `projects` (`settingsScope`), each project `settings.json` its repository does not track read as the person's own (#837). */
+export async function projectsSettingsScope(runtime: CliRuntime, claudeDir: string, projects: readonly string[]): Promise<SettingsFile[]> {
+  return ownUntracked(runtime.files, await settingsScope(runtime.files, claudeDir, projects, runtime.platform), (path) => settingsInGit(runtime, path));
+}
+
+/** git's word on a settings file through the kit's git runner (the team pointer's port): only `tracked` is committed; no repository or no answer is unknown. */
+function settingsInGit(runtime: CliRuntime, path: string): SettingsInGit {
+  switch (runtime.pointerGit.state(path).kind) {
+    case 'tracked':
+      return 'tracked';
+    case 'ignored':
+    case 'open':
+      return 'untracked';
+    case 'no-git':
+      return 'unknown';
+  }
 }
 
 /** The rules off the team's keep-list that approve a whole tool or program or hold a credential, in every file of its scope. */

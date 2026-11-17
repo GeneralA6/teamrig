@@ -5,7 +5,7 @@ import { claudeConfigDir, KIT_NAME } from '../../core/home.ts';
 import { expandHome } from '../../core/paths.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { KeepList } from '../../permissions/allow-rules.ts';
-import { settingsScope, type SettingsFile } from '../../permissions/settings-scope.ts';
+import type { SettingsFile } from '../../permissions/settings-scope.ts';
 import { coreRuleTexts } from '../../rules/pack.ts';
 import type { Candidate } from '../../rules/scan.ts';
 import { isCleared, RULE_HASH_CLOCK, ruleHashesOf, verdictsByText, VerdictStore } from '../../rules/verdicts.ts';
@@ -15,7 +15,7 @@ import { scanReport } from '../../setup/scan-report.ts';
 import { BYTES_PER_MB } from '../../setup/scan-unused.ts';
 import { scanSetup } from '../../setup/scan.ts';
 import { claudeSkillDoctor } from '../../setup/skill-doctor.ts';
-import { teamSettingsScope } from '../allow-scope.ts';
+import { projectsSettingsScope, teamSettingsScope } from '../allow-scope.ts';
 import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
 import { teamFolders, teamProjectOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -64,7 +64,7 @@ async function clearedOf(runtime: CliRuntime, team: SetupTeam | undefined): Prom
 
 async function settingsOf(runtime: CliRuntime, team: SetupTeam | undefined, claudeDir: string, project: string): Promise<SettingsFile[]> {
   return team === undefined
-    ? settingsScope(runtime.files, claudeDir, [project], runtime.platform)
+    ? projectsSettingsScope(runtime, claudeDir, [project])
     : teamSettingsScope(runtime, { paths: team.kit.paths, config: team.config, project });
 }
 

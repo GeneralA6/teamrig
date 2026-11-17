@@ -5,7 +5,7 @@ import { SecretScanner } from '../core/secrets.ts';
 import { KeepList } from './allow-rules.ts';
 import { planLine, totalLine, wideAllowText, writeLine } from './report.ts';
 import type { SettingsFile } from './settings-scope.ts';
-import { planFile, rewritesOf, type FilePlan } from './trim.ts';
+import { planFile, rewritesOf, type FilePlan, type WideHolding } from './trim.ts';
 
 /** A value a rule can hold; no line may carry it. Joined, so no source line holds a URL the secret redactor catches. */
 const HELD_VALUE = ['postgres://user:', 'hunter22', '@db.example.net'].join('');
@@ -73,10 +73,24 @@ describe('totalLine and writeLine', () => {
 
 describe('wideAllowText', () => {
   it('flags the rules that approve a whole tool or program or hold a credential, and is quiet without any', () => {
-    assert.equal(wideAllowText({ files: 0, counts: [] }), undefined);
+    const none = { files: 0, counts: [] };
+    assert.equal(wideAllowText({ local: none, committed: none }), undefined);
     assert.equal(
-      wideAllowText({ files: 2, counts: [['Bash wide', 3], ['Bash credential', 1]] }),
+      wideAllowText({ local: { files: 2, counts: [['Bash wide', 3], ['Bash credential', 1]] }, committed: none }),
       "4 local allow rule(s) in 2 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls, or hold a credential saved with an approved command (Bash wide 3, Bash credential 1); `teamrig permissions trim` previews their removal, and the owner runs it with --yes",
+    );
+  });
+
+  it('counts committed files apart, and advises --yes only while local files hold rules (#837)', () => {
+    const none = { files: 0, counts: [] };
+    const committed: WideHolding = { files: 1, counts: [['Read wide', 2]] };
+    assert.equal(
+      wideAllowText({ local: { files: 1, counts: [['Bash wide', 1]] }, committed }),
+      "1 local allow rule(s) in 1 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls, or hold a credential saved with an approved command (Bash wide 1); `teamrig permissions trim` previews their removal, and the owner runs it with --yes; 2 more in 1 committed settings file(s) (Read wide 2) change only by a commit in their repository",
+    );
+    assert.equal(
+      wideAllowText({ local: none, committed }),
+      "2 allow rule(s) in 1 committed settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls, or hold a credential saved with an approved command (Read wide 2); they change only by a commit in their repository",
     );
   });
 });

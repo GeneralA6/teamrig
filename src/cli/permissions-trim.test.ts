@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
+import type { PointerGit, PointerInGit } from '../setup/pointer-ignore.ts';
 import { CliHarness, APP, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
@@ -23,6 +24,11 @@ async function withSettings(): Promise<CliHarness> {
   await kit.files.write(LOCAL, formatConfig({ permissions: { allow: ['Read(//c/**)', 'WebSearch'] } }));
   await kit.files.write(TREE, formatConfig({ permissions: { allow: ['Bash(node:*)', 'Bash(git log)'] } }));
   return kit;
+}
+
+/** git's word on the project's settings.json, and no repository for any other path. */
+function sharedIs(state: PointerInGit): PointerGit {
+  return { state: (path) => (path === SHARED ? state : { kind: 'no-git' }) };
 }
 
 function allowOf(kit: CliHarness, path: string): unknown {
@@ -75,6 +81,27 @@ describe('teamrig permissions trim', () => {
     assert.deepEqual((await kit.files.list(BACKUPS)).sort(), ['01-settings.json', '02-settings.local.json', '03-settings.local.json', 'manifest.json']);
     const again = await kit.run(['permissions', 'trim', '--yes'], OPTIONS);
     assert.deepEqual([again.code, again.stdout[0]], [EXIT.ok, 'UNCHANGED no settings file to rewrite holds the allow rules that approve a whole tool or program or hold a credential off permissions.keepAllow']);
+  });
+
+  it('reports a settings.json its repository tracks, and rewrites one it ignores or never added, with its backup (#837)', async () => {
+    const committed = '  ' + SHARED + ': 1 allow rules, 1 to remove (Bash wide 1); it is committed with its repo, so change it by a commit';
+    const tracked = await (await withSettings()).run(['permissions', 'trim'], { ...OPTIONS, pointerGit: sharedIs({ kind: 'tracked' }) });
+    assert.equal(tracked.stdout[2], committed);
+
+    for (const state of [{ kind: 'ignored' }, { kind: 'open', exclude: join(APP, '.git', 'info', 'exclude') }] satisfies PointerInGit[]) {
+      const kit = await withSettings();
+      const options = { ...OPTIONS, pointerGit: sharedIs(state) };
+      const preview = await kit.run(['permissions', 'trim'], options);
+      assert.deepEqual([preview.stdout[2], preview.stdout.at(-1)], [
+        `  ${SHARED}: 1 allow rules -> 0, remove 1 (Bash wide 1); keeps 0 on the keep-list`,
+        'TOTAL 4 file(s) to rewrite: 8 allow rules -> 3 (remove 5: Bash wide 3, Bash credential 1, Read wide 1)',
+      ], state.kind);
+      const shared = kit.files.get(SHARED);
+      const written = await kit.run(['permissions', 'trim', '--yes'], options);
+      assert.deepEqual([written.code, written.stdout[0], written.stdout[2]], [EXIT.ok, `WROTE 4 of 4 file(s); their old text and a manifest are in ${BACKUPS}`, `  ${SHARED}: 1 allow rules -> 0, removed Bash wide 1`], state.kind);
+      assert.deepEqual(allowOf(kit, SHARED), { permissions: { allow: [] } });
+      assert.equal(kit.files.get(join(BACKUPS, '02-settings.json')), shared);
+    }
   });
 
   it('with --all removes the exact rules off the keep-list too', async () => {

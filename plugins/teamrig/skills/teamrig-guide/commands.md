@@ -4154,7 +4154,9 @@ WARN launch-effort shop-web (session web) launches on model opus with no effort,
 
 `allow-wide` counts the allow rules off [permissions.keepAllow] that approve a whole tool or program, or hold a
 credential (Claude Code saves an approved command whole, so a password typed into one stays in the rule), in every
-settings file `teamrig permissions trim` reads, by class and never by text. `check` shows it too, as a warning no
+settings file `teamrig permissions trim` reads, by class and never by text; rules in a committed settings file are
+counted apart, since only a commit changes them, and `--yes` is advised only while the person's own files hold
+some. `check` shows it too, as a warning no
 session owns, so the lead's `start` shows it and its inbox gets one line on it.
 
 ```text
@@ -4501,8 +4503,9 @@ same two in each worktree Claude Code made under `.claude/worktrees`. A rule on 
 stays (`:*` and ` *` read the same, a kept `Bash(x *)` keeps `Bash(x)` too, and a shell rule's leading
 `MSYS_NO_PATHCONV=1 ` reads as absent); by default only the rules off it that approve a whole tool or program or
 hold a credential (text in a secret's shape: the built-in shapes and [register.secretPatterns]) go, and with `--all`
-every rule off it goes. A committed `.claude/settings.json` is only reported: change it by a commit
-in its repo. Its `--yes` changes a permission, the owner's to make, so it is refused where Claude Code runs it (an agent's tool call, a `!` line, a script it runs or a hook: `$CLAUDECODE` is set there), and the [exec guard](hooks.md#before-a-shell-command-the-exec-guard) refuses a tool call that runs it; its preview stays open. The owner types `/teamrig permissions trim --yes` in a tab, or runs it in their own terminal.
+every rule off it goes. A `.claude/settings.json` its repository tracks is only reported: change it by a commit
+in its repo. One git ignores or never added is the person's own and is trimmed like a local file; where git
+cannot tell (no repository, no answer), it counts as committed. Its `--yes` changes a permission, the owner's to make, so it is refused where Claude Code runs it (an agent's tool call, a `!` line, a script it runs or a hook: `$CLAUDECODE` is set there), and the [exec guard](hooks.md#before-a-shell-command-the-exec-guard) refuses a tool call that runs it; its preview stays open. The owner types `/teamrig permissions trim --yes` in a tab, or runs it in their own terminal.
 
 It never prints a rule, since a rule can hold a value such as a password: each file shows its counts before and
 after, and the rules it removes or keeps off the list as counts by class (the tool, `mcp`, `other` or

@@ -46,7 +46,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
       lines: SECRET_DENY_LINES,
       pasteInto: '/u/.claude/settings.json',
     },
-    wideAllow: { files: 0, counts: [] },
+    wideAllow: { local: { files: 0, counts: [] }, committed: { files: 0, counts: [] } },
     launches: [],
     projects: [],
     shellHistory: { history: undefined, profiles: [], gated: false },
@@ -357,7 +357,7 @@ describe('doctorFindings of launch entries', () => {
   });
 
   it('flags the wide and credential allow rules by class in one finding, and is quiet without any', () => {
-    assert.deepEqual(lines(input({ wideAllow: { files: 2, counts: [['Bash wide', 2], ['Bash credential', 1]] } })), [
+    assert.deepEqual(lines(input({ wideAllow: { local: { files: 2, counts: [['Bash wide', 2], ['Bash credential', 1]] }, committed: { files: 0, counts: [] } } })), [
       "WARN allow-wide 3 local allow rule(s) in 2 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls, or hold a credential saved with an approved command (Bash wide 2, Bash credential 1); `teamrig permissions trim` previews their removal, and the owner runs it with --yes",
     ]);
     assert.deepEqual(lines(input()), []);

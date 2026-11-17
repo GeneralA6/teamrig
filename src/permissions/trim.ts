@@ -61,16 +61,26 @@ export async function planScope(files: Files, scope: readonly SettingsFile[], ke
   return Promise.all(scope.map(async (file) => planFile(file, await files.read(file.path), keep, mode, secrets)));
 }
 
-/** The rules off the keep-list that approve a whole tool or program or hold a credential: how many files hold them, and their classes. */
-export interface WideAllow {
+/** Rules off the keep-list that approve a whole tool or program or hold a credential: how many files hold them, and their classes. */
+export interface WideHolding {
   readonly files: number;
   readonly counts: ClassCounts;
 }
 
-/** What a `wide` plan of the scope would remove, shared files too: the flag doctor and the lead's start show. */
+/** Those rules in the person's own files, which a trim rewrites, and in committed ones, which only a commit changes (#837). */
+export interface WideAllow {
+  readonly local: WideHolding;
+  readonly committed: WideHolding;
+}
+
+/** What a `wide` plan of the scope would remove, shared files apart: the flag doctor and the lead's start show. */
 export function wideAllowOf(plans: readonly FilePlan[]): WideAllow {
   const holding = plans.filter((plan): plan is ReadPlan => plan.kind === 'read' && countOf(plan.trim.removed) > 0);
-  return { files: holding.length, counts: mergeCounts(holding.map((plan) => plan.trim.removed)) };
+  const of = (shared: boolean): WideHolding => {
+    const these = holding.filter((plan) => (plan.file.kind === 'shared') === shared);
+    return { files: these.length, counts: mergeCounts(these.map((plan) => plan.trim.removed)) };
+  };
+  return { local: of(false), committed: of(true) };
 }
 
 /** Settings as Claude Code writes them: two-space JSON and a final line break. */
