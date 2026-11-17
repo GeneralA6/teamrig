@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { generateKeyPairSync } from 'node:crypto';
 import { join } from 'node:path';
 import type { CommitAdds } from '../../secret-guard/git-adds.ts';
 import { APP, CliHarness, TEAM, type CliResult } from '../../testing/cli-harness.ts';
@@ -26,6 +27,19 @@ function repoStaging(paths: readonly string[], lines: readonly { file: string; l
 }
 
 describe('teamrig secrets staged', () => {
+  it("judges a staged .pub.pem by the index's copy: a public key passes, a private key is refused (#875)", async () => {
+    // Made at run time, so no key-shaped text sits in this file.
+    const pair = generateKeyPairSync('ed25519');
+    const git = repoStaging(['keys/a.pub.pem']);
+    assert.equal((await new CliHarness().run(['secrets', 'staged'], { secretsGit: git })).code, 2, 'a blob git cannot read is refused');
+    git.blobs.set(':keys/a.pub.pem', pair.publicKey.export({ type: 'spki', format: 'pem' }).toString());
+    assert.deepEqual((await new CliHarness().run(['secrets', 'staged'], { secretsGit: git })).stdout, ['OK no secret in the staged change (1 file(s))']);
+    git.blobs.set(':keys/a.pub.pem', pair.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString());
+    const refused = await new CliHarness().run(['secrets', 'staged'], { secretsGit: git });
+    assert.equal(refused.code, 2);
+    assert.match(output(refused), /keys\/a\.pub\.pem: a declared secret file/);
+  });
+
   it('passes a staged change with no secret and counts its files', async () => {
     const result = await new CliHarness().run(['secrets', 'staged'], { secretsGit: repoStaging(['src/a.ts'], [{ file: 'src/a.ts', line: 1, text: 'const port = 8080;' }]) });
 

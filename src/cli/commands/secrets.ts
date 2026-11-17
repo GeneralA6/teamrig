@@ -101,7 +101,8 @@ function repoRoot(runtime: CliRuntime): string {
 async function scannerOf(runtime: CliRuntime, root: string): Promise<CommitScanner> {
   const load = (await guardLoadOf(undefined, runtime))?.load;
   const rules = secretRulesOf(secretGuardOf(load), runtime.userHome, runtime.platform, secretPatternsOf(load));
-  return new CommitScanner(rules.shapes, rules.paths, root);
+  const git = runtime.secretsGit;
+  return new CommitScanner(rules.shapes, rules.paths, root, (revision, path) => git.blob(runtime.cwd, revision, path));
 }
 
 function refuseFound(head: string, findings: readonly CommitFinding[], fix: string): void {
