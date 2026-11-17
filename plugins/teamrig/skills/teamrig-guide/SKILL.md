@@ -79,8 +79,9 @@ and the hook says so; nothing is marked read. A bound tab with no title gets its
 prompt, and Claude Code keeps it across `/clear` (which starts a new Claude Code session), so the new session binds
 itself as it starts. After a `/clear` whose start note does not say the tab was bound, run `inbox read` again.
 
-A bound tab writes only as its own session: a command that changes anything (`approve`, `audit`, `set`, `inbox
-read` and the rest) is refused when `--session` or `$TEAMRIG_SESSION` names another session. Reads name any session.
+A bound tab writes only as its own session: a command that changes anything (`approve`, `audit`, `set` and the rest)
+is refused when `--session` or `$TEAMRIG_SESSION` names another session. Reads name any session. `inbox read` keeps its
+own rule: a tool call cannot move the tab, the person can (`/teamrig inbox read --session <id>`), and writes follow.
 
 If you do not know which session you are, run `teamrig who` and ask the user. Never guess.
 

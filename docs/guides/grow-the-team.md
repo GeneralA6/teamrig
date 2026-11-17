@@ -179,7 +179,8 @@ sequenceDiagram
   A bound tab with no title gets its session's name as title at its next prompt (`sessionTitle` in the prompt
   hook's answer); a tab with a title keeps it. A bound tab writes only as its own session: a command that changes
   anything is refused (`REFUSED this tab is <session>'s: ...`) when `--session` or `$TEAMRIG_SESSION` names another
-  session. Reads name any session.
+  session. Reads name any session. Only you move a bound tab, with `/teamrig inbox read --session <id>` in it; its
+  writes then follow it.
 - `teamrig open <session>` opens a tab in tmux (when run inside tmux), Windows Terminal, macOS Terminal, GNOME
   Terminal, Konsole or x-terminal-emulator, in that order; `open.terminal` in the config or `--terminal` picks one.
   With `open.teamWindow: true`, each tab of the team's sessions opens in a Windows Terminal window of the team's
