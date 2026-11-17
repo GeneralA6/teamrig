@@ -52,7 +52,7 @@ describe('gitSyncIn', () => {
   repo.write('a.txt', 'a\n');
   repo.git('add', 'a.txt');
   repo.git('commit', '-q', '-m', 'a');
-  // Git sends a hook's stdout to its own stderr: 2 MiB of it stands for the local gate the pre-push hook runs.
+  // Git passes a pre-push hook's stdout through as its own stdout: 2 MiB of it stands for the local gate the hook runs.
   const node = process.execPath.replaceAll('\\', '/');
   const hook = repo.write('.git/hooks/pre-push', `#!/bin/sh\n"${node}" -e "process.stdout.write('x'.repeat(2 * 1024 * 1024))"\n`);
   // Git on Linux and macOS skips a hook without the execute bit, and its push would then print nothing.
