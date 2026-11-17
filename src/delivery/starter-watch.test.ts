@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { gitEnvironment } from '../core/git-run.ts';
 import type { ProcessInfo } from '../open/session-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
+import { nodeShellProbe, posixShellEnvironment } from '../testing/posix-shell.ts';
 import { endingOf, livenessOf } from '../testing/process-liveness.ts';
 import { endedText, LAUNCHER_PID_ENV, launchingShellsOf, nodeEvery, SHELLS_PID_ENV, STARTER_CHECK_MS, startedByGit, starterWatch, startersOf, type Every } from './starter-watch.ts';
 
@@ -281,7 +282,9 @@ describe('starterWatch on this machine', () => {
     }
   });
 
-  const noShell = spawnSync('sh', ['-c', 'exit 0'], { stdio: 'ignore', windowsHide: true }).status !== 0 ? 'no sh on this machine' : false;
+  // Git's own sh where PATH lacks one, as a default Git for Windows install leaves it (T4103).
+  const shellEnv = posixShellEnvironment(process.env, nodeShellProbe);
+  const noShell = shellEnv === undefined ? 'no sh on this machine' : false;
 
   /** A plugin folder holding the real launcher, whose CLI watches its starters as the real one does. */
   interface PluginHome {
@@ -341,7 +344,7 @@ describe('starterWatch on this machine', () => {
     const plugin = pluginHome('plugin');
     // As the Bash tool runs a command: in a forked copy of the shell, since more follows it. Under Git Bash that copy
     // ends once the launcher starts, so only the launcher's record links the CLI to this shell.
-    const shell = spawn('sh', ['-c', '"$0"; exit $?', plugin.launcher], { stdio: 'ignore', windowsHide: true });
+    const shell = spawn('sh', ['-c', '"$0"; exit $?', plugin.launcher], { env: shellEnv, stdio: 'ignore', windowsHide: true });
     try {
       assert.equal(await until(() => written(plugin.ready), REAL_WAIT_MS), true, 'the CLI listed its starters');
       const [recorded = 0] = plugin.shells();
@@ -366,7 +369,7 @@ describe('starterWatch on this machine', () => {
     // launcher, each from a forked copy as more follows it: husky's hook runner runs `sh -e <hook>`, and the hook
     // runs teamrig. Under Git Bash neither the CLI's own line nor the second shell's reaches the outer shell.
     const script = ['if [ -r "/proc/$$/winpid" ]; then cat "/proc/$$/winpid"; else echo "$$"; fi > "$1"', `sh -c '"$0"; exit $?' "$0"`, 'exit $?'].join('\n');
-    const shell = spawn('sh', ['-c', script, plugin.launcher, outer.replaceAll('\\', '/')], { stdio: 'ignore', windowsHide: true });
+    const shell = spawn('sh', ['-c', script, plugin.launcher, outer.replaceAll('\\', '/')], { env: shellEnv, stdio: 'ignore', windowsHide: true });
     try {
       assert.equal(await until(() => written(plugin.ready), REAL_WAIT_MS), true, 'the CLI listed its starters');
       const target = Number(readFileSync(outer, 'utf8'));
@@ -389,7 +392,7 @@ describe('starterWatch on this machine', () => {
     const global = join(plugin.home, 'gitconfig');
     writeFileSync(global, '');
     const identity = { GIT_AUTHOR_NAME: 'spec', GIT_AUTHOR_EMAIL: 'spec', GIT_COMMITTER_NAME: 'spec', GIT_COMMITTER_EMAIL: 'spec' };
-    const env = { ...gitEnvironment(process.env), GIT_CONFIG_GLOBAL: global, GIT_CONFIG_NOSYSTEM: '1', ...identity };
+    const env = { ...gitEnvironment(shellEnv ?? process.env), GIT_CONFIG_GLOBAL: global, GIT_CONFIG_NOSYSTEM: '1', ...identity };
     assert.equal(spawnSync('git', ['init', '-q', repo], { env, stdio: 'ignore', windowsHide: true }).status, 0, 'git init');
     // As husky's hook runner: a `#!/usr/bin/env sh` hook that runs the hook in `sh -e`, which runs teamrig. Git for
     // Windows runs it as `env <hook>`, and the hook shell's own starter is a second env that has ended at once.
