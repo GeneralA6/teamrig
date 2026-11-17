@@ -39,6 +39,8 @@ interface Fixture {
   rebase?: 'clean' | 'conflict';
   diffOnTip?: string;
   push?: Error;
+  /** Where main is on origin when it is read again after a failed push: TIP (unmoved) unless given. */
+  movedTo?: string;
 }
 
 /** git in a repo dir whose `HEAD` main moved past; every call is kept, and one it does not expect throws. */
@@ -54,6 +56,10 @@ function fakeGit(fixture: Fixture = {}): { git: (...args: string[]) => string; c
     'rebase --abort': '',
     'rev-parse HEAD': REBASED,
     [diff(TIP, REBASED)]: fixture.diffOnTip ?? DIFF_ON_TIP,
+    'fetch --quiet origin main': '',
+    'rev-parse refs/remotes/origin/main': fixture.movedTo ?? TIP,
+    // The caught-up head sits on TIP, so it contains TIP and no later tip.
+    [`merge-base HEAD ${fixture.movedTo ?? TIP}`]: TIP,
   };
   let branch = fixture.checkedOut ?? HEAD;
   const git = (...args: string[]): string => {
@@ -125,7 +131,21 @@ test('a failed push is refused with its error, the repo dir back on the head', (
   const { git, calls } = fakeGit({ push: new Error('pre-push: the local gate failed') });
   const result = catchUp({ ...NO_REGENERATION, git, log: () => undefined }, REQUEST);
   assert.match(result.kind === 'refused' ? result.reason : '', /, and pushing it rebased as t9-change-2 failed: pre-push: the local gate failed$/);
+  assert.ok(calls.includes(`merge-base HEAD ${TIP}`), 'main was read again and had not moved');
   assert.deepEqual(calls.slice(-2), RESTORED);
+});
+
+test('a failed push while main moved again comes back as moved, with the new tip, the repo dir back on the head (T4131)', () => {
+  const AGAIN = 'again00ddd';
+  const { git, calls } = fakeGit({ push: new Error('pre-push: the plugin version 0.2.1 is already on main'), movedTo: AGAIN });
+  const log: string[] = [];
+  const result = catchUp({ ...NO_REGENERATION, git, log: (line) => log.push(line) }, REQUEST);
+  assert.equal(result.kind, 'moved');
+  assert.equal(result.kind === 'moved' ? result.tip : '', AGAIN);
+  assert.match(result.kind === 'moved' ? result.reason : '', /^t9-change abc1234 was caught up, and main moved again to again00 while it was pushed rebased as t9-change-2, and that push failed: pre-push: the plugin version 0\.2\.1 is already on main$/);
+  assert.ok(calls.indexOf(`merge-base HEAD ${AGAIN}`) < calls.indexOf(`switch --quiet ${HEAD}`), 'main is read against the caught-up head, before it is dropped');
+  assert.deepEqual(calls.slice(-2), RESTORED);
+  assert.match(log.at(-1) ?? '', /: catching it up again$/);
 });
 
 test('a head not checked out, or a repo dir with uncommitted changes, is refused before any branch or rebase', () => {
@@ -322,4 +342,40 @@ test('a failed push of a caught-up head is refused, the repo dir back on the hea
   assert.match(reasonOf(caught), /, and pushing it caught up as t9-change-2 failed: /);
   git('config', '--unset', 'remote.origin.pushurl');
   assertRestored(git, sha);
+});
+
+test('another merge landing the same version while the catch-up push runs its gate is caught up again and lands with the next version (T4131)', (t) => {
+  const { git, dir, request, deps, sha } = movedPast(t);
+  // Another session's merge, from its own clone: its raise takes 0.2.1, the version this catch-up raises to.
+  const other = join(dir, '..', 'other');
+  execFileSync('git', ['clone', '-q', join(dir, '..', 'origin.git'), other]);
+  const inOther = (...args: string[]): string => execFileSync('git', ['-C', other, '-c', 'user.name=o', '-c', 'user.email=o@example.com', '-c', 'commit.gpgsign=false', ...args], { encoding: 'utf8' }).trim();
+  let gateRuns = 0;
+  const racing: CatchUpDeps = {
+    ...deps,
+    // The pre-push gate runs for minutes; the other merge lands meanwhile and the plugin version gate fails the push.
+    git: (...args) => {
+      if (args[0] === 'push' && gateRuns++ === 0) {
+        writeFileSync(join(other, PLUGIN), '{\n  "name": "teamrig",\n  "version": "0.2.1"\n}\n');
+        writeFileSync(join(other, KIT), "export const KIT_VERSION = '0.2.1';\n");
+        inOther('commit', '-q', '-a', '-m', 'plugin: version 0.2.1, the other merge');
+        inOther('push', '-q', 'origin', 'main');
+        throw new Error('pre-push: the plugin version 0.2.1 is already on origin/main');
+      }
+      return deps.git(...args);
+    },
+  };
+  const first = catchUp(racing, request);
+  assert.equal(first.kind, 'moved');
+  const landed = inOther('rev-parse', 'HEAD');
+  assert.equal(first.kind === 'moved' ? first.tip : '', landed);
+  assertRestored(git, sha);
+
+  const second = catchUp(racing, { ...request, tip: first.kind === 'moved' ? first.tip : '' });
+  assert.equal(second.kind, 'rebased');
+  assert.equal(second.kind === 'rebased' ? second.head : '', NEXT, 'the name the failed push never took');
+  assert.equal(git('merge-base', 'HEAD', landed), landed, 'on the other merge');
+  assert.equal(readFileSync(join(dir, PLUGIN), 'utf8'), '{\n  "name": "teamrig",\n  "version": "0.2.2"\n}\n');
+  assert.equal(readFileSync(join(dir, KIT), 'utf8'), "export const KIT_VERSION = '0.2.2';\n");
+  assert.equal(git('ls-remote', '--heads', 'origin', `refs/heads/${NEXT}`).split('\t')[0], git('rev-parse', 'HEAD'));
 });

@@ -501,36 +501,47 @@ function approvalGate(args: MergeArgs, deps: MergeDeps): MergeGate {
   };
 }
 
-/** How many heads a `ship.ts merge` tries in all when main keeps moving past them (T2809). */
+/** How many times main may move past a `ship.ts merge`'s heads before it gives up (T2809, T4131). */
 export const MERGE_ATTEMPTS = 3;
 
 /**
  * `ship.ts merge` as a command. A merge waits in the queue behind other heavy steps, often past another merge, so a
  * head main moved past is caught up (catch-up.ts: rebased onto main as `<head>-N` when clean with the same diff,
- * pushed) and merged in its place, at most MERGE_ATTEMPTS heads in all; anything else main's move does is refused
- * (T2809). A ship's own merge (mergeBranch) gets the move back instead and goes again from its plan (T2696).
+ * pushed) and merged in its place; anything else main's move does is refused (T2809). Main may also move while a
+ * catch-up's push runs its gate, as another merge whose share was set aside for its CI wait lands (T3336): that head
+ * is caught up again on the new tip, which raises the plugin version again (T4131). Each move counts, at most
+ * MERGE_ATTEMPTS in all. A ship's own merge (mergeBranch) gets the move back instead and goes again from its plan (T2696).
  */
 export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number> {
   let stem: string | null = null;
   let current = args;
   const gate = approvalGate(args, deps);
+  let move: MainMove | null = null;
   for (let attempt = 1; ; attempt++) {
-    const exit = await mergeRun(current, deps, gate);
-    if (exit.kind === 'done') return exit.code;
+    if (move === null) {
+      const exit = await mergeRun(current, deps, gate);
+      if (exit.kind === 'done') return exit.code;
+      move = exit;
+    }
     if (attempt === MERGE_ATTEMPTS) {
-      deps.err(`REFUSED ${exit.reason} (main moved past ${MERGE_ATTEMPTS} heads during this merge)`);
+      deps.err(`REFUSED ${move.reason} (main moved ${MERGE_ATTEMPTS} times during this merge)`);
       return 1;
     }
-    // The checkout has not changed since the run read it.
+    // The checkout has not changed since the run read it, and a catch-up that main moved past put it back.
     const head = current.head ?? checkedOutBranch(deps.git);
     stem ??= head;
     const { main, regenerated } = profileFor(deps.profiles, slugOf(deps.git('remote', 'get-url', 'origin')));
-    const caught = deps.catchUp({ head, stem, tip: exit.tip, main, regenerated });
+    const caught = deps.catchUp({ head, stem, tip: move.tip, main, regenerated });
     if (caught.kind === 'refused') {
       deps.err(`REFUSED ${caught.reason}`);
       return 1;
     }
+    if (caught.kind === 'moved') {
+      move = caught;
+      continue;
+    }
     current = { ...current, head: caught.head };
+    move = null;
   }
 }
 
