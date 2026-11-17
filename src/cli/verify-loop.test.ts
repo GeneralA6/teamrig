@@ -262,6 +262,25 @@ describe('runCli: a start waits for the verifying tasks it needs', () => {
     ]);
   });
 
+  it("still posts the next owner's line after one owner's inbox append fails (#745)", async () => {
+    const kit = new CliHarness({ ...TEAM, register: { verifyGate: 'warn' } });
+    for (const [id, owner] of [['T1', 'bravo'], ['T2', 'lead']] as const) {
+      await kit.run(['add', '--title', `Ship part ${id}`, '--description', 'what and why', '--priority', 'p2', '--session', owner]);
+      await kit.run(['set', id, '--status', 'in-progress', '--session', owner]);
+      await kit.run(['set', id, '--status', 'verifying', '--waits', 'time:2030-02-01 09:00', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--session', owner]);
+    }
+    await kit.run(['add', '--title', 'Build on both', '--description', 'what and why', '--priority', 'p2', '--after', 'T1,T2', '--session', 'alpha']);
+    const files = new FaultyFiles(kit.files).fail('append', join(TEAM_HOME, 'state', 'inbox', 'bravo.md'), systemError('EBUSY', 'EBUSY: resource busy or locked'));
+    const start = await kit.run(['set', 'T3', '--status', 'in-progress', '--session', 'alpha'], { files });
+    assert.equal(start.code, EXIT.ok, [...start.stdout, ...start.stderr].join('\n'));
+    assert.deepEqual(start.stderr.slice(0, 2), [
+      'WARN bravo was not told of T3: the inbox write failed (EBUSY: resource busy or locked)',
+      'NOTE lead has an inbox line: T3 waits on your verifying T2: the nightly run',
+    ]);
+    const inbox = await kit.run(['inbox', 'read', '--session', 'lead']);
+    assert.deepEqual(inbox.stdout.filter((line) => line.startsWith('- ')), ['- 2030-01-08 10:00 UTC alpha: T3 waits on your verifying T2: the nightly run']);
+  });
+
   it('warns of no start in warn mode when the start was refused for another reason', async () => {
     const kit = await heldStart(new CliHarness({ ...TEAM, register: { verifyGate: 'warn', secretPatterns: ['hunter2'] } }));
     const start = await kit.run(['set', 'T2', '--status', 'in-progress', '--note', 'hunter2', '--session', 'alpha']);
