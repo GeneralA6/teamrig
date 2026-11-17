@@ -12,7 +12,7 @@ import { mergeDigestLines } from "../../meeting/merges.js";
 import { decisionsByOwner, endNotice } from "../../meeting/notices.js";
 import { MeetingSchedule } from "../../meeting/schedule.js";
 import { SPOTLIGHT_LOG, spotlightLine, startSpotlight } from "../../meeting/spotlight.js";
-import { MEETING_LAPSE_MS, MeetingStore, phaseOf, stoppedAt } from "../../meeting/state.js";
+import { MEETING_LAPSE_MS, MeetingStore, phaseOf, startingKindOf, stoppedAt } from "../../meeting/state.js";
 import { MergeLog } from "../../merge/merge-log.js";
 import { goalScores } from "../../register/goal-board.js";
 import { currentWeekOf } from "../../register/week.js";
@@ -213,9 +213,11 @@ export async function meetingStart(args, runtime) {
         endedAt: null,
         since: before === undefined ? null : new Date(before).toISOString(),
         carried: phase.kind === 'none' ? [] : phase.meeting.carried,
+        kind: startingKindOf(phase, mk.now, mk.zone),
     };
     await mk.store.write(meeting);
-    runtime.out.stdout(`MEETING started ${mk.zone.weekdayMinute(new Date(mk.now))}: messages to ${mk.leadName} are held but CRITICAL ones (the hook tells each sender)`);
+    const extra = meeting.kind === 'extra' ? ", an extra meeting after the day's daily one" : '';
+    runtime.out.stdout(`MEETING started ${mk.zone.weekdayMinute(new Date(mk.now))}${extra}: messages to ${mk.leadName} are held but CRITICAL ones (the hook tells each sender)`);
     const spotlit = {
         title: sessionDisplay(mk.kit.paths.team, mk.leadName),
         meetingFile: mk.kit.paths.meeting,
