@@ -62,6 +62,8 @@ export interface MergeGit {
   fileCheckout(file: string): GitRead<FileCheckout | undefined>;
   /** The git common dir of the repository `dir` is in, undefined when it is in none, or which read git did not answer. */
   repositoryOf(dir: string): GitRead<string | undefined>;
+  /** The version `git version` names, such as `2.30.2`, run in `dir`; undefined when git could not tell (#1472). */
+  gitVersion(dir: string): string | undefined;
   /** The commit `ref` names; undefined when it names none. */
   sha(dir: string, ref: string): string | undefined;
   /** The tree the commit `ref` names makes; undefined when it names no commit. */
@@ -303,6 +305,7 @@ export const GIT_MERGE: MergeGit = {
       const line = run.stdout.trim();
       return run.status === 0 && line !== '' ? line : undefined;
     }),
+  gitVersion: (dir) => /^git version (\d+(?:\.\d+)*)/.exec(queryLine(dir, ['version']) ?? '')?.[1],
   sha: (dir, ref) => queryLine(dir, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`]),
   treeOf: (dir, ref) => queryLine(dir, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}^{tree}`]),
   remoteHead(dir, remote, branch) {

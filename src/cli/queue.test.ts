@@ -1278,6 +1278,18 @@ describe("teamrig queue runs a configured ship tool only from main's current cod
     }
   });
 
+  it('names the git version, not a stale tool, when a git older than 2.31 cannot read the tool\'s checkout (#1472)', async () => {
+    const NO_CHECKOUT = STALE.replaceAll('-C /repo/ship ', '-C /repo/ship/tools/ship ');
+    const OLD_GIT = `the ship tool check reads ${SHIP_TOOL}'s checkout with git rev-parse --path-format=absolute, which needs git 2.31 or newer, and this host runs git 2.30.2: upgrade git, then queue the step again`;
+    for (const [version, refusal] of [['2.30.2', OLD_GIT], ['1.9', OLD_GIT.replace('2.30.2', '1.9')], ['2.31.0', NO_CHECKOUT], [undefined, NO_CHECKOUT]] as const) {
+      const git = shipGit();
+      git.checkouts.delete('/repo/ship/tools/ship');
+      git.versionIs = version;
+      const { kit, steps } = harness(SHIPPING);
+      assert.deepEqual(await kit.run(SHIP_STEP, { steps, mergeGit: git }), { code: EXIT.refused, stdout: [`REFUSED ${refusal}`], stderr: [] }, String(version));
+    }
+  });
+
   it('refuses at its start, recording its refusal, a ship step whose tool moved to another commit while it waited', async () => {
     const { kit, steps } = harness(SHIPPING);
     await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
