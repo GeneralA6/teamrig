@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
-import { lstat, readdir, readFile, readlink, rmdir, symlink, unlink } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { lstat, readdir, readFile, readlink, rename, rmdir, symlink, unlink } from 'node:fs/promises';
 import { realpathSync, type Dirent } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { errorCode, errorMessage } from '../core/guards.ts';
@@ -22,6 +23,23 @@ export interface Program {
 
 /** The working folder of every other program the system lets this user read, or why it cannot tell (#797). */
 export type ProgramsRead = { readonly kind: 'read'; readonly programs: readonly Program[] } | { readonly kind: 'unknown'; readonly reason: string };
+
+/**
+ * Whether the system lets a folder move, as a probe for a program inside it on Windows (#797), which gives no plain way
+ * to read another program's working folder but refuses to rename a folder a program runs in or holds a file of open:
+ * `movable` once renamed and back; `held` when the rename was refused so; `stuck` when the rename back failed, the
+ * folder left at `moved`; `unknown` when the rename failed some other way; `not-needed` where the working folders are
+ * read instead (Linux, macOS).
+ */
+export type MoveProbe =
+  | { readonly kind: 'movable' }
+  | { readonly kind: 'held'; readonly code: string }
+  | { readonly kind: 'stuck'; readonly moved: string; readonly reason: string }
+  | { readonly kind: 'unknown'; readonly reason: string }
+  | { readonly kind: 'not-needed' };
+
+/** The codes Windows refuses a folder's rename with while a program runs inside it or holds a file in it open. */
+const HELD_CODES: ReadonlySet<string> = new Set(['EPERM', 'EBUSY', 'EACCES']);
 
 /** How long `lsof` may take to list every program's working folder. */
 const LSOF_TIMEOUT_MS = 10_000;
@@ -50,6 +68,8 @@ export interface WorktreeFiles {
   canonical(path: string): Promise<string | undefined>;
   /** The working folder of every other running program, so a worktree one runs in is not removed partway (#797). */
   workingFolders(): Promise<ProgramsRead>;
+  /** On Windows, renames `folder` to a sibling and straight back, since the rename fails while a program runs inside it (#797). */
+  moveProbe(folder: string): Promise<MoveProbe>;
 }
 
 /** A folder's listing; undefined when the folder does not exist. */
@@ -132,7 +152,36 @@ export const NODE_WORKTREE_FILES: WorktreeFiles = {
     }
     return { kind: 'unknown', reason: `${process.platform === 'win32' ? 'Windows' : process.platform} gives no plain way to read another program's working folder` };
   },
+  async moveProbe(folder) {
+    if (process.platform !== 'win32') {
+      return { kind: 'not-needed' };
+    }
+    return await renameProbe(folder, `${folder}.teamrig-check-${randomUUID().slice(0, 8)}`);
+  },
 };
+
+/**
+ * Renames `folder` to `aside`, a sibling no one uses, and straight back with `move` (#797): Windows refuses the first
+ * rename exactly when a program runs inside the folder or holds a file in it open, which is what makes `git worktree
+ * remove` stop partway there. Nothing else is touched; a failed rename back is reported, never retried elsewhere.
+ */
+export async function renameProbe(folder: string, aside: string, move: (from: string, to: string) => Promise<void> = rename): Promise<MoveProbe> {
+  try {
+    await move(folder, aside);
+  } catch (error) {
+    const code = errorCode(error);
+    if (code !== undefined && HELD_CODES.has(code)) {
+      return { kind: 'held', code };
+    }
+    return { kind: 'unknown', reason: `${folder} could not be renamed to check (${errorMessage(error)})` };
+  }
+  try {
+    await move(aside, folder);
+  } catch (error) {
+    return { kind: 'stuck', moved: aside, reason: errorMessage(error) };
+  }
+  return { kind: 'movable' };
+}
 
 /** Linux: each `/proc/<pid>/cwd` link this user may read; a program that ended, or another user's, is skipped. */
 async function procWorkingFolders(): Promise<ProgramsRead> {

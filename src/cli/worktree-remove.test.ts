@@ -68,6 +68,15 @@ describe('runCli: worktree remove', () => {
     assert.deepEqual([files.unlinked, git.steps], [[], []]);
   });
 
+  it('refuses, naming the folder, a worktree Windows will not move, before any change (#797)', async () => {
+    const { files, git, ports } = worktrees();
+    files.probe = { kind: 'held', code: 'EBUSY' };
+    const result = await new CliHarness().run(['worktree', 'remove', '/w/t4'], { worktrees: ports });
+    assert.equal(result.code, EXIT.refused);
+    assert.match(result.stdout.join('\n'), /REFUSED Windows refused to move \/w\/t4 \(EBUSY\): a program runs inside it or holds a file in it open/);
+    assert.deepEqual([files.unlinked, git.steps], [[], []]);
+  });
+
   it('prints the steps of a dry run and changes nothing', async () => {
     const { files, git, ports } = worktrees();
     const result = await new CliHarness().run(['worktree', 'remove', '/w/t4', '--dry-run'], { worktrees: ports });
