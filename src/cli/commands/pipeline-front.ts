@@ -1,4 +1,4 @@
-import { lineFrontPath, LineFrontStore } from '../../delivery/line-front.ts';
+import { lineFrontPath, LineFrontStore } from '../../delivery/line-front-store.ts';
 import { ACTIVE_STATUSES, TASK_ID } from '../../register/model.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';

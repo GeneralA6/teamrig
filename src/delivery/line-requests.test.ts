@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { EXIT } from '../cli/runtime.ts';
 import { CliHarness, EVENTS_PATH, TEAM_HOME } from '../testing/cli-harness.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { lineFrontPath, LineFrontStore } from './line-front.ts';
+import { lineFrontPath, LineFrontStore } from './line-front-store.ts';
 import { requestSourceOf, teamRequestsOf } from './line-requests.ts';
 import { processRequest, type LineTask, type RequestFocus } from './process-request.ts';
 

@@ -1,7 +1,7 @@
 import type { Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
 import { JsonlEventLog } from '../register/store.ts';
-import { lineFrontPath, LineFrontStore } from './line-front.ts';
+import { lineFrontPath, LineFrontStore } from './line-front-store.ts';
 import { lineRequestOf, type LineTask, type RequestFocus, type RequestSource } from './process-request.ts';
 
 /**

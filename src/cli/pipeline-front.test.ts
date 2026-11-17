@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { LineFrontStore, lineFrontPath } from '../delivery/line-front.ts';
+import { LineFrontStore, lineFrontPath } from '../delivery/line-front-store.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 

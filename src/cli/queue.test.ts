@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { FIRST_IN_LINE_POLL_MS } from '../delivery/host-lock.ts';
 import type { QueuedStepRecord, RefusalOutcome, RefusalRecord } from '../delivery/ledger.ts';
-import { lineFrontPath, LineFrontStore } from '../delivery/line-front.ts';
+import { lineFrontPath, LineFrontStore } from '../delivery/line-front-store.ts';
 import { isRecord } from '../core/guards.ts';
 import { recordPass } from '../delivery/push-pass.ts';
 import { parkedDirOf, parseParked, PARKED_SUFFIX, type ParkedStep } from '../delivery/parked.ts';
