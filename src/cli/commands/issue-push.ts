@@ -13,6 +13,7 @@ import { hostOf, reposOf } from '../issue-hosts.ts';
 import { sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { GITHUB_OFF, githubOff } from './issue-sync-auto.ts';
+import { fieldRunOf, pushFields, type FieldRun } from './issue-field-push.ts';
 import { openTeam } from './register-team.ts';
 
 /** The change rows a repository prints; the rest are counted. */
@@ -60,6 +61,7 @@ export async function issuePush(args: ParsedArgs, runtime: CliRuntime): Promise<
       limits: SESSION_PUSH,
       logins: sessionLogins(config.github.owners),
       told: new Set(),
+      fields: await fieldRunOf(runtime, config, team.paths, team.register),
     },
     say,
   );
@@ -83,6 +85,8 @@ export interface PushRun {
   readonly logins: SessionLogins;
   /** The scopes whose ACCESS line was already printed, so each is printed once per command. */
   readonly told: Set<string>;
+  /** The field push after the labels (T3406); undefined when github.fields.push is off. */
+  readonly fields: FieldRun | undefined;
 }
 
 /** What a push did: the changes and writes it sent (planned, without send), and each repository that failed. */
@@ -102,6 +106,9 @@ export async function pushRepos(run: PushRun, say: (line: string) => void): Prom
   let left = run.limits.writesPerRun;
   let writes = 0;
   let sent = 0;
+  if (run.fields !== undefined && run.host.fields === undefined && run.repos.length > 0) {
+    say(`SKIPPED fields: ${run.host.name} has no issue fields or types, so the push writes none`);
+  }
   for (const repo of run.repos) {
     const reach = await run.host.reach(repo, run.send ? 'write' : 'read');
     if (reach.kind === 'unreachable') {
@@ -120,19 +127,31 @@ export async function pushRepos(run: PushRun, say: (line: string) => void): Prom
       continue;
     }
     read.notes.forEach((note) => say(`NOTE ${repo}: ${note}`));
-    const plan = planPush(repo, read.issues, await run.tasks(), { writesPerRun: left, closes: run.limits.closes }, run.logins);
+    // Held as a list: the label plan and the field plan each go over every task.
+    const tasks = [...(await run.tasks())];
+    const plan = planPush(repo, read.issues, tasks, { writesPerRun: left, closes: run.limits.closes }, run.logins);
     planLines(plan).forEach(say);
     const planned = plan.changes.reduce((sum, change) => sum + changeWrites(change), 0);
     left -= planned;
-    if (!run.send) {
+    let failed: string | undefined;
+    if (run.send) {
+      const outcome = await applyPush(run.host, plan, say);
+      writes += outcome.writes;
+      sent += outcome.sent;
+      failed = outcome.failed;
+    } else {
       writes += planned;
-      continue;
     }
-    const outcome = await applyPush(run.host, plan, say);
-    writes += outcome.writes;
-    sent += outcome.sent;
-    if (outcome.failed !== undefined) {
-      failures.push({ repo, reason: outcome.failed });
+    // After the labels, in the run's writes they left; a repository whose label push failed sends no field.
+    if (failed === undefined && run.fields !== undefined) {
+      const fielded = await pushFields({ host: run.host, run: run.fields, repo, issues: read.issues, tasks, writes: left, send: run.send }, say);
+      left -= fielded.planned;
+      writes += fielded.writes;
+      sent += fielded.sent;
+      failed = fielded.failed;
+    }
+    if (failed !== undefined) {
+      failures.push({ repo, reason: failed });
     }
   }
   return { sent, writes, failures };

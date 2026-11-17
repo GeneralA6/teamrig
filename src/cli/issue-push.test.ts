@@ -193,6 +193,35 @@ describe('teamrig issue sync --push', () => {
     assert.ok(lines.some((line) => line.startsWith('FAILED acme/api: ') && line.endsWith('; nothing planned for it')));
   });
 
+  it("after the labels, sets each held issue's fields and type through the shipped calls, and none with github.fields.push off (T3406)", async () => {
+    const withFields = (gh: FakeGh): FakeGh =>
+      gh.holdsFields('acme/web', {
+        fields: [{ __typename: 'IssueFieldSingleSelect', name: 'Priority', fullDatabaseId: '11', options: [{ name: 'P1' }, { name: 'P2' }] }],
+        types: [{ name: 'Task', isEnabled: true }],
+        issues: [{ number: 7, issueType: null, issueFieldValues: { nodes: [] } }],
+      });
+    const kit = new CliHarness(GITHUB_TEAM);
+    await addHolding(kit, 'Fix login', 'gh:acme/web#7');
+    const preview = await expectRun(kit, ['issue', 'sync', '--push'], withFields(issues()), EXIT.ok);
+    assert.deepEqual(
+      preview.filter((line) => /^(FIELDS|FIELD|TYPE) /u.test(line)),
+      ['FIELDS acme/web: 2 to write', 'FIELD acme/web#7 (T1): Priority P2', 'TYPE acme/web#7 (T1): Task'],
+    );
+    assert.ok(preview.includes('NOTE acme/web: acme/web has no issue field named "Start date", so none is written there'), preview.join('\n'));
+    const gh = withFields(issues());
+    await expectRun(kit, ['issue', 'sync', '--push', '--yes', '--repo', 'acme/web'], gh, EXIT.ok);
+    assert.deepEqual(
+      gh.ran.filter((request) => request.args.some((arg) => arg.startsWith('issue_field_values') || arg.startsWith('type='))).map((request) => request.args.join(' ')),
+      ['api repos/acme/web/issues/7/issue-field-values -X POST -F issue_field_values[][field_id]=11 -f issue_field_values[][value]=P2', 'api repos/acme/web/issues/7 -X PATCH -f type=Task'],
+    );
+    const off = new CliHarness({ ...GITHUB_TEAM, github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, fields: { push: false } } });
+    await addHolding(off, 'Fix login', 'gh:acme/web#7');
+    const quiet = withFields(issues());
+    const lines = await expectRun(off, ['issue', 'sync', '--push'], quiet, EXIT.ok);
+    assert.ok(!lines.some((line) => line.startsWith('FIELD')), lines.join('\n'));
+    assert.ok(!quiet.ran.some((request) => request.args.some((arg) => arg.includes('issueFieldValues'))));
+  });
+
   it('says in its help how many writes a run sends', () => {
     assert.ok(USAGE.includes(`at most ${PUSH_WRITES_PER_RUN} writes a run`));
   });

@@ -38,6 +38,7 @@ import type { Thread } from '../../github/clock.ts';
 import type { HostIssue } from '../../issues/issue.ts';
 import { claimBudget, recordClaims } from './issue-claim.ts';
 import { pullThreads, recordClocks, repoThreads } from './issue-clock.ts';
+import { fieldRunOf } from './issue-field-push.ts';
 import { issuePush, pushEndLine, pushRepos } from './issue-push.ts';
 import { GITHUB_OFF, githubOff, readSyncState, reportAutoSync } from './issue-sync-auto.ts';
 import { githubWatcher } from '../../github/watcher.ts';
@@ -260,6 +261,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
         limits: { writesPerRun: Math.max(0, writesPerRun - claimed.writes), closes: false },
         logins: sessionLogins(config.github.owners),
         told,
+        fields: await fieldRunOf(runtime, config, kit.paths, register),
       },
       say,
     );
