@@ -7,6 +7,9 @@ import {
   CLOSED_ISSUES_QUERY,
   COMMENTS_READ,
   closedPageArgs,
+  FIELDS_READ,
+  fieldsPageArgs,
+  ISSUE_FIELDS_QUERY,
   ISSUE_LINKS_QUERY,
   ISSUE_PAGE_SIZE,
   linksPageArgs,
@@ -65,6 +68,16 @@ describe('the shipped queries', () => {
       assert.ok(ISSUE_LINKS_QUERY.includes(field), field);
     }
     assert.deepEqual(linksPageArgs({ ...PAGE, after: 'Y3Vyc29y' }), ['api', 'graphql', '-f', `query=${ISSUE_LINKS_QUERY}`, '-f', 'owner=acme', '-f', 'name=web', '-f', 'after=Y3Vyc29y']);
+  });
+
+  it("read the open issues' types and field values with the repository's fields and types, and no text of an issue (T3406)", () => {
+    assert.match(ISSUE_FIELDS_QUERY, /^query\(/);
+    assert.doesNotMatch(ISSUE_FIELDS_QUERY, /mutation/i);
+    assert.doesNotMatch(ISSUE_FIELDS_QUERY, /\b(title|body|comments|author)\b/);
+    for (const field of ['states: [OPEN]', `first: ${ISSUE_PAGE_SIZE}`, `issueTypes(first: ${FIELDS_READ}) { nodes { name isEnabled } }`, `issueFields(first: ${FIELDS_READ})`, 'fullDatabaseId', 'issueType { name }', `issueFieldValues(first: ${FIELDS_READ})`, 'numberValue: value']) {
+      assert.ok(ISSUE_FIELDS_QUERY.includes(field), field);
+    }
+    assert.deepEqual(fieldsPageArgs({ ...PAGE, after: 'Y3Vyc29y' }), ['api', 'graphql', '-f', `query=${ISSUE_FIELDS_QUERY}`, '-f', 'owner=acme', '-f', 'name=web', '-f', 'after=Y3Vyc29y']);
   });
 
   it('read pull requests newest change first, with no body or comment text', () => {
