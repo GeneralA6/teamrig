@@ -4,7 +4,8 @@ import { existsSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
-import { GIT_WORKTREES as git, parseStatus, parseWorktreeList } from './git.ts';
+import type { GitRun } from '../core/git-run.ts';
+import { GIT_WORKTREES as git, parseStatus, parseWorktreeList, worktreeGit, type GitRunner } from './git.ts';
 
 describe('parseWorktreeList', () => {
   it('reads each worktree with its branch and lock, the main one first', () => {
@@ -198,5 +199,61 @@ describe('GIT_WORKTREES', () => {
     assert.equal(git.hasBranch(missing, 'main'), undefined);
     const failed = git.removeWorktree(missing, join(missing, 'wt'));
     assert.equal(failed.ok, false);
+  });
+});
+
+describe('worktreeGit: a query git gave no answer to (#847)', () => {
+  const STOPPED: GitRun = { status: null, stdout: '', stderr: '', unanswered: 'stopped by SIGTERM' };
+  const said = (status: number, stdout = ''): GitRun => ({ status, stdout, stderr: '' });
+  /** A runner that answers each command from `answers` by its first word or two, stalling the first run of each `stalled` one. */
+  const runner = (answers: Readonly<Record<string, GitRun>>, stalled: readonly string[]): { run: GitRunner; calls: string[] } => {
+    const calls: string[] = [];
+    const run: GitRunner = (_dir, args) => {
+      const key = args.slice(0, 2).join(' ');
+      calls.push(key);
+      if (stalled.includes(key) && calls.filter((call) => call === key).length === 1) {
+        return STOPPED;
+      }
+      return answers[key] ?? answers[args[0] ?? ''] ?? said(128);
+    };
+    return { run, calls };
+  };
+  const MERGED = { 'rev-parse': said(0, 'abc123\n'), 'merge-base --is-ancestor': said(0) };
+
+  it('runs a query stopped at its timeout once more, so a merged branch still counts 0, not "could not tell"', () => {
+    const { run, calls } = runner(MERGED, ['merge-base --is-ancestor']);
+    assert.equal(worktreeGit(run).commitsNotOn('/repo', 'feat', 'origin/main'), 0);
+    assert.equal(calls.filter((call) => call === 'merge-base --is-ancestor').length, 2);
+  });
+
+  it('reads two stalls in a row as git could not tell, and runs it no third time', () => {
+    const calls: string[] = [];
+    const run: GitRunner = (_dir, args) => {
+      calls.push(args.slice(0, 2).join(' '));
+      return args[0] === 'rev-parse' ? said(0, 'abc123\n') : STOPPED;
+    };
+    assert.equal(worktreeGit(run).commitsNotOn('/repo', 'feat', 'origin/main'), undefined);
+    assert.equal(calls.filter((call) => call === 'merge-base --is-ancestor').length, 2);
+  });
+
+  it("never runs git's own no again: exit 1 and 128 are answers", () => {
+    const { run, calls } = runner({ 'show-ref --verify': said(1) }, []);
+    assert.equal(worktreeGit(run).hasBranch('/repo', 'feat'), false);
+    assert.deepEqual(calls, ['show-ref --verify']);
+  });
+
+  it('retries a stalled branch lookup and the top-folder read too', () => {
+    const { run } = runner({ 'show-ref --verify': said(0), 'rev-parse --show-toplevel': said(0, '/repo\n') }, ['show-ref --verify', 'rev-parse --show-toplevel']);
+    const port = worktreeGit(run);
+    assert.equal(port.hasBranch('/repo', 'feat'), true);
+    assert.equal(port.topOf('/repo'), '/repo');
+  });
+
+  it('runs a step that changes something once, even when it stalled', () => {
+    const { run, calls } = runner({}, ['worktree remove', 'branch -D']);
+    const port = worktreeGit(run);
+    assert.equal(port.removeWorktree('/repo', '/repo/wt').ok, false);
+    assert.equal(port.deleteBranch('/repo', 'feat').ok, false);
+    assert.deepEqual(calls, ['worktree remove', 'branch -D']);
   });
 });
