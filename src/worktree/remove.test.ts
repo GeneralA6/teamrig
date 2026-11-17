@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlink
 import { join, resolve } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
 import { FakeWorktreeFiles, FakeWorktreeGit, type FakeGitAnswers, type FakeNode } from '../testing/fake-worktrees.ts';
-import { NODE_WORKTREE_FILES, parseLsofFolders, type WorktreeFiles } from './files.ts';
+import { NODE_WORKTREE_FILES, parseLsofFolders, renameProbe, type WorktreeFiles } from './files.ts';
 import { GIT_WORKTREES, type GitOutcome, type WorktreeEntry } from './git.ts';
 import {
   carryOut,
@@ -703,6 +703,101 @@ describe('other programs running inside the worktree (#797)', () => {
     const unknown = leftoverWorld();
     unknown.files.programs = { kind: 'unknown', reason: 'no lsof' };
     assert.equal(leftoverOf(await planRemoval(leftoverRequest(), unknown.ports)).unchecked, `could not check for other programs running inside ${HUSK}: no lsof; going on`);
+  });
+
+  it('on Windows, refuses before any change a worktree the system will not move, naming the folder', async () => {
+    const { files, git, ports } = world();
+    files.probe = { kind: 'held', code: 'EBUSY' };
+    files.programs = { kind: 'unknown', reason: 'not read on Windows' };
+    const reason = `Windows refused to move ${TOP} (EBUSY): a program runs inside it or holds a file in it open, so git would stop partway; close that program or move it out of the folder, then run this again`;
+    assert.equal(await refusal(planRemoval(request(), ports)), reason);
+    assert.deepEqual(files.probed, [resolve(TOP)], 'the worktree itself is probed');
+    assert.deepEqual([files.unlinked, git.steps], [[], []]);
+    const held = leftoverWorld();
+    held.files.probe = { kind: 'held', code: 'EPERM' };
+    assert.match(await refusal(planRemoval(leftoverRequest(), held.ports)), new RegExp(`^Windows refused to move ${HUSK} \\(EPERM\\)`));
+    assert.deepEqual(held.files.unlinked, []);
+  });
+
+  it('on Windows, stops naming both paths when the probe cannot rename the folder back', async () => {
+    const { files, git, ports } = world();
+    files.probe = { kind: 'stuck', moved: `${TOP}.teamrig-check-1a2b3c4d`, reason: 'EPERM: operation not permitted' };
+    assert.equal(
+      await refusal(planRemoval(request(), ports)),
+      `checking ${TOP} for programs inside it renamed it to ${TOP}.teamrig-check-1a2b3c4d, and renaming it back failed (EPERM: operation not permitted); nothing else was changed: rename ${TOP}.teamrig-check-1a2b3c4d back to ${TOP}, then run this again`,
+    );
+    assert.deepEqual([files.unlinked, git.steps], [[], []]);
+  });
+
+  it('on Windows, goes on with no note once the folder moved and came back, and notes a probe that could not run', async () => {
+    const { files, ports } = world();
+    files.probe = { kind: 'movable' };
+    files.programs = { kind: 'unknown', reason: 'not read on Windows' };
+    assert.equal(planOf(await planRemoval(request(), ports)).unchecked, undefined);
+    files.probe = { kind: 'unknown', reason: `${TOP} could not be renamed to check (ENAMETOOLONG)` };
+    assert.equal(planOf(await planRemoval(request(), ports)).unchecked, `could not check for other programs running inside ${TOP}: ${TOP} could not be renamed to check (ENAMETOOLONG); going on`);
+  });
+});
+
+describe('renameProbe, the Windows check for a program inside a folder (#797)', () => {
+  /** A rename that fails with `codes` in turn (undefined: it renames), recording each call. */
+  function moves(codes: readonly (string | undefined)[], calls: string[][]): (from: string, to: string) => Promise<void> {
+    let call = 0;
+    return async (from, to) => {
+      calls.push([from, to]);
+      const code = codes[call++];
+      if (code !== undefined) {
+        throw Object.assign(new Error(`${code}: refused`), { code });
+      }
+    };
+  }
+
+  it('renames the folder aside and straight back', async () => {
+    const calls: string[][] = [];
+    assert.deepEqual(await renameProbe('/w/t4', '/w/t4.x', moves([], calls)), { kind: 'movable' });
+    assert.deepEqual(calls, [['/w/t4', '/w/t4.x'], ['/w/t4.x', '/w/t4']]);
+  });
+
+  it('reads a refused first rename as held, and touches nothing more', async () => {
+    for (const code of ['EPERM', 'EBUSY', 'EACCES']) {
+      const calls: string[][] = [];
+      assert.deepEqual(await renameProbe('/w/t4', '/w/t4.x', moves([code], calls)), { kind: 'held', code });
+      assert.equal(calls.length, 1);
+    }
+  });
+
+  it('reads another failure as unknown, and a failed rename back as stuck at the aside path', async () => {
+    assert.deepEqual(await renameProbe('/w/t4', '/w/t4.x', moves(['ENOENT'], [])), { kind: 'unknown', reason: '/w/t4 could not be renamed to check (ENOENT: refused)' });
+    const calls: string[][] = [];
+    assert.deepEqual(await renameProbe('/w/t4', '/w/t4.x', moves([undefined, 'EPERM'], calls)), { kind: 'stuck', moved: '/w/t4.x', reason: 'EPERM: refused' });
+    assert.equal(calls.length, 2, 'the rename back is not retried elsewhere');
+  });
+
+  it('moves a real folder and back, its files kept; on Windows a program inside it holds it, elsewhere no probe runs', async () => {
+    const repo = new TempRepo('worktree-probe');
+    const folder = join(repo.dir, 'wt');
+    mkdirSync(folder);
+    writeFileSync(join(folder, 'a.txt'), 'a\n');
+    try {
+      assert.deepEqual(await renameProbe(folder, `${folder}.aside`), { kind: 'movable' });
+      assert.deepEqual([readFileSync(join(folder, 'a.txt'), 'utf8'), existsSync(`${folder}.aside`)], ['a\n', false]);
+      if (process.platform !== 'win32') {
+        assert.deepEqual(await NODE_WORKTREE_FILES.moveProbe(folder), { kind: 'not-needed' });
+        return;
+      }
+      assert.deepEqual(await NODE_WORKTREE_FILES.moveProbe(folder), { kind: 'movable' });
+      const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { cwd: folder, stdio: 'ignore' });
+      try {
+        await new Promise((settle) => child.once('spawn', settle));
+        const probe = await NODE_WORKTREE_FILES.moveProbe(folder);
+        assert.equal(probe.kind, 'held');
+        assert.ok(existsSync(folder));
+      } finally {
+        child.kill();
+      }
+    } finally {
+      repo.remove();
+    }
   });
 });
 

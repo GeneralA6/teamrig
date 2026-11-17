@@ -116,6 +116,25 @@ type HoldersCheck = { readonly kind: 'free' } | { readonly kind: 'held'; readonl
 
 /** The programs whose working folder is inside `top`, named, or the line saying the system could not tell (#797). */
 async function holdersCheck(files: WorktreeFiles, top: string, canonicalTop: string): Promise<HoldersCheck> {
+  const probe = await files.moveProbe(canonicalTop);
+  switch (probe.kind) {
+    case 'movable':
+      return { kind: 'free' };
+    case 'held':
+      return {
+        kind: 'held',
+        reason: `Windows refused to move ${top} (${probe.code}): a program runs inside it or holds a file in it open, so git would stop partway; close that program or move it out of the folder, then run this again`,
+      };
+    case 'stuck':
+      return {
+        kind: 'held',
+        reason: `checking ${top} for programs inside it renamed it to ${probe.moved}, and renaming it back failed (${probe.reason}); nothing else was changed: rename ${probe.moved} back to ${top}, then run this again`,
+      };
+    case 'unknown':
+      return { kind: 'unchecked', line: `could not check for other programs running inside ${top}: ${probe.reason}; going on` };
+    case 'not-needed':
+      break;
+  }
   const read = await files.workingFolders();
   if (read.kind === 'unknown') {
     return { kind: 'unchecked', line: `could not check for other programs running inside ${top}: ${read.reason}; going on` };

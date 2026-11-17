@@ -916,7 +916,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       a worktree folder and holding only folders and links (a removal git stopped partway), any session
       clears the same way, its folders removed once empty; REFUSED before any change for the main
       checkout, a dirty tree, a real node_modules folder or another program running inside it (read on
-      Linux and macOS; elsewhere a NOTE says it was not checked), and in a team for another session's
+      Linux and macOS; on Windows a rename aside and back fails), and in a team for another session's
       worktree: a session removes its own (its t<id>- branch names a task it owns) and those of the
       sessions it leads, the lead any, and any session one on a detached HEAD whose every commit is on
       the branch origin/HEAD names, as teamrig merge leaves it. --delete-branch: deletes its branch too,

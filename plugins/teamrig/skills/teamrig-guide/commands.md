@@ -4912,8 +4912,11 @@ a locked worktree; a run from inside the worktree; another program whose working
 process id and name (Windows cannot delete a folder a program runs in, so git would stop partway); a real
 `node_modules` folder (removing the worktree would delete it); a link with tracked files under it; and uncommitted
 changes or untracked files, the files behind a link left out. It reads other programs' working folders from `/proc`
-on Linux and with `lsof` on macOS; where it cannot (Windows), a `NOTE` line says so and the removal goes on. It
-resolves `<path>` against the current folder.
+on Linux and with `lsof` on macOS. On Windows, which gives no plain way to read them, it renames the worktree's folder
+to a sibling and straight back first: Windows refuses that while a program runs inside it or holds a file in it open,
+so it refuses naming the folder (no process id), and should the rename back fail it stops, naming both paths, with
+nothing else changed. Where it cannot check at all, a `NOTE` line says so and the removal goes on. It resolves `<path>`
+against the current folder.
 
 In a team, a session removes only its own worktrees and those of the sessions it leads; the lead removes any. A
 worktree is the session's whose branch names a task it owns: `t12-parser` is T12's. One on a branch that names no

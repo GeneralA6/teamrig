@@ -1,5 +1,5 @@
 import { basename, dirname, resolve } from 'node:path';
-import type { EntryKind, ProgramsRead, TreeEntry, WorktreeFiles } from '../worktree/files.ts';
+import type { EntryKind, MoveProbe, ProgramsRead, TreeEntry, WorktreeFiles } from '../worktree/files.ts';
 import type { GitOutcome, WorktreeEntry, WorktreeGit } from '../worktree/git.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
 
@@ -25,6 +25,10 @@ export class FakeWorktreeFiles implements WorktreeFiles {
   readonly busy = new Set<string>();
   /** The other programs and the folders they run in; none by default. */
   programs: ProgramsRead = { kind: 'read', programs: [] };
+  /** What the Windows move probe finds; by default it is not needed, as on Linux and macOS. */
+  probe: MoveProbe = { kind: 'not-needed' };
+  /** Each folder the move probe was asked about. */
+  readonly probed: string[] = [];
 
   constructor(nodes: Readonly<Record<string, FakeNode>> = {}) {
     for (const [path, node] of Object.entries(nodes)) {
@@ -128,6 +132,11 @@ export class FakeWorktreeFiles implements WorktreeFiles {
 
   async workingFolders(): Promise<ProgramsRead> {
     return this.programs;
+  }
+
+  async moveProbe(folder: string): Promise<MoveProbe> {
+    this.probed.push(resolve(folder));
+    return this.probe;
   }
 }
 
