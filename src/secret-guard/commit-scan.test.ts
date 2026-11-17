@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { generateKeyPairSync } from 'node:crypto';
 import { SecretShapes } from '../core/secret-shapes.ts';
 import { CommitScanner, DECLARED_FILE } from './commit-scan.ts';
 import type { CommitAdds } from './git-adds.ts';
@@ -94,7 +95,9 @@ describe('CommitScanner: a .pub.pem holding a public key alone (#875)', () => {
   const dashes = '-----';
   const header = (...label: string[]): string => `${dashes}BEGIN ${label.join(' ')}${dashes}`;
   const pem = (...label: string[]): string => [header(...label), 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A', `${dashes}END ${label.join(' ')}${dashes}`].join('\n');
-  const onDisk: Readonly<Record<string, string>> = { [`${ROOT}/keys/archive.pub.pem`]: pem('PUBLIC', 'KEY'), [`${ROOT}/keys/mistake.pub.pem`]: pem('PRIVATE', 'KEY') };
+  // Made at run time, so no key-shaped text sits in the source: the content check parses the key.
+  const publicKey = generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString();
+  const onDisk: Readonly<Record<string, string>> = { [`${ROOT}/keys/archive.pub.pem`]: publicKey, [`${ROOT}/keys/mistake.pub.pem`]: pem('PRIVATE', 'KEY') };
   const keyed = new CommitScanner(new SecretShapes(), new SecretPaths(DEFAULT_SECRET_PATHS, HOME, true, (path) => onDisk[path]), ROOT);
 
   it('lets a public key in, and refuses a private key saved under that name, by name and by its block', () => {

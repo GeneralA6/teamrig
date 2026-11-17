@@ -523,11 +523,12 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
   key stores `**/*.pem`, `**/*.key`, `**/*.p12`, `**/*.pfx`, `**/*.jks` and `**/*.keystore`, the private keys
   `**/id_rsa`, `**/id_ecdsa` and `**/id_ed25519` (their `.pub` halves are not listed), and Terraform's state
   `**/*.tfstate` and `**/*.tfstate.backup` (it holds secrets in plain text); `.env.example`, `.env.sample` and
-  `~/.ssh/*.pub` stay readable. A `.pub.pem` file is read before it is refused: while its text holds PEM `PUBLIC KEY`
-  blocks and nothing else, it is no secret, so a committed public key (`keys/archive.pub.pem`) can be read and
-  committed. A private key block, both kinds, any other text, a file that cannot be read or is over 64 KB, and a word
-  with wildcards (`cat keys/*.pub.pem`) stay refused, and so does a `.pub.pem` that a team glob in
-  `secretGuard.paths` names after `**/*.pem`. A word with
+  `~/.ssh/*.pub` stay readable. A `.pub.pem` file is read before it is refused: while its text holds PEM blocks
+  labelled exactly `PUBLIC KEY` or `RSA PUBLIC KEY`, each one a public key Node's crypto parses, and nothing else, it
+  is no secret, so a committed public key (`keys/archive.pub.pem`) can be read and committed. A private key block,
+  any other label, a public key label around anything but a public key, any other text, a file that cannot be read or
+  is over 64 KB, and a word with wildcards (`cat keys/*.pub.pem`) stay refused, and so does a `.pub.pem` that a team
+  glob in `secretGuard.paths` names after `**/*.pem`: to keep every `.pem` refused, list `**/*.pub.pem`. A word with
   wildcards counts when a secret name fits them (`cat .env*`, `cat .env.ex*`, which also fits `.env.export`), unless
   they meet only where each one's wildcard covers the other's text: `grep x *.ts` fits `.env.*` only as `.env.ts`,
   and passes. So a session no longer reads, nor edits, a
