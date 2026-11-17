@@ -177,7 +177,10 @@ function formatRecord(fields: { readonly version?: string; readonly at: number; 
 export interface LauncherRefresh {
   /** The machine's restore parts, the logon entry and the shortcuts run by the Node this start runs on. */
   readonly machine: RestoreMachine;
-  /** The kit home's other launchers a plugin update can leave old, such as the status line's; each rewritten only when there. */
+  /**
+   * The kit home's other launchers a plugin update can leave old, such as the status line's; each rewritten only when
+   * there, or written when missing too when it is a `create` one (the inbox-add launcher).
+   */
   readonly others: readonly Launcher[];
   /** The lock on `<record>.lock`, with `LAUNCHER_REFRESH_LOCK`'s timings. */
   readonly lock: Mutex;

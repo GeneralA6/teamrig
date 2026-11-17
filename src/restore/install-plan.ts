@@ -26,6 +26,8 @@ export interface MachineStep {
 export interface Launcher {
   readonly path: string;
   readonly text: string;
+  /** A refresh writes it when missing too: a launcher no install sets up, which scheduled jobs name (#930). */
+  readonly create?: boolean;
 }
 
 /** `install` sets up what is missing or out of date; `refresh` changes only what is there and out of date. */
@@ -64,7 +66,7 @@ export function restoreLaunchers(kitHome: string): { readonly check: Launcher; r
 
 /** The step that writes `launcher` over `there` (the text the file holds now, undefined for none), when `mode` calls for one. */
 function launcherWrite(files: Files, launcher: Launcher, there: string | undefined, mode: PlanMode): MachineStep[] {
-  const due = there !== launcher.text && (mode === 'install' || there !== undefined);
+  const due = there !== launcher.text && (mode === 'install' || there !== undefined || launcher.create === true);
   return due ? [{ line: `WRITE ${launcher.path}`, act: () => files.write(launcher.path, launcher.text) }] : [];
 }
 
