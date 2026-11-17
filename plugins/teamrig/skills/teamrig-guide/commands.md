@@ -1836,6 +1836,9 @@ Flags:
   turn is shown the line at its next tool call's end, and a closed one is reopened at the next idle pass. The
   `WAKES` line names the time; a wake long after the receiver's last turn is priced cold. Until the time, the line
   keeps no idle session open. It takes the same gate as `--wake now`, and one or the other, not both.
+- `--from host:<job>`: the sender is a host scheduled job (cron, launchd, Task Scheduler), which runs as no session;
+  `<job>` names it, as an id does. It takes no `--session` and no `--wake` or `--wake-by`, and `--to` names sessions
+  of the team by id or name only, one or a comma-separated list. See [from a host scheduled job](#from-a-host-scheduled-job).
 
 Every receiver gets the same line, stamped with the same minute, or none does: an unknown session or team, one out
 of reach, `group:` on a session that leads no one, a task no register of your tree holds, a group that holds only
@@ -1871,6 +1874,49 @@ The line is stored as `- 2026-10-15 08:58 lead: api error codes are in docs/erro
 A line to a session under a sub-lead below the sender (`leads` in the config) is posted all the same, then a second
 line names the sub-lead to route such work via next time; a line that starts with CRITICAL gets none. See
 [the route reminder](hooks.md#after-a-send-past-a-sub-lead-the-route-reminder).
+
+#### From a host scheduled job
+
+A job the host runs on a schedule, outside any session, posts its line through `~/.teamrig/bin/inbox-add.mjs`. The
+file never moves, while the plugin folder changes with each plugin version, so the job's entry names it once. Each
+session start writes it when missing and keeps it up to date. It runs the installed plugin's `teamrig inbox add` with
+the job's words, so the line meets the same rules and refusals; `--team <team>` names the team when the job does not
+run in the team's project folder. It exits with the CLI's code, and 1 when no teamrig plugin is installed, so the
+job's own log shows a line that did not land.
+
+Linux (crontab):
+
+```sh
+0 3 * * * node ~/.teamrig/bin/inbox-add.mjs --team shop --from host:nightly-backup --to ops --text "backup done"
+```
+
+macOS (a launchd agent's plist):
+
+```xml
+<key>ProgramArguments</key>
+<array>
+  <string>/usr/local/bin/node</string>
+  <string>/Users/me/.teamrig/bin/inbox-add.mjs</string>
+  <string>--team</string><string>shop</string>
+  <string>--from</string><string>host:nightly-backup</string>
+  <string>--to</string><string>ops</string>
+  <string>--text</string><string>backup done</string>
+</array>
+```
+
+Windows (Task Scheduler):
+
+```bat
+schtasks /create /sc daily /st 03:00 /tn nightly-backup /tr "node %USERPROFILE%\.teamrig\bin\inbox-add.mjs --team shop --from host:nightly-backup --to ops --text \"backup done\""
+```
+
+Output:
+
+```text
+POSTED to ops; ops is reminded at its next prompt
+```
+
+The line is stored as `- 2026-10-15 03:00 host:nightly-backup: backup done`.
 
 ## Privileged commands
 
