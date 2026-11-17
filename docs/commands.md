@@ -381,7 +381,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       changes, writes nothing; --auto, which issue watch runs when GitHub changed, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before; with github.statusPush on, --auto then
-      sends the status push's labels and assignees too (a close it plans is held for --push --yes,
+      sends the status push's labels, assignees, fields and types too (a close it plans is held for --push --yes,
       printed HELD), and assigns an outside person who claims an open issue by a /take comment,
       taking the assignee off after 7 days with no linked pull request,
       its writes lowered so an hour of runs sends at most 250
@@ -409,7 +409,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       with a due date), not a design issue, no one is assigned to is assigned to the login
       github.owners maps to its task's session, else the repository's owner; at most 40 writes a run; without --yes it writes nothing;
       --yes sends them, a repository stopping at its first failed write; a status label the repository
-      lacks is made first (MADE)
+      lacks is made first (MADE); after the labels, each held open issue's github.fields (priority,
+      start and target day, score) and type are set where they differ, on a repository that has them
   issue migrate <file> [--out <preview.md>] [--yes]   moves the team's tasks to issues of github.repos
       from a JSON-lines file: per task {id, decision "issue", repo, type bug|task, priority p1-p3,
       title, body} with its public wording, or {id, decision "local", reason}; without --yes writes
