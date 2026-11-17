@@ -1,12 +1,12 @@
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { availableParallelism, tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import { EXIT_CLEAN, EXIT_FINDINGS, EXIT_USAGE } from '../lib/exit.ts';
 import { readTextIfPresent } from '../lib/files.ts';
 import { createGit } from '../lib/git.ts';
 import { takeRoot } from '../lib/repo-root.ts';
 import { runMain } from '../lib/run-main.ts';
-import { coverageFindings, coverageRun, coverageTotals, parsePolicy, POLICY_FILE, SOURCE_DIRS, suiteArgs, suiteEnv } from './coverage.ts';
+import { coverageFindings, coverageRun, coverageTotals, parsePolicy, POLICY_FILE, SOURCE_DIRS, suiteArgs, suiteWorkers, suiteEnv } from './coverage.ts';
 import { hangFinding, runSuite } from './suite-run.ts';
 
 /**
@@ -32,7 +32,7 @@ async function main(args: readonly string[]): Promise<number> {
     const lcovPath = join(out, 'lcov.info');
     const tapPath = join(out, 'tap.txt');
     const idleMs = policy.suiteIdleSeconds * 1000;
-    const end = await runSuite({ program: process.execPath, args: suiteArgs(policy, lcovPath, tapPath), cwd: root, env: suiteEnv(process.env), idleMs });
+    const end = await runSuite({ program: process.execPath, args: suiteArgs(policy, lcovPath, tapPath, suiteWorkers(availableParallelism())), cwd: root, env: suiteEnv(process.env), idleMs });
     if (end.kind === 'idle') {
       console.log(`coverage: ${hangFinding(end.silentMs, process.versions.node)}`);
       return EXIT_FINDINGS;

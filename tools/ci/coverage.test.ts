@@ -14,6 +14,7 @@ import {
   sourceFiles,
   strayTests,
   suiteArgs,
+  suiteWorkers,
   suiteEnv,
   type CoveragePolicy,
   type CoverageRun,
@@ -149,8 +150,8 @@ describe('sourceFiles and strayTests', () => {
 
 describe('suiteArgs', () => {
   it('measures src and tools, excludes tests and test support, and writes lcov and TAP', () => {
-    const args = suiteArgs(POLICY, 'out.lcov', 'out.tap');
-    assert.deepEqual(args.slice(0, 2), ['--test', '--experimental-test-coverage']);
+    const args = suiteArgs(POLICY, 'out.lcov', 'out.tap', 10);
+    assert.deepEqual(args.slice(0, 3), ['--test', '--test-concurrency=10', '--experimental-test-coverage']);
     for (const arg of [
       '--test-coverage-include=src/**',
       '--test-coverage-include=tools/**',
@@ -163,6 +164,12 @@ describe('suiteArgs', () => {
       assert.ok(args.includes(arg), arg);
     }
     assert.deepEqual(args.slice(-2), ['tools/**/*.test.ts', 'src/**/*.test.ts']);
+  });
+});
+
+describe('suiteWorkers', () => {
+  it('runs half the cores at once, so the two heavy steps the host queue admits fit the host, and never none (T4064)', () => {
+    assert.deepEqual([20, 9, 4, 2, 1].map(suiteWorkers), [10, 4, 2, 1, 1]);
   });
 });
 
