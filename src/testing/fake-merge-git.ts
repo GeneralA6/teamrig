@@ -83,6 +83,8 @@ export class FakeMergeGit implements MergeGit {
   resetFails: string | undefined;
   /** The `core.sshCommand` git's config sets; none by default. */
   sshCommandIs: string | undefined;
+  /** The version `git version` names, a git new enough for every read by default; undefined when git could not tell. */
+  versionIs: string | undefined = '2.56.0';
   /**
    * Why git does not answer the next reads that tell an unanswered read from git's "no" (`fileCheckout`,
    * `repositoryOf`), one reason per read, oldest first, as when git cannot start under load (T3368).
@@ -151,6 +153,10 @@ export class FakeMergeGit implements MergeGit {
   repositoryOf(dir: string): GitRead<string | undefined> {
     const unanswered = this.unanswered.shift();
     return unanswered === undefined ? { ok: true, value: this.commonDir(dir) } : { ok: false, reason: unanswered };
+  }
+
+  gitVersion(): string | undefined {
+    return this.versionIs;
   }
 
   /** The `.git` folder of the checkout's main checkout. */

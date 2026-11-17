@@ -143,6 +143,17 @@ describe('GIT_MERGE reading the ssh command', () => {
   });
 });
 
+describe('GIT_MERGE reading the git version (#1472)', () => {
+  it('reads the version number git version names, without the text around it', () => {
+    const { repo } = repoWithOrigin('merge-version');
+    try {
+      assert.match(git.gitVersion(repo.dir) ?? '', /^\d+\.\d+(\.\d+)*$/);
+    } finally {
+      repo.remove();
+    }
+  });
+});
+
 describe('GIT_MERGE reading origin and a range', () => {
   it("reads origin's branch from origin itself, and the local copy only after a fetch", () => {
     const { repo } = repoWithOrigin('merge-remote');
