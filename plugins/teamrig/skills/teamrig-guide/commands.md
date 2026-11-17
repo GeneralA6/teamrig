@@ -1371,7 +1371,7 @@ Flags:
   is told to the watcher and goes on from the cut next run; a failed one fails the repository and keeps its scan. A
   run without `--auto` reads no posts. It reads every
   repository, so it refuses `--repo`. With `github.statusPush` on it
-  then sends the status push (`--push --yes`) too, labels only: a close it plans is printed as a `HELD` line and
+  then sends the status push (`--push --yes`) too, labels, assignees, fields and types only: a close it plans is printed as a `HELD` line and
   sent only by a session's `--push --yes`. Its writes per run are lowered so an hour of runs sends at most 250
   (4 a run at the default `github.probeSeconds` of 60, 20 at 300); a failed write is told to the lead like a
   repository that fails.
@@ -1402,6 +1402,13 @@ Flags:
   and an imported one hold the same issue, the team task speaks for it; when two or more active team tasks hold it,
   the push writes nothing to it and a `SHARED` line names them. One active team task speaks over finished ones; with
   none active, the newest finished one speaks.
+  After the labels it sets each held open issue's fields and type, one way from the task list, on a repository
+  that has them ([github.fields]): the priority as an option of the `Priority` field (`P<n>`, else Urgent, High,
+  Medium or Low by level, [github.fields.priorityOptions]), the day the task
+  first went in progress to `Start date`, its due day to `Target date`, its score, rounded, to `Score`, and the
+  issue type (a task `Task`, a bug `Bug`, a goal `Feature`, a design issue `Design`), each a `FIELD` or `TYPE`
+  line and only where it differs, in the same writes per run. A field or type the repository lacks is skipped with
+  a `NOTE`; a repository with none prints nothing; nothing is ever cleared, and the labels stay.
 
 Example:
 

@@ -450,13 +450,22 @@ PREVIEW nothing was written; a push would send 7 write(s) now, at most 40 a run,
   repository (sessions are not GitHub users). An issue a person assigned keeps its assignees; the push takes none off. Each login is read first: one the repository may
   not assign (not a person with access to it) gets an `UNASSIGNED` line and its issues keep their label changes, as
   GitHub would drop it silently and every run would send it again.
+- **Fields and type too.** On a repository with issue fields or types, the push then sets each held open issue's
+  fields, one way from the task list: the priority as an option of a single-select `Priority` field (`P<n>`, else
+  GitHub's own: p0 and p1 Urgent, p2 High, p3 Medium, p4 and p5 Low; `priorityOptions` renames them), the
+  day the task first went in progress to the date field `Start date`, its due day to `Target date` and its score,
+  rounded, to the number field `Score`; and its type: a task `Task`, a bug `Bug`, a goal `Feature` (else `Goal`), a
+  design issue `Design`. Each is a `FIELD` or `TYPE` line, sent only where it differs, in the same writes per run as
+  the labels. A field the repository lacks, or of another kind, is skipped with one `NOTE`; a repository with no
+  fields or types prints nothing. A value set by hand is set back, nothing is cleared, and the labels stay. The
+  names, the type each kind is set as, and turning it off are the `fields` block under `github` in the team config.
 - **Within GitHub's limit.** At most 40 writes a run, half GitHub's 80 a minute, shared by every repository in
   `github.repos` order; the rest waits for the next run.
 - **On its own, once you turn it on.** With `"statusPush": true` in the team config's `github` block, the
   [automatic sync](#then-it-runs-on-its-own) sends the push after each import, so no session runs it. Each run then
   sends fewer writes when the sync can run often, so an hour of runs sends at most 250, half GitHub's 500 an hour
   (probing every 60 seconds: 4 a run; every 300: 20). Its own label writes read as a change, so a longer list drains
-  a run per probe. It sends labels and assignees only: a close is the one write a person reads as a decision,
+  a run per probe. It sends labels, assignees, fields and types only: a close is the one write a person reads as a decision,
   so the automatic push prints it as a `HELD` line and leaves it to a session's `teamrig issue sync --push --yes`.
   A failed write is told to the lead's inbox like a repository that cannot be read. It is off by default: read `teamrig issue sync --push` first, and give the token **Issues: Read and write**.
 
@@ -547,6 +556,7 @@ again.
   run (`.../issues/<number>/comments -X GET` with `since` and `per_page=30` only, one page), for at most ten issues a
   run, to find a claim line, and keeps no text. The mention scan reads post text to find mentions of your users and
   keeps only each post's key, the logins it routed and its time ([Mentions of your users](#mentions-of-your-users)).
+  The push also reads each open issue's type and field values, with the repository's fields and types, never its text.
   Any other `gh` command or query is refused in code, except
   the writes, each run by hand on a repository in `github.repos`: `teamrig issue migrate`'s create of one issue
   (`gh api repos/<owner>/<name>/issues -X POST` with its title, body and labels only), `teamrig issue comment`'s
@@ -556,11 +566,12 @@ again.
   (`.../issues/<number> -X PATCH` with `state=closed` and its `state_reason` only, a duplicate's also with the
   original's `duplicate_issue_id`, digits only) and the read of that original (`.../issues/<number> -X GET`, no
   field), the status push's read of whether one login may be assigned (`repos/<owner>/<name>/assignees/<login>`)
-  and its assign (`.../issues/<number>/assignees -X POST` with logins only, never a removal), the read of the
-  repository's label file (`repos/<owner>/<name>/contents/.github/labels.json` with the raw media type, nothing
-  else), the create of a label teamrig makes (`repos/<owner>/<name>/labels -X POST` with the name, colour and
-  description of one of the five status labels or `design`, word for word) or of one that file named when the same
-  run read it, word for word, and
+  and its assign (`.../issues/<number>/assignees -X POST` with logins only, never a removal), its field and type
+  writes (`.../issues/<number>/issue-field-values -X POST` with one field id and one value, `.../issues/<number>
+  -X PATCH` with `type` only), the read of the repository's label file
+  (`repos/<owner>/<name>/contents/.github/labels.json` with the raw media type, nothing else), the create of a label
+  teamrig makes (`repos/<owner>/<name>/labels -X POST` with the name, colour and description of one of the five
+  status labels or `design`, word for word) or of one that file named when the same run read it, word for word, and
   `teamrig issue links`'s one link (`.../issues/<number>/sub_issues` or `.../dependencies/blocked_by`, `-X POST`
   with one issue id only). No link is ever removed.
 - **Never on disk in the clear.** The token lives in the system's credential store, encrypted under your login. It
