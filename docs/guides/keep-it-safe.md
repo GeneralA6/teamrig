@@ -50,7 +50,7 @@ flowchart TD
 ```
 
 - `pushGuard.pushToProtected` (since 0.11.0) is `ask` by default, which refuses a normal push to a protected branch with
-  the route to take (no teamrig hook asks a person, since 0.460.0); set to `allow`, such a push runs with a one-line
+  the route to take (no teamrig hook asks a person); set to `allow`, such a push runs with a one-line
   note, and Claude Code's own permissions still decide.
 - Set to `lead` (since 0.126.0), the lead approves pushes instead of the human: the lead's own runs with a note (a
   child team's lead's only while its parent team's lead's approval stands on one of its tasks); a

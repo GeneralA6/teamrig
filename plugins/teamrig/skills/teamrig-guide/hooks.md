@@ -437,7 +437,7 @@ with overrides.
 ## No teamrig hook asks a person
 
 A permission prompt holds the session until a human answers it, for hours when nobody is there, so no teamrig hook
-ever asks (owner order, since 0.460.0), whatever a key says. What a hook once asked about is refused instead: the push
+ever asks (owner order), whatever a key says. What a hook once asked about is refused instead: the push
 guard's (a push to a protected branch, a `--force-with-lease` push, a line it cannot read), the commit guard's, the
 package guard's and the secret guard's under their `ask` choice, the db-write guard's, the service-role guard's (a
 role grant or revoke, a role past its daily cap), and the helper gate's. The hook's own reason, which names the route
@@ -449,7 +449,7 @@ for a change as a task: `teamrig add --owner <your lead> --title "Rule change: <
 reviewer for a security rule."
 
 A refusal stays as it was, with no note. `prompts.hookAsks` reaches only the prompts Claude Code raises on its own:
-`refuse` (the default since 0.460.0) answers them, `ask` lets them open, for a team with a person on every tab; a
+`refuse` (the default) answers them, `ask` lets them open, for a team with a person on every tab; a
 missing or broken config lets them open too. It reaches the prompts Claude Code raises on its own (a call its permission rules do not
 allow, in a mode that asks, or a check of its own that always asks): `hook prompt-refuse` answers each
 `PermissionRequest` for its case (since 0.151.0):
