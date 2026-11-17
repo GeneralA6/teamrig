@@ -26,10 +26,13 @@ this is the other side of it.
 1. Best fix first: judge whether its fix is the best one. If a better one exists, propose it on the pull request
    (what and why) before taking it; else say in one line why theirs is best.
 2. A change under a guarded path (CONTRIBUTING.md, Review) gets a security review before it lands.
-3. Land it with credit: cherry-pick its source commits (`git cherry-pick -s <sha>` keeps the author), leave out its
+3. A change to a threshold, limit or trigger: ask "can this still fire?" Its tests must show it firing in the real
+   flow, through whatever resets its count (a compaction, a `/clear`, a restart); ask for that spec when they do
+   not (CONTRIBUTING.md, Tests).
+4. Land it with credit: cherry-pick its source commits (`git cherry-pick -s <sha>` keeps the author), leave out its
    version and dist commits, then raise the version and rebuild the dist ourselves (`dev-ship-change`). Comment on
    the pull request naming the landed commit, and close it.
-4. Reply as yourself, in plain words, with the next step and its date, and keep each promise in a task.
+5. Reply as yourself, in plain words, with the next step and its date, and keep each promise in a task.
 
 ## A design issue
 
