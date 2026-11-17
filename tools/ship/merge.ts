@@ -213,14 +213,16 @@ export interface MainMove {
 
 /**
  * Merged, refused, moved past (main's tip is not in the head's history, before the merge or as GitHub merged: a
- * ship can rebase and go again, T2696), or merged onto a main that moved between the last check and the merge
- * (GitHub's merge call cannot pin the base): main then holds a tree no check ran on.
+ * ship can rebase and go again, T2696), merged onto a main that moved between the last check and the merge
+ * (GitHub's merge call cannot pin the base): main then holds a tree no check ran on, or merged with that check
+ * unable to read main (#1452): the change landed, and only the comparison is left to do by hand.
  */
 export type MergeResult =
   | { kind: 'merged'; pull: PullRequest; sha: string }
   | { kind: 'refused'; pull: PullRequest | null; reason: string }
   | ({ kind: 'moved'; pull: PullRequest | null } & MainMove)
-  | { kind: 'drifted'; pull: PullRequest; sha: string; reason: string };
+  | { kind: 'drifted'; pull: PullRequest; sha: string; reason: string }
+  | { kind: 'unchecked'; pull: PullRequest; sha: string; reason: string };
 
 /** main's tip and why `head` cannot merge as checked, when that tip is not in its history; null when it is. */
 function behindMain(main: MainBranch, { head, base, sha }: MergeRequest, tip: string = main.tip()): MainMove | null {
@@ -230,14 +232,20 @@ function behindMain(main: MainBranch, { head, base, sha }: MergeRequest, tip: st
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-/** Why main's merged tip differs from the checked head's tree, or null when it holds that very tree. */
-function driftAfter(main: MainBranch, request: MergeRequest, merged: string): string | null {
+/** What the drift check found once the merge landed: the checked tree, another one, or no answer from git. */
+type Drift = { kind: 'same' } | { kind: 'drifted'; reason: string } | { kind: 'unread'; reason: string };
+
+/** Whether main's merged tip holds the checked head's tree, another tree, or could not be read. */
+function driftAfter(main: MainBranch, request: MergeRequest, merged: string): Drift {
   try {
     main.tip();
-    if (main.treeOf(merged) === main.treeOf(request.sha)) return null;
-    return `${request.base} moved just before the merge: ${merged.slice(0, 7)} is not the tree the checks passed on ${request.sha.slice(0, 7)}; check it (a plugin version bump may be lost) and ship a fix`;
+    if (main.treeOf(merged) === main.treeOf(request.sha)) return { kind: 'same' };
+    return {
+      kind: 'drifted',
+      reason: `${request.base} moved just before the merge: ${merged.slice(0, 7)} is not the tree the checks passed on ${request.sha.slice(0, 7)}; check it (a plugin version bump may be lost) and ship a fix`,
+    };
   } catch (error) {
-    return `could not compare ${merged.slice(0, 7)} with the checked ${request.sha.slice(0, 7)}: ${messageOf(error)}`;
+    return { kind: 'unread', reason: `could not compare ${merged.slice(0, 7)} with the checked ${request.sha.slice(0, 7)}: ${messageOf(error)}` };
   }
 }
 
@@ -331,14 +339,33 @@ export async function mergeThroughPull(request: MergeRequest, gh: Gh, main: Main
     return { kind: 'refused', pull, reason: `GitHub refused the merge: ${merged.message}${rule}` };
   }
   const drift = driftAfter(main, request, merged.sha);
-  return drift === null ? { kind: 'merged', pull, sha: merged.sha } : { kind: 'drifted', pull, sha: merged.sha, reason: drift };
+  switch (drift.kind) {
+    case 'same':
+      return { kind: 'merged', pull, sha: merged.sha };
+    case 'drifted':
+      return { kind: 'drifted', pull, sha: merged.sha, reason: drift.reason };
+    case 'unread':
+      return { kind: 'unchecked', pull, sha: merged.sha, reason: drift.reason };
+  }
 }
+
+/** git's refusal of a fetch whose remote ref another fetch of the same repo (another worktree) moved under it. */
+const REF_RACE = /incorrect old value provided|cannot lock ref/i;
 
 /** main on origin through git in the repo dir. */
 export function mainBranchOf(git: MergeDeps['git'], main: string): MainBranch {
+  const fetchMain = (): void => {
+    try {
+      git('fetch', '--quiet', 'origin', main);
+    } catch (error) {
+      // The other fetch already moved the ref, so one more fetch reads it (#1452); any other failure stands.
+      if (!REF_RACE.test(messageOf(error))) throw error;
+      git('fetch', '--quiet', 'origin', main);
+    }
+  };
   return {
     tip: () => {
-      git('fetch', '--quiet', 'origin', main);
+      fetchMain();
       return git('rev-parse', `refs/remotes/origin/${main}`);
     },
     contains: (sha, ancestor) => git('merge-base', sha, ancestor) === ancestor,
@@ -652,11 +679,15 @@ export async function mergeRun(args: MergeArgs, deps: MergeDeps, gate: MergeGate
     return done(1);
   }
   deps.out(`MERGED #${result.pull.number} into ${profile.main}, now at ${result.sha.slice(0, 7)}`);
-  // A drifted merge landed too: head's work is on main either way.
+  // A drifted or unchecked merge landed too: head's work is on main either way.
   deps.sweep({ repo, head, sha }, profile, gh);
   if (result.kind === 'drifted') {
     deps.err(`DRIFTED ${result.reason}`);
     return done(1);
+  }
+  if (result.kind === 'unchecked') {
+    // The merge landed: a check that could not read main is no failure of it, so the exit stays 0 (#1452).
+    deps.err(`UNCHECKED the drift check could not run: ${result.reason}; check by hand that ${result.sha.slice(0, 7)} holds the tree the checks passed on`);
   }
   return done(0);
 }
