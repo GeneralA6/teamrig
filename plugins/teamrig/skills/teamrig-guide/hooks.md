@@ -1686,7 +1686,8 @@ its part, whatever room the team has, and it is escalated whatever `budget.escal
 used 1.1% of the week today; its daily budget is 1.0%. The lead cut it to its own daily budget until 03:00 IDT (the
 end of the budget day). New helpers are refused. More: teamrig budget`. Its leader gets no inbox line, since a leader
 gave the cut, and the model reads `you are past today's budget and the lead cut you to it until 03:00 IDT (the end of
-the budget day)`.
+the budget day)`. A stop (`--stop`) holds the session whatever its use: the wake check and the idle pass wake and
+reopen it for p0 work only from the day's start, and past its part the model reads `the lead stopped you until ...`.
 
 While escalated, the model is told with the next prompt, once per level: `teamrig budget: you are past today's
 budget and the team has no room left today, and it is ahead of its pace line. Finish the step in hand and start

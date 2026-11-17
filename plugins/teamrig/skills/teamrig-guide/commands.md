@@ -6189,11 +6189,18 @@ comes first, and a newer cut of the session replaces an older one. The leaders w
 the lead cuts any session, a sub-lead the sessions in its group at any depth and its own session. Cuts are kept in
 the team's `state/usage/cuts.jsonl`. A session of a team under the lead's own is cut by its own team's leaders.
 
+A plain cut holds nothing while the session's part is unspent, so it cannot keep a session closed from the day's
+start. To stop one, give `--stop`: the session is held whatever its use, from its first W, so it wakes and is
+reopened for p0 work only, and the stop lasts until `--until` or the week's reset. `teamrig budget` names a stopped
+session still within its part on a line of its own: `Stopped by a leader, held whatever their use: api.` A lift of
+the session given after the stop ends it, as it ends a cut.
+
 Flags:
 
 - `--session <id|name>`: the caller; a leader over the session (the lead, or a sub-lead whose group holds it), or
   a sub-lead cutting its own session.
 - `--until <HH:MM|date>`: an earlier end: `HH:MM` today or `"YYYY-MM-DD HH:MM"`, on the team's clock unless marked `UTC`.
+- `--stop`: hold the session whatever its use, until `--until` or the week's reset, not only past its part today.
 - `--reason "<why>"`: required: why the session keeps to its own budget today.
 
 Example:
@@ -6206,6 +6213,14 @@ Output:
 
 ```text
 CUT api to its own daily budget until 03:00 IDT (the end of the budget day): past it, it is held whatever room the team has, so it wakes for p0 work only and budget.overAction holds its new helpers back as it says; a lift in force still sets that budget, and a new lift of it ends the cut.
+```
+
+```sh
+teamrig budget cut api --stop --session lead --reason "no new work until the reset"
+```
+
+```text
+CUT api stopped until Wed 11-18 03:00 IST (the week's reset): it is held whatever its use, so it wakes and is reopened for p0 work only and budget.overAction holds its new helpers back as it says; a new lift of it ends the stop.
 ```
 
 A caller that leads no group over the session or an `--until` already passed is `REFUSED` (exit 2); a session of
