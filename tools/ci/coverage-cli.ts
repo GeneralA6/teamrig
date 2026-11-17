@@ -26,8 +26,9 @@ import { hangFinding, runSuite } from './suite-run.ts';
  * Runs the whole test suite of this repo (or `--root <repo>`) once with coverage, then fails on a failing, skipped or
  * todo test, a source file no test loads, or a file or total below the floors in tools/ci/coverage.json.
  * A suite that prints nothing for the policy's suiteIdleSeconds is stopped with its tree and fails as hung.
- * The run keeps its temporary files, Node's coverage folder among them, in one folder under ~/.cache that it removes
- * at the end; a later run removes the folders of runs that were killed before they could (#1585).
+ * The run keeps its temporary files, Node's coverage folder among them, in one folder under teamrig's home
+ * (`<home>/tmp/coverage`) that it removes at the end; a later run removes the folders of runs that were killed before
+ * they could (#1585).
  */
 async function main(args: readonly string[]): Promise<number> {
   const { root: given, rest } = takeRoot(args);

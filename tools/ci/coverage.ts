@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { resolveKitHome } from '../../src/core/home.ts';
 import { isRecord } from '../lib/guards.ts';
 
 /** The test files, as `npm test` runs them. */
@@ -266,10 +268,12 @@ export function suiteEnv(env: NodeJS.ProcessEnv, tempDir?: string): NodeJS.Proce
   return tempDir === undefined ? kept : { ...kept, TMPDIR: tempDir, TMP: tempDir, TEMP: tempDir };
 }
 
-/** Where coverage runs keep their temporary folders: `$XDG_CACHE_HOME/teamrig/coverage`, else `<home>/.cache/teamrig/coverage`. */
+/**
+ * Where coverage runs keep their temporary folders: `<teamrig home>/tmp/coverage` (`$TEAMRIG_HOME`, else
+ * `~/.teamrig`), as everything teamrig owns lives in its home folder, one place to find, back up or delete.
+ */
 export function coverageTempBase(env: NodeJS.ProcessEnv, userHome: string): string {
-  const cache = env['XDG_CACHE_HOME']?.trim();
-  return `${cache !== undefined && cache !== '' ? cache : `${userHome}/.cache`}/teamrig/coverage`;
+  return join(resolveKitHome(env, userHome), 'tmp', 'coverage');
 }
 
 /** The prefix of one run's temporary folder: `run-<pid>-`, so a later run can tell the folders of runs that died. */
