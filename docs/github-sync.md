@@ -39,7 +39,7 @@ Add a `github` block to the team config (`~/.teamrig/teams/<team>/config.json`):
 | `repos` | The repositories to read, as `owner/name` (at most 20). Empty turns the sync off. |
 | `sessions` | Optional. The session that owns each repository's issues, so each session sees the issues of its own repositories. One session can own several. |
 | `owners` | Optional. A GitHub login to a session: an issue assigned to that login goes to that session, whatever its repository. |
-| `areaOwners` | Optional. A label to a session, such as `"area:cli": "cli"`: an issue with that label goes to the session of its area, whatever its repository. Matched without case; when an issue carries several, the first listed here wins. |
+| `areaOwners` | Optional. A label to a session, such as `"area:cli": "cli"`: an issue with that label goes to the session of its area, whatever its repository. Matched without case; when an issue carries several, the first listed here wins. `teamrig issue label` makes a label listed here that a repository lacks, in one area colour and description. |
 | `closedDays` | How many days back closed issues are read, to finish their tasks. Default 14. |
 | `probeSeconds` | How often it asks GitHub whether a repository changed, in seconds: 0, or 30 to 3600. Default 60; 0 leaves the sync to `teamrig issue sync --yes`. |
 | `acceptLabel` | Optional. The label that lets an issue by someone outside the repository become a task ([below](#whose-issues-become-tasks)). Default `teamrig`. |
@@ -352,9 +352,10 @@ teamrig issue migrate rows.jsonl --yes               # opens the issues
 ## Commenting on, labelling and closing
 
 `teamrig issue comment` posts one comment on an issue or pull request, `teamrig issue label` adds and takes off its
-labels (where the repository lacks it, it makes first, with a `MADE` line, the `design` label or a label the
-repository's `.github/labels.json` defines, with that file's colour and description; any other label must already
-be there), and `teamrig issue close` closes one, first posting its `--comment` when given; a pull request closes
+labels (where the repository lacks it, it makes first, with a `MADE` line, the `design` label, a label the
+repository's `.github/labels.json` defines, with that file's colour and description, or a label `areaOwners` names,
+in teamrig's one area colour and description when that file does not define it; any other label must already be
+there), and `teamrig issue close` closes one, first posting its `--comment` when given; a pull request closes
 unmerged. `--reason completed`, `not-planned` or `duplicate` says why it closed (GitHub keeps it on an issue only);
 `--duplicate-of` closes it as a duplicate of another issue of the same repository, which GitHub links as the
 original. `teamrig issue edit` replaces the body (the description) with the text of a file, so a spec of many lines
@@ -602,7 +603,9 @@ again.
   -X DELETE` with that login only), the read of the repository's label file
   (`repos/<owner>/<name>/contents/.github/labels.json` with the raw media type, nothing else), the create of a label
   teamrig makes (`repos/<owner>/<name>/labels -X POST` with the name, colour and description of one of the five
-  status labels or `design`, word for word) or of one that file named when the same run read it, word for word, and
+  status labels or `design`, word for word), of an area label (any name GitHub takes, in the one area colour and
+  description, word for word; `teamrig issue label` makes only one `areaOwners` names) or of one that file named
+  when the same run read it, word for word, and
   `teamrig issue links`'s one link (`.../issues/<number>/sub_issues` or `.../dependencies/blocked_by`, `-X POST`
   with one issue id only). No link is ever removed.
 - **Never on disk in the clear.** The token lives in the system's credential store, encrypted under your login. It

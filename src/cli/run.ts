@@ -797,8 +797,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   issue label <owner/name#n> [--add <label,...>] [--remove <label,...>]   adds labels to and takes
       labels off one issue or pull request of the team's repositories, with the same access; each
       label to add must already be one of the repository's, but design (talk only, not work to take
-      until agreed) and a label the repository's .github/labels.json defines, which it makes first
-      (MADE); the first failure stops it
+      until agreed), a label the repository's .github/labels.json defines and one the team's
+      github.areaOwners names, which it makes first (MADE); the first failure stops it
   issue similar <owner/name#n>   the issues the task list mirrors that may be duplicates of this one,
       best first: at most 3 at or above github.similarThreshold by TF-IDF over their titles and bodies,
       with no model and no GitHub call; reads the task list only, so issue sync must have added the issue

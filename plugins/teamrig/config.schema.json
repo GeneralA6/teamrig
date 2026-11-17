@@ -1379,7 +1379,7 @@
           "default": {}
         },
         "areaOwners": {
-          "description": "The session that owns an issue carrying each label, such as area:cli for the session of that area; matched without case. Read after the assignees in owners and before sessions; when an issue carries several, the first label listed here wins.",
+          "description": "The session that owns an issue carrying each label, such as area:cli for the session of that area; matched without case. Read after the assignees in owners and before sessions; when an issue carries several, the first label listed here wins. teamrig issue label makes a label listed here that a repository lacks, in one area colour and description.",
           "type": "object",
           "propertyNames": {
             "type": "string",
