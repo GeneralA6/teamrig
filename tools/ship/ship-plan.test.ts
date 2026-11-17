@@ -33,7 +33,8 @@ test('refuses ship arguments it cannot read', () => {
 test('reads a plan\'s chunks and names what a malformed one lacks', () => {
   const plan = { chunks: [{ files: ['src/a.ts'], subject: 'a: why', body: 'because' }] };
   assert.deepEqual(parsePlan(JSON.stringify(plan), 'p.json'), plan.chunks);
-  assert.throws(() => parsePlan('{"chunks": []}', 'p.json'), /p\.json: expected \{ "chunks": \[ \.\.\. \] \}/);
+  assert.deepEqual(parsePlan('{"chunks": []}', 'p.json'), []);
+  assert.throws(() => parsePlan('{"chunks": {}}', 'p.json'), /p\.json: expected \{ "chunks": \[ \.\.\. \] \}/);
   assert.throws(() => parsePlan('[]', 'p.json'), /p\.json: expected/);
   assert.throws(() => parsePlan('{"chunks": [{"files": [], "subject": "s", "body": "b"}]}', 'p.json'), /p\.json: chunk 0 needs files \(non-empty\), subject and body/);
   assert.throws(() => parsePlan('{"chunks": [{"files": ["a"], "subject": "s"}]}', 'p.json'), /chunk 0 needs/);

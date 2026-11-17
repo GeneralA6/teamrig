@@ -27,8 +27,10 @@ this is the other side of it.
    (what and why) before taking it; else say in one line why theirs is best.
 2. A change under a guarded path (CONTRIBUTING.md, Review) gets a security review before it lands.
 3. Land it with credit: cherry-pick its source commits (`git cherry-pick -s <sha>` keeps the author), leave out its
-   version and dist commits, then raise the version and rebuild the dist ourselves (`dev-ship-change`). Comment on
-   the pull request naming the landed commit, and close it.
+   version and dist commits, then raise the version and rebuild the dist ourselves (`dev-ship-change`). A change
+   that needs neither (tests, tools) ships with the plan `{ "chunks": [] }`, which lands the picked commits as they
+   are; a chunk naming them would commit them again under our name. Comment on the pull request naming the landed
+   commit, and close it.
 4. Reply as yourself, in plain words, with the next step and its date, and keep each promise in a task.
 
 ## A design issue

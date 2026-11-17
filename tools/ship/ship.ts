@@ -22,7 +22,8 @@ import { TEAMRIG_RELEASE_STAMPS, TEAMRIG_VERSION_FILES } from './version-bump.ts
  * The ship tool's command line; what each command does lives in its module.
  * Ships a finished teamrig change from a tested working tree (ship-commits.ts):
  *   node ship.ts <teamrig dir> <plan.json> [base, default origin/main] [--merge [--approved <sha>] [--note-file <path>]]
- * plan.json: { "chunks": [ { "files": ["src/a.ts", ...], "subject": "area: what", "body": "why" } ] }
+ * plan.json: { "chunks": [ { "files": ["src/a.ts", ...], "subject": "area: what", "body": "why" } ] }; an empty list
+ * ships the commits the branch already carries, such as an outside pull request's (T4116)
  *
  * Proves a repo dir's checked-out tree with its local checks (a pass record, else a run that writes one):
  *   node ship.ts check <repo dir>

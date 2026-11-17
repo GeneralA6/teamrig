@@ -204,6 +204,17 @@ function refuseEmptyChunks(deps: ShipDeps, chunks: readonly Chunk[], versionPath
 }
 
 /**
+ * Refuses an empty plan on a branch that carries no commit past `base`: there is nothing to ship. An empty plan ships
+ * the branch's own commits as they are, so an outside pull request's cherry-picked commits that need no version raise
+ * or dist (a test-only change) land with their author kept (T4116): a chunk naming them would be taken back and
+ * committed again under the shipping session's name.
+ */
+function refuseNothingCarried(deps: ShipDeps, base: string): void {
+  if (deps.git(['rev-list', '--count', `${base}..HEAD`]).trim() !== '0') return;
+  throw new Error(`REFUSED the plan has no chunks and the branch carries no commit past ${base}: there is nothing to ship`);
+}
+
+/**
  * Takes back the commits of a run without --merge that its approver does not review: the chunks that commit only
  * version files and the dist commit, the newest commits (withRaiseLast), never pushed since this run made them. The
  * raise stays in the working tree, uncommitted, so the --merge run finds its chunk to commit; the dist goes back to
@@ -226,6 +237,7 @@ async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDep
   deps.takeBack(withRaiseLast(written, versionPaths), args.base);
   const chunks = withRaiseLast(withRaisedVersion(written, versionPaths, deps.sync().sets), versionPaths);
   refuseEmptyChunks(deps, chunks, versionPaths);
+  if (chunks.length === 0) refuseNothingCarried(deps, args.base);
 
   for (const chunk of chunks) commit(deps, chunk.files, chunk.subject, chunk.body);
 
