@@ -24,10 +24,10 @@ import { isWritable, readEvents, type EventLogRead, type RegisterSnapshot } from
 export type RotationFiles = Pick<Files, 'read' | 'write' | 'createExclusive'>;
 
 /**
- * A tail this long makes a write rotate a register rotated before (about 1,500 events, a few days of a busy
- * team), so a read costs at most about this much beyond the working set, unless the team set
- * `register.autoArchive` to false. The first rotation is always a person's, with `teamrig compact`: every
- * session must run a teamrig that reads the rotated layout first.
+ * A tail this long makes a write rotate the register (about 1,500 events, a few days of a busy team), so a read
+ * costs at most about this much beyond the working set, unless the team set `register.autoArchive` to false. That
+ * holds for the first rotation too (T3482): one left to a person's `teamrig compact` let a team that never ran it
+ * grow its one log past what a reader takes at once.
  */
 export const AUTO_ROTATE_CHARS = 512 * 1024;
 

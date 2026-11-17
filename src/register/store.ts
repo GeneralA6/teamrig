@@ -19,11 +19,10 @@ export interface EventLog {
   /** The events of one write, in order, as one append. */
   append(events: readonly RegisterEvent[]): Promise<void>;
   /**
-   * Under the writer's lock, after an append: rotates a log rotated before once its tail reaches
-   * AUTO_ROTATE_CHARS (rotate.ts), and says how; null when it is not due. `written` is the read the write
-   * decided on. A log never rotated is left alone: its first rotation is a person's, with `teamrig compact`.
+   * Under the writer's lock, after an append: rotates the log once its tail reaches AUTO_ROTATE_CHARS (rotate.ts),
+   * the first rotation too, and says how; null when it is not due.
    */
-  rotateIfDue(written: RegisterSnapshot, now: Date, zone: TimeZone): Promise<RotationPlan | null>;
+  rotateIfDue(now: Date, zone: TimeZone): Promise<RotationPlan | null>;
 }
 
 export class JsonlEventLog implements EventLog {
@@ -49,10 +48,7 @@ export class JsonlEventLog implements EventLog {
     await this.files.append(this.path, events.map((event) => toJsonlLine(eventRecord(event))).join(''));
   }
 
-  async rotateIfDue(written: RegisterSnapshot, now: Date, zone: TimeZone): Promise<RotationPlan | null> {
-    if (written.read.rotatedAfter === 0) {
-      return null;
-    }
+  async rotateIfDue(now: Date, zone: TimeZone): Promise<RotationPlan | null> {
     const tailText = (await this.files.read(this.path)) ?? '';
     if (tailText.length < AUTO_ROTATE_CHARS) {
       return null;

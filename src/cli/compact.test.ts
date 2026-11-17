@@ -181,7 +181,7 @@ describe('teamrig compact', () => {
   });
 });
 
-/** Status lines on T2 past the size that makes a write rotate a log rotated before. */
+/** Status lines on T2 past the size that makes a write rotate the log. */
 function longTail(): string {
   const line = (status: string) => toJsonlLine({ v: EVENT_VERSION, type: 'status', id: 'T2', at: '2030-01-08T10:00:00.000Z', by: 'alpha', status, note: 'n', evidence: null, skill: null });
   return Array.from({ length: 4_000 }, (_, index) => line(index % 2 === 0 ? 'in-progress' : 'waiting')).join('');

@@ -99,8 +99,8 @@ export interface RegisterConfig {
    */
   readonly requireFollowupsOn: readonly TaskStatus[];
   /**
-   * Whether a write archives the task list's log by itself once it is long (register/rotate.ts), as it does
-   * after the first `teamrig compact`. Off, only `teamrig compact` archives it.
+   * Whether a write archives the task list's log by itself once it is long (register/rotate.ts), the first
+   * time too. Off, only `teamrig compact` archives it.
    */
   readonly autoArchive: boolean;
   /**

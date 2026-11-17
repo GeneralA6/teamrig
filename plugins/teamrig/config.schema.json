@@ -210,7 +210,7 @@
           "default": ["verifying", "done"]
         },
         "autoArchive": {
-          "description": "After the first teamrig compact, a write that leaves the task list's log over 512 KiB archives it and says so in a NOTE line. false: only teamrig compact archives it.",
+          "description": "A write that leaves the task list's log over 512 KiB archives it, the first time too, and says so in a NOTE line. false: only teamrig compact archives it.",
           "type": "boolean",
           "default": true
         },

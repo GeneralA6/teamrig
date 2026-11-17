@@ -216,10 +216,9 @@ archive, and a task that left cannot be changed. `compact --dry-run` prints what
 reads the new files back and holds every task against the whole history, and writes nothing on any difference.
 `compact --from-history` folds the new snapshot from the archive alone, not the old snapshot: the repair for a
 snapshot that lost fields an older teamrig did not read.
-After that first `compact`, a write that leaves the log over 512 KiB archives it again and says so in a NOTE line,
+A write that leaves the log over 512 KiB archives it the same way, the first time too, and says so in a NOTE line,
 or keeps the write and warns when archiving fails (the next write tries again). Both lines name the switch that
-turns this off: `register.autoArchive: false` in the team's `config.json`, after which only `compact` archives. Every session must run teamrig
-0.3.1 or later before the first `compact`: an older one refuses to write to an archived task list.
+turns this off: `register.autoArchive: false` in the team's `config.json`, after which only `compact` archives.
 - Move every session to teamrig 0.7.0 or later before anyone sets a task `verifying`. An older teamrig skips that
   line with a warning (`1 unreadable line(s)`) and shows the task at its status before it, though it still writes;
   and its `compact` would leave the line out of the new snapshot, so never run `compact` from a teamrig older than

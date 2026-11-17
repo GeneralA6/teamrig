@@ -574,7 +574,7 @@ export class Register {
         throw new Error(`${event.id} is missing after its own write`);
       }
       const before = snapshot.state.tasks.get(event.id) ?? null;
-      return { ok: true, value: { task, before, state, elsewhere, event, events, rotation: await this.rotation(snapshot) } };
+      return { ok: true, value: { task, before, state, elsewhere, event, events, rotation: await this.rotation() } };
     });
   }
 
@@ -591,12 +591,12 @@ export class Register {
    * None when the team turned automatic archiving off. A rotation that fails leaves the write saved and the
    * files readable (rotate.ts): it is reported, never thrown.
    */
-  private async rotation(written: RegisterSnapshot): Promise<RotationOutcome> {
+  private async rotation(): Promise<RotationOutcome> {
     if (!this.deps.autoArchive) {
       return { kind: 'none' };
     }
     try {
-      const plan = await this.deps.log.rotateIfDue(written, new Date(this.deps.clock.now()), this.deps.zone);
+      const plan = await this.deps.log.rotateIfDue(new Date(this.deps.clock.now()), this.deps.zone);
       return plan === null ? { kind: 'none' } : { kind: 'rotated', segment: plan.segment, retired: plan.compaction.retiredNow.length };
     } catch (error) {
       return { kind: 'failed', error: errorMessage(error) };

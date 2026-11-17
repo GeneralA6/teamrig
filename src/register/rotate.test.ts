@@ -327,11 +327,21 @@ function registerOn(files: MemoryFiles | FaultyFiles, autoArchive = true): Regis
 
 const START_T2 = { status: 'in-progress' } as const;
 
-describe('a write rotates a log rotated before once its tail is long', () => {
-  it('leaves a log never rotated alone however long it is', async () => {
-    const files = new MemoryFiles({ [LOG]: TEXT + busyTail(4_000) });
-    assert.ok((files.get(LOG)?.length ?? 0) >= AUTO_ROTATE_CHARS);
+describe('a write rotates the log once its tail is long', () => {
+  it('rotates a log never rotated once it is long, so a team that never ran compact keeps it small (T3482)', async () => {
+    const before = TEXT + busyTail(4_000);
+    const files = new MemoryFiles({ [LOG]: before });
+    assert.ok(before.length >= AUTO_ROTATE_CHARS);
     const result = await registerOn(files).setStatus('alpha', 'T2', START_T2);
+    assert.ok(result.ok);
+    assert.equal(result.value.rotation.kind === 'rotated' && result.value.rotation.segment, 1);
+    assert.ok(files.get(PATHS.segment(1))?.startsWith(before), 'the whole log is segment 1, byte for byte');
+    assert.equal(files.get(LOG), toJsonlLine(markerRecord(1, at(6))));
+  });
+
+  it('leaves a short log never rotated alone', async () => {
+    const files = new MemoryFiles({ [LOG]: TEXT });
+    const result = await registerOn(files).setStatus('alpha', 'T2', { status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }], card: TEST_CARD, note: 'review' });
     assert.deepEqual(result.ok && result.value.rotation, { kind: 'none' });
     assert.equal(files.get(PATHS.segment(1)), undefined);
   });

@@ -4244,11 +4244,10 @@ Archives the task list so reads stay small. Its log becomes the next file in `st
 deleted, a fresh log starts with a line naming it, and `state/snapshot.jsonl` holds every task as it stood. Tasks
 done or dropped over 8 days ago, in no week plan from the current one on, leave the snapshot: `show`,
 `list --status done` and past weeks' `plan` still read them, and they cannot be changed. A run first reads the new
-files back and holds every task against the whole history, and writes nothing on any difference. After the first
-run, a write that leaves the log over 512 KiB archives it again and prints
+files back and holds every task against the whole history, and writes nothing on any difference. A write that
+leaves the log over 512 KiB archives it the same way, the first time too, and prints
 `NOTE the task list's log is archived as segment N; ...`, naming the switch that turns this off:
-`register.autoArchive: false` in the team's `config.json`. With it off, only `teamrig compact` archives. Every
-session must run teamrig 0.3.1 or later before the first run.
+`register.autoArchive: false` in the team's `config.json`. With it off, only `teamrig compact` archives.
 
 It also moves the hooks' records over 7 days old, from `state/inbox-shown.jsonl`, `state/bind-hints.jsonl` and
 `state/prompt-answers.jsonl`, to `state/archive/inbox-shown-YYYYMMDD.jsonl`, `state/archive/bind-hints-YYYYMMDD.jsonl`
