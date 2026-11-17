@@ -203,6 +203,23 @@ describe('nodeStepRunner', () => {
     assert.deepEqual(end, { kind: 'exited', code: 4 });
   });
 
+  // #801: a queued step once returned exit 0 with its log cut short. A step killed partway from outside the queue
+  // (an OOM kill, a person's kill) must read as a failed end, never as exited 0, so the queue never prints DONE for it.
+  it('ends as failed, never as exited 0, when its process is killed from outside partway', async () => {
+    const started = join(dir, 'outside-kill-started');
+    await writeFile(join(dir, 'idle.cjs'), `${WRITE_PROCESS_SCRIPT}; setInterval(() => undefined, 1000);`);
+    const running = runner.run({ command: `node idle.cjs "${started}"`, cwd: dir, env: process.env, timeoutMs: 30_000 });
+    for (let tries = 0; tries < 200 && !existsSync(started); tries += 1) {
+      await wait(50);
+    }
+    const step = parseWrittenProcess(await readFile(started, 'utf8'));
+    assert.ok(step !== undefined, 'the step wrote its pid');
+    process.kill(step.pid, 'SIGKILL');
+    const end = await running;
+    assert.notDeepEqual(end, { kind: 'exited', code: 0 });
+    assert.notEqual(exitCodeOf(end), 0, `recorded as failed: ${JSON.stringify(end)}`);
+  });
+
   it('rejects when the step cannot start', async () => {
     await assert.rejects(runner.run({ command: 'node -e "0"', cwd: join(dir, 'missing'), env: process.env, timeoutMs: 30_000 }));
   });
