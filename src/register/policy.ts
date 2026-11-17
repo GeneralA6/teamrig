@@ -14,6 +14,7 @@ import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256, type AuditP
 import { verdictIsCurrent, verdictReadOf, type SecurityVerdictPin } from './security-verdict.ts';
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields, type TaskPrep } from './events.ts';
 import { droppedApproval, isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
+import { commitsNamed } from './head-sha.ts';
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
 import { ITEM_TYPE_TRAITS, traitsOf } from './item-types.ts';
 import { waitsOnOwner } from './owner-waits.ts';
@@ -1426,14 +1427,12 @@ function trimDescription(changes: Partial<TaskFields>): Partial<TaskFields> {
   return changes.description === undefined ? changes : { ...changes, description: blankToNull(changes.description ?? undefined) };
 }
 
-/** A commit sha an approval's note names, short or full. */
-const NOTE_SHA = /\b[0-9a-f]{7,40}\b/;
-
 /**
  * Why a set may not go through as it stands for the approval the task holds (T3207), or null: a set that would drop a
  * leader's approval before its step ends needs `--drop-approval`, since a merge queued on it is refused once it is gone;
  * the flag on a set that drops none is refused too, so it never reads as having done something. The refusal names the
- * approval and its sha, and the two ways to record progress that keep it.
+ * approval and its sha, and the ways to record progress that keep it: the same wait set again keeps it only with the
+ * approved head in its note (T3094), so that way is named with the head to write.
  */
 function approvalDropProblem(task: Task, input: StatusInput, waits: readonly WaitReason[]): string | null {
   const answer = droppedApproval(task, input.status, waits, input.note ?? null);
@@ -1443,11 +1442,12 @@ function approvalDropProblem(task: Task, input: StatusInput, waits: readonly Wai
   if (input.dropApproval === true) {
     return null;
   }
-  const sha = NOTE_SHA.exec(answer.note ?? '')?.[0];
+  const sha = commitsNamed(answer.note)[0];
   const what = sha === undefined ? `${answer.by}'s approval` : `${answer.by}'s approval of ${sha}`;
+  const restated = input.status === 'waiting' && sha !== undefined && sameWaits(task.waits, waits);
   return [
     `${task.id} holds ${what}, and setting it ${input.status} drops it, so a merge waiting on it is refused`,
-    `record progress with teamrig update ${task.id} --note "..." instead, or hold it behind a task or a time with --status waiting --waits approval:${answer.by},task:T<id>|time:<date>`,
+    `record progress with teamrig update ${task.id} --note "..." instead, ${restated ? `set the same wait again with the approved head ${sha} in --note, ` : ''}or hold it behind a task or a time with --status waiting --waits approval:${answer.by},task:T<id>|time:<date>`,
     `give it up only for a new ask (a new head): add --drop-approval`,
   ].join('; ');
 }

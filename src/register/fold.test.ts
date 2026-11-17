@@ -505,11 +505,15 @@ describe("foldEvents: the lead's answer to an approval (T684)", () => {
       assert.equal(droppedApproval(approvedHead, 'waiting', [lead], 'merge refused at 1a2b3c4d, queued again'), null);
     });
 
+    it('names the approval the same wait set again clears when its note names no head (T3094)', () => {
+      assert.deepEqual(droppedApproval(task, 'waiting', [lead], null), task.answer);
+      assert.deepEqual(droppedApproval(task, 'waiting', [lead], 'merge queued again'), task.answer);
+    });
+
     it('is null for a set that ends the step or keeps the approval, and for a task with no approval', () => {
       for (const next of ['verifying', 'done', 'dropped'] as const) {
         assert.equal(droppedApproval(task, next, [], null), null, next);
       }
-      assert.equal(droppedApproval(task, 'waiting', [lead], null), null);
       assert.equal(droppedApproval(task, 'waiting', [lead, { kind: 'task', id: 'T7' }], null), null);
       assert.equal(droppedApproval(taskAfter(asked), 'in-progress', [], null), null);
       assert.equal(droppedApproval(taskAfter([...asked, answered(11, 'declined', 'no tests')]), 'in-progress', [], null), null);

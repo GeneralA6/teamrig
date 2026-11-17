@@ -2035,11 +2035,19 @@ describe('RegisterPolicy.setStatus: a set that would drop an approval (T3207)', 
     assert.match(error(policy.setStatus(plain, 'alpha', { status: 'waiting', note: 'new head 9f8e7d6c', waits: [lead] }, CTX)), /^T1 holds lead's approval, and setting it waiting drops it/);
   });
 
+  it('refuses the same approval wait set again with no head in its note, naming the head that keeps it (T3094)', () => {
+    assert.match(
+      error(policy.setStatus(approved, 'alpha', { status: 'waiting', note: 'merge queued again', waits: [lead] }, CTX)),
+      new RegExp(`; record progress with teamrig update T1 --note "\\.\\.\\." instead, set the same wait again with the approved head ${head} in --note, or hold it`),
+    );
+    assert.doesNotMatch(error(policy.setStatus(approved, 'alpha', { status: 'in-progress', note: 'merge queued' }, CTX)), /set the same wait again/);
+  });
+
   it('lets through a set that ends the step, holds the approval behind a time, or gives it up with --drop-approval', () => {
     assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'verifying', note: 'merged', proof: 'the next run passes', waits: RUN_TONIGHT, followups: [] }, CTX)), 'allowed');
     assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'dropped', note: 'superseded' }, CTX)), 'allowed');
     assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'waiting', note: 'after the freeze', waits: [lead, later] }, CTX)), 'allowed');
-    assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'waiting', note: 'merge refused by a classifier, queued again', waits: [lead] }, CTX)), 'allowed');
+    assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'waiting', note: `merge refused by a classifier at ${head}, queued again`, waits: [lead] }, CTX)), 'allowed');
     assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'waiting', note: 'new head 9f8e7d6c', waits: [lead], dropApproval: true }, CTX)), 'allowed');
   });
 
