@@ -6076,7 +6076,12 @@ or near what it ends (`..., it ends near 18%.`). A plan with no such window, or 
 When the account lists reset grants in [budget.resets] (Claude Code tells a session nothing of them, so the team
 writes each down as it is granted and used), the day's view ends with what is left of each and when it expires
 (`Resets in stock:` then `  fable: 2 of 3 left, expire 2027-03-09 09:59 IST (in 116 days)`); a recount of a past
-day leaves them out.
+day leaves them out. A person with several Claude accounts lists the others there too, as
+`{ "kind": "account", "count": 2, "usedUtc": [...] }` with no `expiresUtc`: teamrig never switches accounts, the user
+signs in to the next one, and the meter reads that as a full reset. `usedUtc` holds the last switch to each; one is
+free again a week after its switch, so the line says how many are free now and when the next comes back
+(`  account: 1 of 2 left, the next back 2030-01-06 11:00 IST (in 4 days)`), and the lead plans the week on them as on
+a grant.
 The period, the meter log (below) and the extra-usage log ([teamrig budget extra](#teamrig-budget-extra)) are the
 account's: a team under a parent on its Claude
 account reads and writes them in the folder of the highest team above it reached through teams all on that account,

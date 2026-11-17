@@ -2066,10 +2066,19 @@ describe('parseConfig budget', () => {
     assert.deepEqual(parseConfig({ ...ROSTER, budget: { resets: [] } }).config.budget.resets, []);
   });
 
+  it('reads the other accounts as a stock with no expiry (T939)', () => {
+    const accounts = { kind: 'account', count: 2, usedUtc: ['2026-11-12 10:00'], note: 'two more seats' };
+    const { config, issues } = parseConfig({ ...ROSTER, budget: { resets: [accounts, { kind: 'account', count: 1 }] } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.budget.resets, [accounts, { kind: 'account', count: 1, usedUtc: [] }]);
+  });
+
   it('drops a reset grant it cannot read whole and keeps the others (T2450)', () => {
     const good = { kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', usedUtc: [] };
     for (const [grant, path, message] of [
-      [{ kind: 'opus', count: 1, expiresUtc: '2026-12-10 22:00' }, 'budget.resets[0].kind', 'expected one of fable, full (got "opus")'],
+      [{ kind: 'opus', count: 1, expiresUtc: '2026-12-10 22:00' }, 'budget.resets[0].kind', 'expected one of fable, full, account (got "opus")'],
+      [{ kind: 'account', count: 2, expiresUtc: '2026-12-10 22:00' }, 'budget.resets[0].expiresUtc', 'is not for kind account'],
+      [{ kind: 'account', count: 1, usedUtc: ['2026-11-12 10:00', '2026-11-13 10:00'] }, 'budget.resets[0].usedUtc', 'lists 2 uses of a grant of 1'],
       [{ kind: 'full', expiresUtc: '2026-12-10 22:00' }, 'budget.resets[0].count', 'is required'],
       [{ kind: 'full', count: 0, expiresUtc: '2026-12-10 22:00' }, 'budget.resets[0].count', 'expected an integer from 1 to 20, got 0'],
       [{ kind: 'full', count: 1, expiresUtc: '2026-02-30 10:00' }, 'budget.resets[0].expiresUtc', 'expected a UTC time as YYYY-MM-DD HH:MM'],
