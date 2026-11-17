@@ -8,6 +8,7 @@ import type { MergeClearance, WorkCommit } from './approval.ts';
 import type { GateVerdict } from './local-gate.ts';
 import type { MainMove, MergeExit } from './merge.ts';
 import { DIST, leaveForReview, parseNumstat, SHIP_ATTEMPTS, shipCommits, weighDist, type ShipDeps } from './ship-commits.ts';
+import type { MergeChecks } from './repos.ts';
 import type { Chunk, ShipArgs } from './ship-plan.ts';
 import type { SyncResult } from './sync.ts';
 
@@ -39,6 +40,8 @@ interface FakeOptions {
   readonly work?: Readonly<Record<string, readonly WorkCommit[]>>;
   /** The git call, its args joined with spaces, that fails like git with no such commit. */
   readonly gitFails?: string;
+  /** What a --merge run checks locally (repos.json `mergeChecks`); the whole suite by default. */
+  readonly mergeChecks?: MergeChecks;
 }
 
 interface Fake {
@@ -86,10 +89,11 @@ function fake(options: FakeOptions = {}): Fake {
       return options.sync ?? { kind: 'current', sets: '0.134.0' };
     },
     buildSteps: () => [['tools/build/bundle.ts']],
-    proveTree: () => {
-      events.push('prove');
+    proveTree: (scope) => {
+      events.push(scope === 'full' ? 'prove' : 'prove short');
       return options.verdict ?? PASS;
     },
+    mergeChecks: options.mergeChecks ?? 'full',
     push: () => {
       events.push('push');
       return 't827-ship-tool';
@@ -316,6 +320,21 @@ test('with --merge, pushes the change branch after the gate and returns the merg
   assert.equal(await shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), 3);
   assert.deepEqual(events.slice(-4), ['git log --oneline origin/main..HEAD', 'patch HEAD', 'push', 'merge t827-ship-tool']);
   assert.ok(logs.includes('\npushed t827-ship-tool; merging:'));
+});
+
+test('with --merge and the switch on, the whole suite is left to required CI: a short proof, then the push and the merge (T3414)', async () => {
+  const { deps, events, logs } = fake({ mergeChecks: 'changed' });
+  assert.equal(await shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), 0);
+  assert.ok(!events.includes('prove'), events.join('\n'));
+  assert.deepEqual(events.slice(-5), ['prove short', 'git log --oneline origin/main..HEAD', 'patch HEAD', 'push', 'merge t827-ship-tool']);
+  assert.ok(logs.includes('\nshort checks (required CI runs the whole suite on the pull request):'));
+});
+
+test('with the switch on, a run without --merge still proves the tree with the whole suite (T3414)', async () => {
+  const { deps, events, logs } = fake({ mergeChecks: 'changed' });
+  assert.equal(await shipCommits(ARGS, CHUNKS, deps), 0);
+  assert.ok(events.includes('prove') && !events.includes('prove short'));
+  assert.ok(logs.includes('\nlocal checks:'));
 });
 
 test('with --merge, clears the merge of the branch at its head and fingerprints its change before anything changes (T2788)', async () => {

@@ -28,6 +28,7 @@ function shipDeps(verdict: GateVerdict, mergeExit: number): ShipDeps {
     sync: () => ({ kind: 'current', sets: '0.1.0' }),
     buildSteps: () => [],
     proveTree: () => verdict,
+    mergeChecks: 'full',
     push: () => 't827-ship-tool',
     merge: () => Promise.resolve({ kind: 'done', code: mergeExit }),
     mainMove: () => null,
