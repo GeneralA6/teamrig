@@ -52,6 +52,19 @@ describe('runCli: giving a task to another session posts it an inbox line', () =
     assert.match([...empty.stdout, ...empty.stderr].join('\n'), /REFUSED nothing to change: give a field or a --note/);
   });
 
+  it('points a note-only set to update --note, which keeps the status and any answer (#701)', async () => {
+    const kit = new CliHarness();
+    await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha']);
+    const noted = await kit.run(['set', 'T1', '--note', 'half the specs pass', '--session', 'alpha']);
+    assert.notEqual(noted.code, EXIT.ok);
+    assert.equal(
+      noted.stderr[0]?.split('\n')[0],
+      '--status is required; a note alone goes through teamrig update T1 --note "..", which keeps the status and any answer given (a set restating the same waits asks again)',
+    );
+    const bare = await kit.run(['set', 'T1', '--session', 'alpha']);
+    assert.equal(bare.stderr[0]?.split('\n')[0], '--status is required');
+  });
+
   it('names a line it could not post, and keeps the task', async () => {
     const kit = new CliHarness({ ...TEAM, register: { secretPatterns: ['is yours'] } });
     const added = await kit.run(['add', '--title', 'Ship the docs', '--description', 'what and why', '--priority', 'p2', '--owner', 'bravo', '--session', 'alpha']);
