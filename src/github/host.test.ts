@@ -254,7 +254,7 @@ describe('GitHubIssueHost stamp', () => {
 
   it('posts the text as given when the stamp is off, or when the footer would take it past what GitHub holds', async () => {
     const off = new FakeGh();
-    await hostWith(off, new FakeCredentials(), false).comment(TARGET, 'Thanks');
+    assert.deepEqual(await hostWith(off, new FakeCredentials().savesTokensFor(TEST_OWNERS), false).comment(TARGET, 'Thanks'), { kind: 'done' });
     assert.equal(bodyOf(off.ran[0]?.args), 'Thanks');
     const full = new FakeGh();
     const long = 'x'.repeat(MAX_COMMENT - 10);
