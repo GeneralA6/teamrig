@@ -3,6 +3,7 @@ import { exitText } from '../open/processes.ts';
 import { GH_TIMEOUT_MS, GhOutputCapError, type GhResult, type GhRunner } from './gh.ts';
 import type { HostIssue, IssueComment, LabelEvent, ReadComment } from '../issues/issue.ts';
 import { isClaim } from '../issues/claim.ts';
+import { plainLine } from '../core/printable.ts';
 import { closedPageArgs, openPageArgs, type PageVariables } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
@@ -89,11 +90,6 @@ export function repoPage(repo: string, after: string | undefined): PageVariables
     return null;
   }
   return { owner, name, after };
-}
-
-/** Text from outside on one plain line: control and format characters (escapes, bidi overrides) become spaces. */
-export function plainLine(text: string): string {
-  return text.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /**

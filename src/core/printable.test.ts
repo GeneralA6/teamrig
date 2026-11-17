@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { hasUnprintable, printable } from './printable.ts';
+import { hasUnprintable, plainLine, printable } from './printable.ts';
 
 describe('printable', () => {
   it('leaves text with no control character as it is, non-ASCII letters included', () => {
@@ -31,5 +31,11 @@ describe('hasUnprintable', () => {
     assert.equal(hasUnprintable('ok \u001b[2J'), true);
     assert.equal(hasUnprintable('ok \u202e'), true);
     assert.equal(hasUnprintable('the release plan · naïve'), false);
+  });
+});
+
+describe('plainLine', () => {
+  it('turns control and format characters into spaces, so outside text stays one plain line', () => {
+    assert.equal(plainLine('  Fix\u001b[2J the‮ login\r\nnow\t '), 'Fix [2J the login now');
   });
 });

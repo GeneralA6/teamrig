@@ -42,3 +42,8 @@ export function printable(text: string): string {
 export function hasUnprintable(text: string): boolean {
   return printable(text) !== text;
 }
+
+/** Text from outside on one plain line: control and format characters (escapes, bidi overrides) become spaces. */
+export function plainLine(text: string): string {
+  return text.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').replace(/\s+/g, ' ').trim();
+}
