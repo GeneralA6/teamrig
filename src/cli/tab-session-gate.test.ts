@@ -32,13 +32,25 @@ describe("runCli: a write runs only as its tab's own session (T3082)", () => {
     assert.equal(await t1Of(kit), before, 'T1 still waits, unapproved');
   });
 
-  it("refuses an audit, a lead-only write and a re-bind of the tab as another session", async () => {
+  it("refuses an audit and a lead-only write as another session", async () => {
     const kit = await alphaTab();
     const refused = (session: string) => ["REFUSED this tab is alpha's: a session runs teamrig's writes only as itself, not as " + session];
     assert.deepEqual((await kit.run(['audit', 'T1', '--file', 'step.ps1', '--session', 'bravo'], { env: TAB })).stdout, refused('bravo'));
     assert.deepEqual((await kit.run(['burst', 'end', '--reason', 'done', '--session', 'lead'], { env: TAB })).stdout, refused('lead'));
-    assert.deepEqual((await kit.run(['inbox', 'read', '--session', 'lead'], { env: TAB })).stdout, refused('lead'), "the tab stays alpha's");
+  });
+
+  it("leaves a re-bind to the tab's bind-once rule: a tool call cannot move the tab, the person can, and writes follow it", async () => {
+    const kit = await alphaTab();
+    const toolCall = await kit.run(['inbox', 'read', '--session', 'lead'], { env: { ...TAB, CLAUDECODE: '1' } });
+    assert.equal(toolCall.code, EXIT.refused);
+    assert.match(toolCall.stdout[0] ?? '', /^REFUSED teamrig inbox read --session lead would make this tab, the alpha session, the lead session: /);
     assert.equal((await kit.run(['approve', 'T1', '--note', 'ok', '--session', 'lead'], { env: TAB })).code, EXIT.refused, 'still bound to alpha');
+    assert.equal((await kit.run(['inbox', 'read', '--session', 'lead'], { env: TAB })).code, EXIT.ok, 'typed by the person');
+    const approved = await kit.run(['approve', 'T1', '--note', 'ok', '--session', 'lead'], { env: TAB });
+    assert.equal(approved.code, EXIT.ok, approved.stdout.join('\n'));
+    assert.deepEqual((await kit.run(['update', 'T1', '--note', 'mine', '--session', 'alpha'], { env: TAB })).stdout, [
+      "REFUSED this tab is lead's: a session runs teamrig's writes only as itself, not as alpha",
+    ]);
   });
 
   it("lets the tab write as its own session, by id or name, and read as any session", async () => {
@@ -54,6 +66,6 @@ describe("runCli: a write runs only as its tab's own session (T3082)", () => {
     assert.equal(approved.code, EXIT.ok, approved.stdout.join('\n'));
     const fresh = { CLAUDE_CODE_SESSION_ID: '9f8e7d6c-aaaa-bbbb-cccc-ddddeeeeffff' };
     assert.equal((await kit.run(['inbox', 'read', '--session', 'bravo'], { env: fresh })).code, EXIT.ok, 'its first read binds it');
-    assert.equal((await kit.run(['inbox', 'read', '--session', 'lead'], { env: fresh })).code, EXIT.refused, 'and then it is bravo\'s');
+    assert.equal((await kit.run(['approve', 'T1', '--note', 'ok', '--session', 'lead'], { env: fresh })).code, EXIT.refused, 'and then it is bravo\'s');
   });
 });
