@@ -70,6 +70,11 @@ export interface SessionProcesses {
    */
   lineage(pid: number): Promise<readonly ProcessInfo[] | undefined>;
   /**
+   * Every running process from one listing, each with its start where the system says (Windows); undefined when the
+   * system would not tell. An entry of an unreadable shape is left out.
+   */
+  list(): Promise<readonly ListedProcess[] | undefined>;
+  /**
    * Ends `pid`. On Windows, where a console program cannot be asked to close, it and every process it started end
    * at once through the start-checked sweep (`sweepTree`): a process whose starter has ended is no longer in that
    * tree, a later process holding an ended starter's id is never taken for its child, and when the host's processes
@@ -337,6 +342,19 @@ export function nodeSessionProcesses(options: SessionProcessesOptions = {}): Ses
   });
   const feedTimeoutMs = options.feedTimeoutMs ?? FEED_TIMEOUT_MS;
   const sweepHost = options.sweepHost ?? windowsSweepHost;
+  const list = async (): Promise<readonly ListedProcess[] | undefined> => {
+    try {
+      if (platform === 'win32') {
+        const result = await run({ program: 'powershell.exe', args: windowsListing() });
+        return result.end.kind === 'exited' && result.end.code === 0 ? parseWindowsListing(result.stdout) : undefined;
+      }
+      // A process whose starter ends is adopted (its parent id changes), so no id in this listing is an ended starter's.
+      const result = await run({ program: 'ps', args: POSIX_LISTING });
+      return result.end.kind === 'exited' && result.end.code === 0 ? parsePosixListing(result.stdout).map((info) => ({ info })) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
   return {
     parentPid: options.parentPid ?? process.ppid,
     alive(pid) {
@@ -385,19 +403,10 @@ export function nodeSessionProcesses(options: SessionProcessesOptions = {}): Ses
       if (!isPid(pid)) {
         return undefined;
       }
-      try {
-        if (platform === 'win32') {
-          const result = await run({ program: 'powershell.exe', args: windowsListing() });
-          const listed = result.end.kind === 'exited' && result.end.code === 0 ? parseWindowsListing(result.stdout) : undefined;
-          return listed === undefined ? undefined : lineageOf(pid, listed);
-        }
-        // A process whose starter ends is adopted (its parent id changes), so no id in this listing is an ended starter's.
-        const result = await run({ program: 'ps', args: POSIX_LISTING });
-        return result.end.kind === 'exited' && result.end.code === 0 ? lineageOf(pid, parsePosixListing(result.stdout).map((info) => ({ info }))) : undefined;
-      } catch {
-        return undefined;
-      }
+      const listed = await list();
+      return listed === undefined ? undefined : lineageOf(pid, listed);
     },
+    list,
     async end(pid, how) {
       if (!isPid(pid)) {
         return { kind: 'gone' };

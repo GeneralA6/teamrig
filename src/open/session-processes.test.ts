@@ -260,7 +260,23 @@ describe('nodeSessionProcesses with a scripted system', () => {
     ];
     for (const processes of failed) {
       assert.equal(await processes.lineage(53), undefined);
+      assert.equal(await processes.list(), undefined);
     }
+  });
+
+  it('lists every process from one listing: with each start from PowerShell on Windows, without from ps elsewhere', async () => {
+    const windows = scripted(exited(0, `[${listingEntry(41, 7, 'claude.exe', 100)},${listingEntry(51, 41, 'bash.exe', null)}]`));
+    assert.deepEqual(
+      (await nodeSessionProcesses({ platform: 'win32', run: windows.run }).list())?.map((entry) => [entry.info.pid, entry.startedMs]),
+      [[41, 100]],
+      'an entry with no readable start is left out',
+    );
+    const posix = scripted(exited(0, '   41     7 claude\n   51    41 bash\n'));
+    assert.deepEqual(await nodeSessionProcesses({ platform: 'linux', run: posix.run }).list(), [
+      { info: { pid: 41, parentPid: 7, name: 'claude', commandLine: 'claude' } },
+      { info: { pid: 51, parentPid: 41, name: 'bash', commandLine: 'bash' } },
+    ]);
+    assert.equal(posix.asked.length, 1);
   });
 
   it('asks PowerShell on Windows and ps elsewhere, and reads a failed lookup as nothing', async () => {
@@ -506,5 +522,17 @@ describe('FakeSessionProcesses', () => {
     assert.deepEqual((await fake.lineage(21))?.map((info) => info.pid), [21, 22]);
     assert.deepEqual(await fake.lineage(99), []);
     assert.equal(await fake.hideLineage().lineage(13), undefined);
+  });
+
+  it('lists every running process with its start where one was given, until the system will not', async () => {
+    const fake = new FakeSessionProcesses()
+      .add({ pid: 11, parentPid: 10, name: 'claude.exe', commandLine: 'claude' }, 100)
+      .add({ pid: 12, parentPid: 11, name: 'bash', commandLine: 'bash' });
+    assert.deepEqual(await fake.list(), [
+      { info: { pid: 11, parentPid: 10, name: 'claude.exe', commandLine: 'claude' }, startedMs: 100 },
+      { info: { pid: 12, parentPid: 11, name: 'bash', commandLine: 'bash' } },
+    ]);
+    assert.deepEqual((await fake.exit(11).list())?.map((entry) => entry.info.pid), [12]);
+    assert.equal(await fake.hideListing().list(), undefined);
   });
 });
