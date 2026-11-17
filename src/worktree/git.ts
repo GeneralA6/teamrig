@@ -1,4 +1,4 @@
-import { outcome, query, queryLine, runGit, type GitOutcome } from '../core/git-run.ts';
+import { outcome, runGit, type GitOutcome, type GitRun } from '../core/git-run.ts';
 
 export type { GitOutcome };
 
@@ -100,58 +100,78 @@ export function parseStatus(text: string): string[] {
   return paths;
 }
 
-/** How many commits of `ref` (a full ref name, or `HEAD`) have no equal change on `base`; undefined when git cannot tell. */
-function refCommitsNotOn(dir: string, ref: string, base: string): number | undefined {
-  // Both must name a commit; the caller refuses a base that starts with `-`, which git would read as an option.
-  if (queryLine(dir, ['rev-parse', '--verify', '-q', `${ref}^{commit}`]) === undefined || queryLine(dir, ['rev-parse', '--verify', '-q', `${base}^{commit}`]) === undefined) {
-    return undefined;
-  }
-  // Exit 0: base holds the tip; 1: it does not; anything else: git could not tell.
-  const ancestor = runGit(dir, ['merge-base', '--is-ancestor', ref, base]).status;
-  if (ancestor === 0) {
-    return 0;
-  }
-  if (ancestor !== 1) {
-    return undefined;
-  }
-  // `git cherry` marks each commit of the ref `-` when base has an equal change (same patch id), else `+`.
-  const cherry = query(dir, ['cherry', base, ref]);
-  return cherry === undefined ? undefined : cherry.split('\n').filter((line) => line.startsWith('+')).length;
+/** Runs one git command in `dir` with its words and timeout, as {@link runGit} does. */
+export type GitRunner = (dir: string, args: readonly string[], timeout?: number) => GitRun;
+
+/** The worktree port over `run`. */
+export function worktreeGit(run: GitRunner): WorktreeGit {
+  const ask = run;
+  /** A query's stdout when git exits 0, else undefined. */
+  const query = (dir: string, args: readonly string[]): string | undefined => {
+    const result = ask(dir, args);
+    return result.status === 0 ? result.stdout : undefined;
+  };
+  /** A one-line query, trimmed; an empty answer reads as unknown too. */
+  const queryLine = (dir: string, args: readonly string[]): string | undefined => {
+    const value = query(dir, args)?.trim();
+    return value === '' ? undefined : value;
+  };
+
+  /** How many commits of `ref` (a full ref name, or `HEAD`) have no equal change on `base`; undefined when git cannot tell. */
+  const refCommitsNotOn = (dir: string, ref: string, base: string): number | undefined => {
+    // Both must name a commit; the caller refuses a base that starts with `-`, which git would read as an option.
+    if (queryLine(dir, ['rev-parse', '--verify', '-q', `${ref}^{commit}`]) === undefined || queryLine(dir, ['rev-parse', '--verify', '-q', `${base}^{commit}`]) === undefined) {
+      return undefined;
+    }
+    // Exit 0: base holds the tip; 1: it does not; anything else: git could not tell.
+    const ancestor = ask(dir, ['merge-base', '--is-ancestor', ref, base]).status;
+    if (ancestor === 0) {
+      return 0;
+    }
+    if (ancestor !== 1) {
+      return undefined;
+    }
+    // `git cherry` marks each commit of the ref `-` when base has an equal change (same patch id), else `+`.
+    const cherry = query(dir, ['cherry', base, ref]);
+    return cherry === undefined ? undefined : cherry.split('\n').filter((line) => line.startsWith('+')).length;
+  };
+
+  return {
+    topOf: (dir) => queryLine(dir, ['rev-parse', '--show-toplevel']),
+    worktrees(dir) {
+      const text = query(dir, ['worktree', 'list', '--porcelain']);
+      return text === undefined ? undefined : parseWorktreeList(text);
+    },
+    changes(top, excluded) {
+      const pathspecs = ['.', ...excluded.map((path) => `:(exclude,literal)${path}`)];
+      const text = query(top, ['status', '--porcelain=v1', '-z', '--untracked-files=normal', '--', ...pathspecs]);
+      return text === undefined ? undefined : parseStatus(text);
+    },
+    tracked(top, paths) {
+      if (paths.length === 0) {
+        return [];
+      }
+      const text = query(top, ['ls-files', '-z', '--', ...paths.map(literal)]);
+      return text === undefined ? undefined : fields(text);
+    },
+    defaultBase: (dir) => queryLine(dir, ['symbolic-ref', '--short', '-q', 'refs/remotes/origin/HEAD']),
+    commitsNotOn: (dir, branch, base) => refCommitsNotOn(dir, `${BRANCH_REF}${branch}`, base),
+    // Run in the worktree's own folder, `HEAD` is that worktree's, not the main checkout's.
+    headCommitsNotOn: (top, base) => refCommitsNotOn(top, 'HEAD', base),
+    removeWorktree: (mainDir, top) => outcome(run(mainDir, ['worktree', 'remove', top], REMOVE_TIMEOUT_MS), 'git worktree remove'),
+    // A branch name never starts with `-` (git refuses one), so it cannot read as an option.
+    deleteBranch: (mainDir, branch) => outcome(run(mainDir, ['branch', '-D', branch]), 'git branch -D'),
+    hasBranch(dir, branch) {
+      // Exit 0: the ref exists; 1: it does not; anything else: git could not tell.
+      const status = ask(dir, ['show-ref', '--verify', '--quiet', `${BRANCH_REF}${branch}`]).status;
+      return status === 0 ? true : status === 1 ? false : undefined;
+    },
+    // The remote and branch come from origin/HEAD, never from the caller's words, so neither starts with `-`.
+    fetch: (dir, remote, branch) => outcome(run(dir, ['fetch', '--quiet', remote, branch], ADD_TIMEOUT_MS), 'git fetch'),
+    // The caller gives an absolute path and a branch name it checked starts with a letter or digit, so neither reads as an option.
+    addWorktree: (mainDir, path, branch, base) => outcome(run(mainDir, ['worktree', 'add', '--quiet', '--no-track', '-b', branch, path, base], ADD_TIMEOUT_MS), 'git worktree add'),
+  };
 }
 
 /** The git CLI. */
-export const GIT_WORKTREES: WorktreeGit = {
-  topOf: (dir) => queryLine(dir, ['rev-parse', '--show-toplevel']),
-  worktrees(dir) {
-    const text = query(dir, ['worktree', 'list', '--porcelain']);
-    return text === undefined ? undefined : parseWorktreeList(text);
-  },
-  changes(top, excluded) {
-    const pathspecs = ['.', ...excluded.map((path) => `:(exclude,literal)${path}`)];
-    const text = query(top, ['status', '--porcelain=v1', '-z', '--untracked-files=normal', '--', ...pathspecs]);
-    return text === undefined ? undefined : parseStatus(text);
-  },
-  tracked(top, paths) {
-    if (paths.length === 0) {
-      return [];
-    }
-    const text = query(top, ['ls-files', '-z', '--', ...paths.map(literal)]);
-    return text === undefined ? undefined : fields(text);
-  },
-  defaultBase: (dir) => queryLine(dir, ['symbolic-ref', '--short', '-q', 'refs/remotes/origin/HEAD']),
-  commitsNotOn: (dir, branch, base) => refCommitsNotOn(dir, `${BRANCH_REF}${branch}`, base),
-  // Run in the worktree's own folder, `HEAD` is that worktree's, not the main checkout's.
-  headCommitsNotOn: (top, base) => refCommitsNotOn(top, 'HEAD', base),
-  removeWorktree: (mainDir, top) => outcome(runGit(mainDir, ['worktree', 'remove', top], REMOVE_TIMEOUT_MS), 'git worktree remove'),
-  // A branch name never starts with `-` (git refuses one), so it cannot read as an option.
-  deleteBranch: (mainDir, branch) => outcome(runGit(mainDir, ['branch', '-D', branch]), 'git branch -D'),
-  hasBranch(dir, branch) {
-    // Exit 0: the ref exists; 1: it does not; anything else: git could not tell.
-    const status = runGit(dir, ['show-ref', '--verify', '--quiet', `${BRANCH_REF}${branch}`]).status;
-    return status === 0 ? true : status === 1 ? false : undefined;
-  },
-  // The remote and branch come from origin/HEAD, never from the caller's words, so neither starts with `-`.
-  fetch: (dir, remote, branch) => outcome(runGit(dir, ['fetch', '--quiet', remote, branch], ADD_TIMEOUT_MS), 'git fetch'),
-  // The caller gives an absolute path and a branch name it checked starts with a letter or digit, so neither reads as an option.
-  addWorktree: (mainDir, path, branch, base) => outcome(runGit(mainDir, ['worktree', 'add', '--quiet', '--no-track', '-b', branch, path, base], ADD_TIMEOUT_MS), 'git worktree add'),
-};
+export const GIT_WORKTREES: WorktreeGit = worktreeGit(runGit);
