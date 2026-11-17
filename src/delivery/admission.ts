@@ -78,7 +78,7 @@ export interface InLine {
     readonly session: string;
     readonly arrivedAt: string;
     /** Its line request, and whether its step is heavy (`heavy`, which its ticket says; left out, the step counts as heavy). */
-    readonly request?: Pick<LineRequest, 'priority' | 'class'> & Partial<Pick<LineRequest, 'kind'>> & { readonly heavy?: boolean };
+    readonly request?: Pick<LineRequest, 'priority' | 'class'> & Partial<Pick<LineRequest, 'kind' | 'frontAt'>> & { readonly heavy?: boolean };
     /** What its last look found it waiting on, and since when; left out before its first look. */
     readonly waitingOn?: { readonly reason: WaitCause; readonly since: string };
   };
@@ -114,15 +114,24 @@ function byName(a: InLine, b: InLine): number {
   return a.name < b.name ? -1 : 1;
 }
 
-/** How one ticket ranks: p0 or not, its class's turn, its aged priority. */
+/** How one ticket ranks: when its task was put at the front (ms; undefined when it was not), p0 or not, its class's turn, its aged priority. */
 interface Rank {
+  readonly front: number | undefined;
   readonly urgent: boolean;
   readonly turn: number;
   readonly priority: number;
 }
 
+/** When a waiter's task was put at the front of the line, in ms; undefined for one never put there, or a time that does not parse. */
+function frontOf(waiter: InLine['waiter']): number | undefined {
+  const at = waiter.request?.frontAt;
+  const ms = at === undefined ? Number.NaN : Date.parse(at);
+  return Number.isNaN(ms) ? undefined : ms;
+}
+
 /**
- * The line in admission order. `serial` (or no rules): arrival order. `pipeline`: p0 steps first, in arrival order; then
+ * The line in admission order. `serial` (or no rules): arrival order. `pipeline`: the steps of a task its lead put at
+ * the front (T4082), the earliest put first; then p0 steps, in arrival order; then
  * the class whose turn it is (least virtual time in `turns`); inside a class, the aged priority; then arrival. A ticket
  * that names no request counts as `defaultClass` at {@link UNNAMED_PRIORITY}. A class `turns` lacks starts at the least
  * virtual time of the waiting classes it has (0 when it has none), so a class that had no step waiting banks no turns.
@@ -140,6 +149,7 @@ export function admissionOrder<T extends InLine>(line: readonly T[], now: number
   const ranked = byArrival.map((ticket) => {
     const priority = ticket.waiter.request?.priority;
     const rank: Rank = {
+      front: frontOf(ticket.waiter),
       urgent: priority !== undefined && priority <= NOW_PRIORITY.id,
       turn: turns.get(classOf(ticket.waiter, rules)) ?? fresh,
       priority: agedPriority(priority, now - Date.parse(ticket.waiter.arrivedAt), rules.agingMinutes),
@@ -149,8 +159,17 @@ export function admissionOrder<T extends InLine>(line: readonly T[], now: number
   return ranked.sort((a, b) => compareRanks(a.rank, b.rank) || byName(a.ticket, b.ticket)).map(({ ticket }) => ticket);
 }
 
-/** Urgent first; between two urgent ones, neither (arrival decides); else the least turn, then the most urgent aged priority. */
+/**
+ * Fronted first, the earliest put there first; then urgent; between two urgent ones, neither (arrival decides); else the
+ * least turn, then the most urgent aged priority.
+ */
 function compareRanks(a: Rank, b: Rank): number {
+  if (a.front !== undefined || b.front !== undefined) {
+    if (a.front === undefined || b.front === undefined) {
+      return a.front === undefined ? 1 : -1;
+    }
+    return a.front - b.front;
+  }
   if (a.urgent !== b.urgent) {
     return a.urgent ? -1 : 1;
   }

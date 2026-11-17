@@ -27,6 +27,8 @@ interface Asked {
   readonly kind?: StepKind;
   /** Whether its step is small (`--small`), on its request: true puts it in the small line, false in the heavy one. */
   readonly small?: boolean;
+  /** When its task was put at the front of the line, this many minutes before NOW, on its request. */
+  readonly frontedMinutes?: number;
   /** What its last look found it waiting on, for this many minutes before NOW. */
   readonly waitingOn?: { readonly reason: WaitCause; readonly forMinutes: number };
 }
@@ -34,13 +36,14 @@ interface Asked {
 /** A ticket that arrived `waitedMinutes` before NOW, its name in arrival order like the line's; a request only when a class or kind is given. */
 function ticket(id: string, asked: Asked = {}): InLine {
   const arrived = NOW - (asked.waitedMinutes ?? 0) * MINUTE;
-  const asks = asked.class !== undefined || asked.kind !== undefined || asked.small !== undefined;
+  const asks = asked.class !== undefined || asked.kind !== undefined || asked.small !== undefined || asked.frontedMinutes !== undefined;
   const request = asks
     ? {
         class: asked.class ?? PIPELINE.defaultClass,
         ...(asked.priority === undefined ? {} : { priority: asked.priority }),
         ...(asked.kind === undefined ? {} : { kind: asked.kind }),
         ...(asked.small === undefined ? {} : { heavy: !asked.small }),
+        ...(asked.frontedMinutes === undefined ? {} : { frontAt: new Date(NOW - asked.frontedMinutes * MINUTE).toISOString() }),
       }
     : undefined;
   const waitingOn = asked.waitingOn === undefined ? undefined : { reason: asked.waitingOn.reason, since: new Date(NOW - asked.waitingOn.forMinutes * MINUTE).toISOString() };
@@ -100,6 +103,17 @@ describe('admissionOrder', () => {
     ];
     const turns = new Map([['Roadmap', 0], ['Improvements', 50], ['Maintenance', 90]]);
     assert.deepEqual(idsOf(admissionOrder(line, NOW, PIPELINE, turns)), ['p0-first', 'p0-later', 'roadmap-p1']);
+  });
+
+  it("puts the steps of a task its lead put at the front before p0 ones, the earliest front first; serial mode keeps arrival order (T4082)", () => {
+    const line = [
+      ticket('p0', { waitedMinutes: 9, priority: 0, class: 'Roadmap' }),
+      ticket('p1', { waitedMinutes: 8, priority: 1, class: 'Roadmap' }),
+      ticket('fronted-later', { waitedMinutes: 2, priority: 2, class: 'Improvements', frontedMinutes: 1 }),
+      ticket('fronted-first', { waitedMinutes: 1, priority: 2, class: 'Improvements', frontedMinutes: 5 }),
+    ];
+    assert.deepEqual(idsOf(admissionOrder(line, NOW, PIPELINE, NO_TURNS)), ['fronted-first', 'fronted-later', 'p0', 'p1']);
+    assert.deepEqual(idsOf(admissionOrder(line, NOW, SERIAL, NO_TURNS)), ['p0', 'p1', 'fronted-later', 'fronted-first']);
   });
 
   it('orders by priority inside a class, then by arrival', () => {

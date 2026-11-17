@@ -120,6 +120,36 @@ describe('lineRequestOf (T2210)', () => {
     const register = registerOf(new Map([['T5', { priority: 1, workClass: 'Research' }]]));
     assert.deepEqual(await lineRequestOf(processRequest('test', 'T5'), register.taskOf, FOCUS), { kind: 'test', task: 'T5', priority: 1, class: 'Research', classPct: 0 });
   });
+
+  describe('a front (T4082)', () => {
+    const AT = '2026-11-17T18:00:00.000Z';
+    const FRONT = { task: 'T5', at: AT, by: 'lead' };
+
+    it('adds the time its task was put at the front, while the task is active', async () => {
+      const register = registerOf(new Map([['T5', { priority: 2, workClass: 'Improvements', status: 'in-progress' }]]));
+      assert.deepEqual(await lineRequestOf(processRequest('merge', 'T5'), register.taskOf, FOCUS, FRONT), { kind: 'merge', task: 'T5', priority: 2, class: 'Improvements', classPct: 15, frontAt: AT });
+    });
+
+    it('adds none for a done or dropped task, a task the register lacks, or a front on another task', async () => {
+      const register = registerOf(
+        new Map<string, LineTask>([
+          ['T5', { priority: 2, workClass: 'Improvements', status: 'done' }],
+          ['T6', { priority: 2, workClass: 'Improvements', status: 'dropped' }],
+          ['T7', { priority: 2, workClass: 'Improvements', status: 'open' }],
+        ]),
+      );
+      const requests = await Promise.all([
+        lineRequestOf(processRequest('test', 'T5'), register.taskOf, FOCUS, FRONT),
+        lineRequestOf(processRequest('test', 'T6'), register.taskOf, FOCUS, { ...FRONT, task: 'T6' }),
+        lineRequestOf(processRequest('test', 'T9'), register.taskOf, FOCUS, { ...FRONT, task: 'T9' }),
+        lineRequestOf(processRequest('test', 'T7'), register.taskOf, FOCUS, FRONT),
+      ]);
+      assert.deepEqual(
+        requests.map((request) => request.frontAt),
+        [undefined, undefined, undefined, undefined],
+      );
+    });
+  });
 });
 
 describe('isLineRequest (T2210)', () => {
@@ -128,6 +158,7 @@ describe('isLineRequest (T2210)', () => {
       { kind: 'test', task: 'T5', priority: 1, class: 'Maintenance', classPct: 25 },
       { kind: 'build', class: 'Improvements', classPct: 15 },
       { kind: 'deploy', class: 'Roadmap', classPct: 33.3, needMb: 4096, heavy: true },
+      { kind: 'merge', task: 'T5', class: 'Improvements', classPct: 15, frontAt: '2026-11-17T18:00:00.000Z' },
     ];
     assert.deepEqual(requests.filter(isLineRequest), requests);
   });
@@ -145,6 +176,8 @@ describe('isLineRequest (T2210)', () => {
       { ...good, classPct: 'x' },
       { ...good, classPct: -5 },
       { ...good, classPct: Number.POSITIVE_INFINITY },
+      { ...good, frontAt: 5 },
+      { ...good, frontAt: 'soon' },
     ];
     assert.deepEqual(bad.filter(isLineRequest), []);
   });
