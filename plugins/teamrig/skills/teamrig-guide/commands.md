@@ -4951,10 +4951,16 @@ owner's. The re-run waits for memory and the lock like the first run, so a human
 Claude Code's own stop notice asks.
 
 A step that runs longer than a Bash tool's wait holds that tool's shell open the whole time, and the reaper may end it
-there. Give it `--detach`: the command checks its flags and the cutoff, starts the step hidden as `teamrig queue
---detached-run <id>` with the same flags, prints `QUEUED <id>: <what> runs detached; log <path>; <session>'s inbox gets
-a line when it starts and when it ends` and returns at once (exit 0). The hidden run outlives the shell, so it watches
-no shell; it waits for memory and the lock like any step, and its output and the queue's own lines go to
+there. Give it `--detach`: the command checks its flags and the cutoff, parks the step as a file in
+`<delivery dir>/detached/parked/` (its command, folder and environment, with no credentials), makes sure the team's
+one hidden dispatcher runs (`teamrig queue --dispatch`, started by `--detach` only), prints `QUEUED <id>: <what> runs
+detached; log <path>; <session>'s inbox gets a line when it starts and when it ends` and returns at once (exit 0). The
+dispatcher takes each parked step and runs it as `teamrig queue --detached-run <id>` with the same flags inside its own
+process, so thirty waiting steps cost one node process, not thirty; it ends once nothing is parked or running, and its
+own lines go to `<delivery dir>/detached/dispatcher.log`. Steps left parked with no dispatcher running, as after a
+reboot, get a new one from the next `teamrig start` of any session of the team or the next idle pass. The hidden run
+outlives the shell, so it watches no shell; it waits for memory and the lock like any step, and its output and the
+queue's own lines go to
 `<delivery dir>/detached/<id>.log`. Its session's inbox gets `queue <id> started: <what>; log <path>` when it takes its
 turn, and a line that wakes the session, `queue <id> ended: <what>: <last line>; log <path>`, when it ends (`DONE exit
 0`, `FAILED exit <n>`, `TIMED OUT ...`) or is refused (`REFUSED ...`). The run keeps a record,
@@ -5024,6 +5030,8 @@ Flags:
   the session's inbox (see above); refused with `--pre-push` and under a live host lock (exit 64).
 - `--detached-run <id>`: the hidden run `--detach` or a hand-over starts, `<id>` its `<UTC yyyymmdd-hhmmss>-<pid>`; set
   by them only, so another value is refused (exit 64), as is `--detach` with it.
+- `--dispatch`: the team's hidden dispatcher that runs the parked steps (see above); started by `--detach` and the
+  start or idle pass only, it takes no other flag or command (exit 64), and a second one ends at once.
 - `--arrived-at <ms>`: the epoch milliseconds a handed-over step first joined the line, so its detached run keeps that
   place; set by the hand-over only, with `--detached-run`; refused (exit 64) by hand or past now.
 

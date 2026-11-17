@@ -929,8 +929,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       it reuses their pass of the last 24 hours (DONE at once, even from the cutoff on) and records one
       when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
       connection may have closed meanwhile: push again, it reuses the pass. --detach (a step longer than a
-      Bash tool's wait): prints QUEUED <id> at once and runs the step hidden as queue --detached-run <id>
-      (set only by --detach and that hand-over, which adds --arrived-at <ms>), which outlives its shell, so no shell watch stops it, its output and lines in
+      Bash tool's wait): prints QUEUED <id> at once and parks the step for the team's one hidden dispatcher
+      (queue --dispatch), which runs it as queue --detached-run <id> in its own process, so a waiting step
+      holds a file, not a node process (set only by --detach and that hand-over, which adds --arrived-at <ms>), which outlives its shell, so no shell watch stops it, its output and lines in
       <delivery dir>/detached/<id>.log; its session's inbox gets a line when it starts and a waking one
       when it ends or is refused, or, from the next start or idle pass, when it died with no end of its
       own (queue <id> died ...). Refused with --pre-push and under a live host lock
