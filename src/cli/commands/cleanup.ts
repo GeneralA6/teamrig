@@ -28,13 +28,24 @@ function endLine(launcher: Launcher, outcome: EndOutcome): string {
 }
 
 /**
- * Ends one orphaned launcher, after checking that its id still runs the same session's launch: between the census
- * and the end, the id may have gone to another process, which is then left alone (`gone`).
+ * Ends one orphaned launcher, after checking that its id still holds the very process the census saw: the same
+ * session's launch, the same starter, and, where the listing gives starts (Windows), the same start. Between the
+ * census and the end the id may have gone to another process, even to a reopened tab of the same session, which is
+ * then left alone (`gone`). A start that cannot be re-read ends nothing (`failed`).
  */
 async function endOrphan(runtime: CliRuntime, launcher: Launcher): Promise<EndOutcome> {
   const now = await runtime.sessionProcesses.describe(launcher.pid);
-  if (now === undefined || launchOf(now.name, now.commandLine)?.session !== launcher.session) {
+  if (now === undefined || now.parentPid !== launcher.parentPid || launchOf(now.name, now.commandLine)?.session !== launcher.session) {
     return { kind: 'gone' };
+  }
+  if (launcher.startedMs !== undefined) {
+    const listed = await runtime.sessionProcesses.list();
+    if (listed === undefined) {
+      return { kind: 'failed', error: 'its start could not be re-read, so it was left running' };
+    }
+    if (listed.find((entry) => entry.info.pid === launcher.pid)?.startedMs !== launcher.startedMs) {
+      return { kind: 'gone' };
+    }
   }
   return runtime.sessionProcesses.end(launcher.pid, 'force');
 }
