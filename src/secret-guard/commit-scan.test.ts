@@ -90,6 +90,28 @@ describe('CommitScanner.staged', () => {
   });
 });
 
+describe('CommitScanner: a .pub.pem holding a public key alone (#875)', () => {
+  const dashes = '-----';
+  const header = (...label: string[]): string => `${dashes}BEGIN ${label.join(' ')}${dashes}`;
+  const pem = (...label: string[]): string => [header(...label), 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A', `${dashes}END ${label.join(' ')}${dashes}`].join('\n');
+  const onDisk: Readonly<Record<string, string>> = { [`${ROOT}/keys/archive.pub.pem`]: pem('PUBLIC', 'KEY'), [`${ROOT}/keys/mistake.pub.pem`]: pem('PRIVATE', 'KEY') };
+  const keyed = new CommitScanner(new SecretShapes(), new SecretPaths(DEFAULT_SECRET_PATHS, HOME, true, (path) => onDisk[path]), ROOT);
+
+  it('lets a public key in, and refuses a private key saved under that name, by name and by its block', () => {
+    assert.deepEqual(keyed.staged({ paths: ['keys/archive.pub.pem'], lines: [{ file: 'keys/archive.pub.pem', line: 1, text: header('PUBLIC', 'KEY') }] }), []);
+    assert.deepEqual(keyed.staged({ paths: ['keys/mistake.pub.pem'], lines: [{ file: 'keys/mistake.pub.pem', line: 1, text: header('PRIVATE', 'KEY') }] }), [
+      { where: 'keys/mistake.pub.pem', description: DECLARED_FILE },
+      { where: 'keys/mistake.pub.pem:1', description: 'private key block' },
+    ]);
+  });
+
+  it('refuses a private key block staged under a name whose copy on disk holds a public key', () => {
+    assert.deepEqual(keyed.staged({ paths: ['keys/archive.pub.pem'], lines: [{ file: 'keys/archive.pub.pem', line: 1, text: header('PRIVATE', 'KEY') }] }), [
+      { where: 'keys/archive.pub.pem:1', description: 'private key block' },
+    ]);
+  });
+});
+
 describe('CommitScanner.message', () => {
   it('names a secret by its message line, the first being line 1, comment lines included', () => {
     const lines = ['fix: the login', '', join('# token ', TOKEN), 'plain body'];
