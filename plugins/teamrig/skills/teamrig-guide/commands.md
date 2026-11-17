@@ -4981,7 +4981,9 @@ cutoff on, `--detach` is REFUSED at once, as a plain step is. It is refused (exi
 waits on the checks' result, and under a live host lock, where the parent step waits for it. `--detached-run` is set
 by `--detach` and the hand-over only.
 
-Everything after `--` is the command, read as `teamrig test` reads it. Run a test run as
+Everything after `--` is the command, read as `teamrig test` reads it: one quoted word runs as a shell line, several
+run as one command with each word passed as is, and a word that is only `&&`, `||` or `;` is REFUSED (exit 64) before
+the step joins the line. Run a test run as
 `teamrig queue ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
 
 A step's processes get `$TEAMRIG_HOST_LOCK`, the lock's id, and so do `merge`'s push, `deploy`'s
@@ -5807,8 +5809,10 @@ recognised. It reads the Node.js test runner (spec and TAP), Jest and Vitest. Ex
 [delivery.passEnv] names.
 
 Everything after `--` is the command. One quoted word runs as written, so `"npm run build && npm test"` works;
-several words are passed on as typed, globs included. An empty command is REFUSED (exit 64), as a shell would run
-it as nothing and exit 0. On Windows, cmd.exe runs the command and stops reading at a line break, so a word that holds
+several words run as one command, each word passed on as typed, globs included. So a word that is only `&&`, `||` or
+`;` is REFUSED (exit 64) before anything runs, as the first program would get it as an argument: pass the whole chain
+as one quoted word, as the refusal shows. An operator inside a word (`a;b`) is passed on as today. An empty command is
+REFUSED (exit 64), as a shell would run it as nothing and exit 0. On Windows, cmd.exe runs the command and stops reading at a line break, so a word that holds
 one (a `bash -c` script over several lines) is REFUSED too, before anything runs: put the script in a file and run the
 file, or keep each word on one line.
 
