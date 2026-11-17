@@ -68,6 +68,15 @@ export function runGit(dir: string, args: readonly string[], timeout: number = Q
   return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '', ...(unanswered === undefined ? {} : { unanswered }) };
 }
 
+/**
+ * A query fed `input` on stdin whose stdout is kept as bytes, for an answer that counts its lengths in bytes, such as
+ * `git cat-file --batch` (T4035); undefined unless git exits 0.
+ */
+export function queryBytes(dir: string, args: readonly string[], input: string, maxBuffer: number): Buffer | undefined {
+  const result = spawnSync('git', args, { cwd: dir, windowsHide: true, env: gitEnvironment(process.env), input, timeout: QUERY_TIMEOUT_MS, maxBuffer });
+  return unansweredOf(result) === undefined && result.status === 0 ? result.stdout : undefined;
+}
+
 /** A query's stdout when git exits 0, else undefined. */
 export function query(dir: string, args: readonly string[]): string | undefined {
   const run = runGit(dir, args);

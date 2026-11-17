@@ -1,5 +1,5 @@
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
-import { outcome, query, queryLine, runGit, type GitOutcome } from '../core/git-run.ts';
+import { outcome, query, queryBytes, queryLine, runGit, type GitOutcome } from '../core/git-run.ts';
 import { printable } from '../core/printable.ts';
 
 /** Where a checkout sits in its repository. */
@@ -73,6 +73,12 @@ export interface MergeGit {
   changedPaths(dir: string, base: string, head: string): readonly string[] | undefined;
   /** The text of `path` at `ref`; undefined when it has no such file. */
   fileAt(dir: string, ref: string, path: string): string | undefined;
+  /**
+   * The text of each of `paths` that is a file at the commit `ref`, by path, read in one git run however many are
+   * asked (T4035); a path with no file there, a folder too, is not in the map. Undefined when git could not tell, such
+   * as when `ref` names no commit.
+   */
+  filesAt(dir: string, ref: string, paths: readonly string[]): ReadonlyMap<string, string> | undefined;
   /**
    * The blob id of each of `paths` at the commit `ref`, by path; a path `ref` has no file at is not in the map.
    * Undefined when git could not tell, such as when `ref` names no commit (or one git collected).
@@ -197,6 +203,48 @@ export function pathInCheckout(top: string, file: string): string | undefined {
   return path === '' || path.startsWith('../') || isAbsolute(path) ? undefined : path;
 }
 
+/** The most output one `cat-file --batch` read may print: room for a large tool's whole code. */
+const BATCH_MAX_BYTES = 256 * 1024 * 1024;
+
+/** A found object's line in `git cat-file --batch` output: `<id> <type> <size>`. */
+const BATCH_FOUND = /^[0-9a-f]{40,64} ([a-z]+) (\d+)$/;
+
+/** An object `git cat-file --batch` found: its type (`blob`, `tree`, `commit`) and its content as text. */
+export interface BatchObject {
+  readonly type: string;
+  readonly text: string;
+}
+
+/**
+ * What `git cat-file --batch` printed for `count` names, in the order asked (T4035): each answer is a found object's
+ * `<id> <type> <size>` line, its `size` bytes and a line break, or one line naming what it could not find, read as
+ * undefined. Undefined when the output does not hold exactly `count` whole answers.
+ */
+export function catFileBatchOf(output: Buffer, count: number): readonly (BatchObject | undefined)[] | undefined {
+  const answers: (BatchObject | undefined)[] = [];
+  let at = 0;
+  while (answers.length < count) {
+    const end = output.indexOf(0x0a, at);
+    if (end < 0) {
+      return undefined;
+    }
+    const found = BATCH_FOUND.exec(output.toString('utf8', at, end));
+    at = end + 1;
+    const type = found?.[1];
+    if (found === null || type === undefined) {
+      answers.push(undefined);
+      continue;
+    }
+    const size = Number(found[2]);
+    if (at + size >= output.length || output[at + size] !== 0x0a) {
+      return undefined;
+    }
+    answers.push({ type, text: output.toString('utf8', at, at + size) });
+    at += size + 1;
+  }
+  return at === output.length ? answers : undefined;
+}
+
 /** A one-line answer, or undefined when git said no or nothing. */
 function lineOf(run: Answer): string | undefined {
   const line = run.stdout.trim();
@@ -270,6 +318,27 @@ export const GIT_MERGE: MergeGit = {
     return text === undefined ? undefined : text.split('\0').filter((path) => path !== '');
   },
   fileAt: (dir, ref, path) => query(dir, ['cat-file', 'blob', `${ref}:${path}`]),
+  filesAt(dir, ref, paths) {
+    // `cat-file --batch` reads one name a line, so a ref or path holding a line break cannot be asked.
+    if ([ref, ...paths].some((name) => name.includes('\n'))) {
+      return undefined;
+    }
+    // The commit is asked first in the same run, so a ref that names none tells nothing, and git starts once.
+    const names = [`${ref}^{commit}`, ...paths.map((path) => `${ref}:${path}`)];
+    const output = queryBytes(dir, ['cat-file', '--batch'], names.map((name) => `${name}\n`).join(''), BATCH_MAX_BYTES);
+    const answers = output === undefined ? undefined : catFileBatchOf(output, names.length);
+    if (answers?.[0]?.type !== 'commit') {
+      return undefined;
+    }
+    const files = new Map<string, string>();
+    paths.forEach((path, at) => {
+      const found = answers[at + 1];
+      if (found?.type === 'blob') {
+        files.set(path, found.text);
+      }
+    });
+    return files;
+  },
   blobsAt(dir, ref, paths) {
     const wanted = new Set(paths);
     if (wanted.size === 0) {

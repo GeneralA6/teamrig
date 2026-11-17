@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
-import { GIT_MERGE as git, ORIGIN, rebaseStopReason } from './git.ts';
+import { catFileBatchOf, GIT_MERGE as git, ORIGIN, rebaseStopReason } from './git.ts';
 
 /** A repo on `main`, pushed to a bare origin beside it, with `origin/HEAD` set; returns the repo and the origin's folder. */
 function repoWithOrigin(prefix: string): { repo: TempRepo; origin: string } {
@@ -231,6 +231,29 @@ describe('GIT_MERGE reading origin and a range', () => {
     }
   });
 
+  it('reads the text of each asked file at a commit in one read, leaving out a path with no file and a folder (T4035)', () => {
+    const { repo } = repoWithOrigin('merge-files');
+    try {
+      const first = commit(repo, 'src/a b.ts', 'export const a = "é";\n', 'source');
+      commit(repo, 'src/a b.ts', 'export {};\n', 'change it');
+      commit(repo, 'empty.txt', '', 'an empty file');
+      const asked = ['src/a b.ts', 'src', 'gone.ts', 'empty.txt'];
+      assert.deepEqual(git.filesAt(repo.dir, first, asked), new Map([['src/a b.ts', 'export const a = "é";\n']]));
+      assert.deepEqual(
+        git.filesAt(repo.dir, 'HEAD', asked),
+        new Map([
+          ['src/a b.ts', 'export {};\n'],
+          ['empty.txt', ''],
+        ]),
+      );
+      assert.deepEqual(git.filesAt(repo.dir, 'HEAD', []), new Map());
+      assert.equal(git.filesAt(repo.dir, 'no-such-ref', asked), undefined);
+      assert.equal(git.filesAt(repo.dir, 'HEAD', ['a\nb.ts']), undefined, 'a path cat-file --batch cannot be asked');
+    } finally {
+      repo.remove();
+    }
+  });
+
   it('reads the tree a commit makes, the same for two commits of the same files', () => {
     const { repo } = repoWithOrigin('merge-tree');
     try {
@@ -279,6 +302,21 @@ describe('GIT_MERGE rebase', () => {
       assert.deepEqual(git.changes(repo.dir, true), []);
     } finally {
       repo.remove();
+    }
+  });
+});
+
+describe('catFileBatchOf reads git cat-file --batch output (T4035)', () => {
+  const id = 'a'.repeat(40);
+
+  it('reads each object by its byte size, a multi-byte and a line-break-holding text whole, and a missing name as undefined', () => {
+    const output = Buffer.from(`${id} blob 3\né\n\nx:gone missing\n${id} tree 0\n\n${id} blob 4\na\nb\n\n`);
+    assert.deepEqual(catFileBatchOf(output, 4), [{ type: 'blob', text: 'é\n' }, undefined, { type: 'tree', text: '' }, { type: 'blob', text: 'a\nb\n' }]);
+  });
+
+  it('tells nothing of output cut short, a size that does not match, or more answers than asked', () => {
+    for (const text of [`${id} blob 3\nab`, `${id} blob 2\nabc\n`, `${id} blob 1\na\n${id} blob 1\nb\n`, '']) {
+      assert.equal(catFileBatchOf(Buffer.from(text), 1), undefined, JSON.stringify(text));
     }
   });
 });

@@ -61,7 +61,9 @@ export class FakeMergeGit implements MergeGit {
    * file there); any other path's blob is `blob-<commit>:<path>`, so each commit holds files of its own.
    */
   readonly blobs = new Map<string, string | undefined>();
-  /** Commits whose blobs git cannot read, such as one it collected. */
+  /** How many paths each {@link filesAt} read asked for, in order: one entry per git run. */
+  readonly fileReads: number[] = [];
+  /** Commits whose blobs and files git cannot read, such as one it collected. */
   readonly unreadable = new Set<string>();
   defaultName = 'main';
   mergeBaseIs: string | undefined = 'base';
@@ -216,6 +218,22 @@ export class FakeMergeGit implements MergeGit {
 
   fileAt(dir: string, ref: string, path: string): string | undefined {
     return this.files.get(`${this.commitOf(dir, ref) ?? ref}:${path}`);
+  }
+
+  filesAt(dir: string, ref: string, paths: readonly string[]): ReadonlyMap<string, string> | undefined {
+    const commit = this.commitOf(dir, ref) ?? ref;
+    this.fileReads.push(paths.length);
+    if (this.unreadable.has(commit)) {
+      return undefined;
+    }
+    const texts = new Map<string, string>();
+    for (const path of paths) {
+      const text = this.files.get(`${commit}:${path}`);
+      if (text !== undefined) {
+        texts.set(path, text);
+      }
+    }
+    return texts;
   }
 
   blobsAt(dir: string, ref: string, paths: readonly string[]): ReadonlyMap<string, string> | undefined {
