@@ -1,27 +1,24 @@
-import { execFileSync } from 'node:child_process';
 import { basename, dirname, resolve } from 'node:path';
-/** One git run's exit code in `dir`; a run git could not start reads as undefined. */
+import { queryLine, runGit } from "../core/git-run.js";
+/**
+ * git's own exit code in `dir`; undefined when git gave no answer of its own (it did not start, or the kit's query
+ * timeout stopped it on a loaded host), which must never read as its "no".
+ */
 function gitStatus(dir, args) {
-    try {
-        execFileSync('git', args, { cwd: dir, windowsHide: true, stdio: 'ignore', timeout: 5_000 });
-        return 0;
-    }
-    catch (error) {
-        return error instanceof Error && 'status' in error && typeof error.status === 'number' ? error.status : undefined;
-    }
+    const run = runGit(dir, args);
+    return run.unanswered === undefined && run.status !== null ? run.status : undefined;
 }
 /** The repository's exclude file, as git in `dir` resolves it (a linked worktree shares its main checkout's); undefined outside a repository. */
 function excludeFile(dir) {
-    try {
-        const path = execFileSync('git', ['rev-parse', '--git-path', 'info/exclude'], { cwd: dir, windowsHide: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000 }).trim();
-        // git prints it relative to `dir`, or absolute for a linked worktree.
-        return path === '' ? undefined : resolve(dir, path);
-    }
-    catch {
-        return undefined;
-    }
+    const path = queryLine(dir, ['rev-parse', '--git-path', 'info/exclude']);
+    // git prints it relative to `dir`, or absolute for a linked worktree.
+    return path === undefined ? undefined : resolve(dir, path);
 }
-/** Pointer state from the git CLI: committed, ignored (git exits 0) or not (1); anything else, git could not tell. */
+/**
+ * Pointer state from the git CLI: committed, ignored (git exits 0) or not (1); anything else, git could not tell. Each
+ * run goes through the kit's git runner, so git reads the repository `path` is in, never one a caller's git hook names
+ * in GIT_DIR, and waits as long as every other git query.
+ */
 export const GIT_POINTER = {
     state(path) {
         const dir = dirname(path);

@@ -171,25 +171,34 @@ export function relativeImportsOf(text, path) {
  */
 export function toolCodeAt(git, top, ref, tool) {
     const rootsPath = toolRootsPath(tool);
-    const present = git.blobsAt(top, ref, [rootsPath]);
-    const rootsText = present?.has(rootsPath) === true ? git.fileAt(top, ref, rootsPath) : '{"roots":[]}';
-    const roots = present === undefined || rootsText === undefined ? undefined : toolRootsOf(rootsText);
+    const rootsRead = git.filesAt(top, ref, [rootsPath]);
+    const roots = rootsRead === undefined ? undefined : toolRootsOf(rootsRead.get(rootsPath) ?? '{"roots":[]}');
     if (roots === undefined) {
         return undefined;
     }
     const seen = new Set([rootsPath]);
-    const next = [tool, ...roots];
-    for (let path = next.pop(); path !== undefined; path = next.pop()) {
-        if (seen.has(path)) {
-            continue;
-        }
-        const text = path.startsWith('../') || seen.size >= TOOL_CODE_MAX_FILES ? undefined : git.fileAt(top, ref, path);
-        const imports = text === undefined ? undefined : MODULE_FILE.test(path) ? relativeImportsOf(text, path) : [];
-        if (imports === undefined) {
+    // One git read per level of imports, never one per file (T4035): a tool's code runs to hundreds of files, and the
+    // start check of every queued ship reads it twice.
+    for (let level = [tool, ...roots]; level.length > 0;) {
+        const fresh = [...new Set(level)].filter((path) => !seen.has(path));
+        if (fresh.some((path) => path.startsWith('../')) || seen.size + fresh.length > TOOL_CODE_MAX_FILES) {
             return undefined;
         }
-        seen.add(path);
-        next.push(...imports);
+        const texts = fresh.length === 0 ? new Map() : git.filesAt(top, ref, fresh);
+        if (texts === undefined) {
+            return undefined;
+        }
+        const next = [];
+        for (const path of fresh) {
+            const text = texts.get(path);
+            const imports = text === undefined ? undefined : MODULE_FILE.test(path) ? relativeImportsOf(text, path) : [];
+            if (imports === undefined) {
+                return undefined;
+            }
+            seen.add(path);
+            next.push(...imports);
+        }
+        level = next;
     }
     return [...seen].sort();
 }
