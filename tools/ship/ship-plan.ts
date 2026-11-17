@@ -97,14 +97,28 @@ export function withRaisedVersion(chunks: readonly Chunk[], versionPaths: readon
   return named === undefined || named === sets ? [...chunks] : withPlanVersion(chunks, { from: named, to: sets });
 }
 
-/** Whether a chunk commits only version files: the version raise, which every run sets again on its own base. */
-export const isRaiseOnly = (chunk: Chunk, versionPaths: readonly string[]): boolean => chunk.files.every((path) => versionPaths.includes(path));
+/**
+ * The files a version raise writes: the version files, and the files whose release stamp names the version a new
+ * change first ships in (a config migration's firstRelease, TEAMRIG_RELEASE_STAMPS), set in the same raise.
+ */
+export interface RaisePaths {
+  readonly versions: readonly string[];
+  readonly stamps: readonly string[];
+}
 
 /**
- * The plan with each chunk that commits only version files moved after the others, their order kept otherwise. The
- * raise and the dist are then the branch's newest commits, so a run without --merge can take them back and leave the
- * work alone on the head its approver reviews.
+ * Whether a chunk is the version raise, which every run sets again on its own base: it commits a version file, and
+ * nothing but version files and release stamps. A chunk of stamp files alone is work, such as a new migration.
  */
-export function withRaiseLast(chunks: readonly Chunk[], versionPaths: readonly string[]): Chunk[] {
-  return [...chunks.filter((chunk) => !isRaiseOnly(chunk, versionPaths)), ...chunks.filter((chunk) => isRaiseOnly(chunk, versionPaths))];
+export const isRaiseOnly = (chunk: Chunk, raise: RaisePaths): boolean =>
+  chunk.files.some((path) => raise.versions.includes(path)) &&
+  chunk.files.every((path) => raise.versions.includes(path) || raise.stamps.includes(path));
+
+/**
+ * The plan with each raise chunk (isRaiseOnly) moved after the others, their order kept otherwise. The raise and the
+ * dist are then the branch's newest commits, so a run without --merge can take them back and leave the work alone on
+ * the head its approver reviews.
+ */
+export function withRaiseLast(chunks: readonly Chunk[], raise: RaisePaths): Chunk[] {
+  return [...chunks.filter((chunk) => !isRaiseOnly(chunk, raise)), ...chunks.filter((chunk) => isRaiseOnly(chunk, raise))];
 }

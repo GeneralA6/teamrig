@@ -5,9 +5,9 @@ import { freeBranch } from './branch-names.ts';
 import type { BuildStep } from './build-steps.ts';
 import type { GateVerdict } from './local-gate.ts';
 import type { MainMove, MergeExit } from './merge.ts';
-import { isRaiseOnly, withRaiseLast, withRaisedVersion, type Chunk, type ShipArgs } from './ship-plan.ts';
+import { isRaiseOnly, withRaiseLast, withRaisedVersion, type Chunk, type RaisePaths, type ShipArgs } from './ship-plan.ts';
 import type { SyncResult } from './sync.ts';
-import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
+import { TEAMRIG_RELEASE_STAMPS, TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 /** The folder `npm run build` writes, committed apart from the plan's chunks. */
 export const DIST = 'plugins/teamrig/dist';
@@ -204,8 +204,8 @@ function refuseEmptyChunks(deps: ShipDeps, chunks: readonly Chunk[], versionPath
 }
 
 /**
- * Takes back the commits of a run without --merge that its approver does not review: the chunks that commit only
- * version files and the dist commit, the newest commits (withRaiseLast), never pushed since this run made them. The
+ * Takes back the commits of a run without --merge that its approver does not review: the raise chunks (isRaiseOnly)
+ * and the dist commit, the newest commits (withRaiseLast), never pushed since this run made them. The
  * raise stays in the working tree, uncommitted, so the --merge run finds its chunk to commit; the dist goes back to
  * the head's, since that run builds it again on the base it lands on.
  */
@@ -223,8 +223,9 @@ left for review: the work commits; the version raise is uncommitted and the dist
 /** One run of steps 0 to 6. */
 async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDeps, approved: ApprovedChange | null): Promise<MergeExit> {
   const versionPaths = TEAMRIG_VERSION_FILES.map((file) => file.path);
-  deps.takeBack(withRaiseLast(written, versionPaths), args.base);
-  const chunks = withRaiseLast(withRaisedVersion(written, versionPaths, deps.sync().sets), versionPaths);
+  const raisePaths: RaisePaths = { versions: versionPaths, stamps: TEAMRIG_RELEASE_STAMPS.map((stamp) => stamp.path) };
+  deps.takeBack(withRaiseLast(written, raisePaths), args.base);
+  const chunks = withRaiseLast(withRaisedVersion(written, versionPaths, deps.sync().sets), raisePaths);
   refuseEmptyChunks(deps, chunks, versionPaths);
 
   for (const chunk of chunks) commit(deps, chunk.files, chunk.subject, chunk.body);
@@ -242,7 +243,7 @@ async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDep
   deps.log('\nlocal checks:');
   const verdict = deps.proveTree();
   if (verdict.passed && !args.merge) {
-    leaveForReview(deps, chunks.filter((chunk) => isRaiseOnly(chunk, versionPaths)), distCommitted);
+    leaveForReview(deps, chunks.filter((chunk) => isRaiseOnly(chunk, raisePaths)), distCommitted);
     deps.log(deps.git(['log', '--oneline', `${args.base}..HEAD`]));
     return { kind: 'done', code: 0 };
   }
