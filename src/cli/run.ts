@@ -121,6 +121,7 @@ const rolesCommands = () => import('./commands/roles.ts');
 const slashCommands = () => import('./commands/slash.ts');
 const restoreCommands = () => import('./commands/restore.ts');
 const restoreInstallCommands = () => import('./commands/restore-install.ts');
+const cleanupCommands = () => import('./commands/cleanup.ts');
 const execCommands = () => import('./commands/exec.ts');
 const refsCommands = () => import('./commands/refs.ts');
 const sweepCommands = () => import('./commands/sweep.ts');
@@ -214,6 +215,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   who: { effect: 'read', flags: [], load: async () => (await teamCommands()).who },
   sessions: { effect: 'read', flags: ['project'], switches: ['pass'], load: async () => (await sessionsCommands()).sessions },
   close: { effect: 'write', flags: ['session', 'project'], switches: ['yes'], load: async () => (await closeCommands()).close },
+  'cleanup launchers': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await cleanupCommands()).cleanupLaunchers },
   rename: { effect: 'write', flags: ['session'], load: async () => (await teamCommands()).rename },
   hire: {
     effect: 'write',
@@ -676,6 +678,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       open.headroom.closeIdleMinutes, in a turn, at a tool call or waiting on a decision it put to the
       person, running background work or shells, or too big or old to resume with no refresh ready;
       without --yes it shows the close and ends nothing
+  cleanup launchers [--yes]    lists each teamrig launch process on this host (a tab's root, which runs
+      its Claude Code) and which lost their tab: the terminal that started it has ended; without --yes
+      it ends nothing, with --yes it ends each orphaned one and what it started, never its own tab's
   rename <id|name> <new-name>  records a session's new name; its old names keep finding it
       (the session itself or the lead)
   hire <id> --scope "<its job>" --reason "<why>" [--name <name>] [--model <model>] [--effort <level>]

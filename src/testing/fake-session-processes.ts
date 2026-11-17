@@ -23,6 +23,8 @@ export class FakeSessionProcesses implements SessionProcesses {
   private failingLookups = 0;
   /** Called after each end that ended something, as the operating system would tell a waiting parent. */
   private onEnded: (pid: number) => void = () => undefined;
+  /** Called after each listing, as the system's processes change after a look at them. */
+  private onListed: () => void = () => undefined;
 
   constructor(parentPid: number = 7000) {
     this.parentPid = parentPid;
@@ -93,6 +95,12 @@ export class FakeSessionProcesses implements SessionProcesses {
     return this;
   }
 
+  /** Runs `listener` after each listing, to change the table between a look and what follows it. */
+  whenListed(listener: () => void): this {
+    this.onListed = listener;
+    return this;
+  }
+
   alive(pid: number): boolean {
     return this.running.has(pid);
   }
@@ -126,10 +134,12 @@ export class FakeSessionProcesses implements SessionProcesses {
     if (this.listingHidden) {
       return undefined;
     }
-    return [...this.running.values()].map((info) => {
+    const listed = [...this.running.values()].map((info) => {
       const startedMs = this.starts.get(info.pid);
       return startedMs === undefined ? { info } : { info, startedMs };
     });
+    this.onListed();
+    return listed;
   }
 
   async end(pid: number, how: EndHow): Promise<EndOutcome> {
