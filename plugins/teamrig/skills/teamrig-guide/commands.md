@@ -1768,8 +1768,9 @@ UNFOLLOWED gh:acme/web#7
 
 ### teamrig inbox read
 
-Prints your unread inbox lines and marks them read. Lines the prompt hook already showed this Claude Code session
-are marked read too, without being printed again (a line the hook cut is printed whole). It also ties this Claude
+Prints your unread inbox lines and marks them read. The prompt hook already marks read each line it showed whole;
+lines it showed this Claude Code session but left unread are marked read too, without being printed again (a line
+the hook cut is printed whole). It also ties this Claude
 Code session to the area, so the hooks know you: run it at the start of every work block and after every `/clear`.
 A tab keeps the session it was first bound to: from a tool call, a script or a hook (wherever Claude Code set
 `$CLAUDECODE`), a read as another session of the team is REFUSED (exit 2) and writes nothing, as the guards take who
@@ -1796,9 +1797,9 @@ Output:
 READ web: 1 new line, shown above; new ones are shown at your next prompt
 ```
 
-With nothing unread: `READ web: nothing new; new ones are shown at your next prompt`. After the prompt hook showed
-two lines: `READ web: 1 new line, shown above, and 2 the prompt hook showed this session, now marked read too; new
-ones are shown at your next prompt`.
+With nothing unread: `READ web: nothing new; new ones are shown at your next prompt`. A line the prompt hook showed
+whole is read already. When the hook showed two lines it could not mark read: `READ web: 1 new line, shown above, and
+2 the prompt hook showed this session, now marked read too; new ones are shown at your next prompt`.
 
 While you have `verifying` tasks, a last block names them, oldest first, with their proofs: a `VERIFY 1, oldest
 first:` heading, then a row each, `  T1 (proof: the signup smoke test passes on staging)`, the first 5 and a
@@ -6835,7 +6836,7 @@ teamrig hook inbox-reminder < prompt.json
 Output, when lines are new:
 
 ```text
-INBOX web, new in /home/you/.teamrig/teams/shop/state/inbox/web.md (each line is shown once; reading marks them read):
+INBOX web, new in /home/you/.teamrig/teams/shop/state/inbox/web.md (each line is shown once, and marked read once shown whole):
 - 2026-10-15 08:58 lead: api error codes are in docs/errors.md
 ```
 

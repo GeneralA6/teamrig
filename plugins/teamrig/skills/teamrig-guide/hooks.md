@@ -216,14 +216,15 @@ When your inbox has lines this Claude Code session has not been shown, they are 
 lines and 1,500 characters at a time:
 
 ```text
-INBOX web, new in /home/you/.teamrig/teams/shop/state/inbox/web.md (each line is shown once; reading marks them read):
+INBOX web, new in /home/you/.teamrig/teams/shop/state/inbox/web.md (each line is shown once, and marked read once shown whole):
 - 2026-10-15 08:58 lead: api error codes are in docs/errors.md
 +2 more at your next prompt, or all now with: teamrig inbox read --session web
 ```
 
-Read them there: each line is shown once per Claude Code session (recorded in `state/inbox-shown.jsonl`), and being
-shown does not mark it read. `teamrig inbox read --session web` then marks them read without printing them again. A
-first line over 1,500 characters is cut, and a note names the command that prints it whole.
+Read them there: each line is shown once per Claude Code session (recorded in `state/inbox-shown.jsonl`), and a line
+shown whole is marked read, so `inbox status`, doctor and the pane stop counting it. A first line over 1,500
+characters is cut, and a note names the command that prints it whole: the cut line and every line after it stay
+unread until `teamrig inbox read --session web` prints it.
 
 ### Each prompt: the leader digest
 

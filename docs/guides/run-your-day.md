@@ -133,14 +133,14 @@ sequenceDiagram
   Note over W: web is idle, and a note without --wake now does not wake it
   Y->>W: your next prompt to web
   W->>F: the UserPromptSubmit hook reads the lines it has not shown this session
-  F-->>W: INBOX web, new in ... (each line is shown once; reading marks them read)
-  W->>F: teamrig inbox read marks it read, without printing it again
+  F-->>W: INBOX web, new in ... (each line is shown once, and marked read once shown whole)
+  W->>F: the hook marks each line it showed whole read
 ```
 
 - The inbox file is never edited: `inbox read` adds a mark to `state/inbox-marks.jsonl`.
 - The prompt hook shows at most 5 new lines and 1,500 characters at a time, cuts a longer line, and says how many
-  wait. It records what it showed each Claude Code session in `state/inbox-shown.jsonl`; that is not a read, so
-  `inbox status` counts those lines unread and says how many of them a prompt showed. Its records over 7 days old, and
+  wait. It records what it showed each Claude Code session in `state/inbox-shown.jsonl` and marks read the lines
+  it showed whole; a cut line and those after it stay unread, and `inbox status` says how many of them a prompt showed. Its records over 7 days old, and
   those of the hooks' hints in `state/bind-hints.jsonl`, move to `state/archive/`.
 - You may trim an inbox file by hand; the read mark notices, and if the last line read is gone, the whole file
   counts as unread.
