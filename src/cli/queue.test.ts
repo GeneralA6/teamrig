@@ -544,6 +544,14 @@ describe('teamrig queue', () => {
     assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER)], [[], undefined, undefined]);
   });
 
+  it('refuses a word that is only &&, before it queues, and names the one-word form (#661)', async () => {
+    const { kit, steps } = harness();
+    const result = await kit.run(['queue', '--session', 'alpha', '--what', 'build', '--', 'npm', 'run', 'build', '&&', 'npm', 'test'], { steps });
+    assert.deepEqual([result.code, result.stdout], [EXIT.usage, []]);
+    assert.match(result.stderr[0]?.split('\n')[0] ?? '', /^the word "&&" of the command is a shell operator.*-- "npm run build && npm test"$/u);
+    assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER)], [[], undefined, undefined]);
+  });
+
   it('runs the same command on Linux, whose shell keeps a quoted line break', async () => {
     const { kit, steps } = harness();
     const result = await kit.run(['queue', '--session', 'alpha', '--what', 'build', '--', 'bash', '-c', '\nnpm test'], { steps });

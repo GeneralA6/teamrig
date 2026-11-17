@@ -170,6 +170,16 @@ describe('teamrig test', () => {
     assert.equal(shell.ran.length, 0);
   });
 
+  it('refuses a word that is only ||, running nothing, and runs the chain as one word (#661)', async () => {
+    const { kit, shell } = harness();
+    const refused = await kit.run(['test', '--', 'npm', 'test', '||', 'true'], { shell });
+    assert.equal(refused.code, 64);
+    assert.ok(refused.stderr[0]?.startsWith('the word "||" of the command is a shell operator'), refused.stderr[0]);
+    assert.equal(shell.ran.length, 0);
+    await kit.run(['test', '--', 'npm test || true'], { shell });
+    assert.equal(shell.ran.length, 1);
+  });
+
   it('still refuses -- on a command that takes no command line', async () => {
     const result = await new CliHarness().run(['show', 'T1', '--', 'x']);
     assert.equal(result.code, 64);
