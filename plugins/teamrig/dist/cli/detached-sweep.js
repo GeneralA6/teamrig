@@ -1,7 +1,9 @@
 import { errorMessage } from "../core/guards.js";
 import { deadRunsOf, diedEndOf, diedText } from "../delivery/detached-runs.js";
 import { appendRecord, parseLedger } from "../delivery/ledger.js";
+import { hasParked, parkedDirOf } from "../delivery/parked.js";
 import { detachedDirOf } from "../delivery/places.js";
+import { ensureDispatcher } from "./commands/queue-dispatch.js";
 import { teamZone } from "./kit.js";
 import { postUrgentLine } from "./urgent-line.js";
 /**
@@ -65,5 +67,22 @@ export async function sweepDeadDetachedRuns(runtime, kit, config) {
             }
         }
     }
-    return { told, problems };
+    const restart = await restartDispatcher(runtime, detachedDirOf(config.delivery, kit.paths));
+    return { told, problems: restart === undefined ? problems : [...problems, restart] };
+}
+/**
+ * Starts a dispatcher for steps left parked with none running (T4093): one whose dispatcher died, as at a reboot,
+ * would else wait for ever, as nothing else starts one until the next `queue --detach`. Returns the problem, if any.
+ */
+async function restartDispatcher(runtime, dir) {
+    try {
+        if (!(await hasParked(runtime.files, parkedDirOf(dir)))) {
+            return undefined;
+        }
+        const problem = await ensureDispatcher(runtime, dir);
+        return problem === undefined ? undefined : `the parked queue steps have no dispatcher, and none started: ${problem}`;
+    }
+    catch (error) {
+        return `the parked queue steps were not looked at: ${errorMessage(error)}`;
+    }
 }

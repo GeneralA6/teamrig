@@ -13,7 +13,9 @@ import { queueCutoffReason, minutesText } from "../../delivery/schedule.js";
 import { endedText, startedByGit } from "../../delivery/starter-watch.js";
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT } from "../../delivery/steps.js";
 import { errorMessage } from "../../core/guards.js";
-import { withoutCredentials } from "../../core/child-env.js";
+import { parkedEnvOf, withoutCredentials } from "../../core/child-env.js";
+import { PARKED_FORMAT } from "../../delivery/parked.js";
+import { DISPATCH_SWITCH, dispatch, parkStep } from "./queue-dispatch.js";
 import { ENV } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
@@ -312,24 +314,44 @@ function detachedArgsOf(args, words, session, id, arrivedAt) {
     return ['queue', '--detached-run', id, '--session', session, ...arrival, ...flags, ...switches, '--', ...words];
 }
 /**
- * Starts this step as a hidden `queue --detached-run` that outlives this command and its shell, its output and the
- * queue's lines in its log, then prints QUEUED: a step longer than a Bash tool's wait no longer holds one open, nor
- * dies with the shell Claude Code's reaper ends.
+ * Parks this step for the host's dispatcher (`queue --dispatch`, T4093), which runs it as a `queue --detached-run`
+ * that outlives this command and its shell, its output and the queue's lines in its log, then prints QUEUED: a step
+ * longer than a Bash tool's wait no longer holds one open, nor dies with the shell Claude Code's reaper ends, and
+ * while it waits for its turn it holds a file, not a node process. Only allow-listed variables go on disk
+ * (`parkedEnvOf`), so no secret does: the rest, credentials too, the step gets from the dispatcher's environment.
  */
 async function startDetached(runtime, places, args, run) {
     const { id, session, what, words, arrivedAt } = run;
-    const started = await runtime.processes.startHidden({
-        command: runtime.self.node,
-        args: [runtime.self.script, ...detachedArgsOf(args, words, session, id, arrivedAt)],
-        cwd: runtime.cwd,
-        env: runtime.env,
+    await parkStep(runtime, places.dir, {
+        v: PARKED_FORMAT,
+        id,
+        team: places.team,
+        session,
+        what,
         log: places.log,
+        argv: detachedArgsOf(args, words, session, id, arrivedAt),
+        cwd: runtime.cwd,
+        env: parkedEnvOf(runtime.env),
+        parkedAt: new Date(runtime.clock.now()).toISOString(),
     });
-    if (started.kind !== 'started') {
-        throw new RefusedError(`${what} did not start detached: ${started.kind === 'missing' ? `${runtime.self.node} was not found` : started.error}`);
-    }
     runtime.out.stdout(`QUEUED ${id}: ${what} runs detached; log ${places.log}; ${session}'s inbox gets a line when it starts and when it ends`);
     return EXIT.ok;
+}
+/** The detached places of run `id` of the team `kit`. */
+function detachedPlacesOf(kit, config, id) {
+    return { team: kit.paths.team, dir: detachedDirOf(config.delivery, kit.paths), log: detachedLogOf(config.delivery, kit.paths, id) };
+}
+/**
+ * `queue --dispatch`: runs as the host's dispatcher of the team's detached folder; `queue --detach` starts it. It
+ * takes no other flag or command: what it runs comes from the parked steps.
+ */
+async function dispatchParked(args, runtime) {
+    if (args.flags.size > 0 || args.switches.size > 1 || args.rest.length > 0 || args.positionals.length > 0) {
+        throw new UsageError('--dispatch is started by --detach and runs the parked steps: give it alone');
+    }
+    const kit = await openTeamKit(runtime);
+    const config = requireConfig(kit, runtime, 'read');
+    return dispatch(runtime, detachedDirOf(config.delivery, kit.paths), queue);
 }
 /**
  * The step's session: `--session`, else `$TEAMRIG_SESSION`, else the parent step's (a git hook's checks under
@@ -376,9 +398,10 @@ async function handOver(runtime, context, run) {
     const { kit, config, say, args, ended } = context;
     const { session, what } = run;
     const id = detachedIdOf(runtime.clock.now(), runtime.pid);
-    const log = detachedLogOf(config.delivery, kit.paths, id);
+    const places = detachedPlacesOf(kit, config, id);
+    const { log } = places;
     try {
-        await startDetached(runtime, { log }, args, { ...run, id });
+        await startDetached(runtime, places, args, { ...run, id });
     }
     catch (error) {
         return { kind: 'failed', why: errorMessage(error) };
@@ -461,6 +484,9 @@ async function afterPrePush(runtime, prePush, what, code, waitedMs) {
  * Exit 0 when the command passed, 1 when it failed, was killed or was stopped, 2 refused.
  */
 export async function queue(args, runtime) {
+    if (args.switches.has(DISPATCH_SWITCH)) {
+        return dispatchParked(args, runtime);
+    }
     const words = shellWordsOf(args, runtime.platform);
     const what = requiredFlag(args.flags, 'what');
     const request = requestOf(args, words, what);
@@ -490,7 +516,7 @@ export async function queue(args, runtime) {
         }
         await refuseUnstartable(runtime, gate);
         const id = detachedIdOf(runtime.clock.now(), runtime.pid);
-        return await startDetached(runtime, { log: detachedLogOf(delivery, kit.paths, id) }, args, { id, session, what, words });
+        return await startDetached(runtime, detachedPlacesOf(kit, config, id), args, { id, session, what, words });
     }
     const reporting = detachedId === undefined
         ? UNREPORTED

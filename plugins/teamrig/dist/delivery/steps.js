@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { closeSync, openSync } from 'node:fs';
 import { endOf } from "../test-run/shell.js";
 import { constants } from 'node:os';
 import { lowerStep, NODE_PRIORITIES, STEP_PRIORITY } from "./priority.js";
@@ -53,14 +54,24 @@ export function nodeStepRunner(platform, kill = nodeTreeKill(platform), prioriti
     return {
         run: (request) => new Promise((resolve, reject) => {
             const launch = stepLaunchOf(platform, request.command, ownPriorityOf(priorities));
-            const child = spawn(launch.file, launch.args, {
-                shell: launch.shell,
-                cwd: request.cwd,
-                env: { ...request.env },
-                stdio: 'inherit',
-                windowsHide: true,
-                detached: platform !== 'win32',
-            });
+            // The child holds its own handle on the log; this process's copy closes once the child has it.
+            const logFd = request.log === undefined ? undefined : openSync(request.log, 'a');
+            let child;
+            try {
+                child = spawn(launch.file, launch.args, {
+                    shell: launch.shell,
+                    cwd: request.cwd,
+                    env: { ...request.env },
+                    stdio: logFd === undefined ? 'inherit' : ['ignore', logFd, logFd],
+                    windowsHide: true,
+                    detached: platform !== 'win32',
+                });
+            }
+            finally {
+                if (logFd !== undefined) {
+                    closeSync(logFd);
+                }
+            }
             if (launch.lowerAfter && child.pid !== undefined) {
                 lowerStep(priorities, child.pid);
             }
