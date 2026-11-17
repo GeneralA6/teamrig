@@ -163,6 +163,17 @@ describe('refreshLaunchers', () => {
     assert.equal(files.get(RECORD), recordText({ v: LAUNCHER_RECORD_FORMAT, version: '0.282.1', at: AT, registered: [], found: [] }));
   });
 
+  it('writes a missing create launcher, keeps it current, and still leaves a missing plain one missing', async () => {
+    const inboxAdd: Launcher = { path: 'D:\\homes\\pat\\.teamrig\\bin\\inbox-add.mjs', text: '// the inbox-add launcher\n', create: true };
+    const { files, refresh } = worldOf({});
+    const outcome = await refreshLaunchers({ ...refresh, others: [STATUSLINE, inboxAdd] });
+    assert.deepEqual(outcome, { kind: 'refreshed', steps: [`WRITE ${inboxAdd.path}`] });
+    assert.deepEqual([files.get(inboxAdd.path), files.get(STATUSLINE.path)], [inboxAdd.text, undefined]);
+    const old = worldOf({ files: { [inboxAdd.path]: OLDER_TEXT } });
+    await refreshLaunchers({ ...old.refresh, others: [inboxAdd] });
+    assert.equal(old.files.get(inboxAdd.path), inboxAdd.text);
+  });
+
   it('only reads the record when it names this version: no lock, no logon read, no scan, no write', async () => {
     const { files, lock, shortcuts, refresh } = oldInstall({ [RECORD]: record('0.282.1') });
     shortcuts.scanFailWith = 'a current record must not scan';
