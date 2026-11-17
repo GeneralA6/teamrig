@@ -1,4 +1,4 @@
-import { basename } from 'node:path';
+import { win32 } from 'node:path';
 import type { ListedProcess } from './session-processes.ts';
 
 /** Why a launcher counts as orphaned: its starter is gone, or the id it names now belongs to a later process. */
@@ -27,7 +27,10 @@ export interface LauncherCensus {
 }
 
 const NODE_PROGRAM = /^node(\.exe)?$/i;
-/** The CLI's entry script, as `open` names it in a tab's command line (`runtime.self.script`). */
+/**
+ * The CLI's entry script, as `open` names it in a tab's command line (`runtime.self.script`). Its word is read with
+ * the win32 path rules, which split both `\` and `/`: a Windows command line must match on a POSIX host too.
+ */
 const CLI_SCRIPT = /^main\.[cm]?js$/i;
 
 /** A command line's words, quotes dropped: the system shows a Windows command line as one string. */
@@ -41,7 +44,7 @@ export function launchOf(name: string, commandLine: string): { readonly session:
     return undefined;
   }
   const words = wordsOf(commandLine);
-  const script = words.findIndex((word, i) => CLI_SCRIPT.test(basename(word)) && words[i + 1] === 'launch');
+  const script = words.findIndex((word, i) => CLI_SCRIPT.test(win32.basename(word)) && words[i + 1] === 'launch');
   const session = script < 0 ? undefined : words[script + 2];
   if (session === undefined || session.startsWith('-')) {
     return undefined;
