@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { generateKeyPairSync } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
@@ -159,20 +161,36 @@ describe('SecretPaths.mayName', () => {
 });
 
 describe('SecretPaths: a .pub.pem file holding public keys alone (#875)', () => {
+  // Keys made at run time, so no key-shaped text sits in the source.
   const dashes = '-----';
-  const block = (...label: string[]): string => [`${dashes}BEGIN ${label.join(' ')}${dashes}`, 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A', 'AwEAAQ==', `${dashes}END ${label.join(' ')}${dashes}`].join('\n');
-  const PUBLIC = block('PUBLIC', 'KEY');
+  const rsa = generateKeyPairSync('rsa', { modulusLength: 1024 });
+  const ed = generateKeyPairSync('ed25519');
+  const PUBLIC = rsa.publicKey.export({ type: 'spki', format: 'pem' }).toString().trim();
+  const PKCS1 = rsa.publicKey.export({ type: 'pkcs1', format: 'pem' }).toString().trim();
+  const ED = ed.publicKey.export({ type: 'spki', format: 'pem' }).toString().trim();
+  const PRIVATE = ed.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString().trim();
+  const relabel = (pem: string, label: string): string => pem.replace(/BEGIN [A-Z ]+-/u, `BEGIN ${label}-`).replace(/END [A-Z ]+-/u, `END ${label}-`);
+  const bodyOf = (pem: string): string[] => pem.split('\n').slice(1, -1);
+  const block = (label: string, body: readonly string[]): string => [`${dashes}BEGIN ${label}${dashes}`, ...body, `${dashes}END ${label}${dashes}`].join('\n');
   const files: Readonly<Record<string, string>> = {
     [`${REPO}/keys/archive.pub.pem`]: PUBLIC,
-    [`${REPO}/keys/two.pub.pem`]: `${PUBLIC}\r\n\r\n${block('RSA', 'PUBLIC', 'KEY')}\n`,
-    [`${REPO}/keys/mistake.pub.pem`]: block('PRIVATE', 'KEY'),
-    [`${REPO}/keys/rsa.pub.pem`]: block('RSA', 'PRIVATE', 'KEY'),
-    [`${REPO}/keys/both.pub.pem`]: `${PUBLIC}\n${block('PRIVATE', 'KEY')}`,
+    [`${REPO}/keys/two.pub.pem`]: `${PUBLIC}\r\n\r\n${PKCS1}\n\n${ED}\n`,
+    [`${REPO}/keys/mistake.pub.pem`]: PRIVATE,
+    [`${REPO}/keys/rsa.pub.pem`]: relabel(PKCS1, 'RSA PRIVATE KEY'),
+    [`${REPO}/keys/both.pub.pem`]: `${PUBLIC}\n${PRIVATE}`,
     [`${REPO}/keys/noted.pub.pem`]: `${PUBLIC}\nnote: see the vault`,
     [`${REPO}/keys/open.pub.pem`]: PUBLIC.slice(0, PUBLIC.lastIndexOf('\n')),
     [`${REPO}/keys/empty.pub.pem`]: '',
-    [`${REPO}/keys/cert.pub.pem`]: block('CERTIFICATE'),
+    [`${REPO}/keys/cert.pub.pem`]: relabel(PUBLIC, 'CERTIFICATE'),
     [`${REPO}/keys/archive.pem`]: PUBLIC,
+    // A key-shaped label around something that is not a public key: the content check parses each block.
+    [`${REPO}/keys/label.pub.pem`]: relabel(PUBLIC, 'PRIVATE PUBLIC KEY'),
+    [`${REPO}/keys/sealed.pub.pem`]: relabel(PUBLIC, 'ENCRYPTED PRIVATE PUBLIC KEY'),
+    [`${REPO}/keys/relabelled.pub.pem`]: relabel(PRIVATE, 'PUBLIC KEY'),
+    [`${REPO}/keys/relabelled-rsa.pub.pem`]: relabel(PRIVATE, 'RSA PUBLIC KEY'),
+    [`${REPO}/keys/token.pub.pem`]: block('PUBLIC KEY', ['A'.repeat(20) + 'b'.repeat(20)]),
+    [`${REPO}/keys/hex.pub.pem`]: block('PUBLIC KEY', ['0123456789abcdef'.repeat(2) + '01234567']),
+    [`${REPO}/keys/cut.pub.pem`]: block('PUBLIC KEY', bodyOf(PUBLIC).slice(1)),
   };
   const read = (path: string): string | undefined => files[path];
   const keyed = new SecretPaths(DEFAULT_SECRET_PATHS, HOME, true, read);
@@ -184,8 +202,8 @@ describe('SecretPaths: a .pub.pem file holding public keys alone (#875)', () => 
     }
   });
 
-  it('refuses one with a private key block, both kinds, other text, an open block, no block, or that cannot be read', () => {
-    for (const name of ['mistake', 'rsa', 'both', 'noted', 'open', 'empty', 'cert', 'gone']) {
+  it('refuses one with a private key block, other text, an open block, no block, one that cannot be read, or a key-shaped label around anything but a public key', () => {
+    for (const name of ['mistake', 'rsa', 'both', 'noted', 'open', 'empty', 'cert', 'gone', 'label', 'sealed', 'relabelled', 'relabelled-rsa', 'token', 'hex', 'cut']) {
       assert.equal(keyed.listed(`${REPO}/keys/${name}.pub.pem`), true, name);
       assert.equal(keyed.mayName(`${REPO}/keys/${name}.pub.pem`, BASH_WORD), true, name);
     }
@@ -213,6 +231,20 @@ describe('readKeyText (#875)', () => {
       assert.equal(readKeyText(join(repo.dir, 'big.pub.pem')), undefined);
       assert.equal(readKeyText(join(repo.dir, 'gone.pub.pem')), undefined);
       assert.equal(readKeyText(repo.dir), undefined);
+    } finally {
+      repo.remove();
+    }
+  });
+
+  it('returns at once, with nothing, for a device that never ends and a pipe no one writes, which a blocking open would wait on', () => {
+    const repo = new TempRepo('pub-pem-fifo');
+    try {
+      assert.equal(readKeyText(process.platform === 'win32' ? 'NUL' : '/dev/zero'), undefined);
+      if (process.platform !== 'win32') {
+        const fifo = join(repo.dir, 'pipe.pub.pem');
+        execFileSync('mkfifo', [fifo]);
+        assert.equal(readKeyText(fifo), undefined);
+      }
     } finally {
       repo.remove();
     }
