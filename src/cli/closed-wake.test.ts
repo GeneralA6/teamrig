@@ -33,8 +33,7 @@ async function teamWithClosedAlpha(closed = true): Promise<CliHarness> {
   return kit;
 }
 
-async function run(kit: CliHarness, argv: readonly string[], charge: CommitCharge = ROOM): Promise<Run> {
-  const processes = new FakeProcesses();
+async function run(kit: CliHarness, argv: readonly string[], charge: CommitCharge = ROOM, processes = new FakeProcesses()): Promise<Run> {
   const options: RunOptions = { processes, memory: new FakeHostMemory().lists([], charge), probe: new FakePathProbe({ folders: [APP] }) };
   return { result: await kit.run(argv, options), processes };
 }
@@ -107,6 +106,35 @@ describe('inbox add --wake now to a session teamrig closed (#1581)', () => {
     await new SessionLog(kit.files, LOG).append(CLOSED);
     const { result, processes } = await run(kit, WAKE_NOW);
     assert.match(result.stdout.join('\n'), /^CLOSED: alpha was not woken: open\.idle\.mode is off, so the idle pass reopens nothing; .* teamrig open alpha$/m);
+    assert.deepEqual(reopensStarted(processes), []);
+  });
+});
+
+describe('a closed session whose reopen cannot start (#1581)', () => {
+  it('says CLOSED with why when node is missing or the start fails, and keeps the ask for the next pass', async () => {
+    const probe = await run(await teamWithClosedAlpha(), WAKE_NOW);
+    const node = probe.processes.hidden[0]?.command ?? '';
+    const outcomes = [
+      [{ kind: 'missing' }, /its reopen did not start \(node was not found\)/],
+      [{ kind: 'failed', error: 'spawn EACCES' }, /its reopen did not start \(spawn EACCES\)/],
+    ] as const;
+    for (const [outcome, why] of outcomes) {
+      const kit = await teamWithClosedAlpha();
+      const { result } = await run(kit, WAKE_NOW, ROOM, new FakeProcesses().onStart(node, outcome));
+      const out = result.stdout.join('\n');
+      assert.match(out, /^CLOSED: alpha was not woken: /m, outcome.kind);
+      assert.match(out, why, outcome.kind);
+      assert.doesNotMatch(out, /WAKES|REOPENS/, outcome.kind);
+      assert.equal(await asksOf(kit), 1, outcome.kind);
+    }
+  });
+
+  it('says CLOSED when its close names no folder, starting nothing', async () => {
+    const kit = new CliHarness(TEAM);
+    const { folder: _folder, ...noFolder } = CLOSED;
+    await new SessionLog(kit.files, LOG).append(noFolder);
+    const { result, processes } = await run(kit, WAKE_NOW);
+    assert.match(result.stdout.join('\n'), /^CLOSED: alpha was not woken: its close names no folder to reopen it in;/m);
     assert.deepEqual(reopensStarted(processes), []);
   });
 });
