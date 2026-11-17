@@ -398,6 +398,8 @@ each flag (full table: [tasks.md](tasks.md#check-flags)):
   no goal, parent task or week plan.
 - `OFF-GOAL`: if it belongs this week, `teamrig update T<n> --session lead --week <week>`; else ask the owner in
   one inbox line to tag its goal or park it.
+- `UNKNOWN-GOAL`: a typo of a recorded tag: ask the owner to fix it (`update T<n> --goals <tag>`); a goal the team
+  works to but never recorded: record it (`teamrig goal add`).
 - `UNTRIAGED`: class each in your daily batch: `teamrig list --untriaged`, then `teamrig update T<n> --class <name>`.
 - `NO-PROGRESS`: one inbox line to the owner of the named task to move it; when something holds the plan, fix the
   order or the plan, or tell the human.

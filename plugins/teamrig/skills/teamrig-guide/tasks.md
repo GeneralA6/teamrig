@@ -276,7 +276,8 @@ Three shapes, split by the list:
   [register.goals] mode. `free` (the default) takes any tag, `checked` refuses a tag that is not a goal of the team or
   a team above it (`goal B9 is not a goal record of the team or a team above`: fix the tag, or have the goal
   added), and `required` also needs an owner-asked, p0 or p1 `add` to name its goal or say `none` (`an
-  owner-asked task names its goal: --goals <tag>, or --goals none`).
+  owner-asked task names its goal: --goals <tag>, or --goals none`). In any mode, once a goal is recorded, `check`
+  flags an active task whose tag no record holds (`UNKNOWN-GOAL`).
 
 ## Inbox line or message
 
@@ -345,6 +346,7 @@ checkpoint; a session may run it for itself.
 | `DUE-UNPLANNED` | effectively due inside the current week but not in its plan | Plan it in with `--week`, or re-date it. |
 | `STOPGAP-DONE` | a `stopgap T<id>` tag names a done or dropped task: in a skill, or a file of [register.check.stopgapFiles] (default `CLAUDE.md` and `.claude/rules` in the project folder); the flag lists where | Done: the file's owner removes the stopgap. Dropped: open a new task for it, or keep it by a decision and drop the tag. |
 | `OFF-GOAL` | in progress with no goal and not in the current week plan | If it belongs this week, the lead plans it in (`--week`); else the owner tags its goal (`update --goals`) or parks it. |
+| `UNKNOWN-GOAL` | once the team or a team above it records a goal, an active task naming a goal tag no record holds (a typo, or a goal never recorded), so goal-first ranking cannot see it; under [register.goals] `free` too | The owner fixes the tag (`update --goals`), or the lead records the goal (`goal add`). |
 | `UNTRIAGED` | an active task with no class, added by anyone but a leader of its owner (the lead's add on its own task counts as a leader's); never on a session's own `start`, as it is the leader's flag | Its leader classes it in the daily batch (`teamrig list --untriaged` prints the batch): `teamrig update T<n> --class <name>`. |
 | `NO-ISSUE` | while [github.issueAtAdd] names a repository, an active task whose ref neither points at its issue (`gh:`) nor says why it stays local (`local: <reason>`): one added before the key was set, from another team, or whose issue failed to open at add | Its owner opens the issue (`teamrig issue migrate <rows>`), points the ref at one it has (`teamrig update T<n> --ref gh:<owner>/<name>#<n>`), or records why it stays local (`teamrig update T<n> --ref "local: <reason>"`), such as an unfixed security hole. |
 | `NO-PROGRESS` | no goal or week-plan task moved (its owner started, noted, set waiting, shipped or closed it) since the start of the day before [register.check.goalProgressDays] (0 turns it off), while the week has usage left; the day starts at `wake.dayStartUtc`, else midnight UTC. Raised on the first planned task in plan order that its owner can move now (open or in progress) and that day already held | Its owner moves it, or the next planned task it can; the lead finds what holds the plan (a blocker, the order, a plan to re-cut) and fixes it or tells the human. |
