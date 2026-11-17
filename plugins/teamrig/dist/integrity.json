@@ -330,7 +330,7 @@
     "dist/core/team.js": "e8930db0a595fc8a9ab01fc56e7843dcc49f766d4c9ac82b45e27a0ec9c4e5ba",
     "dist/core/time.js": "304b90892d0765f2bc233e4191d057b1c02ef84ff3cfe1dffaa17add9f852a30",
     "dist/core/unique-by.js": "6f5a8a643dcb59836439fbe8dedf274f21e366794452f743389988cb6e5c17ba",
-    "dist/core/version.js": "7d11f9093c840d20aaab1d44f7f95ffb42353040c1a898df5dee680b11c413a8",
+    "dist/core/version.js": "95e3016b4fdc1405493fbbf039181e72f84fb2ee60aeff5b63ec0782f5721179",
     "dist/core/webhook.js": "d3b3318fcc56b59825b9cdb7df83f6acf8bdca509260cdaa10f1be0d12754dc8",
     "dist/core/work-block.js": "423c998dbedaf76e94f04002e13454abf6980e032cf9a21cd12c6a6a7af4e6a7",
     "dist/core/zone.js": "083678f2f96d0004e522d04351f67f6c5420b2b6bff81f7930aadae8c841679e",
