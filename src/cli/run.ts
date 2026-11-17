@@ -4,6 +4,7 @@ import { TEAM_POINTER } from '../core/team.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { isSettingsWriter, settingsWriteRefusal, WRITE_SWITCH } from '../core/settings-writers.ts';
 import { cutLineMessage, shimArgs } from './cmd-shim.ts';
+import { QUEUE_FLAGS, QUEUE_SWITCHES } from './commands/queue-args.ts';
 import { CommandHelp } from './help.ts';
 import { parseArgs, UsageError, type CommandEffect, type CommandEffects, type CommandFlags, type CommandRest, type CommandSwitches, type ParsedArgs } from './args.ts';
 import { RENAMED } from './renamed.ts';
@@ -280,7 +281,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'worktree add': { effect: 'write', flags: ['repo', 'task', 'type'], load: async () => (await worktreeCommands()).add },
   'worktree remove': { effect: 'write', flags: ['base', 'session'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
   test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
-  queue: { effect: 'write', flags: ['session', 'what', 'max-minutes', 'kind', 'task', 'memory-mb', 'detached-run', 'arrived-at'], switches: ['small', 'exclusive', 'pre-push', 'detach'], rest: true, load: async () => (await queueCommand()).queue },
+  queue: { effect: 'write', flags: QUEUE_FLAGS, switches: QUEUE_SWITCHES, rest: true, load: async () => (await queueCommand()).queue },
   withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
   'step-away': { effect: 'write', flags: [], load: async () => (await stepAsideCommands()).stepAway },
   'step-back': { effect: 'write', flags: [], load: async () => (await stepAsideCommands()).stepBack },
