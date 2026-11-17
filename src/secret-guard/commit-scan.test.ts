@@ -2,8 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { SecretShapes } from '../core/secret-shapes.ts';
-import { CommitScanner, DECLARED_FILE } from './commit-scan.ts';
-import type { CommitAdds } from './git-adds.ts';
+import { CommitScanner, DECLARED_FILE, STAGED } from './commit-scan.ts';
+import type { CommitAdds, PatchAdds } from './git-adds.ts';
 import { DEFAULT_SECRET_PATHS, SecretPaths } from './paths.ts';
 
 const join = (...parts: string[]): string => parts.join('');
@@ -97,21 +97,34 @@ describe('CommitScanner: a .pub.pem holding a public key alone (#875)', () => {
   const pem = (...label: string[]): string => [header(...label), 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A', `${dashes}END ${label.join(' ')}${dashes}`].join('\n');
   // Made at run time, so no key-shaped text sits in the source: the content check parses the key.
   const publicKey = generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString();
-  const onDisk: Readonly<Record<string, string>> = { [`${ROOT}/keys/archive.pub.pem`]: publicKey, [`${ROOT}/keys/mistake.pub.pem`]: pem('PRIVATE', 'KEY') };
-  const keyed = new CommitScanner(new SecretShapes(), new SecretPaths(DEFAULT_SECRET_PATHS, HOME, true, (path) => onDisk[path]), ROOT);
+  const SHA = 'c'.repeat(40);
+  // The commit's own copies; the disk holds a public key under every name, which the scan must never read.
+  const blobs: Readonly<Record<string, string>> = {
+    [`${STAGED}:keys/archive.pub.pem`]: publicKey,
+    [`${STAGED}:keys/mistake.pub.pem`]: pem('PRIVATE', 'KEY'),
+    [`${SHA}:keys/archive.pub.pem`]: publicKey,
+    [`${SHA}:keys/mistake.pub.pem`]: pem('PRIVATE', 'KEY'),
+  };
+  const paths = new SecretPaths(DEFAULT_SECRET_PATHS, HOME, true, () => publicKey);
+  const keyed = new CommitScanner(new SecretShapes(), paths, ROOT, (revision, path) => blobs[`${revision}:${path}`]);
+  const added = (file: string, label: string): PatchAdds => ({ paths: [file], lines: [{ file, line: 1, text: header(label, 'KEY') }] });
 
-  it('lets a public key in, and refuses a private key saved under that name, by name and by its block', () => {
-    assert.deepEqual(keyed.staged({ paths: ['keys/archive.pub.pem'], lines: [{ file: 'keys/archive.pub.pem', line: 1, text: header('PUBLIC', 'KEY') }] }), []);
-    assert.deepEqual(keyed.staged({ paths: ['keys/mistake.pub.pem'], lines: [{ file: 'keys/mistake.pub.pem', line: 1, text: header('PRIVATE', 'KEY') }] }), [
+  it("lets a public key in, and refuses a private key saved under that name though the disk copy holds a public key, by the commit's own copy and by its block", () => {
+    assert.deepEqual(keyed.staged(added('keys/archive.pub.pem', 'PUBLIC')), []);
+    assert.deepEqual(keyed.staged(added('keys/mistake.pub.pem', 'PRIVATE')), [
       { where: 'keys/mistake.pub.pem', description: DECLARED_FILE },
       { where: 'keys/mistake.pub.pem:1', description: 'private key block' },
     ]);
+    assert.deepEqual(keyed.pushed([{ sha: SHA, message: 'keys', ...added('keys/archive.pub.pem', 'PUBLIC') }]), []);
+    assert.deepEqual(keyed.pushed([{ sha: SHA, message: 'keys', paths: ['keys/mistake.pub.pem'], lines: [] }]), [
+      { where: `${SHA.slice(0, 7)} keys/mistake.pub.pem`, description: DECLARED_FILE },
+    ]);
   });
 
-  it('refuses a private key block staged under a name whose copy on disk holds a public key', () => {
-    assert.deepEqual(keyed.staged({ paths: ['keys/archive.pub.pem'], lines: [{ file: 'keys/archive.pub.pem', line: 1, text: header('PRIVATE', 'KEY') }] }), [
-      { where: 'keys/archive.pub.pem:1', description: 'private key block' },
-    ]);
+  it('refuses a copy git cannot read, and judges every .pem by name without a blob reader', () => {
+    assert.deepEqual(keyed.staged({ paths: ['keys/other.pub.pem'], lines: [] }), [{ where: 'keys/other.pub.pem', description: DECLARED_FILE }], 'no blob');
+    const byName = new CommitScanner(new SecretShapes(), paths, ROOT);
+    assert.deepEqual(byName.staged({ paths: ['keys/archive.pub.pem'], lines: [] }), [{ where: 'keys/archive.pub.pem', description: DECLARED_FILE }]);
   });
 });
 
