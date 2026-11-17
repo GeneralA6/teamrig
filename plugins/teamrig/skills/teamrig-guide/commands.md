@@ -135,7 +135,8 @@ Flags:
   as its owner is finishing started work; a wait or a dropped task going back to `in-progress` is held like a first
   start. An expedite task and a task the owner ordered are never held.
 - `--drop-approval`: gives up the approval a leader gave the task. A set that would clear it before its step ends
-  (any status but `verifying`, `done` or `dropped`, unless it holds the approval behind a task or a time) is refused
+  (any status but `verifying`, `done` or `dropped`, unless it holds the approval behind a task or a time, or sets the
+  same wait again with the approved head in its note) is refused
   without it, naming the approval and its sha, since a merge waiting on it would be refused too: record progress with
   `teamrig update T<id> --note "..."` instead. Say it only for a new ask, such as a new head; on a set that drops no
   approval it is refused.

@@ -59,6 +59,7 @@ Approve only when every line holds:
 An approval stands until the task's next status, and the push guard reads it until then. A status that keeps the
 task waiting on you behind another task or a time keeps it while its note names no other commit; the same approval
 set again keeps it only when its note names the approved head, so a note with no head or a new one asks anew. Its
-owner's `set` refuses any other status that would drop it before the step ends, a note naming a new head too;
+owner's `set` refuses any other status that would drop it before the step ends, that restated wait with no head or a
+new one too;
 `--drop-approval` gives it up for a new ask. When `check` still flags
 an approved task `READY` after its owner pushed or merged, send one inbox line to set its next status.
