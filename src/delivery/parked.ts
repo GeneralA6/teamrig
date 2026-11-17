@@ -28,7 +28,7 @@ export interface ParkedStep {
   /** The CLI arguments of its detached run, from `queue` on (`detachedArgsOf`). */
   readonly argv: readonly string[];
   readonly cwd: string;
-  /** The parking command's environment without its credentials (`withoutCredentials`), so none reaches the disk. */
+  /** The parking command's allow-listed variables (`parkedEnvOf`), so no secret reaches the disk. */
   readonly env: Env;
   /** An ISO time: when it was parked. */
   readonly parkedAt: string;
