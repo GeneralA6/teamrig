@@ -4993,7 +4993,9 @@ no queued step runs, as only memory outside the queue holds it then, and for its
 ends free goes to it (0 passes no one). A step that passes still waits on its own memory. That `pipeline` order is
 the default; with `serial` (for a team whose own deploy tool takes the lock
 file without first waiting for the shares to end) the line is in arrival order with no cap. It
-prints a line for each new holder or place in line (`...; 2 ahead in line`). Its ticket says what it waits on and
+prints a line for each new holder or place in line (`...; 2 ahead in line`). Behind another waiter it names that waiter
+and what it waits on (`<session> (<purpose>), next in line, waiting on host memory since <minute>`); a later step that
+admission order ranks ahead raises the count, and the line says so (`3 ahead in line (1 arrived after this step)`). Its ticket says what it waits on and
 since when (`waitingOn`: the holder and place in line, or the memory numbers), rewritten only when that changes, so
 `teamrig pipeline` shows every waiter's cause. A ticket whose process is gone or whose
 wait ran out is removed by the next waiter. The line moved when a step it stood behind (a waiter ahead, the lock's

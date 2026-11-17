@@ -494,7 +494,7 @@ describe('HostLock.acquire in arrival order', () => {
     assert.equal(taking.kind, 'taken');
     assert.deepEqual(told, [
       'po (heavy: build) since 2030-01-08 09:50 UTC; 1 ahead in line',
-      'bravo (heavy: lint), first in line since 2030-01-08 09:59 UTC; 1 ahead in line',
+      'bravo (heavy: lint), next in line, waiting since 2030-01-08 09:59 UTC; 1 ahead in line',
       'bravo (heavy: build) since 2030-01-08 09:50 UTC',
     ]);
     assert.deepEqual(clock.sleeps, [30_000, 30_000, FIRST_IN_LINE_POLL_MS], 'behind a waiter it looks every poll, first in line every 2 s');
@@ -547,11 +547,13 @@ describe('HostLock.acquire in arrival order', () => {
     assert.equal(files.get(later), text);
   });
 
-  it('names the waiter first in line, and the place in line only when others are ahead', () => {
+  it('names the waiter next in line and what it waits on, and the place in line only when others are ahead (#1441)', () => {
     const queued: LockWait = { kind: 'queued', first: waiterOf('2030-01-08T09:59:00.000Z') };
-    assert.equal(holderText(queued, TimeZone.UTC), 'bravo (heavy: lint), first in line since 2030-01-08 09:59 UTC');
-    assert.equal(holderText(queued, JERUSALEM), 'bravo (heavy: lint), first in line since 2030-01-08 11:59 IST');
-    assert.equal(waitText(queued, 2, TimeZone.UTC), 'bravo (heavy: lint), first in line since 2030-01-08 09:59 UTC; 2 ahead in line');
+    assert.equal(holderText(queued, TimeZone.UTC), 'bravo (heavy: lint), next in line, waiting since 2030-01-08 09:59 UTC');
+    assert.equal(holderText(queued, JERUSALEM), 'bravo (heavy: lint), next in line, waiting since 2030-01-08 11:59 IST');
+    assert.equal(waitText(queued, 2, TimeZone.UTC), 'bravo (heavy: lint), next in line, waiting since 2030-01-08 09:59 UTC; 2 ahead in line');
+    const onSlot: LockWait = { kind: 'queued', first: waiterOf('2030-01-08T09:59:00.000Z', { waitingOn: { reason: 'shipSlot', text: 'slot', since: '2030-01-08T10:00:00.000Z' } }) };
+    assert.equal(waitText(onSlot, 3, TimeZone.UTC, 3), 'bravo (heavy: lint), next in line, waiting on the ship slot since 2030-01-08 10:00 UTC; 3 ahead in line (3 arrived after this step)');
     assert.equal(waitText({ kind: 'unknown' }, 0, TimeZone.UTC), 'a writer that has not finished writing');
   });
 });
@@ -1431,6 +1433,17 @@ describe('HostLock admission (T2210)', () => {
         ['queued behind bravo', 'queued behind bravo'],
       );
     });
+  });
+
+  it('names what the waiter next in line waits on, and how many ahead arrived after this step, when a later step ranks ahead (#1441)', async () => {
+    const heavy = { ...REQUEST, priority: 1, needMb: 0, heavy: true, exclusive: false };
+    const bravo = ticket(waiterOf('2030-01-08T08:00:00.000Z', { request: heavy, waitingOn: { reason: 'memory', text: 'memory short', since: '2030-01-08T09:40:00.000Z' } }));
+    const delta = ticket(waiterOf('2030-01-08T09:59:00.000Z', { id: 'delta', session: 'delta', request: heavy }));
+    const { lock } = world(Object.fromEntries([shareFile(shareOf({ id: 'c1', session: 'charlie' })), bravo, delta]), undefined, undefined, PIPELINE);
+    const told: string[] = [];
+    const ask = { request: { ...REQUEST, priority: 3 }, arrivedAt: Date.parse('2030-01-08T09:58:00.000Z') };
+    await lock.acquire('alpha', 'heavy: build', 0, 30_000, (holder, ahead, arrivedAfter) => told.push(waitText(holder, ahead, TimeZone.UTC, arrivedAfter)), ask);
+    assert.deepEqual(told, ['bravo (heavy: lint), next in line, waiting on host memory since 2030-01-08 09:40 UTC; 2 ahead in line (1 arrived after this step)']);
   });
 
   it('waits while its own session runs its cap of heavy steps, the lock its holder takes counted, naming them', async () => {
