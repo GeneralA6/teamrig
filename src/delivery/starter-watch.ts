@@ -104,15 +104,32 @@ export interface StarterWatch {
   watch(): Promise<StarterWatching>;
 }
 
+/** How many times a watch lists the process's own starters before it settles on what it got. */
+export const LINEAGE_TRIES = 2;
+
 /**
- * The watch over the system's processes: `lineage` once for the process and once for each launching shell, then `alive`
+ * The process's own line of starters, listed once more when a listing failed or held the process alone (#908), as a
+ * `ps` under a full test gate's load did: read as is, it leaves the step watching nothing. On POSIX a running process
+ * always has a starter to list (an ended one's children are adopted); on Windows a starter that ended leaves the
+ * process alone, and the second listing only says so again.
+ */
+async function ownLineage(processes: Pick<SessionProcesses, 'lineage'>, pid: number): Promise<readonly ProcessInfo[] | undefined> {
+  let lineage: readonly ProcessInfo[] | undefined;
+  for (let tries = 0; tries < LINEAGE_TRIES && (lineage === undefined || lineage.length < 2); tries += 1) {
+    lineage = await processes.lineage(pid);
+  }
+  return lineage;
+}
+
+/**
+ * The watch over the system's processes: `lineage` for the process (`ownLineage`) and once for each launching shell, then `alive`
  * on each starter every `everyMs`. A starter whose id another process took between two checks still looks alive; that
  * only leaves the step to its time limit.
  */
 export function starterWatch(processes: Pick<SessionProcesses, 'lineage' | 'alive'>, watched: Watched, every: Every, everyMs: number = STARTER_CHECK_MS): StarterWatch {
   return {
     async watch() {
-      const [lineage, ...shellLineages] = await Promise.all([watched.pid, ...watched.shells].map((pid) => processes.lineage(pid)));
+      const [lineage, ...shellLineages] = await Promise.all([ownLineage(processes, watched.pid), ...watched.shells.map((pid) => processes.lineage(pid))]);
       const starters = startersOf(lineage ?? [], shellLineages.map((shellLineage) => shellLineage ?? []));
       const controller = new AbortController();
       let ended: ProcessInfo | undefined;
