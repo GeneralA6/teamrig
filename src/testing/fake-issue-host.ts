@@ -1,4 +1,5 @@
 import type { CloseReason, HostAssignee, HostComments, HostEnd, HostIssueId, HostJobLog, HostLabel, HostLabelFile, HostLinks, HostList, HostOpen, HostPulls, HostReach, HostUse, HostWatch, IssueDraft, IssueHost, IssueTarget, LabelSpec, WatchMarks } from '../issues/host.ts';
+import type { FieldValue, HostField, HostFieldRead, IssueFields } from '../issues/fields.ts';
 import type { LinkedIssue } from '../issues/issue.ts';
 import type { HostPost, HostPosts } from '../issues/post.ts';
 import type { HostPull } from '../issues/pull.ts';
@@ -18,7 +19,9 @@ export type HostCall =
   | { readonly kind: 'sub-issue'; readonly parent: IssueTarget; readonly childId: number }
   | { readonly kind: 'blocked-by'; readonly target: IssueTarget; readonly blockerId: number }
   | { readonly kind: 'assign'; readonly target: IssueTarget; readonly logins: readonly string[] }
-  | { readonly kind: 'unassign'; readonly target: IssueTarget; readonly login: string };
+  | { readonly kind: 'unassign'; readonly target: IssueTarget; readonly login: string }
+  | { readonly kind: 'field'; readonly target: IssueTarget; readonly field: string; readonly value: FieldValue }
+  | { readonly kind: 'type'; readonly target: IssueTarget; readonly type: string };
 
 /**
  * An issue host that reaches nothing and holds no issue: a list is empty, a pull request read gives what a test set,
@@ -52,6 +55,27 @@ export class FakeIssueHost implements IssueHost {
   private assigneeRead: HostAssignee | undefined;
   private assignEnd: HostEnd = { kind: 'done' };
   private unassignEnd: HostEnd = { kind: 'done' };
+  /** No fields capability until a test gives one, as a tracker without issue fields has none. */
+  fields?: IssueFields;
+
+  /**
+   * From now on, it has issue fields: a read of any repository gives `read`, and each field or type write is recorded
+   * and ends with `end`.
+   */
+  hasFields(read: HostFieldRead, end: HostEnd = { kind: 'done' }): this {
+    this.fields = {
+      read: (_repo: string) => Promise.resolve(read),
+      setField: (target: IssueTarget, field: HostField, value: FieldValue) => {
+        this.calls.push({ kind: 'field', target, field: field.name, value });
+        return Promise.resolve(end);
+      },
+      setType: (target: IssueTarget, type: string) => {
+        this.calls.push({ kind: 'type', target, type });
+        return Promise.resolve(end);
+      },
+    };
+    return this;
+  }
 
   /** From now on, taking an assignee off fails for `reason`. */
   failsUnassign(reason: string): this {
