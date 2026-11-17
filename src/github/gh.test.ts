@@ -6,6 +6,10 @@ import { join } from 'node:path';
 import {
   assigneeReadArgs,
   blockedByAddArgs,
+  fieldValueSetArgs,
+  issueTypeSetArgs,
+  isFieldValueSet,
+  isIssueTypeSet,
   COMMENTS_PAGE,
   commentsReadArgs,
   GhOutputCapError,
@@ -666,6 +670,69 @@ describe('isLinkAdd', () => {
   });
 });
 
+describe('the issue field and type writes (T3406)', () => {
+  const DAY = fieldValueSetArgs(ISSUE, 1234567, '2030-01-09');
+  const OPTION = fieldValueSetArgs(ISSUE, 12, 'P1 - high $(x) @file');
+  const NUMBER = fieldValueSetArgs(ISSUE, 12, 18);
+  const TYPE = issueTypeSetArgs(ISSUE, 'Bug @file $(x)');
+  const FIELD_PATH = 'repos/acme/web/issues/7/issue-field-values';
+
+  it('builds one field value, text raw and a number typed, and the type as a raw field, each one the runner starts', () => {
+    assert.deepEqual(DAY, ['api', FIELD_PATH, '-X', 'POST', '-F', 'issue_field_values[][field_id]=1234567', '-f', 'issue_field_values[][value]=2030-01-09']);
+    assert.deepEqual(NUMBER, ['api', FIELD_PATH, '-X', 'POST', '-F', 'issue_field_values[][field_id]=12', '-F', 'issue_field_values[][value]=18']);
+    assert.deepEqual(TYPE, ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'type=Bug @file $(x)']);
+    assert.ok([DAY, OPTION, NUMBER, fieldValueSetArgs(ISSUE, 12, -3), fieldValueSetArgs(ISSUE, 12, 0)].every((args) => isFieldValueSet(args) && isAllowedGh(args)));
+    assert.ok(isIssueTypeSet(TYPE) && isAllowedGh(TYPE));
+  });
+
+  it('refuses a value set past one field: another id, value form, method, path or a second value', () => {
+    const id = '-F';
+    for (const args of [
+      ['api', FIELD_PATH, '-X', 'POST', id, 'issue_field_values[][field_id]=@id.txt', '-f', 'issue_field_values[][value]=x'],
+      ['api', FIELD_PATH, '-X', 'POST', id, 'issue_field_values[][field_id]=0', '-f', 'issue_field_values[][value]=x'],
+      ['api', FIELD_PATH, '-X', 'POST', '-f', 'issue_field_values[][field_id]=12', '-f', 'issue_field_values[][value]=x'],
+      ['api', FIELD_PATH, '-X', 'POST', id, 'issue_field_values[][field_id]=12', '-F', 'issue_field_values[][value]=@secret.txt'],
+      ['api', FIELD_PATH, '-X', 'POST', id, 'issue_field_values[][field_id]=12', '-F', 'issue_field_values[][value]=true'],
+      ['api', FIELD_PATH, '-X', 'POST', id, 'issue_field_values[][field_id]=12', '-F', 'issue_field_values[][value]=1.5'],
+      ['api', FIELD_PATH, '-X', 'POST', id, 'issue_field_values[][field_id]=12', '-f', 'issue_field_values[][value]=a\nb'],
+      ['api', FIELD_PATH, '-X', 'POST', id, 'issue_field_values[][field_id]=12', '-f', 'issue_field_values[][value]='],
+      ['api', FIELD_PATH, '-X', 'POST', id, 'issue_field_values[][field_id]=12', '-f', `issue_field_values[][value]=${'x'.repeat(1025)}`],
+      ['api', FIELD_PATH, '-X', 'POST', id, 'issue_field_values[][field_id]=12', '-f', 'issue_field_values[][name]=x'],
+      ['api', FIELD_PATH, '-X', 'POST', id, 'issue_field_values[][field_id]=12', '-f', 'issue_field_values[][value]=x', '-f', 'issue_field_values[][value]=y'],
+      ['api', FIELD_PATH, '-X', 'POST', id, 'issue_field_values[][field_id]=12'],
+      ['api', FIELD_PATH, '-X', 'PUT', id, 'issue_field_values[][field_id]=12', '-f', 'issue_field_values[][value]=x'],
+      ['api', FIELD_PATH, '-X', 'DELETE', id, 'issue_field_values[][field_id]=12', '-f', 'issue_field_values[][value]=x'],
+      ['api', 'repos/acme/../issues/7/issue-field-values', '-X', 'POST', id, 'issue_field_values[][field_id]=12', '-f', 'issue_field_values[][value]=x'],
+      ['api', 'repos/acme/web/issues/7/issue-field-values/12', '-X', 'POST', id, 'issue_field_values[][field_id]=12', '-f', 'issue_field_values[][value]=x'],
+      ['api', 'repos/acme/web/pulls/7/issue-field-values', '-X', 'POST', id, 'issue_field_values[][field_id]=12', '-f', 'issue_field_values[][value]=x'],
+    ]) {
+      assert.equal(isFieldValueSet(args), false, args.join(' '));
+      assert.equal(isAllowedGh(args), false, args.join(' '));
+    }
+  });
+
+  it('refuses a type set with any other field, a typed or empty type, a line break or another method', () => {
+    for (const args of [
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'type=Bug', '-f', 'state=closed'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'type=Bug', '-f', 'body=b'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-F', 'type=@type.txt'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'type='],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'type=Bug\nx'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'POST', '-f', 'type=Bug'],
+      ['api', 'repos/acme/web/issues/7/comments', '-X', 'PATCH', '-f', 'type=Bug'],
+    ]) {
+      assert.equal(isIssueTypeSet(args), false, args.join(' '));
+      assert.equal(isAllowedGh(args), false, args.join(' '));
+    }
+  });
+
+  it('is never taken for a body edit, a close or a link, nor they for a field or type write', () => {
+    assert.ok(!isIssueBodyEdit(TYPE) && !isIssueClose(TYPE) && !isFieldValueSet(TYPE));
+    assert.ok([DAY, NUMBER].every((args) => !isLinkAdd(args) && !isIssueTypeSet(args) && !isLabelAdd(args)));
+    assert.ok([issueBodyArgs(ISSUE, 'b'), issueCloseArgs(ISSUE, 'completed'), subIssueAddArgs(ISSUE, 12)].every((args) => !isIssueTypeSet(args) && !isFieldValueSet(args)));
+  });
+});
+
 describe('isWatchProbe', () => {
   const TAG = 'W/"50b22ce0798d5266d68ab18f566208f054bace28abff5bdb55246daea34bb6d5"';
 
@@ -836,7 +903,7 @@ describe('nodeGhRunner', () => {
     }
     await assert.rejects(
       nodeGhRunner(process.execPath, [gh]).run({ args: ['issue', 'close', '7'], env: ENV }),
-      /teamrig only runs gh for its shipped issue queries, its two watch probes, to open, read, comment on, edit the body of, label, assign, close or link an issue, to read a failed job's log, and to read the posts that may mention a user: it refuses gh issue close with these arguments/,
+      /teamrig only runs gh for its shipped issue queries, its two watch probes, to open, read, comment on, edit the body of, label, assign, close, link, type or set a field of an issue, to read a failed job's log, and to read the posts that may mention a user: it refuses gh issue close with these arguments/,
     );
     assert.equal(existsSync(marker), false);
   });
