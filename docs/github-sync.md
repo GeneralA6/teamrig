@@ -11,8 +11,10 @@ writes are all run by hand: `teamrig issue migrate` moves tasks you choose to ne
 request ([Commenting on, labelling and closing](#commenting-on-labelling-and-closing)), and `teamrig issue links` puts the
 task tree on the issues ([Linking issues as the task tree](#linking-issues-as-the-task-tree)). GitHub is the
 only host teamrig writes to so far. Each run also reads the repositories' pull requests and tells each session what
-happened to its own ([Pull request news](#pull-request-news)), and tells it when someone on GitHub names one of your
-users with an `@` ([Mentions of your users](#mentions-of-your-users)).
+happened to its own ([Pull request news](#pull-request-news)), tells it when someone on GitHub names one of your
+users with an `@` ([Mentions of your users](#mentions-of-your-users)), and tells each task's owner, and each session
+following the item, the new comments, reviews, labels and closes of its issue or pull request
+([Activity on your tasks](#activity-on-your-tasks)).
 
 Setting it up takes three steps: list the repositories, give teamrig read access to their issues, then preview and
 write. After that it runs on its own within a minute of a change on GitHub while your sessions work, and reminds you of an issue waiting
@@ -175,19 +177,23 @@ reaches its owner within about a minute while an idle repository costs nothing.
 
 Each run also reads every open pull request of each repository, and those changed since the last automatic run, and
 compares them with what that run kept. The news is a pull request opened, merged or closed unmerged, or one that
-starts to conflict with its base, to fail its checks, or gets approved or changes requested. Each is told once, never
-again while it lasts; the first run on a repository only notes what is there.
+starts to conflict with its base, to fail its checks, or gets approved or changes requested, and, with
+`github.activity` on (the default), one whose checks pass after failing or running. Each is told once, never again
+while it lasts; the first run on a repository only notes what is there.
 
 - It goes to the owner of the task the pull request's branch names (`t42-login` names T42) when one of the team's
   own authors pushed that branch to the repository itself: the repository's owner, or a login in `owners`. A
   collaborator or member the team never listed counts as an outsider, since write access lets anyone push a
   `t<id>-` branch. A fork's or an outsider's pull request, or a branch that names no task, goes to
   `github.watcher` in the team config, else the lead.
+- With `github.activity` on, the same news also goes to the owner of the task holding the pull request or an issue
+  of the same repository it closes (a `Fixes #12` link GitHub knows), whatever its branch or author, and to each
+  session following it (`teamrig follow`). Such a copy never wakes.
 - Each session gets one inbox line, for example
-  `github: GitHub pull requests: gh:acme/web#20 "Fix the login redirect": conflicts with its base`. A conflict or
-  failing checks on the session's own pull request (a `t<id>-` branch of one of the team's authors, not a fork), and an
-  outsider's new pull request, also wake the session (when `wake.enabled`); a merge, a close, an approval, changes
-  requested, or an outsider's conflict or red checks wait for its next turn.
+  `github: GitHub pull requests: gh:acme/web#20 "Fix the login redirect": conflicts with its base`. A conflict,
+  failing checks or changes requested on the session's own pull request (a `t<id>-` branch of one of the team's
+  authors, not a fork), and an outsider's new pull request, also wake the session (when `wake.enabled`); a merge, a
+  close, an approval, green checks, or an outsider's conflict, red checks or changes requested wait for its next turn.
 - When the checks of a session's own pull request start failing, the run reads the end of each failed job's log
   (`gh run view --job <id> --log-failed`, at most 5 jobs a run) and writes it to
   `~/.teamrig/teams/<team>/state/github-ci/<owner>-<name>-<number>.md`, one file per pull request, the newest
@@ -206,8 +212,8 @@ repository written or edited since the last automatic run, and looks for an `@` 
 `github.owners`. A mention counts only where GitHub itself would notify for it, so not inside code or a `>` quote.
 
 - The first automatic run that reads a repository starts its scan there: nothing written before it is told.
-- Each new mention goes to one session: the owner of the task holding the issue (or of the task a team author's
-  `t<id>-` branch names, for a pull request), else the session `github.areaOwners` gives one of its labels, else
+- Each new mention goes to one session: the owner of the task holding the issue (or, for a pull request, of the task
+  a team author's `t<id>-` branch names, else of the task holding an issue it closes), else the session `github.areaOwners` gives one of its labels, else
   the session `github.owners` maps the mentioned login to, else `github.watcher` (else the lead). The inbox line
   names the item, the logins, the author and the link, with up to 300 characters of the text around the mention,
   quoted as data: `github: GitHub gh:acme/web#9 mentions @octocat: visitor wrote at https://github.com/acme/web/issues/9#issuecomment-2, it says "could you look?"`.
@@ -222,6 +228,29 @@ repository written or edited since the last automatic run, and looks for an `@` 
 - A repository whose posts cannot be read gets a `FAILED <repo> mentions:` line and is told to the lead like any
   failing repository; its scan goes on from where it was once it reads again.
 - A run by hand reads no posts.
+
+### Activity on your tasks
+
+With `github.activity` on (the default), each automatic run also tells the owner of the task holding an issue or pull
+request what else happened on it since the last run. It uses what the run already read, so it costs no GitHub call.
+
+- Each new comment, review comment and review goes to the task's owner, in one inbox line per session per run, for
+  example `github: GitHub activity: gh:acme/web#9 comment by visitor at https://github.com/acme/web/issues/9#issuecomment-4`.
+  A post that asks a question (a `?` outside code and quotes) wakes the owner (when `wake.enabled`), at most once per
+  item every 30 minutes; the rest wait for its next turn. A post already told as a mention is not told again, and a
+  post by one of your users (a login in `github.owners`) is not told at all.
+- A close, a reopen, and each label put on or taken off an issue a task holds go to its owner in one line that never
+  wakes, for example `github: GitHub issue changes: gh:acme/web#9 closed, labelled "help wanted"`. Not told: a close
+  while the task is already done or dropped (the team closed it) and a reopen while it is still open, teamrig's own
+  `status:` and `design` labels, and a label one of your users put on last. The first run that sees an issue only notes
+  it, so turning the feature on tells nothing of the past.
+- The pull request news of a task's pull request, or of one closing its issue, reaches the owner too
+  ([Pull request news](#pull-request-news)).
+- A session can follow any issue or pull request of `github.repos`: `teamrig follow acme/web#9` (at most
+  `github.followMax`, 20 by default), `teamrig follow --list`, `teamrig unfollow acme/web#9`. It then hears all of the
+  above for that item, never woken.
+- With `github.activity` off, none of these lines go; mentions, and pull request news to the branch's owner or the
+  watcher, still do.
 
 ### Security issues
 
@@ -238,9 +267,11 @@ is woken with why.
 ## Answer times
 
 Each sync that writes (`--yes` or the automatic one) also times how long each open issue has waited for an answer of
-yours, so nobody outside waits unseen. An issue waits from the first post by someone outside the repository after your
-last reply (a member's, owner's or collaborator's post counts as yours; a bot's counts as nobody's), so a "any news?"
-follow-up does not restart the wait. The target depends on the issue:
+yours, so nobody outside waits unseen. An issue waits from the first post by someone outside the team after your last
+reply, so a "any news?" follow-up does not restart the wait. A post counts as yours when its author is a login of
+`github.owners` or the account that owns the repository; an outside contributor given collaborator access still
+waits on you. A team whose `github.owners` names no one counts every member's, owner's and collaborator's post as
+its own. A bot's post counts as nobody's. The target depends on the issue:
 
 | Issue | Answer within |
 | --- | --- |
@@ -388,10 +419,15 @@ PREVIEW nothing was written; a push would send 7 write(s) now, at most 40 a run,
   `--yes` or the automatic push.
 - **A design issue shows none.** An issue labelled `design` is talk about how something should work, not work to
   take until it is agreed: the push takes every `status:` label off it and assigns it to no one, whatever its task's
-  status. Done or dropped still closes it.
+  status. Its task ending never closes it: an `OPEN` line names it, and the maintainers' `Agreed:` ends it.
 - **Planned against GitHub as it is.** The plan compares each task with its issue as listed now, so a label someone
   changed by hand is set back, and a run that stopped half way is planned again whole.
 - **A person's close stands.** An issue closed while its task is active is never reopened: a `KEPT` line names it.
+- **A taker's issue stays theirs.** A done or dropped task closes its issue only when the issue is unassigned or
+  assigned to the team: the logins `github.owners` maps and the account that owns the repository. An issue assigned
+  only to people outside the team is their work, and a task that only took part in it (a comment, an answer) ends
+  without closing it: an `OPEN` line names it, for its taker's pull request or a person to close. A session's second
+  login in `github.owners` reads as outside the team here; map each session to the one login it assigns by.
 - **Someone answers for it.** An open issue of a scheduled task (started, or with a due date), not a design issue,
   no one is assigned to gets an assignee: the login `github.owners` maps to the task's owning session, else the account that owns the
   repository (sessions are not GitHub users). An issue a person assigned keeps its assignees; the push takes none off. Each login is read first: one the repository may

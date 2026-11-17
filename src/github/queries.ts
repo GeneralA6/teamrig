@@ -84,16 +84,20 @@ export const ISSUE_LINKS_QUERY = `query($owner: String!, $name: String!, $after:
 export const PULL_PAGE_SIZE = 50;
 /** Checks of a pull request's last commit one read names: enough for a CI matrix, few enough to keep a page small. */
 export const CHECK_CONTEXTS = 20;
+/** Issues a pull request closes that one read names: a change rarely closes more, and each adds to the page's cost. */
+export const CLOSING_REFS = 5;
 
 /**
  * What both pull request reads get of one: no body and no comment text, only what tells a monitor that something
  * happened to it, and who opened it from where (`isCrossRepository`: a fork). Each check run of its last commit
- * gives its name, how it ended and its id (an Actions job's id), so a failed one's log can be read (pulls.ts).
+ * gives its name, how it ended and its id (an Actions job's id), so a failed one's log can be read (pulls.ts). The
+ * issues it closes once merged route its news to the tasks holding them, whatever its branch is named.
  */
 const PULL_NODE = `nodes {
         number title url state isDraft createdAt updatedAt closedAt mergedAt authorAssociation
         author { __typename login }
         headRefName isCrossRepository mergeable reviewDecision
+        closingIssuesReferences(first: ${CLOSING_REFS}) { nodes { number repository { nameWithOwner } } }
         commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: ${CHECK_CONTEXTS}) { nodes { __typename ... on CheckRun { name conclusion databaseId } } } } } } }
       }`;
 

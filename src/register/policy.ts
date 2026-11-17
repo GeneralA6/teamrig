@@ -13,7 +13,7 @@ import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_F
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256, type AuditPin } from './hand-step.ts';
 import { verdictIsCurrent, verdictReadOf, type SecurityVerdictPin } from './security-verdict.ts';
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields, type TaskPrep } from './events.ts';
-import { isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
+import { droppedApproval, isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
 import { ITEM_TYPE_TRAITS, traitsOf } from './item-types.ts';
 import { waitsOnOwner } from './owner-waits.ts';
@@ -126,6 +126,8 @@ export interface StatusInput {
   readonly oneCommit?: boolean;
   /** The classes past their share of the week, which the CLI reads from the usage store; a caller passing none holds nothing for it (wip.ts). */
   readonly spentClasses?: ReadonlySet<string>;
+  /** Said to give up the task's approval (`--drop-approval`), as a new ask on a new head does (T3207); only on a set that drops one. */
+  readonly dropApproval?: boolean;
 }
 
 /**
@@ -440,6 +442,10 @@ export class RegisterPolicy {
     const waits = this.checkWaits(task, input, context);
     if (!waits.ok) {
       return waits;
+    }
+    const dropped = approvalDropProblem(task, input, waits.value);
+    if (dropped !== null) {
+      return refuse(dropped);
     }
     // A proof put off to other waits again and again is never run: past the limit the task is proven or reopened.
     if (register.maxReparks > 0 && task.reparks >= register.maxReparks && isRepark(task, input.status, waits.value)) {
@@ -1418,6 +1424,32 @@ function clearCritical(task: Task, changes: Partial<TaskFields>): Partial<TaskFi
 /** An update's description trimmed at both ends, its newlines kept; a blank one clears it, as `none` does. */
 function trimDescription(changes: Partial<TaskFields>): Partial<TaskFields> {
   return changes.description === undefined ? changes : { ...changes, description: blankToNull(changes.description ?? undefined) };
+}
+
+/** A commit sha an approval's note names, short or full. */
+const NOTE_SHA = /\b[0-9a-f]{7,40}\b/;
+
+/**
+ * Why a set may not go through as it stands for the approval the task holds (T3207), or null: a set that would drop a
+ * leader's approval before its step ends needs `--drop-approval`, since a merge queued on it is refused once it is gone;
+ * the flag on a set that drops none is refused too, so it never reads as having done something. The refusal names the
+ * approval and its sha, and the two ways to record progress that keep it.
+ */
+function approvalDropProblem(task: Task, input: StatusInput, waits: readonly WaitReason[]): string | null {
+  const answer = droppedApproval(task, input.status, waits, input.note ?? null);
+  if (answer === null) {
+    return input.dropApproval === true ? `--drop-approval goes only with a set that drops ${task.id}'s approval, and it holds none this set drops` : null;
+  }
+  if (input.dropApproval === true) {
+    return null;
+  }
+  const sha = NOTE_SHA.exec(answer.note ?? '')?.[0];
+  const what = sha === undefined ? `${answer.by}'s approval` : `${answer.by}'s approval of ${sha}`;
+  return [
+    `${task.id} holds ${what}, and setting it ${input.status} drops it, so a merge waiting on it is refused`,
+    `record progress with teamrig update ${task.id} --note "..." instead, or hold it behind a task or a time with --status waiting --waits approval:${answer.by},task:T<id>|time:<date>`,
+    `give it up only for a new ask (a new head): add --drop-approval`,
+  ].join('; ');
 }
 
 /**

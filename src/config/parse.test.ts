@@ -28,7 +28,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.needsYou, { enabled: true, kinds: ['permission', 'question', 'elicitation', 'decision'], osToast: false });
     assert.deepEqual(config.meetingNotices, { enabled: true, beforeMinutes: 10, atStart: true, missedAfterMinutes: 5, osToast: true, tabToast: true, leadInbox: true });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
-    assert.deepEqual(config.github, { repos: [], owners: {}, areaOwners: {}, sessions: {}, closedDays: 14, probeSeconds: 60, statusPush: false, acceptLabel: 'teamrig', similarThreshold: 0.35 });
+    assert.deepEqual(config.github, { repos: [], owners: {}, areaOwners: {}, sessions: {}, closedDays: 14, probeSeconds: 60, statusPush: false, acceptLabel: 'teamrig', similarThreshold: 0.35, activity: true, followMax: 20 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.delivery, {
@@ -406,6 +406,22 @@ describe('parseConfig', () => {
     }
   });
 
+  it('reads github.activity as a boolean and github.followMax within 0 to 100, reporting a wrong one and keeping its default', () => {
+    const set = parseConfig({ ...ROSTER, github: { activity: false, followMax: 0 } });
+    assert.deepEqual(set.issues, []);
+    assert.equal(set.config.github.activity, false);
+    assert.equal(set.config.github.followMax, 0);
+    assert.equal(parseConfig({ ...ROSTER, github: { followMax: 100 } }).config.github.followMax, 100);
+    const wrongSwitch = parseConfig({ ...ROSTER, github: { activity: 'yes' } });
+    assert.deepEqual(paths(wrongSwitch.issues), ['github.activity']);
+    assert.equal(wrongSwitch.config.github.activity, true);
+    for (const wrong of [-1, 101, 2.5, '5']) {
+      const parsed = parseConfig({ ...ROSTER, github: { followMax: wrong } });
+      assert.deepEqual(paths(parsed.issues), ['github.followMax']);
+      assert.equal(parsed.config.github.followMax, 20);
+    }
+  });
+
   it('reads github repos and owners in lowercase, closedDays within 1 to 365 and probeSeconds 0 or within 30 to 3600', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
@@ -422,6 +438,8 @@ describe('parseConfig', () => {
       statusPush: false,
       acceptLabel: 'teamrig',
       similarThreshold: 0.35,
+      activity: true,
+      followMax: 20,
     });
     assert.equal(parseConfig({ ...ROSTER, github: { statusPush: true } }).config.github.statusPush, true);
     for (const wrong of ['yes', 1]) {

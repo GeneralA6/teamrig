@@ -132,6 +132,11 @@ Flags:
   and any start past `focus.wip.maxInProgress` tasks in progress. A reopen of a verifying or done task is never held,
   as its owner is finishing started work; a wait or a dropped task going back to `in-progress` is held like a first
   start. An expedite task and a task the owner ordered are never held.
+- `--drop-approval`: gives up the approval a leader gave the task. A set that would clear it before its step ends
+  (any status but `verifying`, `done` or `dropped`, unless it holds the approval behind a task or a time) is refused
+  without it, naming the approval and its sha, since a merge waiting on it would be refused too: record progress with
+  `teamrig update T<id> --note "..."` instead. Say it only for a new ask, such as a new head; on a set that drops no
+  approval it is refused.
 - `--evidence <proof>`: required for `done`: a commit, test count, path or number that proves it. Evidence
   already on the task counts.
 - `--watch "<what a sighting shows>"`: allowed only with `done`, and needs evidence (given or already on the task)
@@ -505,6 +510,9 @@ new one (`--waits approval:<lead>,task:T<id>`): that keeps the approval, and `ch
 new wait clears, so merge then. Setting the same waits again keeps the approval too, say to log a refused merge,
 unless the note names another commit than the approval's: that asks anew, as adding a decision or another approval
 does, and a new head always needs one, since `ship.ts merge` takes only a head the approval's note names.
+Any set before the step ends (a status but `verifying`, `done` or `dropped`) that would clear the approval, a new
+head's ask included, would leave a merge waiting on it refused, so `set` refuses it: record progress with
+`teamrig update T<id> --note "..."`, or add `--drop-approval` to give the approval up for a new ask.
 Only the lead answers (or a sub-lead above the task's owner, or the security reviewer, `roles.securityReviewer`, on
 a task not its own), only a task waiting on its approval, always with a note; an approval of the owner's stays the
 owner's. The same answer clears a review hold or a gate hold that `teamrig merge` made on the task's branch
@@ -1270,10 +1278,13 @@ the session that answers it gets one unwoken inbox line from `github` (a `REMIND
 shows the lead GH-LATE. A preview times nothing.
 Pull requests: each run also reads every open pull request of each repository, and those changed since the last
 `--auto` read, and compares them with what that read kept. The news is a pull request opened, merged or closed
-unmerged, or one that starts to conflict with its base, to fail its checks, or gets approved or changes requested;
-each is told once, never again while it lasts, and the first read of a repository only marks what is there. It goes
-to the owner of the task the pull request's branch names (`t<id>-...`) when an author inside the repository pushed
-that branch to the repository itself, else to `[github.watcher]` (unset: the lead). A run by hand prints a
+unmerged, or one that starts to conflict with its base, to fail its checks, or gets approved or changes requested,
+and with [github.activity] on one whose checks pass after failing or running; each is told once, never again while
+it lasts, and the first read of a repository only marks what is there. It goes to the owner of the task the pull
+request's branch names (`t<id>-...`) when an author inside the repository pushed that branch to the repository
+itself, else to `[github.watcher]` (unset: the lead). With [github.activity] on, an unwoken copy also goes to the owner
+of the task holding the pull request or a same-repository issue it closes, and to each session following it
+(`teamrig follow`). A run by hand prints a
 `PULL NEWS <session>` line per session and keeps nothing; `--auto` posts it. Titles are outside input, quoted as data.
 A repository whose pull requests cannot be read gets a `FAILED <repo> pull requests:` line and exit 1; its issues still
 sync. Reading them needs Pull requests: Read-only on the token.
@@ -1286,7 +1297,7 @@ Flags:
   naming the tasks added for it, and one to the lead when a repository starts failing (once, not at every run) or
   when every repository reads again, and one when it leaves out an outsider's issue it did not leave out before (by
   ref only, at most ten named), and one to each session with pull request news (at most eight pull requests named;
-  it also wakes the session for a conflict or failing checks on its own pull request, a `t<id>-` branch by the
+  it also wakes the session for a conflict, failing checks or changes requested on its own pull request, a `t<id>-` branch by the
   repository's owner or a login in `github.owners`, or an outsider's new pull request, when `wake.enabled`). When its own pull request's checks start failing, it reads the
   end of each failed job's log (at most 5 a run) into `state/github-ci/<owner>-<name>-<number>.md` and the line names
   the job, its failed step and that file. An open issue labelled `security` wakes the session it routes to and pages
@@ -1295,7 +1306,11 @@ Flags:
   since its last `--auto` read (the first read only starts the scan) and sends each new `@` mention of a login in
   `github.owners` to one session: the task owner of the item, else its area owner, else the login's session, else
   `github.watcher`, with the link and up to 300 characters around it, quoted; it wakes that session at most once per
-  item every 30 minutes. A read cut short (over 10 pages of 100 posts per list, or the reviews of 20 pull requests)
+  item every 30 minutes. With [github.activity] on (the default) it also tells the task's owner, and each session
+  following the item, every other new comment, review comment and review on it, in one line per session (a question
+  wakes the owner, in the same 30-minute gap), and each close, reopen and label put on or taken off an issue, in one
+  line that never wakes: a close of a task already done or dropped, teamrig's own labels and a label put on by a login
+  in `github.owners` are not told, and the first read of an issue only marks it. A read cut short (over 10 pages of 100 posts per list, or the reviews of 20 pull requests)
   is told to the watcher and goes on from the cut next run; a failed one fails the repository and keeps its scan. A
   run without `--auto` reads no posts. It reads every
   repository, so it refuses `--repo`. With `github.statusPush` on it
@@ -1620,6 +1635,55 @@ REPO acme/web: 1 issue(s) to change, 2 link(s) to add, 0 already there
 BLOCKED-BY #9 by #10
 SUB-ISSUE #10 under #9
 WROTE 2 link(s) on GitHub; the task list was only read
+```
+
+### teamrig follow
+
+Follows an issue or pull request of `github.repos`, named `owner/name#n` (its ref `gh:owner/name#n` works too), for
+the calling session. With [github.activity] on, the automatic sync then tells the session the item's new comments,
+reviews, review comments, CI results, labels, closes and merges, as it tells a task's owner those of the item its
+task holds, in quiet inbox lines that never wake it: only the task's owner is woken, for a question, a mention, or
+changes requested, a conflict or a failed check on its own pull request. It reads nothing more from GitHub. A session follows at most [github.followMax] items
+(20 by default). Refused while `github.activity` is off or `github.followMax` is 0, past that cap, and for a
+repository outside `github.repos`, which the sync never reads. Following an item again only says so. Exit 0, 2 when
+refused, 64 for an item not named `owner/name#n`.
+
+Flags:
+
+- `--list`: prints each item the session follows, oldest first, and takes no item.
+- `--session <id|name>`: the session that follows; else `$TEAMRIG_SESSION`.
+
+Example:
+
+```sh
+teamrig follow acme/web#7
+```
+
+Output:
+
+```text
+FOLLOWING gh:acme/web#7: its new comments, reviews, CI results, labels, closes and merges reach your inbox from the next sync
+```
+
+### teamrig unfollow
+
+Stops the calling session following an issue or pull request it follows (`teamrig follow`). Refused, exit 2, for one
+it does not follow; else exit 0.
+
+Flags:
+
+- `--session <id|name>`: the session that stops following; else `$TEAMRIG_SESSION`.
+
+Example:
+
+```sh
+teamrig unfollow acme/web#7
+```
+
+Output:
+
+```text
+UNFOLLOWED gh:acme/web#7
 ```
 
 ## Inbox
@@ -4825,7 +4889,11 @@ origin/main, then queue the step again`). A git read of that checkout that got n
 stopped, or died starting, as under a burst of new processes) says nothing of the tool: as the step is queued it pins
 no commit, so only the newest main runs, and the check reads again up to 4 times, 15 s apart, before it is REFUSED
 naming the read and git's error (`REFUSED could not read the checkout of the ship tool ..., so the step did not run:
-git rev-parse ... did not answer: ...`), never as a changed tool.
+git rev-parse ... did not answer: ...`), never as a changed tool. Such a step is REFUSED at once, too, when its
+kind does not fit it: a run without `--merge` moves no main branch, so it is `--kind test` and runs beside other
+steps while a merge holds the ship slot (`REFUSED a ship tool run without --merge moves no main branch, so it takes
+no ship slot: queue it with --kind test, not --kind ship`), and a run that merges (`--merge`, or the `merge` form)
+is `--kind ship` or `merge`, never a kind that takes no slot.
 
 The lock is `host.lock` in the kit home, one for every team on the host, unless `delivery.queue.lockPath` names
 another. It lasts `delivery.queue.lockTtlMinutes` (150); a lock past that, or one whose process is gone, is

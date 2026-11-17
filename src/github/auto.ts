@@ -2,6 +2,8 @@ import { isRecord, stringField } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { PULL_CHECKS, PULL_MERGEABLE, PULL_REVIEWS } from '../issues/pull.ts';
 import { cut } from '../register/views.ts';
+import type { ActivityRoute } from './activity.ts';
+import type { IssueChangeRoute, IssueMark } from './issue-marks.ts';
 import { issueRef } from './map.ts';
 import type { MentionRoute, MentionWatch, SeenMention } from './mention-route.ts';
 import type { PullEvent, PullMark, PullWatch } from './pull-news.ts';
@@ -18,18 +20,20 @@ import type { StepOutcome } from './sync.ts';
 
 /**
  * The format of the sync state file this code writes: 2 added `leftOut`, 3 `pulls`, 4 `paged`, 5 `mentions` and
- * `mentionWakes`. It reads format 1 as having left nothing out, formats 1 and 2 as having watched no pull request, so the
- * next read of each is a first read, formats 1 to 3 as having paged no security issue, so each one open pages once, and
- * formats 1 to 4 as having watched no mention, so each repository's scan starts at its next read; a file in another
+ * `mentionWakes`, 6 `issues`. It reads format 1 as having left nothing out, formats 1 and 2 as having watched no pull
+ * request, so the next read of each is a first read, formats 1 to 3 as having paged no security issue, so each one open
+ * pages once, formats 1 to 4 as having watched no mention, so each repository's scan starts at its next read, and
+ * formats 1 to 5 as having marked no issue, so each watched one is first seen at its next read; a file in another
  * format reads as no sync yet.
  */
-export const SYNC_STATE_FORMAT = 5;
+export const SYNC_STATE_FORMAT = 6;
 /** The older formats this code still reads. */
 const NO_LEFT_OUT_FORMAT = 1;
 const NO_PULLS_FORMAT = 2;
 const NO_PAGED_FORMAT = 3;
 const NO_MENTIONS_FORMAT = 4;
-const READ_FORMATS: readonly number[] = [NO_LEFT_OUT_FORMAT, NO_PULLS_FORMAT, NO_PAGED_FORMAT, NO_MENTIONS_FORMAT, SYNC_STATE_FORMAT];
+const NO_ISSUE_MARKS_FORMAT = 5;
+const READ_FORMATS: readonly number[] = [NO_LEFT_OUT_FORMAT, NO_PULLS_FORMAT, NO_PAGED_FORMAT, NO_MENTIONS_FORMAT, NO_ISSUE_MARKS_FORMAT, SYNC_STATE_FORMAT];
 
 /** The new tasks one inbox line names; the rest are counted. */
 const NAMED_TASKS = 5;
@@ -42,8 +46,9 @@ const TITLE_CHARS = 60;
  * The team's automatic sync: when the last one started and finished, the repositories it could not read, by
  * repository the numbers, lowest first, of the open issues the trust rule left out (github/trust.ts), by repository
  * what the pull request monitor last read (pull-news.ts), by repository the numbers, lowest first, of the open
- * security issues the owner was paged for (security-alert.ts), by repository the mention scan's watch, and when each
- * session was last woken for mentions on an item, by `<session> <ref>` (mention-route.ts).
+ * security issues the owner was paged for (security-alert.ts), by repository the mention scan's watch, when each
+ * session was last woken for mentions on an item, by `<session> <ref>` (mention-route.ts), and by repository the
+ * marks of the watched issues, by number (issue-marks.ts).
  */
 export interface SyncState {
   readonly startedAt: number;
@@ -54,6 +59,7 @@ export interface SyncState {
   readonly paged: ReadonlyMap<string, readonly number[]>;
   readonly mentions: ReadonlyMap<string, MentionWatch>;
   readonly mentionWakes: ReadonlyMap<string, number>;
+  readonly issues: ReadonlyMap<string, ReadonlyMap<number, IssueMark>>;
 }
 
 /**
@@ -73,6 +79,12 @@ export interface SyncRun {
   readonly mentions: ReadonlyMap<string, MentionWatch>;
   readonly mentionRoutes: readonly MentionRoute[];
   readonly mentionCuts: ReadonlyMap<string, string>;
+  /** The posts told as activity, each to one session (activity.ts); none while github.activity is off. */
+  readonly activityRoutes: readonly ActivityRoute[];
+  /** The marks of the watched issues of each repository whose issues it read (issue-marks.ts); none while github.activity is off. */
+  readonly issues: ReadonlyMap<string, ReadonlyMap<number, IssueMark>>;
+  /** The issue changes told, each to one session (issue-marks.ts). */
+  readonly issueRoutes: readonly IssueChangeRoute[];
 }
 
 /** A repository a sync could not read, or whose tasks the task list refused, and why. */
@@ -91,8 +103,8 @@ export interface AddedTask {
 
 /**
  * The state file's content; undefined when it is damaged or from another format, which reads as no sync yet. A
- * format-1 file left nothing out, neither format 1 nor 2 watched a pull request, no format before 4 paged, and none
- * before 5 watched a mention.
+ * format-1 file left nothing out, neither format 1 nor 2 watched a pull request, no format before 4 paged, none
+ * before 5 watched a mention, and none before 6 marked an issue.
  */
 export function parseSyncState(text: string): SyncState | undefined {
   const record = parseObject(text.trim());
@@ -107,11 +119,13 @@ export function parseSyncState(text: string): SyncState | undefined {
   const repos = failing.filter((repo): repo is string => typeof repo === 'string');
   const leftOut = format === NO_LEFT_OUT_FORMAT ? new Map<string, readonly number[]>() : parseNumbers(record['leftOut']);
   const pulls = format === NO_LEFT_OUT_FORMAT || format === NO_PULLS_FORMAT ? new Map<string, PullWatch>() : parsePulls(record['pulls']);
-  const paged = format === SYNC_STATE_FORMAT || format === NO_MENTIONS_FORMAT ? parseNumbers(record['paged']) : new Map<string, readonly number[]>();
-  const mentions = format === SYNC_STATE_FORMAT ? parseMentions(record['mentions']) : new Map<string, MentionWatch>();
-  const mentionWakes = format === SYNC_STATE_FORMAT ? parseWakes(record['mentionWakes']) : new Map<string, number>();
-  return repos.length === failing.length && leftOut !== undefined && pulls !== undefined && paged !== undefined && mentions !== undefined && mentionWakes !== undefined
-    ? { startedAt, finishedAt, failing: repos, leftOut, pulls, paged, mentions, mentionWakes }
+  const scans = format === SYNC_STATE_FORMAT || format === NO_ISSUE_MARKS_FORMAT;
+  const paged = scans || format === NO_MENTIONS_FORMAT ? parseNumbers(record['paged']) : new Map<string, readonly number[]>();
+  const mentions = scans ? parseMentions(record['mentions']) : new Map<string, MentionWatch>();
+  const mentionWakes = scans ? parseWakes(record['mentionWakes']) : new Map<string, number>();
+  const issues = format === SYNC_STATE_FORMAT ? parseIssueMarks(record['issues']) : new Map<string, ReadonlyMap<number, IssueMark>>();
+  return repos.length === failing.length && leftOut !== undefined && pulls !== undefined && paged !== undefined && mentions !== undefined && mentionWakes !== undefined && issues !== undefined
+    ? { startedAt, finishedAt, failing: repos, leftOut, pulls, paged, mentions, mentionWakes, issues }
     : undefined;
 }
 
@@ -203,11 +217,43 @@ function parseSeen(value: unknown): SeenMention | undefined {
   }
   const updatedAt = stringField(value, 'updatedAt');
   const logins = value['logins'];
-  return updatedAt !== undefined && !Number.isNaN(Date.parse(updatedAt)) && isLogins(logins) ? { logins, updatedAt } : undefined;
+  return updatedAt !== undefined && !Number.isNaN(Date.parse(updatedAt)) && isStrings(logins) ? { logins, updatedAt } : undefined;
 }
 
-function isLogins(value: unknown): value is string[] {
+function isStrings(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((login) => typeof login === 'string');
+}
+
+/** The stored `issues` object, by repository each watched issue's mark by its number; undefined when damaged. */
+function parseIssueMarks(value: unknown): Map<string, ReadonlyMap<number, IssueMark>> | undefined {
+  if (value === undefined) {
+    return new Map();
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value);
+  const repos = new Map(entries.flatMap(([repo, marks]) => {
+    const parsed = parseRepoMarks(marks);
+    return parsed === undefined ? [] : [[repo, parsed] as const];
+  }));
+  return repos.size === entries.length ? repos : undefined;
+}
+
+function parseRepoMarks(value: unknown): Map<number, IssueMark> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value);
+  const marks = new Map(entries.flatMap(([key, mark]) => {
+    const number = Number(key);
+    if (!Number.isSafeInteger(number) || number < 1 || !isRecord(mark)) {
+      return [];
+    }
+    const { open, labels } = mark;
+    return typeof open === 'boolean' && isStrings(labels) ? [[number, { open, labels }] as const] : [];
+  }));
+  return marks.size === entries.length ? marks : undefined;
 }
 
 /** The stored `mentionWakes` object, by `<session> <ref>` the time it was woken; undefined when damaged. */
@@ -255,6 +301,7 @@ export function formatSyncState(state: SyncState): string {
     ...(state.paged.size === 0 ? {} : { paged: Object.fromEntries([...state.paged].map(([repo, numbers]) => [repo, [...numbers]])) }),
     ...(state.mentions.size === 0 ? {} : { mentions: Object.fromEntries([...state.mentions].map(([repo, watch]) => [repo, mentionRecord(watch)])) }),
     ...(state.mentionWakes.size === 0 ? {} : { mentionWakes: Object.fromEntries(state.mentionWakes) }),
+    ...(state.issues.size === 0 ? {} : { issues: Object.fromEntries([...state.issues].map(([repo, marks]) => [repo, Object.fromEntries([...marks].map(([number, mark]) => [number, { open: mark.open, labels: [...mark.labels] }]))])) }),
   });
 }
 
@@ -277,18 +324,19 @@ function isTime(value: unknown): value is number {
  * request watch, so what happened meanwhile is news once it reads; one that left nothing out is not kept, nor the
  * watch of a repository no longer synced. The paged numbers are kept for good, with those of the open security issues
  * this run found added (`pagedAfter`), so none pages twice. A repository whose posts it could not read keeps its mention
- * watch, so its scan goes on from there; `mentionWakes` are the wakes after this run's (`wakeRoutes`).
+ * watch, so its scan goes on from there, and its issue marks; `mentionWakes` are the wakes after this run's (`wakeRoutes`).
  */
 export function finishState(
   state: SyncState | undefined,
   now: number,
-  run: Pick<SyncRun, 'failures' | 'leftOut' | 'pulls' | 'security' | 'mentions'>,
+  run: Pick<SyncRun, 'failures' | 'leftOut' | 'pulls' | 'security' | 'mentions' | 'issues'>,
   mentionWakes: ReadonlyMap<string, number>,
 ): SyncState {
   const failing = run.failures.map((failure) => failure.repo);
   const kept = [...(state?.leftOut ?? [])].filter(([repo]) => failing.includes(repo) && !run.leftOut.has(repo));
   const watched = [...(state?.pulls ?? [])].filter(([repo]) => failing.includes(repo) && !run.pulls.has(repo));
   const scanned = [...(state?.mentions ?? [])].filter(([repo]) => failing.includes(repo) && !run.mentions.has(repo));
+  const marked = [...(state?.issues ?? [])].filter(([repo]) => failing.includes(repo) && !run.issues.has(repo));
   return {
     startedAt: state?.startedAt ?? now,
     finishedAt: now,
@@ -298,6 +346,7 @@ export function finishState(
     paged: pagedAfter(state?.paged ?? new Map(), run.security),
     mentions: new Map([...run.mentions, ...scanned]),
     mentionWakes,
+    issues: new Map([...run.issues, ...marked]),
   };
 }
 

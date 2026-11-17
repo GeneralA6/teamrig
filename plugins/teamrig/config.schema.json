@@ -704,7 +704,7 @@
                 "default": ".claude/worktrees"
               },
               "shipTool": {
-                "description": "The ship tool a service role may run through teamrig queue --kind ship or merge with no permission check: its script, in a checkout of this repository kept clean at main's current code, checked at every allow, as a queued step that runs it is queued and again when it starts. A relative path is in the main checkout. Unset: no role runs a ship.",
+                "description": "The ship tool a service role may run through teamrig queue with no permission check, a run without --merge as --kind test and a merge as --kind ship or merge: its script, in a checkout of this repository kept clean at main's current code, checked at every allow, as a queued step that runs it is queued and again when it starts. A relative path is in the main checkout. Unset: no role runs a ship.",
                 "type": "string",
                 "minLength": 1
               },
@@ -1419,6 +1419,18 @@
           "maximum": 1,
           "default": 0.35
         },
+        "activity": {
+          "description": "Whether the automatic sync tells a task's owner each new comment, review, CI result, label, close and merge on the issue or pull request the task holds, and each session the same on the issues and pull requests it follows (teamrig follow). What asks the session to act (changes requested, a failed check, a question, a mention) wakes it; the rest are quiet inbox lines. It reads nothing more from GitHub than the sync already does. Off, a session hears only mentions and the pull request news of its own branches.",
+          "type": "boolean",
+          "default": true
+        },
+        "followMax": {
+          "description": "The most issues and pull requests one session follows at once with teamrig follow. 0 turns following off.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 20
+        },
         "watcher": {
           "description": "The session that hears the pull request news no task owner takes: a pull request from a fork or by an author outside the repository, or from a branch that names no task. Unset, the lead.",
           "$ref": "#/$defs/sessionName"
@@ -1456,7 +1468,7 @@
             ]
           },
           "commands": {
-            "description": "The commands the role holds: issue close (teamrig issue close on a repository of github.repos), issue comment (teamrig issue comment on one), queue ship and queue merge (teamrig queue --kind ship or merge running the shipTool of a delivery repository on a worktree whose task branch the holding session owns, so a role of holders team gives each session its own ships only). The daily cap counts closes and comments.",
+            "description": "The commands the role holds: issue close (teamrig issue close on a repository of github.repos), issue comment (teamrig issue comment on one), queue ship and queue merge (teamrig queue --kind test, or --kind ship or merge for a merge, running the shipTool of a delivery repository on a worktree whose task branch the holding session owns, so a role of holders team gives each session its own ships only). The daily cap counts closes and comments.",
             "type": "array",
             "items": { "enum": ["issue close", "issue comment", "queue ship", "queue merge"] },
             "minItems": 1,

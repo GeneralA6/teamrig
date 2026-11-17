@@ -2,13 +2,15 @@ import type { ParsedArgs } from '../cli/args.ts';
 import { ABSOLUTE, type KitContext } from './route-kit.ts';
 
 /**
- * The ship calls a service role lets run (T2984, design 1): `teamrig queue --kind ship|merge [--detach] --session <id>
+ * The ship calls a service role lets run (T2984, design 1): `teamrig queue --kind test|ship|merge [--detach] --session <id>
  * [--what "<text>"] [--task <id>] [--max-minutes <n>] -- node [--disable-warning=ExperimentalWarning] <shipTool>` then
  * either `<worktree> <plan> [--merge [--approved <sha>] [--note-file <file>]]` or `merge <worktree> [--approved <sha>]
  * [--note-file <file>]`. Every path is absolute and each flag comes once; a base, a head, a timeout or any other word
  * is no ship call, so the line runs exactly the tool the team configured on the files this reader names; a line naming
  * no `--session` is none either (T2984, service-role-call.ts). Whether the worktree, the files and the tool may be
- * used is the allow's to check (hook-role-allow.ts): this reader reads only.
+ * used is the allow's to check (hook-role-allow.ts): this reader reads only. The kind fits the run, as the queue
+ * refuses one that does not (T3414): a merge under `ship` or `merge`, which take the ship slot, and a ship without
+ * --merge under `test`, which moves no main branch and so takes no slot.
  */
 
 /** What a ship call runs, for the allow to check. */
@@ -33,8 +35,11 @@ export interface ShipCallContext extends KitContext {
 /** The queue's options a ship call may carry; `--kind` must be there. */
 const QUEUE_OPTIONS: ReadonlySet<string> = new Set(['kind', 'session', 'what', 'task', 'max-minutes', 'detach']);
 
-/** The queue kinds a ship call runs under. */
-const SHIP_KINDS: ReadonlySet<string> = new Set(['ship', 'merge']);
+/** The queue kinds a ship call that merges runs under: the ones that take the ship slot. */
+const MERGE_KINDS: ReadonlySet<string> = new Set(['ship', 'merge']);
+
+/** The queue kind a ship call without --merge runs under. */
+const REVIEW_KIND = 'test';
 
 /** The one node flag a ship call may pass: it hides the type-stripping warning, and changes nothing the tool does. */
 const NODE_FLAG = '--disable-warning=ExperimentalWarning';
@@ -100,12 +105,15 @@ export function shipRunOf(rest: readonly string[], isShipTool: (word: string) =>
 export async function shipCallOf(program: string, parsed: ParsedArgs, context: ShipCallContext): Promise<ShipRun | undefined> {
   const options = [...parsed.flags.keys(), ...parsed.switches];
   const kind = parsed.flags.get('kind');
-  if (parsed.command !== 'queue' || parsed.help || parsed.positionals.length > 0 || kind === undefined || !SHIP_KINDS.has(kind)) {
+  if (parsed.command !== 'queue' || parsed.help || parsed.positionals.length > 0 || kind === undefined || (!MERGE_KINDS.has(kind) && kind !== REVIEW_KIND)) {
     return undefined;
   }
   if (!options.every((name) => QUEUE_OPTIONS.has(name))) {
     return undefined;
   }
   const run = shipRunOf(parsed.rest, context.isShipTool, parsed.flags.get('task'));
-  return run !== undefined && (await context.ownClient(program)) ? run : undefined;
+  if (run === undefined || run.merges !== MERGE_KINDS.has(kind)) {
+    return undefined;
+  }
+  return (await context.ownClient(program)) ? run : undefined;
 }

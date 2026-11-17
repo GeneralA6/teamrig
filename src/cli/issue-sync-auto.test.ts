@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseSyncState, SYNC_STATE_FORMAT } from '../github/auto.ts';
+import { formatFollows } from '../github/follows.ts';
 import { REVIEW_READS_MAX } from '../github/posts.ts';
 import { isIssueQuery } from '../github/gh.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
@@ -36,6 +37,7 @@ describe('teamrig issue sync --auto', () => {
     const first = kit.clock.now();
     // acme/web's scan starts at the first run, acme/api's at the first that reads it: both at this third run's time,
     // since the second read of acme/web goes on from the time it was asked.
+    const OPEN_BARE = { open: true, labels: [] };
     const SCAN_START = { cursor: '2030-01-08T10:30:00Z', seen: new Map() };
     const failing = (): FakeGh => new FakeGh().holds('acme/web', issues).answers('acme/api', REFUSED);
     assert.equal((await kit.run(['issue', 'sync', '--auto'], { gh: failing() })).code, EXIT.failed);
@@ -52,7 +54,7 @@ describe('teamrig issue sync --auto', () => {
     kit.clock.advance(15 * MINUTE);
     assert.equal((await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', issues).holds('acme/api', []) })).code, EXIT.ok);
     assert.equal(githubLines(kit, 'lead')[2], 'GitHub sync reads every repository again (acme/api failed before)');
-    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? ''), { startedAt: first, finishedAt: kit.clock.now(), failing: [], leftOut: new Map(), pulls: new Map([['acme/web', NO_PULLS], ['acme/api', NO_PULLS]]), paged: new Map(), mentions: new Map([['acme/web', SCAN_START], ['acme/api', SCAN_START]]), mentionWakes: new Map() });
+    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? ''), { startedAt: first, finishedAt: kit.clock.now(), failing: [], leftOut: new Map(), pulls: new Map([['acme/web', NO_PULLS], ['acme/api', NO_PULLS]]), paged: new Map(), mentions: new Map([['acme/web', SCAN_START], ['acme/api', SCAN_START]]), mentionWakes: new Map(), issues: new Map([['acme/web', new Map([[7, OPEN_BARE], [8, OPEN_BARE]])], ['acme/api', new Map()]]) });
   });
 
   it("tells the lead an outsider's issue it left out once, again only for a new one, also across a failed read", async () => {
@@ -255,6 +257,17 @@ describe('teamrig issue sync --auto, mentions of our users (T3070)', () => {
     assert.deepEqual(githubLines(kit, 'bravo'), []);
   });
 
+  it("routes a mention on an issue a team task links to (not one the import added) to that task's owner", async () => {
+    const kit = new CliHarness(MENTION_TEAM);
+    const added = await kit.run(['add', '--title', 'Ship the login fix', '--description', 'Tracked on its issue.', '--priority', 'p2', '--owner', 'alpha', '--ref', 'gh:acme/web#9'], { env: { TEAMRIG_SESSION: 'lead' } });
+    assert.equal(added.code, EXIT.ok, [...added.stdout, ...added.stderr].join('\n'));
+    const ask = restComment('acme/web', 9, 1, { author: 'visitor', body: '@octocat is this ready?', updatedAt: '2030-01-08T10:20:00Z' });
+    await run(kit, new FakeGh().holds('acme/web', []));
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPosts('acme/web', 'issues/comments', [ask]));
+    assert.match(githubLines(kit, 'alpha').at(-1) ?? '', /^GitHub gh:acme\/web#9 mentions @octocat: /);
+    assert.deepEqual(githubLines(kit, 'bravo'), []);
+  });
+
   it("fails the run on a refused posts read, keeping the repository's watch, so the next run still routes what was written meanwhile", async () => {
     const kit = new CliHarness(MENTION_TEAM);
     const ask = restComment('acme/web', 9, 1, { author: 'visitor', body: '@octocat could you look?', updatedAt: '2030-01-08T10:20:00Z' });
@@ -279,6 +292,102 @@ describe('teamrig issue sync --auto, mentions of our users (T3070)', () => {
     ]);
     assert.equal(await asks(kit, 'alpha'), 0);
     assert.equal(parseSyncState(kit.files.get(STATE) ?? '')?.mentions.get('acme/web')?.cursor, cutAt);
+  });
+});
+
+describe('teamrig issue sync --auto, the activity on a task\'s or a followed item (T3363)', () => {
+  const ACTIVITY_TEAM: JsonRecord = { ...TEAM, wake: { enabled: true }, github: { repos: ['acme/web'], owners: { octocat: 'bravo' } } };
+  const asks = async (kit: CliHarness, id: string): Promise<number> => (await new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks')).read(id)).length;
+  const ask = restComment('acme/web', 9, 1, { author: 'visitor', body: 'Is this still planned?', updatedAt: '2030-01-08T10:20:00Z' });
+  const askUrl = 'https://github.com/acme/web/issues/9#issuecomment-1';
+
+  async function run(kit: CliHarness, gh: FakeGh): Promise<void> {
+    kit.clock.advance(15 * MINUTE);
+    const result = await kit.run(['issue', 'sync', '--auto'], { gh });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+  }
+
+  /** A team whose task T1, owned by alpha, links gh:acme/web#9, which session charlie follows. */
+  async function linkedTeam(config: JsonRecord): Promise<CliHarness> {
+    const kit = new CliHarness(config);
+    const added = await kit.run(['add', '--title', 'Ship the login fix', '--description', 'Tracked on its issue.', '--priority', 'p2', '--owner', 'alpha', '--ref', 'gh:acme/web#9'], { env: { TEAMRIG_SESSION: 'lead' } });
+    assert.equal(added.code, EXIT.ok, [...added.stdout, ...added.stderr].join('\n'));
+    await kit.files.write(join(TEAM_HOME, 'state', 'github-follows.json'), formatFollows(new Map([['charlie', ['gh:acme/web#9']]])));
+    return kit;
+  }
+
+  it('tells the owner each new post once in one line, waking it for a question, and a follower unwoken; never our own posts', async () => {
+    const kit = await linkedTeam(ACTIVITY_TEAM);
+    const posts = [
+      ask,
+      restComment('acme/web', 9, 2, { author: 'octocat', body: 'Yes, this week.', updatedAt: '2030-01-08T10:21:00Z' }),
+      restComment('acme/web', 4, 3, { author: 'visitor', body: 'Unrelated item.', updatedAt: '2030-01-08T10:22:00Z' }),
+    ];
+    await run(kit, new FakeGh().holds('acme/web', []));
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPosts('acme/web', 'issues/comments', posts));
+    assert.deepEqual(githubLines(kit, 'alpha'), [`GitHub activity: gh:acme/web#9 comment by visitor (asks a question) at ${askUrl}`]);
+    assert.deepEqual(githubLines(kit, 'charlie'), [`GitHub activity: gh:acme/web#9 comment by visitor at ${askUrl}`]);
+    assert.equal(await asks(kit, 'alpha'), 1);
+    assert.equal(await asks(kit, 'charlie'), 0);
+    assert.deepEqual(githubLines(kit, 'bravo'), []);
+    // The same posts read again (an edit, or the reads' overlap) are told no more.
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPosts('acme/web', 'issues/comments', posts));
+    assert.equal(githubLines(kit, 'alpha').length, 1);
+    assert.equal(githubLines(kit, 'charlie').length, 1);
+  });
+
+  it("tells the owner of a task whose issue a pull request closes that pull request's news and posts, whatever its branch", async () => {
+    const kit = await linkedTeam(ACTIVITY_TEAM);
+    const closing = (state: 'OPEN' | 'MERGED', updatedAt: string): JsonRecord =>
+      ghPull('acme/web', 30, { head: 'fix-login', author: 'visitor', authorAssociation: 'CONTRIBUTOR', fork: true, closes: ['acme/api#9', 9], state, updatedAt });
+    const reply = restComment('acme/web', 30, 4, { author: 'visitor', body: 'Rebased on main.', updatedAt: '2030-01-08T10:20:00Z' });
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [closing('OPEN', '2030-01-01T00:00:00Z')]));
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [closing('MERGED', '2030-01-02T00:00:00Z')]).holdsPosts('acme/web', 'issues/comments', [reply]));
+    assert.deepEqual(githubLines(kit, 'alpha'), [
+      'GitHub pull requests: gh:acme/web#30 "Change 30": merged',
+      'GitHub activity: gh:acme/web#30 comment by visitor at https://github.com/acme/web/issues/30#issuecomment-4',
+    ]);
+    assert.equal(await asks(kit, 'alpha'), 0);
+  });
+
+  /** Issue #9 open with a bug label, then closed with help wanted instead. */
+  const openNine = ghIssue('acme/web', 9, { title: 'Fix login', labels: ['bug'] });
+  const closedNine = ghIssue('acme/web', 9, { title: 'Fix login', labels: ['help wanted'], state: 'CLOSED', closedAt: '2030-01-08T10:00:00Z', updatedAt: '2030-01-08T10:00:00Z' });
+
+  it("tells a watched issue's close and labels to its task's owner and its follower, unwoken, once", async () => {
+    const kit = await linkedTeam(ACTIVITY_TEAM);
+    await run(kit, new FakeGh().holds('acme/web', [openNine]));
+    await run(kit, new FakeGh().holds('acme/web', [closedNine]));
+    await run(kit, new FakeGh().holds('acme/web', [closedNine]));
+    const news = 'GitHub issue changes: gh:acme/web#9 closed, labelled "help wanted", unlabelled "bug"';
+    assert.deepEqual(githubLines(kit, 'alpha'), [news]);
+    assert.deepEqual(githubLines(kit, 'charlie'), [news]);
+    assert.deepEqual([await asks(kit, 'alpha'), await asks(kit, 'charlie')], [0, 0]);
+  });
+
+  /** An outsider's pull request #9, first with its checks running, then green with changes requested. */
+  const outsidePull = (checks: 'PENDING' | 'SUCCESS', reviewDecision: 'CHANGES_REQUESTED' | null, updatedAt: string): JsonRecord =>
+    ghPull('acme/web', 9, { head: 'feature', author: 'visitor', authorAssociation: 'CONTRIBUTOR', checks, reviewDecision, updatedAt });
+
+  it("tells a pull request's news to its recipient, and unwoken to the owner of a task linking it and its followers, green checks too", async () => {
+    const kit = await linkedTeam(ACTIVITY_TEAM);
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [outsidePull('PENDING', null, '2030-01-01T00:00:00Z')]));
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [outsidePull('SUCCESS', 'CHANGES_REQUESTED', '2030-01-02T00:00:00Z')]));
+    const news = 'GitHub pull requests: gh:acme/web#9 "Change 9": checks passing, changes requested';
+    for (const id of ['lead', 'alpha', 'charlie']) {
+      assert.deepEqual(githubLines(kit, id), [news], id);
+      assert.equal(await asks(kit, id), 0, id);
+    }
+  });
+
+  it('tells no activity while github.activity is off: no posts, no issue changes, no green checks, no copies for a linked task or a follower', async () => {
+    const kit = await linkedTeam({ ...ACTIVITY_TEAM, github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, activity: false } });
+    await run(kit, new FakeGh().holds('acme/web', [openNine]).holdsPulls('acme/web', [outsidePull('PENDING', null, '2030-01-01T00:00:00Z')]));
+    const pull = outsidePull('SUCCESS', 'CHANGES_REQUESTED', '2030-01-02T00:00:00Z');
+    await run(kit, new FakeGh().holds('acme/web', [closedNine]).holdsPulls('acme/web', [pull]).holdsPosts('acme/web', 'issues/comments', [ask]));
+    assert.deepEqual(githubLines(kit, 'lead'), ['GitHub pull requests: gh:acme/web#9 "Change 9": changes requested']);
+    assert.deepEqual(githubLines(kit, 'alpha'), []);
+    assert.deepEqual(githubLines(kit, 'charlie'), []);
   });
 });
 

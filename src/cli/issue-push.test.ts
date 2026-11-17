@@ -75,6 +75,26 @@ describe('teamrig issue sync --push', () => {
     assert.equal(kit.files.get(EVENTS_PATH), log);
   });
 
+  it('leaves open an issue taken outside the team, or a design issue, when the task holding it ends (T3350)', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    await addHolding(kit, 'Answered a question there', 'gh:acme/web#7');
+    await addHolding(kit, 'Weighed in on the design', 'gh:acme/web#8');
+    await step(kit, ['set', 'T1', '--status', 'dropped', '--note', 'only commented'], AS_LEAD);
+    await step(kit, ['set', 'T2', '--status', 'dropped', '--note', 'only commented'], AS_LEAD);
+    const gh = new FakeGh()
+      .holds('acme/web', [
+        ghIssue('acme/web', 7, { title: 'Fix login', assignees: ['eve'], labels: ['status:waiting'] }),
+        ghIssue('acme/web', 8, { title: 'How should search work', labels: ['design'] }),
+      ])
+      .holds('acme/api', []);
+    const lines = await expectRun(kit, ['issue', 'sync', '--push', '--repo', 'acme/web'], gh, EXIT.ok);
+    assert.deepEqual(lines.slice(0, 3), [
+      'PUSH acme/web: 0 to change, 0 unchanged, 2 left open: not the finished task\'s to close',
+      'OPEN acme/web#7 T1 dropped: taken by eve, outside the team; the push leaves it open, for its taker or a person to close',
+      'OPEN acme/web#8 T2 dropped: a design issue, which ends by its maintainers\' Agreed; the push leaves it open, for its taker or a person to close',
+    ]);
+  });
+
   it('plans only the repository --repo names', async () => {
     const kit = new CliHarness(GITHUB_TEAM);
     const lines = await expectRun(kit, ['issue', 'sync', '--push', '--repo', 'acme/api'], issues(), EXIT.ok);

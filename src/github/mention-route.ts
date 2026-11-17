@@ -21,7 +21,7 @@ export const MENTION_WAKE_GAP_MINUTES = 30;
 /** What routing needs of the issue or pull request a post is on. */
 export interface MentionItem {
   readonly labels: readonly string[];
-  /** The session of the task holding it: an issue a task tracks, or a pull request on a `t<id>-` branch of ours. */
+  /** The session of the task holding it: an issue a task tracks, a pull request on a `t<id>-` branch of ours, or one closing a tracked issue. */
   readonly taskOwner: string | undefined;
 }
 
@@ -109,8 +109,9 @@ export function mentionRoutes(
 /**
  * What routing needs of each issue or pull request of `repo`, from what this run read of them: an issue's labels, and
  * the owner of the task that tracks the issue (`ownerOfRef`) or that one of our authors' own `t<id>-` branch names
- * (`ownerOfTask`, pull-news.ts). An item this run did not read, such as an issue closed before `closedDays`, routes by
- * its task alone.
+ * (`ownerOfTask`, pull-news.ts), else of the first task tracking an issue the pull request closes, whatever its branch
+ * or author: that is the task's change. An item this run did not read, such as an issue closed before `closedDays`,
+ * routes by its task alone.
  */
 export function mentionItems(
   repo: string,
@@ -123,9 +124,10 @@ export function mentionItems(
   return (number) => {
     const pull = pulls.get(number);
     const branchTask = pull === undefined ? undefined : ownBranchTask(pull, ours);
+    const closedOwner = (): string | undefined => (pull?.closes ?? []).map((closed) => owners.ofRef(issueRef(repo, closed))).find((owner) => owner !== undefined);
     return {
       labels: labels.get(number) ?? [],
-      taskOwner: owners.ofRef(issueRef(repo, number)) ?? (branchTask === undefined ? undefined : owners.ofTask(branchTask)),
+      taskOwner: owners.ofRef(issueRef(repo, number)) ?? (branchTask === undefined ? undefined : owners.ofTask(branchTask)) ?? closedOwner(),
     };
   };
 }
@@ -186,10 +188,10 @@ export function prunedSeen(seen: ReadonlyMap<string, SeenMention>, cutoffMs: num
 /**
  * Whether each route wakes its session: the first for a session and item since MENTION_WAKE_GAP_MINUTES does, later
  * ones go in unwoken. `lastWoken` maps `<session> <ref>` to the time it was last woken; the map after is returned,
- * holding only the wakes within the gap.
+ * holding only the wakes within the gap. A question told as activity (activity.ts) shares the gap with the mentions.
  */
 export function wakeRoutes(
-  routes: readonly MentionRoute[],
+  routes: readonly Pick<MentionRoute, 'to' | 'ref'>[],
   lastWoken: ReadonlyMap<string, number>,
   nowMs: number,
 ): { readonly wakes: boolean[]; readonly lastWoken: Map<string, number> } {

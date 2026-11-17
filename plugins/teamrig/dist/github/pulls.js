@@ -91,7 +91,21 @@ export function pullOf(item, repo) {
         checks: CHECKS[rollupStateOf(item) ?? ''] ?? 'none',
         review: REVIEWS[stringField(item, 'reviewDecision') ?? ''] ?? 'none',
         failedJobs: failedJobsOf(rollupOf(item)),
+        closes: closedIssuesOf(recordField(item, 'closingIssuesReferences'), repo),
     };
+}
+/** The numbers of the issues of `repo` a closing-references read names; another repository's or an unreadable node is left out. */
+function closedIssuesOf(references, repo) {
+    const nodes = references?.['nodes'];
+    const numbers = [];
+    for (const node of Array.isArray(nodes) ? nodes : []) {
+        const number = isRecord(node) ? node['number'] : undefined;
+        const home = isRecord(node) ? stringField(recordField(node, 'repository') ?? {}, 'nameWithOwner') : undefined;
+        if (typeof number === 'number' && Number.isSafeInteger(number) && number > 0 && home?.toLowerCase() === repo.toLowerCase() && !numbers.includes(number)) {
+            numbers.push(number);
+        }
+    }
+    return numbers;
 }
 /** How a check run ends that counts as failed: each makes the rollup fail, and each may leave a log to read. */
 const FAILED_CONCLUSIONS = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'STARTUP_FAILURE']);

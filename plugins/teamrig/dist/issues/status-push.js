@@ -135,6 +135,7 @@ export function planPush(repo, issues, tasks, limits = SESSION_PUSH, logins) {
     const listed = new Map(issues.filter((issue) => issue.repo === repo).map((issue) => [issue.number, issue]));
     const planned = [];
     const closedActive = [];
+    const keptOpen = [];
     const unlisted = [];
     let unchanged = 0;
     for (const [target, task] of [...holders(repo, tasks)].sort(([a], [b]) => a - b).map(([number, holder]) => [{ repo, number }, holder])) {
@@ -154,6 +155,11 @@ export function planPush(repo, issues, tasks, limits = SESSION_PUSH, logins) {
             closedActive.push({ target, task: task.id, status: task.status, stateReason: issue.stateReason });
             continue;
         }
+        const kept = goal.open || issue.state === 'closed' ? undefined : closeLeft(repo, issue, logins);
+        if (kept !== undefined) {
+            keptOpen.push({ target, task: task.id, status: task.status, why: kept });
+            continue;
+        }
         const assign = goal.open && goal.claim && logins !== undefined && issue.assignees.length === 0 ? assigneeOf(repo, task.owner, logins) : undefined;
         const change = changeFor(target, task, issue, goal, assign);
         if (change === undefined) {
@@ -166,7 +172,20 @@ export function planPush(repo, issues, tasks, limits = SESSION_PUSH, logins) {
     const heldCloses = limits.closes ? [] : planned.filter((change) => change.close !== undefined);
     const sendable = limits.closes ? planned : planned.filter((change) => change.close === undefined);
     const { changes, deferred } = withinRun(sendable, limits.writesPerRun);
-    return { repo, changes, deferred, heldCloses, unchanged, closedActive, unlisted };
+    return { repo, changes, deferred, heldCloses, unchanged, closedActive, keptOpen, unlisted };
+}
+/**
+ * Why a finished task's close of the open `issue` is left, or undefined when the close is the task's to send. The
+ * team's logins are its sessions' (`logins`, from `github.owners`) and the repository's owner account; GitHub logins
+ * match whatever their case. A session two logins map to counts by its first, as assigneeOf assigns it.
+ */
+function closeLeft(repo, issue, logins) {
+    if (issue.labels.includes(DESIGN_LABEL)) {
+        return { kind: 'design' };
+    }
+    const team = new Set([repo.slice(0, repo.indexOf('/')), ...(logins?.values() ?? [])].map((login) => login.toLowerCase()));
+    const outside = issue.assignees.filter((login) => !team.has(login.toLowerCase()));
+    return issue.assignees.length > 0 && outside.length === issue.assignees.length ? { kind: 'taken', assignees: outside } : undefined;
 }
 /** The task speaking for each issue number of `repo` a task holds: a team task over one the import added. */
 function holders(repo, tasks) {

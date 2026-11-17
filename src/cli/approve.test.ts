@@ -131,3 +131,22 @@ describe('runCli: approve wakes the waiting owner (T1422)', () => {
     assert.equal((await inboxOf(kit, 'alpha')).length, 1);
   });
 });
+
+describe('runCli: a set after an approval (T3207)', () => {
+  it('refuses a set that would drop the approval, keeps it through update --note, and drops it with --drop-approval', async () => {
+    const kit = await asking();
+    const approved = await kit.run(['approve', 'T1', '--note', 'merge 4501e5b7a', '--session', 'lead']);
+    assert.equal(approved.code, EXIT.ok, approved.stderr.join('\n'));
+    const progress = await kit.run(['set', 'T1', '--status', 'in-progress', '--note', 'merge queued', '--session', 'alpha']);
+    assert.notEqual(progress.code, EXIT.ok);
+    assert.match([...progress.stdout, ...progress.stderr].join('\n'), /T1 holds lead's approval of 4501e5b7a, and setting it in-progress drops it/);
+    const noted = await kit.run(['update', 'T1', '--note', 'merge queued', '--session', 'alpha']);
+    assert.equal(noted.code, EXIT.ok, noted.stderr.join('\n'));
+    const checked = await kit.run(['check', '--all', '--session', 'alpha']);
+    assert.match(checked.stdout.join('\n'), /READY \(lead approved it; push or merge it, then set its next status\) T1 /);
+    const reask = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead', '--note', 'new head 9f8e7d6c1', '--drop-approval', '--session', 'alpha']);
+    assert.equal(reask.code, EXIT.ok, reask.stderr.join('\n'));
+    const after = await kit.run(['check', '--all', '--session', 'alpha']);
+    assert.doesNotMatch(after.stdout.join('\n'), /READY \(lead approved it/);
+  });
+});

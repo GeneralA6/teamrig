@@ -14,6 +14,7 @@ import {
   PUSH_WRITES_PER_HOUR,
   PUSH_WRITES_PER_RUN,
   scheduled,
+  SESSION_PUSH,
   STATUS_LABELS,
   assigneeOf,
   sessionLogins,
@@ -117,6 +118,46 @@ describe('planPush (T2682)', () => {
         ['T1', 'completed', [], ['status:in review']],
         ['T2', 'not-planned', [], []],
       ],
+    );
+  });
+
+  it('never closes an open issue a finished task only took part in: one taken outside the team, or a design issue (T3350)', () => {
+    const logins = sessionLogins({ 'Team-Dev': 'dev' });
+    const plan = planPush(
+      REPO,
+      [
+        testHostIssue(7, { assignees: ['outsider'], labels: ['status:waiting'] }),
+        testHostIssue(8, { labels: ['design'] }),
+        testHostIssue(9, { assignees: ['team-dev'] }),
+        testHostIssue(10, { assignees: ['ACME', 'outsider'] }),
+      ],
+      [holding('T1', 7, { status: 'done' }), holding('T2', 8, { status: 'dropped' }), holding('T3', 9, { status: 'done' }), holding('T4', 10, { status: 'done' })],
+      SESSION_PUSH,
+      logins,
+    );
+    assert.deepEqual(plan.keptOpen, [
+      { target: { repo: REPO, number: 7 }, task: 'T1', status: 'done', why: { kind: 'taken', assignees: ['outsider'] } },
+      { target: { repo: REPO, number: 8 }, task: 'T2', status: 'dropped', why: { kind: 'design' } },
+    ]);
+    assert.deepEqual(
+      plan.changes.map((change) => [change.task, change.close]),
+      [
+        ['T3', 'completed'],
+        ['T4', 'completed'],
+      ],
+    );
+    assert.deepEqual(plan.heldCloses, []);
+  });
+
+  it('counts only the repository owner as the team when no logins are given (T3350)', () => {
+    const plan = planPush(REPO, [testHostIssue(7, { assignees: ['acme'] }), testHostIssue(8, { assignees: ['outsider'] })], [holding('T1', 7, { status: 'done' }), holding('T2', 8, { status: 'done' })]);
+    assert.deepEqual(
+      plan.changes.map((change) => change.task),
+      ['T1'],
+    );
+    assert.deepEqual(
+      plan.keptOpen.map((kept) => kept.task),
+      ['T2'],
     );
   });
 

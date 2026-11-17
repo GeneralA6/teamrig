@@ -159,7 +159,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>|none]
       [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".." --affects ".."]
       [--proof "<what proves it>"] [--watch "<what a sighting shows>"] [--met "<what shows it>"] [--due <date>]
-      [--ask <session> --text "<the work>"] [--one-commit] [--run <path>] [--security]
+      [--ask <session> --text "<the work>"] [--one-commit] [--run <path>] [--security] [--drop-approval]
       [--cause ".." --how ".." --prevent ".." --harden ".." --missed-test ".." --missed-monitor ".." --missed-log ".."]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       --watch (with done only, and evidence given or kept): a change tests or a dry run proved, whose live
@@ -177,6 +177,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (only once started) or a time; check flags it READY once its tasks finished and its time passed
       --ask (with waiting only): adds the work as that session's task and waits on it; --due is then the
       asked task's due date
+      a task your leader approved keeps the approval only to verifying, done or dropped, or waiting on it
+      again, alone or behind a task or a time, with a note naming no new head; any other set is refused,
+      since a merge on it would be: record progress with update --note, or give the approval up for a
+      new ask with --drop-approval
       verifying needs --waits for when its proof runs: a time, or a task in progress or verifying (the
       owner's approval may stand beside one); set verifying again without --waits keeps them, --waits none clears them
       a wait on the owner's decision or approval needs a card the owner decides from alone
@@ -378,6 +382,12 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       watch's over), when github.probeSeconds is set to 0 (read each round; $TEAMRIG_GITHUB=off counts
       only as the watch starts), after 24 hours, and once no session of the team ran for 10 minutes;
       the next session's hook starts it again
+  follow <owner/name#n> | --list   follows an issue or pull request of github.repos: with github.activity
+      on, the automatic sync tells you its new comments, reviews, CI results, labels, closes and merges
+      as it tells a task's owner those of the item its task holds; what asks you to act (changes
+      requested, a failed check, a question, a mention) wakes you, the rest are quiet inbox lines; at
+      most github.followMax items (20 by default; 0 turns following off); --list prints what you follow
+  unfollow <owner/name#n>   stops following an issue or pull request
   issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
       gh:), the writes that make it show the task's status: active tasks one label (open status:open,
       status:claimed once it has a due date or an assignee, in-progress status:in progress, waiting

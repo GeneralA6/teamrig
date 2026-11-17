@@ -890,10 +890,10 @@ with no permission check when all of these hold:
   only other flag, as one plain command (an output redirect such as `2>&1` aside). The issue's repository is on
   `github.repos`. A text is double-quoted with no `"`, `\`, `$`, backtick or line break inside, and the line has no
   single quote or backslash outside one, so bash runs the text as written. Every text the Bash tool's shell may run
-  reads as the same call. A ship or merge is `teamrig queue --kind ship|merge --session <you> --what "<text>" [--task
-  T<id>] [--detach] [--max-minutes <n>] -- node <shipTool> <worktree> <plan.json> [--merge [--approved <sha>]
-  [--note-file <file>]]`, or `... -- node <shipTool> merge <worktree> [--approved <sha>] [--note-file <file>]`, every
-  path absolute, `--session` required here too;
+  reads as the same call. A ship is `teamrig queue --kind test --session <you> --what "<text>" [--task
+  T<id>] [--detach] [--max-minutes <n>] -- node <shipTool> <worktree> <plan.json>`, and a merge the same under
+  `--kind ship|merge` with `--merge [--approved <sha>] [--note-file <file>]` after it, or `... -- node <shipTool>
+  merge <worktree> [--approved <sha>] [--note-file <file>]`, every path absolute, `--session` required here too;
 - **the text posts as it reads**: no format or bidi character (a right-to-left override, a zero-width space), no line
   or paragraph separator, and no @-mention (`@bob`, `@acme/team`; an @ inside a word, as in an e-mail address, is fine),
   so a role never pings someone or posts text that reads other than it is without the owner seeing it;

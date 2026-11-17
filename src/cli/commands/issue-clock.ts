@@ -2,6 +2,7 @@ import type { KitConfig } from '../../config/types.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { formatClocks, issueThread, parseClocks, reminderText, stepClocks, type Clock, type Thread } from '../../github/clock.ts';
 import { issueOwner, issueRef, type ImportRules } from '../../github/map.ts';
+import type { OurLogins } from '../../github/trust.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import type { HostIssue } from '../../issues/issue.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
@@ -17,8 +18,11 @@ import { inboxDepsOf } from './inbox.ts';
  * line to each owner whose thread reached 75% of its answer target. GH-LATE at 100% is `check`'s (issue-clock-check.ts).
  */
 
-/** The open issues of one repository read as threads: one a task tracks is held and answered by that task's owner, any other by the import's owner rule. */
-export function repoThreads(issues: readonly HostIssue[], tasks: readonly Task[], rules: ImportRules): Thread[] {
+/**
+ * The open issues of one repository read as threads: one a task tracks is held and answered by that task's owner, any
+ * other by the import's owner rule. A post is ours by `ours`, the team's logins (github/clock.ts postIsOurs).
+ */
+export function repoThreads(issues: readonly HostIssue[], tasks: readonly Task[], rules: ImportRules, ours: OurLogins): Thread[] {
   const holders = new Map<string, string>();
   for (const task of tasks) {
     if (task.ref !== null && !holders.has(task.ref)) {
@@ -28,7 +32,7 @@ export function repoThreads(issues: readonly HostIssue[], tasks: readonly Task[]
   return issues.flatMap((issue) => {
     const ref = issueRef(issue.repo, issue.number);
     const holder = holders.get(ref);
-    return issueThread(issue, ref, holder ?? issueOwner(issue, rules), holder !== undefined) ?? [];
+    return issueThread(issue, ref, holder ?? issueOwner(issue, rules), holder !== undefined, ours) ?? [];
   });
 }
 

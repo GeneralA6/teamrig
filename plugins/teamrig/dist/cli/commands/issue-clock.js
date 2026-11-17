@@ -11,8 +11,11 @@ import { inboxDepsOf } from "./inbox.js";
  * threads and who answers each, then the clocks kept in their own file under the sync's lock, and one unwoken inbox
  * line to each owner whose thread reached 75% of its answer target. GH-LATE at 100% is `check`'s (issue-clock-check.ts).
  */
-/** The open issues of one repository read as threads: one a task tracks is held and answered by that task's owner, any other by the import's owner rule. */
-export function repoThreads(issues, tasks, rules) {
+/**
+ * The open issues of one repository read as threads: one a task tracks is held and answered by that task's owner, any
+ * other by the import's owner rule. A post is ours by `ours`, the team's logins (github/clock.ts postIsOurs).
+ */
+export function repoThreads(issues, tasks, rules, ours) {
     const holders = new Map();
     for (const task of tasks) {
         if (task.ref !== null && !holders.has(task.ref)) {
@@ -22,7 +25,7 @@ export function repoThreads(issues, tasks, rules) {
     return issues.flatMap((issue) => {
         const ref = issueRef(issue.repo, issue.number);
         const holder = holders.get(ref);
-        return issueThread(issue, ref, holder ?? issueOwner(issue, rules), holder !== undefined) ?? [];
+        return issueThread(issue, ref, holder ?? issueOwner(issue, rules), holder !== undefined, ours) ?? [];
     });
 }
 /**

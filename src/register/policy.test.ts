@@ -2008,3 +2008,46 @@ describe("RegisterPolicy: the owner's Note and Next from the pane (T1298)", () =
     assert.equal(error(named.ownerNote(testTask(), undefined)), 'a Note needs --text: what human tells alpha');
   });
 });
+
+describe('RegisterPolicy.setStatus: a set that would drop an approval (T3207)', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const lead: WaitReason = { kind: 'approval', who: 'lead' };
+  const head = '4501e5b7a159ba9bac44b7c8958e8281fdb63fdf';
+  const approved: Task = testTask({
+    status: 'waiting',
+    startedAt: '2030-01-07T10:00:00.000Z',
+    waits: [lead],
+    answer: { verdict: 'approved', by: 'lead', at: '2030-01-08T11:00:00.000Z', note: `approved ${head}, merge it` },
+  });
+  const later: WaitReason = { kind: 'time', at: '2030-01-09 12:00' };
+
+  it('refuses a set that only records progress, naming the approval, its sha and the sets that keep it', () => {
+    assert.equal(
+      error(policy.setStatus(approved, 'alpha', { status: 'in-progress', note: 'merge queued' }, CTX)),
+      `T1 holds lead's approval of ${head}, and setting it in-progress drops it, so a merge waiting on it is refused; ` +
+        'record progress with teamrig update T1 --note "..." instead, or hold it behind a task or a time with --status waiting --waits approval:lead,task:T<id>|time:<date>; ' +
+        'give it up only for a new ask (a new head): add --drop-approval',
+    );
+  });
+
+  it('refuses a restated approval wait whose note names a new head, and names an approval whose note names no sha by who gave it', () => {
+    const plain: Task = { ...approved, answer: { verdict: 'approved', by: 'lead', at: '2030-01-08T11:00:00.000Z', note: null } };
+    assert.match(error(policy.setStatus(plain, 'alpha', { status: 'waiting', note: 'new head 9f8e7d6c', waits: [lead] }, CTX)), /^T1 holds lead's approval, and setting it waiting drops it/);
+  });
+
+  it('lets through a set that ends the step, holds the approval behind a time, or gives it up with --drop-approval', () => {
+    assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'verifying', note: 'merged', proof: 'the next run passes', waits: RUN_TONIGHT, followups: [] }, CTX)), 'allowed');
+    assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'dropped', note: 'superseded' }, CTX)), 'allowed');
+    assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'waiting', note: 'after the freeze', waits: [lead, later] }, CTX)), 'allowed');
+    assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'waiting', note: 'merge refused by a classifier, queued again', waits: [lead] }, CTX)), 'allowed');
+    assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'waiting', note: 'new head 9f8e7d6c', waits: [lead], dropApproval: true }, CTX)), 'allowed');
+  });
+
+  it('refuses --drop-approval on a set that drops none, and holds a declined answer to nothing', () => {
+    const refusal = "--drop-approval goes only with a set that drops T1's approval, and it holds none this set drops";
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'waiting', note: 'x', waits: [lead], dropApproval: true }, CTX)), refusal);
+    assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'dropped', note: 'superseded', dropApproval: true }, CTX)), refusal);
+    const declined: Task = { ...approved, answer: { verdict: 'declined', by: 'lead', at: '2030-01-08T11:00:00.000Z', note: 'no tests' } };
+    assert.equal(error(policy.setStatus(declined, 'alpha', { status: 'in-progress', note: 'adding tests' }, CTX)), 'allowed');
+  });
+});

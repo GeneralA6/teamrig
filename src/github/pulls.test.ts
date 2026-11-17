@@ -30,6 +30,7 @@ function readPull(number: number, overrides: Partial<HostPull> = {}): HostPull {
     checks: 'none',
     review: 'none',
     failedJobs: [],
+    closes: [],
     ...overrides,
   };
 }
@@ -160,6 +161,14 @@ describe('pullOf', () => {
       { name: 'setup', id: 45 },
     ]);
     assert.deepEqual(pullOf(ghPull('acme/web', 1, { checks: null }), 'acme/web')?.failedJobs, []);
+  });
+
+  it("reads the issues of its own repository it closes, once each, leaving out another repository's and a bad node", () => {
+    const closing = ghPull('acme/web', 8, { closes: [9, 'acme/api#4', 'ACME/Web#12', 9] });
+    assert.deepEqual(pullOf(closing, 'acme/web')?.closes, [9, 12]);
+    const nodes = [{ number: 0, repository: { nameWithOwner: 'acme/web' } }, { number: 3 }, 'text', { number: 5, repository: { nameWithOwner: 'acme/web' } }];
+    assert.deepEqual(pullOf({ ...closing, closingIssuesReferences: { nodes } }, 'acme/web')?.closes, [5]);
+    assert.deepEqual(pullOf({ ...closing, closingIssuesReferences: null }, 'acme/web')?.closes, []);
   });
 
   it('gives null for an item missing what a monitor needs', () => {

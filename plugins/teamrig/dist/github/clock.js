@@ -6,7 +6,7 @@
  */
 import { isRecord } from "../core/guards.js";
 import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
-import { isInsideAuthor } from "./trust.js";
+import { isInsideAuthor, isOurAuthor } from "./trust.js";
 /** The kinds of thread, each with its own answer target. */
 export const THREAD_KINDS = ['security', 'bug', 'pull', 'comment', 'feature'];
 const HOUR_MS = 3_600_000;
@@ -63,18 +63,27 @@ export function stepClocks(before, read, threads, now) {
     return { clocks, remind };
 }
 /**
- * An open issue as a thread: its opening post and its comments read, a bot's left out, each ours when its author is one
- * of us (github/trust.ts); `owner` answers it. Its kind by label (`security`, then `bug`, matched without case), else a
- * comment on a thread we hold (`held`: a task of ours tracks it), else a feature ask or question. Undefined for a closed one.
+ * An open issue as a thread: its opening post and its comments read, a bot's left out, each ours by postIsOurs; `owner`
+ * answers it. Its kind by label (`security`, then `bug`, matched without case), else a comment on a thread we hold
+ * (`held`: a task of ours tracks it), else a feature ask or question. Undefined for a closed one.
  */
-export function issueThread(issue, ref, owner, held) {
+export function issueThread(issue, ref, owner, held, ours) {
     if (issue.state !== 'open') {
         return undefined;
     }
-    const opening = issue.createdAt === undefined || issue.authorKind === BOT ? [] : [{ at: issue.createdAt, association: issue.authorAssociation }];
-    const comments = issue.comments.filter((comment) => comment.authorKind !== BOT).map((comment) => ({ at: comment.at, association: comment.authorAssociation }));
-    const posts = [...opening, ...comments].map((post) => ({ at: Date.parse(post.at), ours: isInsideAuthor(post.association) }));
+    const opening = issue.createdAt === undefined || issue.authorKind === BOT ? [] : [{ at: issue.createdAt, association: issue.authorAssociation, login: issue.author }];
+    const comments = issue.comments.filter((comment) => comment.authorKind !== BOT).map((comment) => ({ at: comment.at, association: comment.authorAssociation, login: comment.login }));
+    const posts = [...opening, ...comments].map((post) => ({ at: Date.parse(post.at), ours: postIsOurs(post.association, post.login, ours) }));
     return { repo: issue.repo, ref, kind: issueKind(issue.labels, held), owner, posts };
+}
+/**
+ * Whether a post is the team's answer. With `github.owners` naming the team's people, only their logins and the
+ * repository's owner answer (isOurAuthor): an outside contributor given collaborator access still waits on us, and
+ * their follow-up is no answer. A team that named no one falls back to the author's tie to the repository
+ * (isInsideAuthor).
+ */
+export function postIsOurs(association, login, ours) {
+    return ours.size === 0 ? isInsideAuthor(association) : isOurAuthor(association, login, ours);
 }
 /** An app's or a workflow's account kind: its posts are no one's answer and no one's ask. */
 const BOT = 'Bot';

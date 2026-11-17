@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   BLOCKERS_PER_ISSUE,
   CHECK_CONTEXTS,
+  CLOSING_REFS,
   CLOSED_ISSUES_QUERY,
   closedPageArgs,
   ISSUE_LINKS_QUERY,
@@ -70,7 +71,7 @@ describe('the shipped queries', () => {
     assert.doesNotMatch(PULL_REQUESTS_QUERY, /mutation|body|comments/i);
     assert.ok(PULL_REQUESTS_QUERY.includes(`first: ${PULL_PAGE_SIZE}`));
     assert.ok(PULL_REQUESTS_QUERY.includes('orderBy: {field: UPDATED_AT, direction: DESC}'));
-    for (const field of ['updatedAt', 'mergedAt', 'authorAssociation', 'isCrossRepository', 'mergeable', 'reviewDecision', 'statusCheckRollup { state', 'CheckRun { name conclusion databaseId }', `contexts(first: ${CHECK_CONTEXTS})`]) {
+    for (const field of ['updatedAt', 'mergedAt', 'authorAssociation', 'isCrossRepository', 'mergeable', 'reviewDecision', 'statusCheckRollup { state', 'CheckRun { name conclusion databaseId }', `contexts(first: ${CHECK_CONTEXTS})`, `closingIssuesReferences(first: ${CLOSING_REFS}) { nodes { number repository { nameWithOwner } } }`]) {
       assert.ok(PULL_REQUESTS_QUERY.includes(field), field);
     }
     assert.deepEqual(pullPageArgs({ ...PAGE, after: 'Y3Vyc29y' }, 'changed'), ['api', 'graphql', '-f', `query=${PULL_REQUESTS_QUERY}`, '-f', 'owner=acme', '-f', 'name=web', '-f', 'after=Y3Vyc29y']);
