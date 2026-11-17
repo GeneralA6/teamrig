@@ -811,7 +811,10 @@ describe('NODE_WORKTREE_FILES reads the working folder of other programs (#797)'
     assert.deepEqual(parseLsofFolders('', 77), []);
   });
 
-  it('lists a child program running in a folder, by its process id, on Linux and macOS; says why it cannot elsewhere', { skip: process.platform === 'darwin' && !existsSync('/usr/sbin/lsof') }, async () => {
+  it('lists a child program running in a folder, by its process id, on Linux and macOS; says why it cannot elsewhere', async () => {
+    if (process.platform === 'darwin' && !existsSync('/usr/sbin/lsof')) {
+      return;
+    }
     const repo = new TempRepo('worktree-holders');
     const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { cwd: repo.dir, stdio: 'ignore' });
     try {
