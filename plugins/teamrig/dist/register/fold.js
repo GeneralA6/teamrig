@@ -1,5 +1,5 @@
 import { withAudit } from "./hand-step.js";
-import { namesUnapprovedCommit } from "./head-sha.js";
+import { namesApprovedHead, namesUnapprovedCommit } from "./head-sha.js";
 import { WAIT_STATUSES } from "./model.js";
 import { namesNewWait, sameWait } from "./waits.js";
 /** The numeric part of a task id (`T12` → 12). */
@@ -102,22 +102,25 @@ function created(id, fields, at, by) {
     };
 }
 /**
- * The answer a status keeps: an approval, when the task stays waiting, names the approved wait again, adds only waits
- * on another task or a time (T2117), and its note names no commit the approval's note does not (T3044). A hold behind
- * other work keeps it, and `check` flags the task READY once that clears, the owner's wake to merge; so does the same
- * wait set again to log a step, say a merge a classifier refused, which used to drop the approval of an unchanged head.
- * A note naming another head is a new ask: `ship.ts merge` reads the approved head from the answer's note, so a new
- * head always needs a new approval. Any other status, a new decision or approval wait, or a declined answer clears it.
+ * The answer a status keeps: an approval, when the task stays waiting and names the approved wait again. A new hold
+ * behind another task or a time (T2117) keeps it while its note names no commit the approval's note does not, and
+ * `check` flags the task READY once the hold clears, the owner's wake to merge. The same waits set again keep it only
+ * when the note names the approved head (T3044, T3094): say a merge a classifier
+ * refused, logged with the head. A restated wait with no head in its note reads as "new head ready, please
+ * re-approve", the way to ask anew, so it clears the answer and the lead is asked; a note naming another head is a new
+ * ask too, as `ship.ts merge` takes only the head the answer's note names. Any other status, a new decision or
+ * approval wait, or a declined answer clears it.
  */
 function keptAnswer(task, status, waits, note) {
     const { answer } = task;
-    if (answer === null || answer.verdict !== 'approved' || status !== 'waiting' || task.status !== 'waiting' || namesUnapprovedCommit(note, answer.note)) {
+    if (answer === null || answer.verdict !== 'approved' || status !== 'waiting' || task.status !== 'waiting') {
         return null;
     }
     const approved = { kind: 'approval', who: answer.by };
     const holds = [task.waits, waits].every((each) => each.some((reason) => sameWait(reason, approved)));
     const added = waits.filter((reason) => !task.waits.some((held) => sameWait(held, reason)));
-    return holds && added.every((reason) => reason.kind === 'task' || reason.kind === 'time') ? answer : null;
+    const sameHead = added.length === 0 ? namesApprovedHead(note, answer.note) : !namesUnapprovedCommit(note, answer.note);
+    return holds && sameHead && added.every((reason) => reason.kind === 'task' || reason.kind === 'time') ? answer : null;
 }
 /** The statuses that end the step an approval was for: the change merged and waits on its proof, landed, or was given up. */
 const STEP_ENDS = ['verifying', 'done', 'dropped'];
