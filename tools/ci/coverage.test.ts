@@ -171,6 +171,10 @@ describe('suiteWorkers', () => {
   it('runs half the cores at once, so the two heavy steps the host queue admits fit the host, and never none (T4064)', () => {
     assert.deepEqual([20, 9, 4, 2, 1].map(suiteWorkers), [10, 4, 2, 1, 1]);
   });
+
+  it('runs at most 10 files at once on a host with more cores (T4064)', () => {
+    assert.deepEqual([22, 32, 64].map(suiteWorkers), [10, 10, 10]);
+  });
 });
 
 describe('suiteEnv', () => {

@@ -224,11 +224,15 @@ export function strayTests(listing: readonly string[]): string[] {
 /**
  * How many test files the suite runs at once on a host with `cores` logical cores: half of them. `node --test` defaults
  * to cores - 1, and the host queue admits two heavy steps at a time, so two suites asked for twice the host's cores in
- * coverage-instrumented processes, each starting git and node children of its own, and the host froze (T4064).
+ * coverage-instrumented processes, each starting git and node children of its own, and the host froze (T4064). At most
+ * MAX_SUITE_WORKERS: past that, each more file at once adds process starts faster than it saves time.
  */
 export function suiteWorkers(cores: number): number {
-  return Math.max(1, Math.floor(cores / 2));
+  return Math.min(MAX_SUITE_WORKERS, Math.max(1, Math.floor(cores / 2)));
 }
+
+/** The most test files the suite runs at once on any host, by the owner's order (T4064). */
+export const MAX_SUITE_WORKERS = 10;
 
 /** The `node --test` arguments for one coverage run with `workers` test files at once, writing lcov and TAP to the given files. */
 export function suiteArgs(policy: CoveragePolicy, lcovPath: string, tapPath: string, workers: number): string[] {
