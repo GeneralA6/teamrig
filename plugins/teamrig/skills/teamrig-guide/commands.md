@@ -1880,7 +1880,7 @@ line names the sub-lead to route such work via next time; a line that starts wit
 A job the host runs on a schedule, outside any session, posts its line through `~/.teamrig/bin/inbox-add.mjs`. The
 file never moves, while the plugin folder changes with each plugin version, so the job's entry names it once. Each
 session start writes it when missing and keeps it up to date. It runs the installed plugin's `teamrig inbox add` with
-the job's words, so the line meets the same rules and refusals; `--team <team>` names the team when the job does not
+the job's words, so the line meets the same rules and refusals; `--team <team>`, first on the line, names the team when the job does not
 run in the team's project folder. It exits with the CLI's code, and 1 when no teamrig plugin is installed, so the
 job's own log shows a line that did not land.
 

@@ -54,6 +54,14 @@ describe('inbox-add launcher (#930)', () => {
     assert.deepEqual(JSON.parse(run.stdout), { argv: ['inbox', 'add', ...LINE], team: 'app' });
   });
 
+  it('reads --team only as the first pair, so a --team word later in the line, such as the text, is passed on as is', () => {
+    const words = ['--from', 'host:job', '--text', '--team', '--to', 'alpha'];
+    const later = launch({ installs: ['v2'] }, words);
+    assert.deepEqual(JSON.parse(later.stdout), { argv: ['inbox', 'add', ...words], team: null });
+    const both = launch({ installs: ['v2'] }, ['--team', 'app', ...words]);
+    assert.deepEqual(JSON.parse(both.stdout), { argv: ['inbox', 'add', ...words], team: 'app' });
+  });
+
   it("exits with the CLI's refusal, and with 1 when no teamrig plugin is installed", () => {
     const refused = launch({ installs: ['v2'] }, ['--from', 'host:job', '--to', 'zulu', '--text', 'hi']);
     assert.deepEqual([refused.status, refused.stderr], [3, 'no session zulu\n']);
