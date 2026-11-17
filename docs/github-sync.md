@@ -97,7 +97,7 @@ for each owner. teamrig finds each by its name, `teamrig-gh-<owner>`, so no conf
 Do this once per owner:
 
 1. On GitHub: **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
-2. **Token name**: anything, e.g. `teamrig read issues`. **Expiration**: 90 days is a fair balance.
+2. **Token name**: `teamrig-<what>` with dashes, e.g. `teamrig-issues`. **Expiration**: 90 days is a fair balance.
 3. **Resource owner**: the owner of the repositories, e.g. `acme`.
 4. **Repository access**: **Only select repositories**, and pick the ones in `github.repos`.
 5. **Permissions → Repository permissions**: what [each command needs](#what-each-command-needs), for the sync
