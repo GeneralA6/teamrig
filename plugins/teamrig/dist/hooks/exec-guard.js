@@ -523,5 +523,5 @@ export async function execGuardOutput(payload, env) {
         reasons.push(...reviews.map((call) => reviewRefusalOf(call, identity)).filter((reason) => reason !== undefined));
         reasons.push(...checkedBinds.map((call) => bindRefusalOf(call, identity, steered)).filter((reason) => reason !== undefined));
     }
-    return reasons.length === 0 ? '' : holdBackOutput('deny', `teamrig exec guard: ${[...new Set(reasons)].join(' ')}`, env.hookAsks);
+    return reasons.length === 0 ? '' : holdBackOutput('deny', `teamrig exec guard: ${[...new Set(reasons)].join(' ')}`);
 }

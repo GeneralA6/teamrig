@@ -42,7 +42,7 @@ export async function dbWriteGuardOutput(payload, env) {
     };
     const readings = toolCommandReadings(tool, command, env.platform);
     const writes = uniqueWrites((await Promise.all(readings.map((text) => dbWritesOf(text, context)))).flat());
-    return writes.length === 0 ? '' : holdBackOutput(decision, dbWriteReason(writes), env.hookAsks);
+    return writes.length === 0 ? '' : holdBackOutput(decision, dbWriteReason(writes));
 }
 /** Each write once, in the order first found: a write both readings of a line make is named once. */
 function uniqueWrites(writes) {

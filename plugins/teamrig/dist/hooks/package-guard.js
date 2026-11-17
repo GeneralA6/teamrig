@@ -119,5 +119,5 @@ export async function packageGuardOutput(payload, env) {
         return '';
     }
     const decision = verdicts.some((verdict) => verdict.decision === 'deny') ? 'deny' : 'ask';
-    return holdBackOutput(decision, verdicts.map((verdict) => verdict.reason).join(' '), env.hookAsks);
+    return holdBackOutput(decision, verdicts.map((verdict) => verdict.reason).join(' '));
 }

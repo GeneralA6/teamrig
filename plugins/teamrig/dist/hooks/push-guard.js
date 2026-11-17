@@ -45,9 +45,6 @@ function largeCommitsIn(updates, env) {
     }
     return largeCommits([...commits.values()], env.commits);
 }
-/** Ends the question about a normal push to a protected branch, naming the switch that stops it. */
-export const PUSH_TO_PROTECTED_HINT = "To stop asking about normal pushes, set pushGuard.pushToProtected in the team's config.json to allow, to lead to have the lead approve them, " +
-    'or to gated to let teamrig merge take the changes that hold its gates.';
 /** The note shown when `pushToProtected: allow` lets a normal push to a protected branch through. */
 export function allowedPushNote(protectedBranches) {
     return `teamrig did not ask about this push to a protected branch (${protectedBranches.join(', ')}): pushGuard.pushToProtected is allow.`;
@@ -74,7 +71,7 @@ export function unclearedPushReason(clearance, protectedBranches, choice) {
 /** Under `pushToProtected: lead` or `gated`: the note when the push is cleared, else a refusal, whatever `hookAsks` says. */
 function clearedPushOutput(clearance, listing, env, choice) {
     return clearance.kind === 'none'
-        ? holdBackOutput('deny', `${unclearedPushReason(clearance, env.protectedBranches, choice)}${listing}`, env.hookAsks)
+        ? holdBackOutput('deny', `${unclearedPushReason(clearance, env.protectedBranches, choice)}${listing}`)
         : JSON.stringify({ systemMessage: `${clearedPushNote(clearance, env.protectedBranches, choice)}${listing}` });
 }
 /**
@@ -147,7 +144,7 @@ export async function pushGuardOutput(payload, env) {
     if (env.skipHooks !== 'allow') {
         const skips = readings.flatMap(({ found }) => hookSkips(found.invocations));
         if (skips.length > 0 && (env.skipHooks === 'deny' || verdict.decision !== 'deny')) {
-            return holdBackOutput(env.skipHooks, skipHooksReason(skips), env.hookAsks);
+            return holdBackOutput(env.skipHooks, skipHooksReason(skips));
         }
     }
     if (verdict.decision === 'allow' && verdict.protectedPush === undefined) {
@@ -156,7 +153,7 @@ export async function pushGuardOutput(payload, env) {
     const large = verdict.decision === 'deny' ? [] : largeCommitsIn(verdict.updates, env);
     const listing = large.length === 0 ? '' : ` ${describeLargeCommits(large, env.commits)}`;
     if (large.length > 0 && env.commits.gate === 'refuse') {
-        return holdBackOutput('deny', `This push to a protected branch (${env.protectedBranches.join(', ')}) is refused: ${describeLargeCommits(large, env.commits)}`, env.hookAsks);
+        return holdBackOutput('deny', `This push to a protected branch (${env.protectedBranches.join(', ')}) is refused: ${describeLargeCommits(large, env.commits)}`);
     }
     if (verdict.decision === 'allow') {
         const choice = env.pushToProtected;
@@ -164,7 +161,5 @@ export async function pushGuardOutput(payload, env) {
             ? clearedPushOutput(await env.clearance(), listing, env, choice)
             : JSON.stringify({ systemMessage: `${allowedPushNote(env.protectedBranches)}${listing}` });
     }
-    const asked = verdict.decision === 'ask' && verdict.protectedPush === 'normal' && env.hookAsks === 'ask';
-    const hint = asked ? ` ${PUSH_TO_PROTECTED_HINT}` : '';
-    return holdBackOutput(verdict.decision, `${stopReason(verdict, verdict.decision, env.protectedBranches)}${listing}${hint}`, env.hookAsks);
+    return holdBackOutput(verdict.decision, `${stopReason(verdict, verdict.decision, env.protectedBranches)}${listing}`);
 }

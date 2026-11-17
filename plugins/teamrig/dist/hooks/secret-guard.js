@@ -185,5 +185,5 @@ export function secretGuardOutput(payload, env) {
         return '';
     }
     const decision = findings.some((finding) => actionOf(finding, env) === 'deny') ? 'deny' : 'ask';
-    return holdBackOutput(decision, secretReason(findings), env.hookAsks);
+    return holdBackOutput(decision, secretReason(findings));
 }
