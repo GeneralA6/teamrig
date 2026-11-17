@@ -16,7 +16,6 @@ import { hireFlags } from '../../hiring/due.ts';
 import { HiringLog } from '../../hiring/log.ts';
 import { activeHires } from '../../hiring/record.ts';
 import { scaleOutFlags } from '../../hiring/scale-out.ts';
-import { postLine } from '../../inbox/inbox.ts';
 import { formatTaskLines, taskLinesOf } from '../../inbox/task-lines.ts';
 import { WakeAsks } from '../../wake/asks.ts';
 import { teamDayStartAt } from '../../wake/day-start.ts';
@@ -85,7 +84,7 @@ import { markBoundary } from './refresh.ts';
 import { markKeepWorkingAsk } from './keep-working.ts';
 import { markLastTaskAsk } from './last-task-ask.ts';
 import { readSpentClasses } from '../class-share.ts';
-import { openTeam, postNamed, teamOf, tellAnswer, tellAssigned, tellLine, wakeWaitedOn, type Team } from './register-team.ts';
+import { openTeam, postNamed, postNotice, teamOf, tellAnswer, tellAssigned, tellLine, wakeWaitedOn, type Team } from './register-team.ts';
 import { askTeam, treeCallerOf } from './team-ask.ts';
 
 /** What a time the caller types is read against: this moment and the zone of the caller's own team. */
@@ -649,7 +648,7 @@ async function tellVerifiers(runtime: CliRuntime, team: Team, caller: string, { 
       continue;
     }
     const text = met === null ? heldStartNotice(task, held) : metStartNotice(task, held, met);
-    const problem = await postLine(inboxes, secrets, { to: held.owner, from: caller, text, now });
+    const problem = await postNotice(inboxes, secrets, { to: held.owner, from: caller, text, now });
     if (problem === undefined) {
       await told.record(key, now);
       runtime.out.stderr(`NOTE ${held.owner} has an inbox line: ${text}`);

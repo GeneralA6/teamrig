@@ -250,6 +250,18 @@ describe('runCli: a start waits for the verifying tasks it needs', () => {
     assert.deepEqual(inbox.stdout.filter((line) => line.startsWith('- ')), [told]);
   });
 
+  it('starts it in warn mode when the owner\'s inbox append fails, naming the line not posted (#745)', async () => {
+    const kit = await heldStart(new CliHarness({ ...TEAM, register: { verifyGate: 'warn' } }));
+    const files = new FaultyFiles(kit.files).fail('append', join(TEAM_HOME, 'state', 'inbox', 'bravo.md'), systemError('EBUSY', 'EBUSY: resource busy or locked'));
+    const start = await kit.run(['set', 'T2', '--status', 'in-progress', '--session', 'alpha'], { files });
+    assert.equal(start.code, EXIT.ok, [...start.stdout, ...start.stderr].join('\n'));
+    assert.match(start.stdout[0] ?? '', /^SET T2 in-progress,/);
+    assert.deepEqual(start.stderr, [
+      'WARN bravo was not told of T2: the inbox write failed (EBUSY: resource busy or locked)',
+      'WARN T2 needs T1, still verifying (proof: the nightly run, owner bravo); started anyway, as register.verifyGate is warn',
+    ]);
+  });
+
   it('warns of no start in warn mode when the start was refused for another reason', async () => {
     const kit = await heldStart(new CliHarness({ ...TEAM, register: { verifyGate: 'warn', secretPatterns: ['hunter2'] } }));
     const start = await kit.run(['set', 'T2', '--status', 'in-progress', '--note', 'hunter2', '--session', 'alpha']);
