@@ -55,6 +55,24 @@ describe('unrunnableReason', () => {
     assert.equal(unrunnableReason(['bash', '-c', 'echo ran'], 'win32'), undefined);
     assert.equal(unrunnableReason(['npm', 'test', ''], 'win32'), undefined);
   });
+
+  it('refuses a word that is only &&, || or ;, which would reach the first program quoted, with the one-word hint (#661)', () => {
+    for (const platform of ['linux', 'win32'] as const) {
+      for (const operator of ['&&', '||', ';']) {
+        const reason = unrunnableReason(['npm', 'run', 'build', operator, 'npm', 'test'], platform) ?? '';
+        assert.ok(reason.startsWith(`the word "${operator}" of the command is a shell operator`), reason);
+        assert.ok(reason.endsWith(`pass the whole chain as one quoted word: -- "npm run build ${operator} npm test"`), reason);
+      }
+    }
+  });
+
+  it('runs the chain as one word, and a word that holds an operator among other text, as today', () => {
+    for (const platform of ['linux', 'win32'] as const) {
+      assert.equal(unrunnableReason(['npm run build && npm test'], platform), undefined);
+      assert.equal(unrunnableReason(['node', 'tool.js', 'a;b', '--x=&&', '||y'], platform), undefined);
+      assert.equal(unrunnableReason([';'], platform), undefined);
+    }
+  });
 });
 
 describe('endOf', () => {
