@@ -55,6 +55,30 @@ describe('teamrig cleanup launchers', () => {
     assert.deepEqual(result.stdout.slice(-2), ['GONE pid 40 gamma: it had ended already', 'FAILED pid 50 delta: access denied']);
   });
 
+  it('leaves an id a reopened tab of the same session took, by its other starter or its other start', async () => {
+    const processes = host();
+    // After the census, gamma's 40 is a new launch of gamma from a live terminal, and delta's 50 a new launch of delta
+    // under the same (reused) starter id but started later.
+    processes.whenListed(() =>
+      processes
+        .add({ pid: 40, parentPid: 10, name: 'node.exe', commandLine: launch('gamma') }, STARTED + 5_000)
+        .add({ pid: 50, parentPid: 11, name: 'node.exe', commandLine: launch('delta') }, STARTED + 9_000),
+    );
+    const result = await new CliHarness().run(['cleanup', 'launchers', '--yes'], { sessionProcesses: processes });
+    assert.equal(result.code, 0);
+    assert.deepEqual(processes.ends, []);
+    assert.deepEqual(result.stdout.slice(-2), ['GONE pid 40 gamma: it had ended already', 'GONE pid 50 delta: it had ended already']);
+  });
+
+  it('ends nothing and fails when the start of an orphan cannot be re-read', async () => {
+    const processes = host();
+    processes.whenListed(() => processes.hideListing());
+    const result = await new CliHarness().run(['cleanup', 'launchers', '--yes'], { sessionProcesses: processes });
+    assert.equal(result.code, 1);
+    assert.deepEqual(processes.ends, []);
+    assert.equal(result.stdout.at(-1), 'FAILED pid 50 delta: its start could not be re-read, so it was left running');
+  });
+
   it("never ends its own tab's launcher, even when that one's terminal is gone", async () => {
     const processes = new FakeSessionProcesses()
       .add({ pid: 30, parentPid: 12, name: 'node.exe', commandLine: launch('beta') }, STARTED)
