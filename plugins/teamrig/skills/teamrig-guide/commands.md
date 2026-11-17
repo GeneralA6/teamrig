@@ -751,8 +751,8 @@ run under (the user's, the project folder's, each `delivery.repos` repository's 
 window has reached 80% [budget.fiveHourWarnPct] or rises fast enough to fill before it resets, and at 100% every
 session stalls until that reset; it is raised once a window, and a plan with no such window never shows it,
 RESET-EXPIRING: a reset grant in [budget.resets] with uses left expires within 14 days, and one not spent by then is
-lost; it is raised once a grant and again after each use, GH-LATE: a GitHub issue has waited past its answer target
-(security 4 h, bug or a comment on an issue a task tracks 24 h, else 72 h) for an answer of ours, by the clocks the
+lost; it is raised once a grant and again after each use, GH-LATE: a GitHub issue or pull request has waited past its answer target
+(security 4 h, bug, pull request or a comment on an issue a task tracks 24 h, else 72 h) for an answer of ours, by the clocks the
 last writing `teamrig issue sync` kept; it is raised once a wait, and from
 the restore's record (`<kit home>/bin/launchers.json`, written by [restore install](#teamrig-restore-install),
 `uninstall` and a newer version's first session start) RESTORE-DEAD: a logon entry or shortcut teamrig set up that
@@ -1276,7 +1276,7 @@ On its own: with `github.repos` listed and `github.probeSeconds` above 0 (60 by 
 `teamrig issue watch` runs `teamrig issue sync --auto` within a probe of a change on GitHub. A new issue so reaches its
 owner while sessions work; a run by hand still works at any time.
 
-A run that writes also times each open issue's wait for an answer of ours (the targets are in
+A run that writes also times each open issue's and pull request's wait for an answer of ours (the targets are in
 [GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md#answer-times)): at 75% of its target
 the session that answers it gets one unwoken inbox line from `github` (a `REMINDED` line), and past it `teamrig check`
 shows the lead GH-LATE. A preview times nothing.

@@ -268,26 +268,29 @@ is woken with why.
 
 ## Answer times
 
-Each sync that writes (`--yes` or the automatic one) also times how long each open issue has waited for an answer of
-yours, so nobody outside waits unseen. An issue waits from the first post by someone outside the team after your last
-reply, so a "any news?" follow-up does not restart the wait. A post counts as yours when its author is a login of
-`github.owners` or the account that owns the repository; an outside contributor given collaborator access still
-waits on you. A team whose `github.owners` names no one counts every member's, owner's and collaborator's post as
-its own. A bot's post counts as nobody's. The target depends on the issue:
+Each sync that writes (`--yes` or the automatic one) also times how long each open issue and pull request has waited
+for an answer of yours, so nobody outside waits unseen. A thread waits from the first post by someone outside the
+team after your last reply, so a "any news?" follow-up does not restart the wait. A post counts as yours when its
+author is a login of `github.owners` or the account that owns the repository; an outside contributor given
+collaborator access still waits on you. A team whose `github.owners` names no one counts every member's, owner's and
+collaborator's post as its own. A bot's post counts as nobody's. On a pull request a review counts as a post, once
+submitted; a draft waits on nobody until it is marked ready for review. The target depends on the thread:
 
-| Issue | Answer within |
+| Thread | Answer within |
 | --- | --- |
 | labelled `security` | 4 h |
 | labelled `bug` | 24 h |
+| a pull request | 24 h |
 | on an issue one of your tasks tracks | 24 h |
 | any other: a feature ask or a question | 72 h |
 
 - At 75% of the target, the session that answers it (the owner of the task tracking it, else the one its import
-  would go to) gets one inbox line, without a wake, for example `github: GitHub gh:acme/web#9 (bug) has waited 18 h for
+  would go to; for a pull request, the one its pull request news goes to: the owner of the task its branch names,
+  else the watcher) gets one inbox line, without a wake, for example `github: GitHub gh:acme/web#9 (bug) has waited 18 h for
   an answer of ours, since 11-15 08:00 UTC; answer it in words on GitHub by 11-16 08:00 UTC, its 24 h target, or
   GH-LATE goes to the lead`.
 - At 100%, `teamrig check` shows the lead `GH-LATE gh:acme/web#9 (bug, web) has waited 25 h ...`, once per wait.
-- Your answer, or the issue closing, stops the clock. A repository that cannot be read keeps its clocks until it can.
+- Your answer, or the issue or pull request closing, stops the clock. A repository that cannot be read keeps its clocks until it can.
 - `teamrig stats` shows the W your GitHub-linked tasks used on its `GITHUB` line. That number stays in teamrig:
   nothing is posted to GitHub.
 
