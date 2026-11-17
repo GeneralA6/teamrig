@@ -92,7 +92,7 @@ export async function takeWhenClear(readiness: (phase: ClearancePhase) => Promis
       request.purpose,
       Math.max(0, deadline - clock.now()),
       request.pollMs,
-      (holder, ahead) => request.onWait({ cause: causeOfLockWait(holder), text: `the host lock: ${waitText(holder, ahead, request.zone)}` }),
+      (holder, ahead, arrivedAfter) => request.onWait({ cause: causeOfLockWait(holder), text: `the host lock: ${waitText(holder, ahead, request.zone, arrivedAfter)}` }),
       { request: request.line, exclusive: true },
     );
     if (taking.kind === 'busy') {
