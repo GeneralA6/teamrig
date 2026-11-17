@@ -91,6 +91,9 @@ Every change ships tests, so the next change cannot break it unnoticed:
 - Use the fakes in `src/testing/` and `tools/lib/fake-git.ts` instead of real time, disks or git
   where a unit test fits; spawn the real entry point (`process.execPath`) to test a CLI.
 - No skipped or todo tests: a test that does not run catches nothing.
+- A change to a threshold, limit or trigger (a count, a timeout, a restart or retry limit, a wake condition) gets a
+  spec of the trigger firing in the real flow, with whatever resets its count on the way (a compaction, a `/clear`,
+  a restart): a unit test of the comparison alone passes even when the real flow resets the count before it fires.
 
 `npm run check` runs every gate CI runs on the tree; the local gate also checks each pushed commit's sign-off and scrubs it,
 which the git hooks `npm ci` sets do before each commit. Its coverage gate (`npm run coverage`) fails when:
@@ -260,7 +263,8 @@ join; agents follow [`dev-design-issue`](.claude/skills/dev-design-issue/SKILL.m
 - **A flaky test leg**: the merge re-runs a test leg listed `flaky` in `tools/ship/repos.json` once when only it
   failed, and reads the checks once more after a GitHub server error or timeout; a second failure stops the merge.
 - **Review**: a code owner (`.github/CODEOWNERS`: the maintainer) reviews the code and approves the last push, and a
-  new push dismisses an approval given before it. A change to the git hooks, CI, the scrub or teamrig's guards
+  new push dismisses an approval given before it. On a threshold, limit or trigger the reviewer asks "can this
+  still fire?" and wants the spec of it firing in the real flow ([Tests](#tests)). A change to the git hooks, CI, the scrub or teamrig's guards
   (`.githooks/`, `.github/`, `tools/scrub/`, `tools/ci/`, `src/hooks/`, `src/push-guard/`, `src/secret-guard/`,
   `src/package-guard/`, `src/permissions/`) also gets a security review.
 - **Rules on `main`**: `.github/rulesets/` holds the repository's rulesets, the two for `main` and the three for
