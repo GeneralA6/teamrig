@@ -1,4 +1,4 @@
-import type { EndHow, EndOutcome, FeedOutcome, FeedRequest, ProcessInfo, SessionProcesses } from '../open/session-processes.ts';
+import type { EndHow, EndOutcome, FeedOutcome, FeedRequest, ListedProcess, ProcessInfo, SessionProcesses } from '../open/session-processes.ts';
 
 /**
  * A process table in memory: only the processes added run, ending one also ends every process it started
@@ -13,11 +13,13 @@ export class FakeSessionProcesses implements SessionProcesses {
   readonly ends: { readonly pid: number; readonly how: EndHow }[] = [];
   readonly fed: FeedRequest[] = [];
   private readonly running = new Map<number, ProcessInfo>();
+  private readonly starts = new Map<number, number>();
   private readonly endFailures = new Map<number, string>();
   private readonly lingering = new Set<number>();
   private readonly feedOutcomes = new Map<string, FeedOutcome>();
   private childrenHidden = false;
   private lineageHidden = false;
+  private listingHidden = false;
   private failingLookups = 0;
   /** Called after each end that ended something, as the operating system would tell a waiting parent. */
   private onEnded: (pid: number) => void = () => undefined;
@@ -26,9 +28,14 @@ export class FakeSessionProcesses implements SessionProcesses {
     this.parentPid = parentPid;
   }
 
-  /** A running process. */
-  add(info: ProcessInfo): this {
+  /** A running process; `startedMs` is when it started, as a Windows listing says, and absent as in a `ps` one. */
+  add(info: ProcessInfo, startedMs?: number): this {
     this.running.set(info.pid, info);
+    if (startedMs === undefined) {
+      this.starts.delete(info.pid);
+    } else {
+      this.starts.set(info.pid, startedMs);
+    }
     return this;
   }
 
@@ -59,6 +66,12 @@ export class FakeSessionProcesses implements SessionProcesses {
   /** From now on the system will not list a process's starters. */
   hideLineage(): this {
     this.lineageHidden = true;
+    return this;
+  }
+
+  /** From now on the system will not list its processes. */
+  hideListing(): this {
+    this.listingHidden = true;
     return this;
   }
 
@@ -107,6 +120,16 @@ export class FakeSessionProcesses implements SessionProcesses {
       chain.push(info);
     }
     return chain;
+  }
+
+  async list(): Promise<readonly ListedProcess[] | undefined> {
+    if (this.listingHidden) {
+      return undefined;
+    }
+    return [...this.running.values()].map((info) => {
+      const startedMs = this.starts.get(info.pid);
+      return startedMs === undefined ? { info } : { info, startedMs };
+    });
   }
 
   async end(pid: number, how: EndHow): Promise<EndOutcome> {
