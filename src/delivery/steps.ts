@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { closeSync, openSync } from 'node:fs';
 import type { Env } from '../core/home.ts';
 import { endOf, type ShellEnd } from '../test-run/shell.ts';
 import { constants } from 'node:os';
@@ -14,6 +15,11 @@ export interface StepRequest {
   readonly timeoutMs: number;
   /** Once this aborts, the step is killed with every process it started, as at its time limit. */
   readonly stop?: AbortSignal;
+  /**
+   * A file the step's output and errors are appended to, instead of this process's own: a process that runs several
+   * steps at once (the queue's dispatcher, T4093) keeps each one's output in its own log.
+   */
+  readonly log?: string;
 }
 
 /** How a program run with a time limit ended: as a shell command does, or killed at that limit. */
@@ -91,14 +97,23 @@ export function nodeStepRunner(platform: NodeJS.Platform, kill: TreeKill = nodeT
     run: (request) =>
       new Promise((resolve, reject) => {
         const launch = stepLaunchOf(platform, request.command, ownPriorityOf(priorities));
-        const child = spawn(launch.file, launch.args, {
-          shell: launch.shell,
-          cwd: request.cwd,
-          env: { ...request.env },
-          stdio: 'inherit',
-          windowsHide: true,
-          detached: platform !== 'win32',
-        });
+        // The child holds its own handle on the log; this process's copy closes once the child has it.
+        const logFd = request.log === undefined ? undefined : openSync(request.log, 'a');
+        let child;
+        try {
+          child = spawn(launch.file, launch.args, {
+            shell: launch.shell,
+            cwd: request.cwd,
+            env: { ...request.env },
+            stdio: logFd === undefined ? 'inherit' : ['ignore', logFd, logFd],
+            windowsHide: true,
+            detached: platform !== 'win32',
+          });
+        } finally {
+          if (logFd !== undefined) {
+            closeSync(logFd);
+          }
+        }
         if (launch.lowerAfter && child.pid !== undefined) {
           lowerStep(priorities, child.pid);
         }

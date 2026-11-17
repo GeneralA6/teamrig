@@ -93,6 +93,14 @@ describe('nodeStepRunner', () => {
     assert.deepEqual(end, { kind: 'exited', code: 0 });
   });
 
+  it('appends its output and errors to its log when given one, after what the log already holds', async () => {
+    const log = join(dir, 'step.log');
+    await writeFile(log, 'before\n');
+    const end = await runner.run({ command: 'node -e "console.log(\'out\'); console.error(\'err\')"', cwd: dir, env: process.env, timeoutMs: 30_000, log });
+    const lines = (await readFile(log, 'utf8')).split(/\r?\n/).filter((line) => line !== '');
+    assert.deepEqual([end, lines[0], [...lines.slice(1)].sort()], [{ kind: 'exited', code: 0 }, 'before', ['err', 'out']]);
+  });
+
   /** A step that starts a grandchild, which writes its pid and the time to `started` once it runs, then idles 10 s. */
   async function stepWithGrandchild(started: string): Promise<string> {
     await writeFile(join(dir, 'grandchild.cjs'), `${WRITE_PROCESS_SCRIPT}; setTimeout(() => undefined, 10_000);`);
