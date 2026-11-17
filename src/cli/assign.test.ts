@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CliHarness, TEAM } from '../testing/cli-harness.ts';
+import { join } from 'node:path';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { CliHarness, EVENTS_PATH, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
 const TOLD = 'NOTE bravo has an inbox line: T1 is yours (p2, due 2030-01-10): Ship the docs';
@@ -72,6 +74,21 @@ describe('runCli: giving a task to another session posts it an inbox line', () =
     assert.match(added.stdout[0] ?? '', /^ADDED T1 /);
     assert.deepEqual(added.stderr.map((line) => line.split(':')[0]), ['WARN bravo was not told of T1']);
     assert.deepEqual(await inboxOf(kit, 'bravo'), []);
+  });
+
+  it('names a line its inbox append failed on, keeps the write and exits ok (#745)', async () => {
+    const kit = new CliHarness();
+    const files = new FaultyFiles(kit.files).fail('append', join(TEAM_HOME, 'state', 'inbox', 'bravo.md'), systemError('ENOSPC', 'ENOSPC: no space left on device'));
+    const added = await kit.run(['add', '--title', 'Ship the docs', '--description', 'what and why', '--priority', 'p2', '--owner', 'bravo', '--session', 'alpha'], { files });
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    assert.match(added.stdout[0] ?? '', /^ADDED T1 /);
+    assert.deepEqual(added.stderr, ['WARN bravo was not told of T1: the inbox write failed (ENOSPC: no space left on device)']);
+    assert.match(kit.files.get(EVENTS_PATH) ?? '', /Ship the docs/);
+
+    await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha']);
+    const moved = await kit.run(['update', 'T2', '--owner', 'bravo', '--session', 'lead'], { files });
+    assert.deepEqual([moved.code, moved.stderr], [EXIT.ok, ['WARN bravo was not told of T2: the inbox write failed (ENOSPC: no space left on device)']]);
+    assert.match(moved.stdout[0] ?? '', /^UPDATED T2 /);
   });
 });
 

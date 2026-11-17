@@ -6,7 +6,7 @@ import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME, type TeamPaths } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { postLine } from '../../inbox/inbox.ts';
+import { postLine, type Inboxes, type PostInput } from '../../inbox/inbox.ts';
 import type { Task } from '../../register/fold.ts';
 import { priorityText } from '../../register/model.ts';
 import type { Verdict } from '../../register/policy.ts';
@@ -180,7 +180,21 @@ export async function postNamed(
   shown: string,
 ): Promise<boolean> {
   const { inboxes } = inboxDepsOf(runtime, paths);
-  const problem = await postLine(inboxes, secrets, { ...line, now: new Date(runtime.clock.now()) });
+  const problem = await postNotice(inboxes, secrets, { ...line, now: new Date(runtime.clock.now()) });
   runtime.out.stderr(problem === undefined ? `NOTE ${shown} has an inbox line: ${line.text}` : `WARN ${unsent}: ${problem}`);
   return problem === undefined;
+}
+
+/**
+ * Posts a notice line that follows a register write: why it was not posted, else undefined. postLine names a line it
+ * refuses but throws the inbox file's own write error (a full disk, a file another program holds); that becomes the
+ * reason here, so the command whose register write already landed warns and exits 0, never FAILED, and its other
+ * lines still post (#745).
+ */
+export async function postNotice(inboxes: Inboxes, secrets: SecretScanner, input: PostInput): Promise<string | undefined> {
+  try {
+    return await postLine(inboxes, secrets, input);
+  } catch (error) {
+    return `the inbox write failed (${errorMessage(error)})`;
+  }
 }
