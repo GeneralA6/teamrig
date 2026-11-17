@@ -124,7 +124,7 @@ describe('runCli: help, version and usage errors', () => {
       '      again, alone or behind a task or a time, with a note naming no new head; any other set is refused,',
       '      since a merge on it would be: record progress with update --note, or give the approval up for a',
       '      new ask with --drop-approval',
-      '      verifying needs --waits for when its proof runs: a time, or a task in progress or verifying (the',
+      '      verifying needs --waits for when its proof runs: a time, or a task in progress or verifying, or an open one of your own (the',
       "      owner's approval may stand beside one); set verifying again without --waits keeps them, --waits none clears them",
       "      a wait on the owner's decision or approval needs a card the owner decides from alone",
       '      (register.requireDecisionCard): --question "<what is decided>" --options "<a, its numbers> | <b>"',

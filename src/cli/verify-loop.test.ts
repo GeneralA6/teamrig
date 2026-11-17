@@ -324,6 +324,19 @@ describe("runCli: new work waits for its owner's verify steps that are due", () 
     assert.equal(started.code, EXIT.ok, started.stdout.join('\n'));
   });
 
+  it("lets the proof wait on the new work itself, its owner's own open task, so the new work starts in one more step (#1544)", async () => {
+    const kit = await startedTask();
+    await kit.run(['set', 'T1', '--status', 'verifying', '--waits', 'time:2030-01-08 11:00', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Plan the next step', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
+    kit.clock.advance(2 * 60 * 60 * 1000);
+    assert.equal((await kit.run(start)).code, EXIT.refused, "the proof's wait cleared, so T1 is due");
+    const onT2 = await kit.run(['set', 'T1', '--status', 'verifying', '--waits', 'task:T2', '--note', 'the proof runs with T2', '--followups', 'none', '--session', 'alpha']);
+    assert.equal(onT2.code, EXIT.ok, onT2.stdout.join('\n'));
+    const started = await kit.run(start);
+    assert.equal(started.code, EXIT.ok, started.stdout.join('\n'));
+    assert.match((await kit.run(['verify', '--session', 'alpha'])).stdout.join('\n'), /T1/, 'T1 stays in the verify list meanwhile');
+  });
+
   it('refuses the first start until the verify step is re-dated with a reason', async () => {
     const kit = await dueVerify();
     const held = await kit.run(start);

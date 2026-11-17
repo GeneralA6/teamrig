@@ -116,7 +116,7 @@ export interface RegisterConfig {
   readonly requireDecisionCard: boolean;
   /**
    * Whether `set --status verifying` needs `--proof`, what will prove the shipped change works, and `--waits` naming
-   * when it runs: a time, or a task in progress or verifying.
+   * when it runs: a time, or a task in progress or verifying, or an open one of the same owner.
    */
   readonly requireProofOnVerifying: boolean;
   /** What `set --status in-progress` does while a task it needs is still verifying, or, on a first start, while its owner's own verify steps are due. */

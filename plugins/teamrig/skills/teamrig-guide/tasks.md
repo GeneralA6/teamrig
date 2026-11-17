@@ -11,7 +11,7 @@ A task is `open` when added. Only its owner sets its status, with `teamrig set <
 | --- | --- | --- |
 | `open` | waiting to start | nothing |
 | `in-progress` | the owner is on it now | nothing |
-| `verifying` | shipped, waiting for what proves it (a test run, a night's flow, a number) | `--note`, `--proof` naming what will prove it, `--waits` naming when it runs (a time, or a task in progress or verifying whose end runs it), and `--followups` naming the tasks the work leaves or `none` [register.requireNoteOn, register.requireProofOnVerifying, register.requireFollowupsOn]; `--due <date>`: the date to verify it by; a bug's review, `--cause` to `--missed-log` [register.review] |
+| `verifying` | shipped, waiting for what proves it (a test run, a night's flow, a number) | `--note`, `--proof` naming what will prove it, `--waits` naming when it runs (a time, or a task in progress or verifying, or an open one of your own, whose end runs it), and `--followups` naming the tasks the work leaves or `none` [register.requireNoteOn, register.requireProofOnVerifying, register.requireFollowupsOn]; `--due <date>`: the date to verify it by; a bug's review, `--cause` to `--missed-log` [register.review] |
 | `waiting` | started, and cannot go on until something else happens | `--waits` naming every reason (a decision, an approval, a task, a time) and `--note` [register.requireNoteOn]; on the owner's decision or approval, a card (`--question`, `--options`, `--recommend`, `--default`) [register.requireDecisionCard] |
 | `done` | finished and verified | `--note`, `--evidence` (unless the task already has some), `--skill <name>` or `--skill none`, and `--followups T<id>,...` or `--followups none` [register.requireEvidenceOnDone, register.requireSkillOnDone, register.requireFollowupsOn]; a bug's review, `--cause` to `--missed-log` [register.review]; `--watch "<what a sighting shows>"` (with evidence) when tests or a dry run proved it and a live sighting is still to come |
 | `dropped` | will not be done | `--note` saying why and who decided; `--followups` may name the tasks the work moved to |
@@ -115,12 +115,14 @@ A shipped change is proven by the session that shipped it, oldest first, before 
   starts it (name the tasks the work leaves in place of `none`).
   Without `--proof`, or without `--waits` naming when the proof runs, it is refused
   [register.requireProofOnVerifying]; with that key `false`, the note names the proof. A proof runs at a time
-  (`time:<date>`, for an event that comes on a date) or when a task in progress or verifying ends (`task:T<id>`);
-  one with neither would be put off without end. `approval:owner` (with a card) may stand beside one, for a proof
+  (`time:<date>`, for an event that comes on a date) or when a task ends (`task:T<id>`): one in progress or
+  verifying, or an open one of the same owner, who starts it next, so the new work that runs the proof can start at
+  once while the verifying task waits on it; one with neither would be put off without end. `approval:owner` (with a card) may stand beside one, for a proof
   only the owner can try, which then reaches the meeting's DECISIONS.
 - A proof another party makes is that party's task: ask it with `teamrig set <id> --status waiting --ask <session>
   --text "<the run or check>"`, which adds it and makes the task wait on it. Once that task has started, set yours
-  verifying with `--waits task:T<id>`: a proof waits only on a task in progress or verifying.
+  verifying with `--waits task:T<id>`: a proof waits only on a task in progress or verifying, or an open one of its
+  own owner's.
 - Set verifying again without `--waits` and the waits stay while none cleared; once one cleared the proof is due
   now, and keeping it is refused. `check` flags the task `READY` once all cleared.
 - A change tests or a dry run proved, whose proof left is a live sighting (a night's run, a page a user opens),
