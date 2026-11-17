@@ -22,6 +22,7 @@
  * runner ends a tab that leaves an ask unanswered, so a hold is an answer, and the runner asks again after
  * its quiet delay. The band shows through every hold, not only the count: what holds the /clear and, for the
  * person's own holds, how long they have left, so the person never waits on a count that does not start.
+ * The person's last key and Hold are kept in the session too (#919), so the hand a /reload-plugins loads keeps them.
  *
  * The mod runs inside Claude Code without Node, so this file imports nothing at run time: it compiles to
  * a module the mod imports as it is, and the CLI shares its file names from here.
@@ -67,6 +68,39 @@ export interface PersonHold {
 export const DEFAULT_PERSON_HOLD: PersonHold = { countdownMs: 20_000, afterActivityMs: 30 * 60_000 };
 /** How long the band's "Hold" button holds the /clear. */
 export const HOLD_BUTTON_MS = 10 * 60_000;
+/**
+ * The least time between two keeps of the person's last key in the session: a key comes with each keystroke, so the
+ * hand keeps one a while, and the mod a reload loads may read it up to this much early, a few seconds of a hold of
+ * minutes.
+ */
+export const KEEP_ACTIVITY_GAP_MS = 10_000;
+
+/**
+ * What the hand keeps in the session of the person's holds (#919): their last key or prompt and the end of their
+ * "Hold", in milliseconds since the epoch, null for none. A /reload-plugins loads a new module with a new hand, which
+ * reads them back, so a /clear never lands under a person the old hand saw working.
+ */
+export interface PersonHoldRecord {
+  readonly lastActivity: number | null;
+  readonly holdUntil: number | null;
+}
+
+function isTimeOrNone(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isFinite(value));
+}
+
+/** Whether a kept value is a PersonHoldRecord: both fields there, each a finite time or null. */
+export function isPersonHoldRecord(value: unknown): value is PersonHoldRecord {
+  return isRecord(value) && isTimeOrNone(value['lastActivity']) && isTimeOrNone(value['holdUntil']);
+}
+
+/** The later of two times, either of which may be none. */
+function laterOf(a: number | undefined, b: number | null): number | undefined {
+  if (b === null) {
+    return a;
+  }
+  return a === undefined ? b : Math.max(a, b);
+}
 /**
  * How often the restart asks while the hand holds, for an ask that does not say (`askEveryMs`, which a restart
  * older than it leaves out): `refresh.restartDelaySeconds`' default, 15 s.
@@ -255,6 +289,10 @@ export interface ClearHandHost {
   draft(): Promise<string>;
   /** Runs /clear in the tab, as if the person typed it. */
   clear(): Promise<void>;
+  /** What the session keeps of the person's holds, read when the mod loads; anything but a PersonHoldRecord is none. */
+  recallHold(): Promise<unknown>;
+  /** Keeps the person's holds in the session, where the mod a reload loads finds them. */
+  rememberHold(record: PersonHoldRecord): Promise<void>;
   now(): number;
 }
 
@@ -327,9 +365,30 @@ export class ClearHand {
   private countdown: { readonly request: string | undefined; readonly endsAt: number } | undefined;
   /** The last ask the hand held, which the band shows while the restart's next ask is not overdue. */
   private lastHeld: HeldAsk | undefined;
+  /** The last key or prompt the hand kept in the session, so it keeps one per KEEP_ACTIVITY_GAP_MS. */
+  private keptActivity: number | undefined;
 
   constructor(host: ClearHandHost) {
     this.host = host;
+  }
+
+  /**
+   * Takes back the person's holds the session kept, from the module before a /reload-plugins; never rejects. A
+   * key or a Hold the person gave meanwhile stays when it is later.
+   */
+  async start(): Promise<void> {
+    const kept = await this.host.recallHold().catch(() => undefined);
+    if (isPersonHoldRecord(kept)) {
+      this.lastActivity = laterOf(this.lastActivity, kept.lastActivity);
+      this.holdUntil = laterOf(this.holdUntil, kept.holdUntil);
+      this.keptActivity = this.lastActivity;
+    }
+  }
+
+  /** Keeps the person's holds in the session; a session that will not keep them leaves this module's alone. */
+  private keep(): void {
+    this.keptActivity = this.lastActivity;
+    void this.host.rememberHold({ lastActivity: this.lastActivity ?? null, holdUntil: this.holdUntil ?? null }).catch(() => undefined);
   }
 
   /** A turn starts: the band hides, and the ask that comes after the turn starts a new count. */
@@ -344,8 +403,12 @@ export class ClearHand {
 
   /** The person typed in the prompt box: the /clear waits `afterActivityMs` from now, which the band counts. */
   personActed(): void {
-    this.lastActivity = this.host.now();
+    const now = this.host.now();
+    this.lastActivity = now;
     this.countdown = undefined;
+    if (this.keptActivity === undefined || now - this.keptActivity >= KEEP_ACTIVITY_GAP_MS) {
+      this.keep();
+    }
   }
 
   /**
@@ -361,12 +424,14 @@ export class ClearHand {
   refreshNow(): void {
     this.nowAskedAt = this.host.now();
     this.holdUntil = undefined;
+    this.keep();
   }
 
   /** The band's "Hold": no /clear for HOLD_BUTTON_MS, which the band counts. */
   holdRefresh(): void {
     this.holdUntil = this.host.now() + HOLD_BUTTON_MS;
     this.endCount();
+    this.keep();
   }
 
   /**

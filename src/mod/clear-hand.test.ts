@@ -12,6 +12,7 @@ import {
   DIR_RETRY_MS,
   HOLD_BUTTON_MS,
   isClaudeSessionId,
+  KEEP_ACTIVITY_GAP_MS,
   liveAgentsOf,
   outcomeFileOf,
   parseHandAsk,
@@ -21,6 +22,7 @@ import {
   type CliRun,
   type ListedAgent,
   type PersonHold,
+  type PersonHoldRecord,
 } from './clear-hand.ts';
 
 const DIR = '/kit/clear-asks';
@@ -120,6 +122,24 @@ class FakeHost implements ClearHandHost {
   async clear(): Promise<void> {
     this.clears += 1;
     await this.clearing;
+  }
+
+  /** What the session keeps of the person's holds: a reload makes a new hand over the same session. */
+  stored: unknown;
+  /** Thrown by `recallHold`, as a session that will not tell. */
+  recallFailure: unknown;
+  rememberCalls = 0;
+
+  async recallHold(): Promise<unknown> {
+    if (this.recallFailure !== undefined) {
+      throw this.recallFailure;
+    }
+    return this.stored;
+  }
+
+  async rememberHold(record: PersonHoldRecord): Promise<void> {
+    this.rememberCalls += 1;
+    this.stored = record;
   }
 
   now(): number {
@@ -551,6 +571,99 @@ describe('ClearHand: the person at the tab', () => {
     assert.deepEqual(hand.band(), { kind: 'refreshing' }, 'the Hold ended: its count comes with the next ask');
     host.time += 1;
     assert.equal(hand.band(), undefined);
+  });
+});
+
+describe("ClearHand: the person's holds across /reload-plugins (#919)", () => {
+  /** The hand the mod a reload loads: a new one over the same session, started before it ticks. */
+  async function reloaded(host: FakeHost): Promise<ClearHand> {
+    const hand = new ClearHand(host);
+    await hand.start();
+    return hand;
+  }
+
+  it("holds an ask within afterActivityMs of the person's last key before the reload", async () => {
+    const { host, hand } = personHand();
+    hand.personActed();
+    host.time = 60_000;
+    const next = await reloaded(host);
+    host.ask(askOf(1, HOLD));
+    assert.deepEqual(await next.tick(), { kind: 'held', why: 'the person was active in this tab 60 s ago' });
+    assert.deepEqual(next.band(), { kind: 'waiting', by: 'activity', secondsLeft: 240 });
+    assert.equal(host.clears, 0);
+  });
+
+  it("holds an ask within the band's Hold pressed before the reload", async () => {
+    const { host, hand } = personHand();
+    hand.holdRefresh();
+    host.time = 60_000;
+    const next = await reloaded(host);
+    host.ask(askOf(1, HOLD));
+    assert.deepEqual(await next.tick(), { kind: 'held', why: 'the person pressed Hold: 9 min left' });
+  });
+
+  it('answers an ask after the hold window as before: the count starts', async () => {
+    const { host, hand } = personHand();
+    hand.personActed();
+    host.time = HOLD.afterActivityMs;
+    const next = await reloaded(host);
+    host.ask(askOf(1, HOLD));
+    assert.deepEqual(await next.tick(), { kind: 'held', why: 'the band counts down: 20 s left' });
+  });
+
+  it('reads a malformed kept value, or a session that will not tell, as no hold', async () => {
+    const malformed: readonly unknown[] = [
+      undefined,
+      null,
+      'now',
+      [0, 0],
+      { lastActivity: '0', holdUntil: null },
+      { lastActivity: Number.NaN, holdUntil: null },
+      { lastActivity: null, holdUntil: Number.POSITIVE_INFINITY },
+      { lastActivity: 0 },
+    ];
+    for (const stored of malformed) {
+      const host = new FakeHost();
+      host.stored = stored;
+      host.time = 1_000;
+      const hand = await reloaded(host);
+      host.ask(askOf(1, HOLD));
+      assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the band counts down: 20 s left' }, JSON.stringify(stored));
+    }
+    const host = new FakeHost();
+    host.recallFailure = new Error('no state');
+    const hand = await reloaded(host);
+    host.ask(askOf(1, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the band counts down: 20 s left' });
+  });
+
+  it('keeps a key at most once per KEEP_ACTIVITY_GAP_MS, and a Hold or Refresh now at once', async () => {
+    const { host, hand } = personHand();
+    hand.personActed();
+    host.time = KEEP_ACTIVITY_GAP_MS - 1;
+    hand.personActed();
+    assert.deepEqual(host.stored, { lastActivity: 0, holdUntil: null }, 'a key a moment later: not kept again');
+    host.time = KEEP_ACTIVITY_GAP_MS;
+    hand.personActed();
+    assert.deepEqual(host.stored, { lastActivity: KEEP_ACTIVITY_GAP_MS, holdUntil: null });
+    hand.holdRefresh();
+    assert.deepEqual(host.stored, { lastActivity: KEEP_ACTIVITY_GAP_MS, holdUntil: KEEP_ACTIVITY_GAP_MS + HOLD_BUTTON_MS });
+    hand.refreshNow();
+    assert.deepEqual(host.stored, { lastActivity: KEEP_ACTIVITY_GAP_MS, holdUntil: null }, "Refresh now ends the Hold for the next module too");
+    assert.equal(host.rememberCalls, 4);
+  });
+
+  it('keeps the later time when the person acts while the kept one is read', async () => {
+    const host = new FakeHost();
+    host.stored = { lastActivity: 0, holdUntil: null };
+    host.time = 30_000;
+    const hand = new ClearHand(host);
+    const starting = hand.start();
+    hand.personActed();
+    await starting;
+    host.time = 40_000;
+    host.ask(askOf(1, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the person was active in this tab 10 s ago' });
   });
 });
 

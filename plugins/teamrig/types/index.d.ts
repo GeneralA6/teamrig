@@ -10,6 +10,13 @@
 export type TeamrigReload = { readonly fingerprint: string; readonly at: number }
 
 /**
+ * The clear hand's person holds in this session (src/mod/clear-hand.ts PersonHoldRecord): the person's last key or
+ * prompt in the tab and the end of their "Hold", in milliseconds since the epoch, null for none. The mod a
+ * /reload-plugins loads reads them back, checking their shape, so a refresh /clear still waits for the person.
+ */
+export type TeamrigClearHold = { readonly lastActivity: number | null; readonly holdUntil: number | null }
+
+/**
  * The band above the prompt while a refresh's /clear is near (src/mod/clear-hand.ts BandView): the count to the
  * /clear in whole seconds, that it comes with the restart's next ask, the person's hold (their keys in the tab or
  * their Hold) with the seconds it has left, or what else holds it (a live helper, a draft). The clear hand writes
@@ -74,6 +81,7 @@ declare module 'claude-code' {
   interface PluginState {
     teamrig: {
       reload: TeamrigReload
+      clearHold: TeamrigClearHold
       band: TeamrigBand | null
       updateView: TeamrigUpdate | null
       needsYou: TeamrigNeedsYou | null

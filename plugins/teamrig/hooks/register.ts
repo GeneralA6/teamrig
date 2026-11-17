@@ -124,6 +124,9 @@ import {
 /** The reload hand's last reload, kept in the session (types/index.d.ts). */
 const RELOAD_STATE: StateRef<'teamrig', 'reload'> = { plugin: 'teamrig', key: 'reload' };
 
+/** The clear hand's person holds, kept in the session so a reload keeps them (types/index.d.ts). */
+const CLEAR_HOLD_STATE: StateRef<'teamrig', 'clearHold'> = { plugin: 'teamrig', key: 'clearHold' };
+
 /** The band above the prompt while a refresh's /clear is near; null, no band (types/index.d.ts). */
 const BAND = atom({ plugin: 'teamrig', key: 'band' } as const, null);
 
@@ -234,6 +237,10 @@ export const register: Register = (on) => {
         clear: async () => {
           await $.command.run({ command: 'clear' });
         },
+        recallHold: async () => (await $.state.get(CLEAR_HOLD_STATE)).value,
+        rememberHold: async (record) => {
+          await $.state.set(CLEAR_HOLD_STATE, record);
+        },
         now: () => Date.now(),
       });
       clearHand = active;
@@ -253,12 +260,15 @@ export const register: Register = (on) => {
       // A band the module loaded before this one left: this hand counts nothing yet.
       await update($, BAND, () => null);
       showBand = show;
-      $.clock.every(TICK_MS, () => {
-        void active.tick().then(async (result) => {
-          if (worthLogging(result)) {
-            $.ui.log(`teamrig refresh /clear: ${JSON.stringify(result)}`, { to: 'debug' });
-          }
-          await show();
+      // The person's holds the module before a /reload-plugins kept come back before the first ask is answered.
+      void active.start().then(() => {
+        $.clock.every(TICK_MS, () => {
+          void active.tick().then(async (result) => {
+            if (worthLogging(result)) {
+              $.ui.log(`teamrig refresh /clear: ${JSON.stringify(result)}`, { to: 'debug' });
+            }
+            await show();
+          });
         });
       });
     }
