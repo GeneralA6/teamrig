@@ -1,7 +1,8 @@
-import { lstat, readdir, readlink, rmdir, symlink, unlink } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { lstat, readdir, readFile, readlink, rmdir, symlink, unlink } from 'node:fs/promises';
 import { realpathSync, type Dirent } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { errorCode } from '../core/guards.ts';
+import { errorCode, errorMessage } from '../core/guards.ts';
 
 /** What is at a path as lstat sees it: a link (a symlink or a Windows junction) is never followed. */
 export type EntryKind = 'link' | 'folder' | 'other';
@@ -10,6 +11,20 @@ export interface TreeEntry {
   readonly name: string;
   readonly kind: EntryKind;
 }
+
+/** A running program and the folder it runs in. */
+export interface Program {
+  readonly pid: number;
+  readonly name: string;
+  /** Its working folder, as the system spells it. */
+  readonly folder: string;
+}
+
+/** The working folder of every other program the system lets this user read, or why it cannot tell (#797). */
+export type ProgramsRead = { readonly kind: 'read'; readonly programs: readonly Program[] } | { readonly kind: 'unknown'; readonly reason: string };
+
+/** How long `lsof` may take to list every program's working folder. */
+const LSOF_TIMEOUT_MS = 10_000;
 
 /**
  * The file steps `teamrig worktree remove` takes. None of them deletes through a link or a folder: `unlinkLink`
@@ -33,6 +48,8 @@ export interface WorktreeFiles {
   removeEmptyFolder(path: string): Promise<void>;
   /** The one spelling of an existing path (its case, separators and links resolved), to compare two spellings; undefined when nothing is there. */
   canonical(path: string): Promise<string | undefined>;
+  /** The working folder of every other running program, so a worktree one runs in is not removed partway (#797). */
+  workingFolders(): Promise<ProgramsRead>;
 }
 
 /** A folder's listing; undefined when the folder does not exist. */
@@ -106,4 +123,66 @@ export const NODE_WORKTREE_FILES: WorktreeFiles = {
       return undefined;
     }
   },
+  async workingFolders() {
+    if (process.platform === 'linux') {
+      return await procWorkingFolders();
+    }
+    if (process.platform === 'darwin') {
+      return await lsofWorkingFolders();
+    }
+    return { kind: 'unknown', reason: `${process.platform === 'win32' ? 'Windows' : process.platform} gives no plain way to read another program's working folder` };
+  },
 };
+
+/** Linux: each `/proc/<pid>/cwd` link this user may read; a program that ended, or another user's, is skipped. */
+async function procWorkingFolders(): Promise<ProgramsRead> {
+  let pids: string[];
+  try {
+    pids = (await readdir('/proc')).filter((name) => /^\d+$/u.test(name));
+  } catch (error) {
+    return { kind: 'unknown', reason: `/proc cannot be read (${errorMessage(error)})` };
+  }
+  const programs: Program[] = [];
+  for (const id of pids) {
+    const pid = Number(id);
+    if (pid === process.pid) {
+      continue;
+    }
+    try {
+      const folder = await readlink(`/proc/${id}/cwd`);
+      programs.push({ pid, name: (await readFile(`/proc/${id}/comm`, 'utf8')).trim(), folder });
+    } catch {
+      // Ended since the listing, or another user's: neither is read.
+    }
+  }
+  return { kind: 'read', programs };
+}
+
+/** macOS: `lsof -d cwd`, whose exit is 1 when it could not read some program, though it lists the rest. */
+async function lsofWorkingFolders(): Promise<ProgramsRead> {
+  return await new Promise((settle) => {
+    execFile('lsof', ['-n', '-P', '-d', 'cwd', '-F', 'pcn'], { timeout: LSOF_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (error, stdout) => {
+      const programs = parseLsofFolders(stdout, process.pid);
+      settle(error !== null && programs.length === 0 ? { kind: 'unknown', reason: `lsof did not list them (${errorMessage(error)})` } : { kind: 'read', programs });
+    });
+  });
+}
+
+/** `lsof -F pcn` output: a `p<pid>` line opens each program, then its `c<name>`, and `n<folder>` for its cwd; `self` is left out. */
+export function parseLsofFolders(text: string, self: number): Program[] {
+  const programs: Program[] = [];
+  let pid: number | undefined;
+  let name = '';
+  for (const line of text.split('\n')) {
+    const field = line.slice(1);
+    if (line.startsWith('p')) {
+      pid = Number(field);
+      name = '';
+    } else if (line.startsWith('c')) {
+      name = field;
+    } else if (line.startsWith('n') && pid !== undefined && Number.isInteger(pid) && pid !== self) {
+      programs.push({ pid, name, folder: field });
+    }
+  }
+  return programs;
+}

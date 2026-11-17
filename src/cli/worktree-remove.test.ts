@@ -49,6 +49,25 @@ describe('runCli: worktree remove', () => {
     assert.deepEqual(git.steps, ['worktree remove /w/t4 in /w/main', 'branch -D t4 in /w/main']);
   });
 
+  it('says in a NOTE line, first, that other programs inside it could not be checked, and goes on (#797)', async () => {
+    const { files, git, ports } = worktrees();
+    files.programs = { kind: 'unknown', reason: "Windows gives no plain way to read another program's working folder" };
+    const result = await new CliHarness().run(['worktree', 'remove', '/w/t4', '--dry-run'], { worktrees: ports });
+    assert.equal(result.code, EXIT.ok);
+    assert.equal(result.stdout[0], "NOTE could not check for other programs running inside /w/t4: Windows gives no plain way to read another program's working folder; going on");
+    assert.equal(result.stdout.at(-1), 'dry run: nothing changed');
+    assert.deepEqual([files.unlinked, git.steps], [[], []]);
+  });
+
+  it('refuses, naming it, a worktree another program runs inside, before any change (#797)', async () => {
+    const { files, git, ports } = worktrees();
+    files.programs = { kind: 'read', programs: [{ pid: 4242, name: 'claude', folder: resolve('/w/t4') }] };
+    const result = await new CliHarness().run(['worktree', 'remove', '/w/t4'], { worktrees: ports });
+    assert.equal(result.code, EXIT.refused);
+    assert.match(result.stdout.join('\n'), /REFUSED other programs run inside \/w\/t4: 4242 claude/);
+    assert.deepEqual([files.unlinked, git.steps], [[], []]);
+  });
+
   it('prints the steps of a dry run and changes nothing', async () => {
     const { files, git, ports } = worktrees();
     const result = await new CliHarness().run(['worktree', 'remove', '/w/t4', '--dry-run'], { worktrees: ports });

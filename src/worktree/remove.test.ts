@@ -1,10 +1,11 @@
+import { spawn } from 'node:child_process';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
 import { FakeWorktreeFiles, FakeWorktreeGit, type FakeGitAnswers, type FakeNode } from '../testing/fake-worktrees.ts';
-import { NODE_WORKTREE_FILES, type WorktreeFiles } from './files.ts';
+import { NODE_WORKTREE_FILES, parseLsofFolders, type WorktreeFiles } from './files.ts';
 import { GIT_WORKTREES, type GitOutcome, type WorktreeEntry } from './git.ts';
 import {
   carryOut,
@@ -663,6 +664,78 @@ function realWorld(prefix: string): { repo: TempRepo; worktree: string; modules:
 }
 
 const REAL: WorktreePorts = { git: GIT_WORKTREES, files: NODE_WORKTREE_FILES };
+
+describe('other programs running inside the worktree (#797)', () => {
+  const HOLDERS = `other programs run inside ${TOP}: 4242 claude (in ${resolve(TOP, 'src')}); a folder a program runs in cannot be deleted on Windows, so git would stop partway: close them or move them out of it, then run this again`;
+
+  it('refuses before any change, naming each program whose working folder is inside it', async () => {
+    const { files, git, ports } = world();
+    files.programs = { kind: 'read', programs: [{ pid: 4242, name: 'claude', folder: resolve(TOP, 'src') }, { pid: 7, name: 'bash', folder: resolve('/w') }, { pid: 8, name: 'vim', folder: resolve('/w/t40') }] };
+    assert.equal(await refusal(planRemoval(request(), ports)), HOLDERS);
+    assert.equal(await refusal(planRemoval(request({ deleteBranch: true }), ports)), HOLDERS, 'a dry run or a branch delete is refused the same');
+    assert.deepEqual([files.unlinked, git.steps], [[], []]);
+  });
+
+  it('names the first few and counts the rest', async () => {
+    const { files, ports } = world();
+    files.programs = { kind: 'read', programs: [1, 2, 3, 4, 5, 6, 7].map((pid) => ({ pid, name: 'node', folder: resolve(TOP) })) };
+    assert.match(await refusal(planRemoval(request(), ports)), new RegExp(`^other programs run inside ${TOP}: 1 node \\(in .+\\), .*5 node \\(in .+\\), and 2 more; `));
+  });
+
+  it('goes on as before when no other program runs inside it', async () => {
+    const { files, ports } = world();
+    files.programs = { kind: 'read', programs: [{ pid: 7, name: 'bash', folder: resolve('/w') }] };
+    assert.equal(planOf(await planRemoval(request(), ports)).unchecked, undefined);
+  });
+
+  it('goes on, saying in one line it could not check, where the system cannot tell another program\'s folder', async () => {
+    const { files, ports } = world();
+    files.programs = { kind: 'unknown', reason: 'this system gives no plain way to read another program\'s working folder' };
+    const plan = planOf(await planRemoval(request(), ports));
+    assert.equal(plan.unchecked, `could not check for other programs running inside ${TOP}: this system gives no plain way to read another program's working folder; going on`);
+  });
+
+  it('refuses the leftover of a stopped removal the same way, and notes an unchecked one', async () => {
+    const held = leftoverWorld();
+    held.files.programs = { kind: 'read', programs: [{ pid: 4242, name: 'claude', folder: resolve(PACKAGES) }] };
+    assert.match(await refusal(planRemoval(leftoverRequest(), held.ports)), new RegExp(`^other programs run inside ${HUSK}: 4242 claude `));
+    assert.deepEqual(held.files.unlinked, []);
+    const unknown = leftoverWorld();
+    unknown.files.programs = { kind: 'unknown', reason: 'no lsof' };
+    assert.equal(leftoverOf(await planRemoval(leftoverRequest(), unknown.ports)).unchecked, `could not check for other programs running inside ${HUSK}: no lsof; going on`);
+  });
+});
+
+describe('NODE_WORKTREE_FILES reads the working folder of other programs (#797)', () => {
+  it('reads lsof -F pcn output, each program with its name and folder, leaving itself out', () => {
+    const text = ['p1', 'claunchd', 'fcwd', 'n/', 'p4242', 'cclaude', 'fcwd', 'n/srv/wt/t5 dir', 'p77', 'cnode', 'fcwd', 'n/w', ''].join('\n');
+    assert.deepEqual(parseLsofFolders(text, 77), [
+      { pid: 1, name: 'launchd', folder: '/' },
+      { pid: 4242, name: 'claude', folder: '/srv/wt/t5 dir' },
+    ]);
+    assert.deepEqual(parseLsofFolders('', 77), []);
+  });
+
+  it('lists a child program running in a folder, by its process id, on Linux and macOS; says why it cannot elsewhere', { skip: process.platform === 'darwin' && !existsSync('/usr/sbin/lsof') }, async () => {
+    const repo = new TempRepo('worktree-holders');
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { cwd: repo.dir, stdio: 'ignore' });
+    try {
+      await new Promise((settle) => child.once('spawn', settle));
+      const read = await NODE_WORKTREE_FILES.workingFolders();
+      if (process.platform !== 'linux' && process.platform !== 'darwin') {
+        assert.equal(read.kind, 'unknown');
+        return;
+      }
+      assert.equal(read.kind, 'read');
+      const mine = read.kind === 'read' ? read.programs.find((program) => program.pid === child.pid) : undefined;
+      assert.equal(mine?.folder, realpathSync(repo.dir));
+      assert.ok(read.kind === 'read' && !read.programs.some((program) => program.pid === process.pid), 'never this program itself');
+    } finally {
+      child.kill();
+      repo.remove();
+    }
+  });
+});
 
 describe('removing a real worktree with a real node_modules link', () => {
   it('unlinks the link, removes the worktree and its merged branch, and keeps every file the link pointed to', async () => {
