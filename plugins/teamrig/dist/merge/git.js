@@ -173,6 +173,7 @@ export const GIT_MERGE = {
         const line = run.stdout.trim();
         return run.status === 0 && line !== '' ? line : undefined;
     }),
+    gitVersion: (dir) => /^git version (\d+(?:\.\d+)*)/.exec(queryLine(dir, ['version']) ?? '')?.[1],
     sha: (dir, ref) => queryLine(dir, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`]),
     treeOf: (dir, ref) => queryLine(dir, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}^{tree}`]),
     remoteHead(dir, remote, branch) {
