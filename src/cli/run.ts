@@ -93,6 +93,7 @@ const mergeCommand = () => import('./commands/merge.ts');
 const deployCommand = () => import('./commands/deploy.ts');
 const freezeCommands = () => import('./commands/freeze.ts');
 const pipelineFreezeCommands = () => import('./commands/pipeline-freeze.ts');
+const pipelineFrontCommand = () => import('./commands/pipeline-front.ts');
 const stablePeriodsCommand = () => import('./commands/stable-periods.ts');
 const jobCommands = () => import('./commands/job.ts');
 const deployStatusCommand = () => import('./commands/deploy-status.ts');
@@ -288,6 +289,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   pipeline: { effect: 'read', flags: [], load: async () => (await pipelineCommand()).pipeline },
   'pipeline freeze': { effect: 'write', flags: ['session', 'from', 'to', 'reason', 'kinds'], load: async () => (await pipelineFreezeCommands()).pipelineFreeze },
   'pipeline unfreeze': { effect: 'write', flags: ['session'], load: async () => (await pipelineFreezeCommands()).pipelineUnfreeze },
+  'pipeline front': { effect: 'write', flags: ['session'], switches: ['off'], load: async () => (await pipelineFrontCommand()).pipelineFront },
   merge: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await mergeCommand()).merge },
   deploy: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await deployCommand()).deploy },
   freeze: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await freezeCommands()).freeze },
@@ -964,6 +966,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       lead or the delivery owner only; REFUSED for a start in the past or a secret in the reason
   pipeline unfreeze <id> [--session <id|name>]   ends pipeline freeze <id> (F3) now, or drops one
       still to come; the lead or the delivery owner only
+  pipeline front <task>|--off [--session <id|name>]   puts one of the team's active tasks at the
+      front of the host line, say a blocker's fix: its queued steps go first, ahead of the steps
+      queued before them; a new front replaces the last, --off takes it off. Each team's lead fronts
+      only its own team's tasks, two teams' fronts in the order they were put; serial admission
+      ignores fronts. The lead only; REFUSED for a task the register lacks or not active
   merge [--session <id|name>] [--keep-remote] [--no-delete-local]   merges the branch checked out
       here into origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
       changes, nothing new, a dependency change delivery.repos.<name>.dependencyGate holds and
