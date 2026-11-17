@@ -21,7 +21,7 @@ import { formatTaskLines, taskLinesOf } from '../../inbox/task-lines.ts';
 import { WakeAsks } from '../../wake/asks.ts';
 import { teamDayStartAt } from '../../wake/day-start.ts';
 import { waitAnswerersOf } from '../../register/approval.ts';
-import { byFlagKind, checkTasks, leaderWaitFlags, noIssueFlags, peerWaitFlags, runFileFlags, untriagedFlags } from '../../register/check.ts';
+import { byFlagKind, checkTasks, leaderWaitFlags, noIssueFlags, peerWaitFlags, runFileFlags, unknownGoalFlags, untriagedFlags } from '../../register/check.ts';
 import { currentWeekOf } from '../../register/week.ts';
 import type { ApprovalVerdict, TaskFields } from '../../register/events.ts';
 import { fitLines, leftOfWeek, overLimitFlag, weekFit, type WeekFit } from '../../register/fit.ts';
@@ -1026,7 +1026,8 @@ function weekFor(args: ParsedArgs, snapshot: RegisterSnapshot, now: Date, zone: 
  * covers every team read). A wait on another register's task of the tree is judged against that task, and one on the
  * parent team's lead, `above`, is the lead's own approver's (T1140). `runFiles` is what each card's hand step file
  * hashes to now (RUN-CHANGED). `goals` are the register's own team's goal records, whose slices past their ship day
- * with no proof raise SLICE-LATE (T2203).
+ * with no proof raise SLICE-LATE (T2203); `goalTags` are the goal records of the team and the teams above it
+ * (UNKNOWN-GOAL).
  */
 function checkRegister(
   { snapshot, config, elsewhere, above, ranking }: Pick<RolledTeam, 'snapshot' | 'config' | 'elsewhere' | 'above' | 'ranking'>,
@@ -1036,6 +1037,7 @@ function checkRegister(
   week: string | null,
   leftPct: number | undefined,
   runFiles: RunFiles,
+  goalTags: ReadonlySet<string>,
   team?: string,
 ): CheckSection {
   const tasks = [...snapshot.state.tasks.values()];
@@ -1052,6 +1054,7 @@ function checkRegister(
     ...leaderWaitFlags(tree.inPlanOrder(tasks), leads, config.focus, now.getTime()),
     ...untriagedFlags(tasks, leads),
     ...noIssueFlags(tasks, config.github.issueAtAdd),
+    ...unknownGoalFlags(tasks, goalTags),
     ...(progress === undefined ? [] : [progress]),
   ];
   return { team, flags: flags.sort(byFlagKind), tree };
@@ -1141,8 +1144,9 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
     teams.flatMap((rolled) => [...rolled.snapshot.state.tasks.values()]),
   );
   const goals = await Promise.all(teams.map(async (rolled) => ownGoalsOf(runtime, rolled)));
+  const goalTags = await Promise.all(teams.map((rolled) => new KitTreeGoals(runtime, rolled.paths, rolled.config).recorded()));
   const checked = teams.map((rolled, index) => {
-    const section = checkRegister(rolled, goals[index] ?? new Map(), now, teamZone(rolled.config, runtime), week, leftPct, runFiles, tree ? rolled.team : undefined);
+    const section = checkRegister(rolled, goals[index] ?? new Map(), now, teamZone(rolled.config, runtime), week, leftPct, runFiles, goalTags[index] ?? new Set<string>(), tree ? rolled.team : undefined);
     const ownFlags =
       rolled.team === own.team
         ? [...stopgapFlags(tags, rolled.snapshot.state.tasks, zone), ...(spent === undefined ? [] : overSizeFlags(rolled.snapshot.state.tasks.values(), spent, overSizeMultiple))]

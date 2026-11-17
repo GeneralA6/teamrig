@@ -46,6 +46,7 @@ export const FLAG_KINDS = [
   'OWNER-UNPLANNED',
   'DUE-UNPLANNED',
   'OFF-GOAL',
+  'UNKNOWN-GOAL',
   'UNTRIAGED',
   'NO-ISSUE',
   'NO-PROGRESS',
@@ -284,6 +285,35 @@ export function noIssueFlags(tasks: Iterable<Task>, issueAtAdd: string | undefin
         ]
       : [],
   );
+}
+
+/** How many recorded goal tags UNKNOWN-GOAL names before it counts the rest. */
+const SHOWN_GOAL_TAGS = 5;
+
+/**
+ * UNKNOWN-GOAL (#846): once the team or a team above it records a goal, an active task naming a goal tag none of those
+ * records holds, which goal-first ranking cannot see (a typo, or a goal never recorded). Under `register.goals` free
+ * too, where `add` and `update` take any tag. None while no goal is recorded, as the team then ranks by no goal. Apart
+ * from {@link checkTasks}, whose register config does not hold the goal records.
+ */
+export function unknownGoalFlags(tasks: Iterable<Task>, recorded: ReadonlySet<string>): Flag[] {
+  if (recorded.size === 0) {
+    return [];
+  }
+  const tags = [...recorded].sort();
+  const shown = tags.length > SHOWN_GOAL_TAGS ? `${tags.slice(0, SHOWN_GOAL_TAGS).join(', ')} and ${tags.length - SHOWN_GOAL_TAGS} more` : tags.join(', ');
+  return [...tasks].flatMap((task) => {
+    const unknown = ACTIVE_STATUSES.includes(task.status) ? task.goals.filter((goal) => !recorded.has(goal)) : [];
+    return unknown.length === 0
+      ? []
+      : [
+          {
+            kind: 'UNKNOWN-GOAL' as const,
+            task,
+            detail: `goal ${unknown.join(', ')} has no goal record (recorded: ${shown}): update ${task.id} --goals with a recorded one, or record it (goal add)`,
+          },
+        ];
+  });
 }
 
 function weekPlan(week: string | null, lengthDays: number, zone: TimeZone): WeekPlan | undefined {
