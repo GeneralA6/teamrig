@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
-import { APP, CliHarness, TEAM } from '../testing/cli-harness.ts';
+import { formatConfig } from '../config/load.ts';
+import { readable } from '../slash/plan.ts';
+import { APP, CliHarness, POINTER, TEAM } from '../testing/cli-harness.ts';
+import { teamConfigOf } from '../testing/team-tree.ts';
 import { parseArgs, UsageError } from './args.ts';
-import { withoutUndeclared } from './common-flags.ts';
 import { COMMAND_FLAGS, COMMAND_TABLE, USAGE } from './run.ts';
 import { EXIT } from './runtime.ts';
 
@@ -50,12 +52,21 @@ describe('--session and --team on every command (#654)', () => {
     assert.deepEqual(await kit.run(['who', '--team', 'app']), plain);
   });
 
-  it('takes the undeclared common flags out before the command runs, so nothing it reaches reads them', () => {
-    const args = parseArgs(['exec', 'dry-run', 'R1', '--session', 'bravo', '--team', 'app'], COMMAND_TABLE.flags, COMMAND_TABLE.switches, COMMAND_TABLE.renamed, COMMAND_TABLE.rest);
-    assert.deepEqual([...withoutUndeclared(args, []).flags], []);
-    assert.deepEqual(withoutUndeclared(args, []).positionals, ['R1']);
-    const declared = parseArgs(['exec', 'approve', 'R1', '--session', 'bravo', '--note', 'ok'], COMMAND_TABLE.flags, COMMAND_TABLE.switches, COMMAND_TABLE.renamed, COMMAND_TABLE.rest);
-    assert.deepEqual([...withoutUndeclared(declared, ['session', 'note', 'team']).flags], [['session', 'bravo'], ['note', 'ok']]);
+  it('keeps the undeclared common flags out of the flags as the line is read, so no reader of it sees them', () => {
+    const args = readable(['exec', 'dry-run', 'R1', '--session', 'bravo', '--team', 'app'], COMMAND_TABLE);
+    assert.deepEqual([[...(args?.flags ?? [])], [...(args?.common ?? [])], args?.positionals], [[], [['session', 'bravo'], ['team', 'app']], ['R1']]);
+    const declared = readable(['exec', 'approve', 'R1', '--session', 'bravo', '--note', 'ok'], COMMAND_TABLE);
+    assert.deepEqual([[...(declared?.flags ?? [])], [...(declared?.common ?? [])]], [[['session', 'bravo'], ['note', 'ok']], []]);
+    assert.equal(usageOf(['exec', 'dry-run', 'R1', '--session', 'bravo', '--session', 'alpha']), '--session is given twice');
+  });
+
+  it('checks --session against the team a command declares --team for and was given, not this one', async () => {
+    const kit = new CliHarness(TEAM);
+    await kit.files.write(teamConfigOf('web'), formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' } }));
+    const ran = await kit.run(['exec', 'status', '--team', 'web', '--session', 'front']);
+    assert.deepEqual(ran, await kit.run(['exec', 'status', '--team', 'web']), 'front is a session of web');
+    const nobody = await kit.run(['exec', 'status', '--team', 'web', '--session', 'bravo']);
+    assert.deepEqual(nobody.stdout, ['REFUSED --session bravo names no session of team web: teamrig who lists them']);
   });
 
   it('refuses with one line a --session that names no session of the team, on a command that ignores it', async () => {
@@ -68,7 +79,17 @@ describe('--session and --team on every command (#654)', () => {
 
   it('refuses with one line a --team naming another team on a command that runs for its own team only', async () => {
     const result = await new CliHarness(TEAM).run(['who', '--team', 'web']);
-    assert.deepEqual(result, { code: EXIT.refused, stdout: ['REFUSED teamrig who runs for this folder\'s team (app) only; --team web names another team'], stderr: [] });
+    assert.deepEqual(result, { code: EXIT.refused, stdout: ['REFUSED teamrig who runs for this team (app) only; --team web names another team'], stderr: [] });
+    const fromEnv = await new CliHarness(TEAM, null).run(['who', '--team', 'web'], { env: { TEAMRIG_TEAM: 'app' } });
+    assert.deepEqual(fromEnv.stdout, ['REFUSED teamrig who runs for this team (app) only; --team web names another team'], 'a team from $TEAMRIG_TEAM too');
+  });
+
+  it('names a broken pointer when it refuses a --team, and leaves --session to the command there', async () => {
+    const kit = new CliHarness(TEAM);
+    await kit.files.write(POINTER, 'not json');
+    const team = await kit.run(['who', '--team', 'web']);
+    assert.match(team.stdout[0] ?? '', /^REFUSED teamrig who runs for this team only, and its pointer .+\.teamrig\.json is not JSON; expected \{"team": "<id>"\}; --team web names another team$/);
+    assert.deepEqual(await kit.run(['who', '--session', 'nobody']), await kit.run(['who']));
   });
 
   it('with no team here, refuses any --team and leaves --session to the command', async () => {
