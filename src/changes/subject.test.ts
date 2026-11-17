@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { assertWithin } from '../testing/time-bound.ts';
 import { readSubject, shortSha } from './subject.ts';
 
 describe('readSubject', () => {
@@ -39,6 +40,21 @@ describe('readSubject', () => {
     const read = readSubject('Merge the open fixes');
     assert.equal(read.area, 'general');
     assert.equal(read.text, 'Merge the open fixes');
+  });
+
+  it("reads an outside subject of any length in linear time, a line break in it read as a space", async () => {
+    // At this length the old backtracking took about 6 s a subject, the linear read well under a millisecond.
+    const spaces = ' '.repeat(120_000);
+    const broken = await assertWithin(1000, () => readSubject(`fix:${spaces}x y`));
+    assert.deepEqual([broken.kind, broken.text], ['fix', 'x y']);
+    const carriage = await assertWithin(1000, () => readSubject(`fix(open):${spaces}xy`));
+    assert.deepEqual([carriage.area, carriage.text], ['open', 'x y']);
+    const wide = await assertWithin(1000, () => readSubject(`fix: a${spaces}b`));
+    assert.equal(wide.text, `a${spaces}b`);
+    const loose = await assertWithin(1000, () => readSubject(`a${spaces}b c`));
+    assert.equal(loose.text, `a${spaces}b c`);
+    const ids = await assertWithin(1000, () => readSubject(`fix: a${spaces}(T12, T13)`));
+    assert.deepEqual([ids.text, ids.taskIds], ['a', ['T12', 'T13']]);
   });
 });
 

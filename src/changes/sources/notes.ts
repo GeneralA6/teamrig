@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import type { ChangeAudience, ChangeEntry, ChangeKind, ChangeSource } from '../source.ts';
-import { readFailure } from './shared.ts';
+import { oneLine, readFailure } from './shared.ts';
 
 /** The folder of a project's change notes, one `<slug>.md` per change, joined into its CHANGELOG.md at release. */
 export const NOTES_FOLDER = 'changes';
@@ -22,6 +22,9 @@ type ReadNote = { readonly kind: 'entry'; readonly entry: ChangeEntry } | { read
 /** `key: value` lines between `---` fences, then the text. */
 const FRONT_MATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
+/** A front matter key: `area`, `kind`. */
+const FIELD_KEY = /^[a-z]+$/;
+
 /** A list in a note's front matter: `files: src/open/, docs/commands.md`. */
 function listOf(value: string | undefined): string[] {
   return (value ?? '').split(',').flatMap((part) => (part.trim() === '' ? [] : [part.trim()]));
@@ -39,16 +42,18 @@ export function readNote(path: string, text: string): ReadNote {
   }
   const [, head = '', body = ''] = match;
   const fields = new Map<string, string>();
-  for (const [index, line] of head.split(/\r?\n/).entries()) {
-    const field = /^([a-z]+):\s*(.*)$/.exec(line.trim());
-    if (field === null) {
-      if (line.trim() !== '') {
+  for (const [index, raw] of head.split(/\r?\n/).entries()) {
+    // Split at its colon in code: a `key:\s*(.*)$` pattern backtracks over a long line with a break in it.
+    const line = oneLine(raw).trim();
+    const colon = line.indexOf(':');
+    const key = colon === -1 ? '' : line.slice(0, colon);
+    if (!FIELD_KEY.test(key)) {
+      if (line !== '') {
         return { kind: 'bad', warning: `${path}:${index + 2} is no "key: value" line` };
       }
       continue;
     }
-    const [, key = '', value = ''] = field;
-    fields.set(key, value.trim());
+    fields.set(key, line.slice(colon + 1).trim());
   }
   const kind = fields.get('kind') ?? 'other';
   const audience = fields.get('audience') ?? 'lead';
