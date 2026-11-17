@@ -7,7 +7,8 @@ import type { SecretsGit } from '../secret-guard/secrets-git.ts';
  * cannot read it); it holds the commits in `known`; the log of a range lists `logs` under its `git log` arguments joined
  * by spaces (none when not listed), unless `logFails`. Each range read is kept in `read`, as that key. The annotated
  * tags an id names are its entry in `tags` (none: a commit), unless `tagFails`. The hooks folder of a repository
- * folder is its entry in `hookDirs` (none: git reads no repository there).
+ * folder is its entry in `hookDirs` (none: git reads no repository there). A blob is its entry in `blobs`, keyed
+ * `<revision>:<path>` (`:<path>` for the index; none: git cannot read it).
  */
 export class FakeSecretsGit implements SecretsGit {
   index: PatchAdds | undefined = { paths: [], lines: [] };
@@ -15,6 +16,7 @@ export class FakeSecretsGit implements SecretsGit {
   readonly logs = new Map<string, readonly CommitAdds[]>();
   readonly tags = new Map<string, readonly TagMessage[]>();
   readonly hookDirs = new Map<string, string>();
+  readonly blobs = new Map<string, string>();
   readonly read: string[] = [];
   logFails = false;
   tagFails = false;
@@ -48,5 +50,9 @@ export class FakeSecretsGit implements SecretsGit {
 
   hooksDir(dir: string): string | undefined {
     return this.hookDirs.get(dir);
+  }
+
+  blob(_dir: string, revision: string, path: string): string | undefined {
+    return this.blobs.get(`${revision}:${path}`);
   }
 }

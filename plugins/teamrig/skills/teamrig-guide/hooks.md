@@ -525,10 +525,14 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
   `**/*.tfstate` and `**/*.tfstate.backup` (it holds secrets in plain text); `.env.example`, `.env.sample` and
   `~/.ssh/*.pub` stay readable. A `.pub.pem` file is read before it is refused: while its text holds PEM blocks
   labelled exactly `PUBLIC KEY` or `RSA PUBLIC KEY`, each one a public key Node's crypto parses, and nothing else, it
-  is no secret, so a committed public key (`keys/archive.pub.pem`) can be read and committed. A private key block,
-  any other label, a public key label around anything but a public key, any other text, a file that cannot be read or
-  is over 64 KB, and a word with wildcards (`cat keys/*.pub.pem`) stay refused, and so does a `.pub.pem` that a team
-  glob in `secretGuard.paths` names after `**/*.pem`: to keep every `.pem` refused, list `**/*.pub.pem`. A word with
+  is no secret, so a committed public key (`keys/archive.pub.pem`) can be read and committed. The text read is the
+  one the call prints or commits: the working file for a direct read, and the copy the commit holds at commit and push
+  (`git cat-file`, never the copy on disk). A git call that prints another revision (`git show <rev>:<path>`,
+  `git diff`, `git log -p`) is judged by the name alone, so it stays refused. A private key block, any other label, a
+  public key label around anything but a public key, any other text, a file that cannot be read or is over 64 KB, and
+  a word with wildcards (`cat keys/*.pub.pem`) stay refused, and so does a `.pub.pem` that a team glob in
+  `secretGuard.paths` names after `**/*.pem`. A team that lists `**/*.pem` itself still gets the content check, so
+  to keep every `.pem` refused, list `**/*.pub.pem`. A word with
   wildcards counts when a secret name fits them (`cat .env*`, `cat .env.ex*`, which also fits `.env.export`), unless
   they meet only where each one's wildcard covers the other's text: `grep x *.ts` fits `.env.*` only as `.env.ts`,
   and passes. So a session no longer reads, nor edits, a

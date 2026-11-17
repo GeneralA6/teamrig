@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { QUERY_TIMEOUT_MS } from '../core/git-run.ts';
 import { COMMIT_FORMAT, PATCH_FLAGS, commitsOf, patchAdds, tagOf, type CommitAdds, type PatchAdds, type TagMessage } from './git-adds.ts';
 import { rangeArgs, type PushRange } from './push-range.ts';
+import { STAGED } from './commit-scan.ts';
+import { PUBLIC_KEY_MAX_BYTES } from './public-key.ts';
 
 /** The git reads `teamrig secrets` takes (T1480); each is undefined when git fails, so no scan passes unread. */
 export interface SecretsGit {
@@ -24,6 +26,11 @@ export interface SecretsGit {
   tagMessages(dir: string, sha: string): TagMessage[] | undefined;
   /** The folder git runs the hooks of the repository `dir` is in from: `core.hooksPath`, else its git folder's `hooks`. */
   hooksDir(dir: string): string | undefined;
+  /**
+   * The text of `path` (from the top folder) as the commit `revision` holds it, or the index when `revision` is
+   * `STAGED`, for the `.pub.pem` content check; undefined when git cannot read it or it is past `PUBLIC_KEY_MAX_BYTES`.
+   */
+  blob(dir: string, revision: string, path: string): string | undefined;
 }
 
 /** A patch or a log of a whole push takes longer than a query, within what a hook waits. */
@@ -38,7 +45,7 @@ const HEX = /^[0-9a-f]+$/;
 export const MAX_TAG_DEPTH = 8;
 
 /** A git run in `dir` that prints its output, undefined when git fails. */
-type GitRun = (dir: string, args: readonly string[], timeout: number) => string | undefined;
+type GitRun = (dir: string, args: readonly string[], timeout: number, maxBuffer?: number) => string | undefined;
 
 /** The tags from `sha` down to the first object that is no tag, outermost first. */
 function tagChain(run: GitRun, dir: string, sha: string): TagMessage[] | undefined {
@@ -68,8 +75,8 @@ function tagChain(run: GitRun, dir: string, sha: string): TagMessage[] | undefin
  * commit is made from (`git commit -a` stages into a temporary index), which `runGit` (core/git-run.ts) drops.
  */
 export function gitSecrets(env: NodeJS.ProcessEnv): SecretsGit {
-  const run: GitRun = (dir, args, timeout) => {
-    const result = spawnSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: dir, windowsHide: true, env, encoding: 'utf8', timeout, maxBuffer: MAX_OUTPUT });
+  const run: GitRun = (dir, args, timeout, maxBuffer = MAX_OUTPUT) => {
+    const result = spawnSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: dir, windowsHide: true, env, encoding: 'utf8', timeout, maxBuffer });
     return result.status === 0 ? result.stdout : undefined;
   };
   return {
@@ -91,6 +98,12 @@ export function gitSecrets(env: NodeJS.ProcessEnv): SecretsGit {
     hooksDir: (dir) => {
       const path = run(dir, ['rev-parse', '--git-path', 'hooks'], QUERY_TIMEOUT_MS)?.trim();
       return path === undefined || path === '' ? undefined : resolve(dir, path);
+    },
+    // `<rev>:<path>` reads from the top folder, `:<path>` from the index. A blob past the cap overflows the buffer, which
+    // cuts the output without failing the run, so the size is checked here too: the file stays refused.
+    blob: (dir, revision, path) => {
+      const text = revision === STAGED || HEX.test(revision) ? run(dir, ['cat-file', 'blob', `${revision}:${path}`], QUERY_TIMEOUT_MS, PUBLIC_KEY_MAX_BYTES + 1) : undefined;
+      return text === undefined || Buffer.byteLength(text) > PUBLIC_KEY_MAX_BYTES ? undefined : text;
     },
   };
 }
