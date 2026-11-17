@@ -4,6 +4,7 @@ import { DEFAULT_SECRET_COMMANDS } from './commands.ts';
 import { DEFAULT_SECRET_ENV_NAMES, SecretNames } from './names.ts';
 import { DEFAULT_SECRET_PATHS, SecretPaths } from './paths.ts';
 import { PatternList } from './pattern-list.ts';
+import { readKeyText } from './public-key.ts';
 
 /** What the secret guard treats as secret on this host. */
 export interface SecretRules {
@@ -24,7 +25,7 @@ export interface SecretRules {
 export function secretRulesOf(config: SecretGuardConfig, home: string, platform: NodeJS.Platform, secretPatterns: readonly string[] = []): SecretRules {
   const ignoreCase = platform === 'win32' || platform === 'darwin';
   return {
-    paths: new SecretPaths([...DEFAULT_SECRET_PATHS, ...config.paths], home, ignoreCase),
+    paths: new SecretPaths([...DEFAULT_SECRET_PATHS, ...config.paths], home, ignoreCase, readKeyText),
     names: new SecretNames([...DEFAULT_SECRET_ENV_NAMES, ...config.envNames]),
     commands: new PatternList([...DEFAULT_SECRET_COMMANDS, ...config.commands]),
     shapes: new SecretShapes(secretPatterns),
