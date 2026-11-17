@@ -6,6 +6,7 @@ import { MS_PER_MINUTE } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { RestartLog, type RestartRow } from '../refresh/restart-log.ts';
 import { RefreshStore } from '../refresh/store.ts';
+import { runsClaude, type SessionProcesses } from '../open/session-processes.ts';
 import { lastTurnAtOf, tabActivityOf } from '../sessions/idle.ts';
 import { REPLY_TAIL_BYTES } from '../turn-log/reply.ts';
 import type { UnownedWarning } from './unowned.ts';
@@ -39,7 +40,9 @@ async function quietSinceOf(files: Files, transcript: string | null, readyAt: nu
   return activity === 'turn' || activity === 'call' ? undefined : Math.max(readyAt, lastTurnAtOf(tail, cut) ?? readyAt);
 }
 
-async function stalledOf(files: Files, store: RefreshStore, log: RestartLog, session: string, now: number, waitMs: number): Promise<Stalled | undefined> {
+type ClaudeProcesses = Pick<SessionProcesses, 'alive' | 'describe'>;
+
+async function stalledOf(files: Files, processes: ClaudeProcesses, store: RefreshStore, log: RestartLog, session: string, now: number, waitMs: number): Promise<Stalled | undefined> {
   const state = await store.state(session);
   if (state?.phase !== 'ready' || !state.noticed || (await store.restart(session)) !== undefined || (await store.parked(session)) !== undefined) {
     return undefined;
@@ -47,6 +50,11 @@ async function stalledOf(files: Files, store: RefreshStore, log: RestartLog, ses
   const readyAt = Date.parse(state.at);
   const quietSince = Number.isNaN(readyAt) ? undefined : await quietSinceOf(files, state.transcript, readyAt);
   if (quietSince === undefined || now - quietSince <= waitMs) {
+    return undefined;
+  }
+  // A ready state outlives its tab (closed by a person, the idle pass or a reboot); with no Claude Code left, the next
+  // start reads the handover, so nothing is stalled. Looked up last: it costs a process read.
+  if (state.claudePid !== null && !(await runsClaude(processes, state.claudePid))) {
     return undefined;
   }
   return { session, readyAt, quietSince, row: await log.lastRowOf(session) };
@@ -66,10 +74,12 @@ function rowText(row: RestartRow | undefined, zone: TimeZone): string {
  * is ready and noticed, with no restart pending or parked, quiet longer than `refresh.restartDelaySeconds` plus
  * STALLED_MARGIN_MINUTES. Its restart was cancelled by a prompt, or its runner died where no hook re-arms it, so it
  * sits on its old context until a person looks: a warning no session owns, which goes to the lead. Its key names the
- * ready state, so the lead is told once per handover.
+ * ready state, so the lead is told once per handover. A session whose recorded Claude Code no longer runs is left out:
+ * its tab is gone, and its next start takes the handover.
  */
 export async function restartStalledWarnings(
   files: Files,
+  processes: ClaudeProcesses,
   paths: Pick<TeamPaths, 'refresh' | 'handover' | 'team'>,
   config: Pick<KitConfig, 'refresh' | 'roles' | 'sessions'>,
   zone: TimeZone,
@@ -80,7 +90,7 @@ export async function restartStalledWarnings(
   const { restartDelaySeconds } = config.refresh;
   const waitMs = restartDelaySeconds * 1000 + STALLED_MARGIN_MINUTES * MS_PER_MINUTE;
   const covered = config.sessions.filter((session) => autoRestartOf(config, session));
-  const stalled = await Promise.all(covered.map((session) => stalledOf(files, store, log, session, now, waitMs)));
+  const stalled = await Promise.all(covered.map((session) => stalledOf(files, processes, store, log, session, now, waitMs)));
   return stalled.flatMap((each) => {
     if (each === undefined) {
       return [];
