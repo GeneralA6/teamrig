@@ -11,7 +11,7 @@ import { admissionOrder, classOf, placeInLine, type AdmissionRules, type Admissi
 import type { CpuGate } from './cpu.ts';
 import { charge, DEFAULT_EXPECTED_MINUTES, EMPTY_TURNS, endedAtOf, endedText, isNewerTurns, parseTurns, settle, turnsFor, turnsText, type OpenCharge, type TurnsState } from './class-turns.ts';
 import { shortText, type CommitShort, type MemoryGate, type MemoryLook, type MemoryShort } from './memory-gate.ts';
-import { isLineRequest, takesShipSlot, type LineRequest } from './process-request.ts';
+import { isLineRequest, takesShipSlot, type LineRequest, type RequestSource } from './process-request.ts';
 import { WAIT_CAUSES, type WaitCause } from './wait-cause.ts';
 import { causeOfLockWait } from './wait-log.ts';
 
@@ -338,6 +338,11 @@ export interface HostLockPorts {
    * steps already in line (T2942).
    */
   readonly admission?: AdmissionSource;
+  /**
+   * Where a waiting step reads its line request again (T4082), at most once each {@link REQUEST_REFRESH_MS}, so a task
+   * raised, or put at the front, while its step waits moves that step in the line; none keeps the request it joined with.
+   */
+  readonly requests?: RequestSource;
 }
 
 type Seen = { readonly kind: 'missing' } | { readonly kind: 'unknown'; readonly text: string } | { readonly kind: 'held'; readonly info: HostLockInfo };
@@ -356,6 +361,17 @@ export const FIRST_IN_LINE_POLL_MS = 2_000;
  * ticket meanwhile, so a step whose live ticket is gone knows it was withdrawn.
  */
 export const TICKET_GRACE_MS = 10_000;
+
+/**
+ * How often, at most, a waiting step reads its task's priority, class and front again (T4082): a change is rare, and
+ * each read folds the team's register, while a minute is short beside the wait of a step behind a long run.
+ */
+export const REQUEST_REFRESH_MS = 60_000;
+
+/** Whether two line requests order a step the same: the same priority, class, share and front. */
+function sameLinePlace(a: LineRequest, b: LineRequest): boolean {
+  return a.priority === b.priority && a.class === b.class && a.classPct === b.classPct && a.frontAt === b.frontAt;
+}
 
 /** A ticket's `expiresAt` for a wait that runs out at `deadline`. */
 function ticketExpiry(deadline: number): string {
@@ -1069,8 +1085,15 @@ export class HostLock {
   private async waitInLine(ticket: OwnTicket, patience: Patience, pollMs: number, reports: WaitReports, ask: StepAsk, stop: AbortSignal | undefined): Promise<Taking> {
     const { clock, sleep } = this.ports;
     let unknownSince: number | undefined;
+    let requestReadAt = clock.now();
     for (;;) {
       stop?.throwIfAborted();
+      if (clock.now() - requestReadAt >= REQUEST_REFRESH_MS) {
+        requestReadAt = clock.now();
+        if (!(await this.readRequestAgain(ticket))) {
+          return { kind: 'withdrawn' };
+        }
+      }
       const removeUnknown = unknownSince !== undefined && clock.now() - unknownSince >= HostLock.UNREADABLE_GRACE_MS;
       let looked: LineLook | undefined;
       try {
@@ -1335,6 +1358,34 @@ export class HostLock {
     }
     const expiresAt = ticketExpiry(patience.deadline);
     return this.rewrite(ticket, waitingOn === undefined ? { ...ticket.waiter, expiresAt } : { ...ticket.waiter, expiresAt, waitingOn });
+  }
+
+  /**
+   * Reads this step's line request again from {@link HostLockPorts.requests} (T4082), and writes its ticket again only
+   * when its place would change: a priority, class or front moved. The MB, weight and hold its ticket asks stay as they
+   * joined. A ticket with no task, or a lock with no source, is left as it is. A transient file error passes this read,
+   * as it says nothing of the task; the next one tries again. False when its ticket was withdrawn.
+   */
+  private async readRequestAgain(ticket: OwnTicket): Promise<boolean> {
+    const source = this.ports.requests;
+    const held = ticket.waiter.request;
+    if (source === undefined || held?.task === undefined) {
+      return true;
+    }
+    let current: LineRequest;
+    try {
+      current = await source.current(held);
+    } catch (error) {
+      if (isTransientFileError(error)) {
+        return true;
+      }
+      throw error;
+    }
+    if (sameLinePlace(held, current)) {
+      return true;
+    }
+    const { needMb, heavy, exclusive } = held;
+    return this.rewrite(ticket, { ...ticket.waiter, request: { ...current, needMb, heavy, exclusive } });
   }
 
   /**

@@ -40,7 +40,7 @@ import {
   type Withdrawal,
 } from './host-lock.ts';
 import { MemoryGate, type MemoryGateConfig } from './memory-gate.ts';
-import type { LineRequest } from './process-request.ts';
+import type { LineRequest, ProcessRequest, RequestSource } from './process-request.ts';
 
 const PATH = '/kit/host.lock';
 const QUEUE = `${PATH}.queue`;
@@ -95,9 +95,16 @@ const CPU_NEED_PCT = 25;
  * The host lock over files in memory at 10:00, with this process and `OTHER` running; `sleep` default the clock's.
  * With `memory`, every step passes a memory gate ({@link GATE}) over that host first; with `admission`, the line is
  * ordered by those rules, or by the ones that source gives at each look; with `cpu`, a heavy step joining another passes a CPU gate over that host needing
- * {@link CPU_NEED_PCT} idle.
+ * {@link CPU_NEED_PCT} idle; with `requests`, a waiting step reads its request again from that source.
  */
-function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: FakeClock, files: MemoryFiles) => Sleep, memory?: FakeHostMemory, admission?: AdmissionRules | AdmissionSource, cpu?: FakeHostCpu): World {
+function world(
+  initial: Readonly<Record<string, string>> = {},
+  sleep?: (clock: FakeClock, files: MemoryFiles) => Sleep,
+  memory?: FakeHostMemory,
+  admission?: AdmissionRules | AdmissionSource,
+  cpu?: FakeHostCpu,
+  requests?: RequestSource,
+): World {
   const files = new MemoryFiles(initial);
   const clock = new FakeClock('2030-01-08T10:00:00Z');
   const running = new Set([ME, OTHER]);
@@ -116,6 +123,7 @@ function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: F
     ...(memory === undefined ? {} : { memory: new MemoryGate(memory, noGap, GATE, noLoadingTabs) }),
     ...(admission === undefined ? {} : { admission: 'rules' in admission ? admission : fixedAdmission(admission) }),
     ...(cpu === undefined ? {} : { cpu: new CpuGate(cpu, noGap, CPU_NEED_PCT) }),
+    ...(requests === undefined ? {} : { requests }),
   });
   return { files, clock, running, lock };
 }
@@ -140,9 +148,9 @@ async function lineOf(files: MemoryFiles): Promise<string[]> {
 
 /**
  * The host lock over \`files\`, as process \`pid\` sees it, with this process and \`OTHER\` running; \`sleep\` default the
- * clock's; with \`admission\`, the line ordered by those rules.
+ * clock's; with \`admission\`, the line ordered by those rules; with \`requests\`, a waiting step's request read again from it.
  */
-function lockOver(files: Files, clock: FakeClock, pid: number = ME, sleep: Sleep = clock.sleep, admission?: AdmissionRules): HostLock {
+function lockOver(files: Files, clock: FakeClock, pid: number = ME, sleep: Sleep = clock.sleep, admission?: AdmissionRules, requests?: RequestSource): HostLock {
   let ids = 0;
   return new HostLock(PATH, TTL_MS, {
     files,
@@ -156,6 +164,7 @@ function lockOver(files: Files, clock: FakeClock, pid: number = ME, sleep: Sleep
       return `t${ids}`;
     },
     ...(admission === undefined ? {} : { admission: fixedAdmission(admission) }),
+    ...(requests === undefined ? {} : { requests }),
   });
 }
 
@@ -2100,5 +2109,105 @@ describe('HostLock CPU room for a second heavy step (T2700)', () => {
     const shared = world(Object.fromEntries([shareFile(heavyOf())]), undefined, new FakeHostMemory(16_000), PIPELINE, beside);
     const small = await shared.lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST });
     assert.deepEqual([heavy.kind, small.kind, lone.reads, beside.reads], ['taken', 'taken', 0, 0]);
+  });
+});
+
+/** A request source a spec answers from `answer`, counting its reads; `fails` throws instead at the reads it names (1 the first). */
+class ScriptedRequests implements RequestSource {
+  reads = 0;
+  private readonly answer: (request: ProcessRequest, read: number) => LineRequest;
+  private readonly fails: ReadonlyMap<number, Error>;
+
+  constructor(answer: (request: ProcessRequest, read: number) => LineRequest, fails: ReadonlyMap<number, Error> = new Map()) {
+    this.answer = answer;
+    this.fails = fails;
+  }
+
+  async current(request: ProcessRequest): Promise<LineRequest> {
+    this.reads += 1;
+    const failure = this.fails.get(this.reads);
+    if (failure !== undefined) {
+      throw failure;
+    }
+    return this.answer(request, this.reads);
+  }
+}
+
+/** Files in memory that count the writes to each path. */
+class WriteCountingFiles extends MemoryFiles {
+  private readonly counts = new Map<string, number>();
+
+  override async write(path: string, text: string): Promise<void> {
+    this.counts.set(path, (this.counts.get(path) ?? 0) + 1);
+    await super.write(path, text);
+  }
+
+  /** The writes to the paths that end with `suffix`. */
+  writesEndingWith(suffix: string): number {
+    return [...this.counts].reduce((sum, [path, count]) => (path.endsWith(suffix) ? sum + count : sum), 0);
+  }
+}
+
+describe('HostLock: a waiting step reads its request again (T4082)', () => {
+  /** Alpha's step: a p3 test of T7, behind bravo's p1 ticket from 09:59. */
+  const ALPHA = { ...REQUEST, priority: 3 };
+
+  for (const [label, answer] of [
+    ['its task raised to p0', { ...ALPHA, priority: 0 }],
+    ['its task put at the front', { ...ALPHA, frontAt: '2030-01-08T10:00:30.000Z' }],
+  ] as const) {
+    it(`moves ahead of an earlier p1 step at its next read, a minute after it joined, with ${label}`, async () => {
+      const requests = new ScriptedRequests((request) => ({ ...answer, kind: request.kind }));
+      const { clock, lock } = world(Object.fromEntries([bravoAt(1)]), undefined, undefined, PIPELINE, undefined, requests);
+      const taking = await lock.acquire('alpha', 'heavy: test', 5 * 60_000, 30_000, () => undefined, { request: ALPHA });
+      assert.deepEqual([taking.kind, new Date(clock.now()).toISOString(), requests.reads], ['taken', '2030-01-08T10:01:00.000Z', 1]);
+    });
+  }
+
+  it('keeps its place behind the earlier step with no source to read again', async () => {
+    const { lock } = world(Object.fromEntries([bravoAt(1)]), undefined, undefined, PIPELINE);
+    const taking = await lock.acquire('alpha', 'heavy: test', 5 * 60_000, 30_000, () => undefined, { request: ALPHA });
+    assert.equal(taking.kind === 'busy' && taking.holder.kind === 'queued' ? taking.holder.first.id : taking.kind, 'bravo');
+  });
+
+  /** Alpha's step waiting 3.5 minutes behind po's lock, looking each 2 s, its request read from `requests`: its ticket's writes and priorities. */
+  async function waitBehindLock(requests: ScriptedRequests): Promise<{ readonly writes: number; readonly priorities: readonly (number | undefined)[] }> {
+    const files = new WriteCountingFiles({ [PATH]: heldBy() });
+    const clock = new FakeClock('2030-01-08T10:00:00Z');
+    const priorities: (number | undefined)[] = [];
+    const sleep: Sleep = async (ms) => {
+      priorities.push((await requestOf(files, clock))?.priority);
+      await clock.sleep(ms);
+    };
+    const lock = lockOver(files, clock, ME, sleep, PIPELINE, requests);
+    await lock.acquire('alpha', 'heavy: test', 210_000, 30_000, () => undefined, { request: REQUEST });
+    return { writes: files.writesEndingWith('-t1.json'), priorities: changesOf(priorities) };
+  }
+
+  it('reads at most once a minute, and writes its ticket again only when its place changes', async () => {
+    const same = new ScriptedRequests((request) => ({ ...REQUEST, kind: request.kind }));
+    const raised = new ScriptedRequests((request, read) => ({ ...REQUEST, kind: request.kind, priority: read >= 2 ? 0 : 1 }));
+    const [unchanged, changed] = [await waitBehindLock(same), await waitBehindLock(raised)];
+    assert.deepEqual([same.reads, raised.reads], [3, 3], 'at 10:01, 10:02 and 10:03 of a 3.5-minute wait');
+    assert.deepEqual([unchanged.priorities, changed.priorities], [[1], [1, 0]]);
+    assert.equal(changed.writes - unchanged.writes, 1, 'one more write, for the one change');
+  });
+
+  it('passes a read a transient file error fails, and takes the change at the next one', async () => {
+    const requests = new ScriptedRequests((request) => ({ ...REQUEST, kind: request.kind, priority: 0 }), new Map([[1, systemError('EBUSY')]]));
+    const { priorities } = await waitBehindLock(requests);
+    assert.deepEqual([requests.reads, priorities], [3, [1, 0]]);
+  });
+
+  it('fails the wait on any other error of the read', async () => {
+    const requests = new ScriptedRequests((request) => ({ ...REQUEST, kind: request.kind }), new Map([[1, systemError('EISDIR')]]));
+    await assert.rejects(waitBehindLock(requests), /EISDIR/);
+  });
+
+  it('never reads for a step whose request names no task', async () => {
+    const requests = new ScriptedRequests((request) => ({ ...REQUEST, kind: request.kind, priority: 0 }));
+    const { clock, lock } = world({ [PATH]: heldBy() }, undefined, undefined, PIPELINE, undefined, requests);
+    await lock.acquire('alpha', 'heavy: test', 150_000, 30_000, () => undefined, { request: { kind: 'test', class: 'Improvements', classPct: 15 } });
+    assert.deepEqual([requests.reads, new Date(clock.now()).toISOString()], [0, '2030-01-08T10:02:30.000Z']);
   });
 });
