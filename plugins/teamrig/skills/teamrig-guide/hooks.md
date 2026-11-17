@@ -1301,7 +1301,7 @@ Before it claims, the mod holds the `/clear` for the person at the tab, with `--
 `refresh.restartDelaySeconds` later. It holds while the prompt box holds a draft, or Claude Code will not read it.
 It holds for `refresh.holdAfterActivityMinutes` (30) after the person's last key in the prompt box or prompt, typed or
 sent through Remote Control; a background task's prompt does not count. It holds for 10 minutes after they press
-Hold. Then a band above the prompt counts `refresh.countdownSeconds` (20) down: `teamrig: this session refreshes in
+Hold. Both times live in the session too, so the mod a `/reload-plugins` loads keeps holding (#919). Then a band above the prompt counts `refresh.countdownSeconds` (20) down: `teamrig: this session refreshes in
 20 s, a fresh start from its handover`, with `1: Refresh now` and `2: Hold 10 min`, which a bare digit in an empty
 prompt box presses. The `/clear` comes with the restart's first ask after the count. Refresh now has the next ask
 claimed, unless a draft or a live helper holds it. Through each hold before the count the band says what holds the
