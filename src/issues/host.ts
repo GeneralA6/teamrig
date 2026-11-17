@@ -4,6 +4,7 @@
  * adapter that keeps its own access rules. A repository reaches a host only when the team config lists it there.
  */
 
+import type { IssueFields } from './fields.ts';
 import type { HostIssue, LinkedIssue, ReadComment } from './issue.ts';
 import type { HostPosts } from './post.ts';
 import type { HostPull } from './pull.ts';
@@ -188,6 +189,11 @@ export interface IssueHost {
    * bounded page: the claim pass's only read of comment text, which it matches for a claim line and drops.
    */
   newComments(target: IssueTarget, since: number): Promise<HostComments>;
+  /**
+   * The issue fields and types of a repository, read and set: a capability, so a host with none leaves it out and
+   * the field push skips it, saying so.
+   */
+  readonly fields?: IssueFields;
 }
 
 /** What a host gave for its last answers about one repository: the caller keeps them between looks and never reads them. */
