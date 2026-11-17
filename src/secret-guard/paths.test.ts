@@ -163,7 +163,7 @@ describe('SecretPaths.mayName', () => {
 describe('SecretPaths: a .pub.pem file holding public keys alone (#875)', () => {
   // Keys made at run time, so no key-shaped text sits in the source.
   const dashes = '-----';
-  const rsa = generateKeyPairSync('rsa', { modulusLength: 1024 });
+  const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const ed = generateKeyPairSync('ed25519');
   const PUBLIC = rsa.publicKey.export({ type: 'spki', format: 'pem' }).toString().trim();
   const PKCS1 = rsa.publicKey.export({ type: 'pkcs1', format: 'pem' }).toString().trim();
