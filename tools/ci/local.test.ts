@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { constants } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { TempRepo } from '../lib/temp-repo.ts';
 
@@ -32,6 +33,15 @@ describe('local (the local gate CLI)', () => {
     assert.match(result.stdout, /^FAIL: scrub: tree \(exit 1, \d+s\)$/m);
     assert.match(result.stdout, /^local checks: REFUSED scrub: tree failed on tree [0-9a-f]{7}$/m);
     assert.doesNotMatch(result.stdout, /scrub: commits/);
+  });
+
+  it('runs its checks below normal priority, as a queued step runs, so a hand push leaves the CPU to the owner (T4064)', () => {
+    repo.init().write('tools/scrub/cli.ts', "import { getPriority } from 'node:os';\nconsole.log(`priority ${getPriority()}`);\nprocess.exit(1);\n");
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '-m', 'a');
+    const result = repo.run(CLI);
+    const priority = Number(/^priority (-?\d+)$/m.exec(result.stdout)?.[1]);
+    assert.ok(priority >= constants.priority.PRIORITY_BELOW_NORMAL, result.stdout);
   });
 
   it('passes a tree that passed earlier without running a check', () => {

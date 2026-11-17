@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
 import { createGit } from '../lib/git.ts';
+import { lowerStep, NODE_PRIORITIES } from '../../src/delivery/priority.ts';
 import { runMain } from '../lib/run-main.ts';
 import { DEFAULT_BASE, localChecks } from './local-checks.ts';
 import { machineDeps, parsePushUpdates, proveHead, provePush } from './local-gate.ts';
@@ -21,6 +22,9 @@ async function main(): Promise<number> {
     // git passes the pre-push hook the remote's name and URL, which it does not need.
     allowPositionals: true,
   });
+  // Below normal, as a queued step runs: the pre-push hook and a hand run start the whole suite outside the host
+  // queue, and at normal priority they took the CPU from the owner's terminal and from the queued steps (T4064).
+  lowerStep(NODE_PRIORITIES, process.pid);
   const root = (await createGit(process.cwd()).text(['rev-parse', '--show-toplevel'])).trim();
   const deps = machineDeps(root, process.env, (line) => console.log(line));
   const checks = localChecks(values.base);
