@@ -2324,8 +2324,11 @@ Lists every `teamrig launch` process on this machine, the root of a session's ta
 Code, and marks one ORPHANED when its tab is gone: the terminal that started it has ended, or a later process now
 holds that terminal's id. Each line gives the process id, the team and session, when it started and what started it,
 then a count. Without `--yes` it ends nothing; with `--yes` it ends each orphaned launcher and every process it
-started, after checking that its id still runs that session's launch (an id the system gave to another program is
-left alone and shown `GONE`). Its own tab's launcher is never offered. It changes this machine, not a team, so it
+started, after checking that its id still holds the same process: that session's launch, the same starter and, on
+Windows, the same start (an id the system gave to another program, or to a reopened tab of that session, is left
+alone and shown `GONE`). ORPHANED means the starter ended, not that a window closed: a launcher run through a
+starter that exits while its window stays (a script or shortcut) is marked too, so read the starter on each line
+before `--yes`. Its own tab's launcher is never offered. It changes this machine, not a team, so it
 takes no `--session`. Exit 0, or 1 when the machine's processes cannot be listed (it then ends nothing) or an end
 failed.
 
