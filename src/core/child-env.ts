@@ -30,6 +30,24 @@ export const CREDENTIAL_VARIABLES: readonly string[] = [
 export const CLAUDE_LOGIN_VARIABLES: readonly string[] = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'];
 
 /**
+ * Variables a running Claude Code session sets for its own tools. A terminal started from inside one
+ * (Konsole and x-terminal-emulator inherit this process's environment) would pass them on, and the new
+ * session would look nested inside the old one and could reach its messaging socket.
+ */
+export const CLAUDE_SESSION_VARIABLES: readonly string[] = [
+  'CLAUDECODE',
+  'CLAUDE_CODE_SESSION_ID',
+  'CLAUDE_CODE_CHILD_SESSION',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_EXECPATH',
+  'CLAUDE_CODE_MESSAGING_SOCKET',
+  'CLAUDE_CODE_MESSAGING_TOKEN',
+  'CLAUDE_CODE_SESSION_ATTENDED',
+  'CLAUDE_PID',
+  'CLAUDE_PROJECT_DIR',
+];
+
+/**
  * `env` without the credential variables, but those `pass` names. Names compare without case, as Windows reads them,
  * so `gh_token` is left out as well and a `pass` entry in any case keeps its variable.
  */

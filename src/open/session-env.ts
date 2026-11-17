@@ -1,25 +1,7 @@
-import { CLAUDE_LOGIN_VARIABLES, withoutCredentials } from '../core/child-env.ts';
+import { CLAUDE_LOGIN_VARIABLES, CLAUDE_SESSION_VARIABLES, withoutCredentials } from '../core/child-env.ts';
 import { ENV, type Env } from '../core/home.ts';
 import { isPluginCacheBin } from '../core/installed-plugins.ts';
 import { envKey, pathList } from '../core/path-search.ts';
-
-/**
- * Variables a running Claude Code session sets for its own tools. A terminal started from inside one
- * (Konsole and x-terminal-emulator inherit this process's environment) would pass them on, and the new
- * session would look nested inside the old one and could reach its messaging socket.
- */
-export const CLAUDE_SESSION_VARIABLES: readonly string[] = [
-  'CLAUDECODE',
-  'CLAUDE_CODE_SESSION_ID',
-  'CLAUDE_CODE_CHILD_SESSION',
-  'CLAUDE_CODE_ENTRYPOINT',
-  'CLAUDE_CODE_EXECPATH',
-  'CLAUDE_CODE_MESSAGING_SOCKET',
-  'CLAUDE_CODE_MESSAGING_TOKEN',
-  'CLAUDE_CODE_SESSION_ATTENDED',
-  'CLAUDE_PID',
-  'CLAUDE_PROJECT_DIR',
-];
 
 /** Variables that make Claude Code a teamrig session: its id, its team, and that `launch` runs it. */
 const TEAMRIG_SESSION_VARIABLES: readonly string[] = [ENV.session, ENV.team, ENV.launched];
