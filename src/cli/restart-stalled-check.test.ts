@@ -26,6 +26,7 @@ async function harness(config: JsonRecord = ON, state: RefreshState = READY, las
   const store = new RefreshStore(kit.files, PATHS);
   await store.setState('bravo', state);
   await kit.files.write(TRANSCRIPT, endedTurnAt(lastTurn));
+  kit.sessionProcesses.add({ pid: 4242, parentPid: 4000, name: 'claude.exe', commandLine: 'claude --resume c-bravo' });
   return { kit, store };
 }
 
@@ -81,6 +82,20 @@ describe('RESTART-STALLED (#705)', () => {
     assert.deepEqual(await stalledLines(working.kit), []);
   });
 
+  it('flags nothing for a session whose Claude Code is gone, its tab closed or its pid taken by another program', async () => {
+    const closed = await harness();
+    closed.kit.sessionProcesses.exit(4242);
+    assert.deepEqual(await stalledLines(closed.kit), []);
+    const reused = await harness();
+    reused.kit.sessionProcesses.add({ pid: 4242, parentPid: 4000, name: 'node.exe', commandLine: 'node server.js' });
+    assert.deepEqual(await stalledLines(reused.kit), []);
+  });
+
+  it('still flags a session whose ready state recorded no Claude Code process, as it cannot tell its tab is gone', async () => {
+    const { kit } = await harness(ON, { ...READY, claudePid: null });
+    assert.equal((await stalledLines(kit)).length, 1);
+  });
+
   it('flags nothing for a session the automatic restart does not cover: a member while it is on for the lead only', async () => {
     const { kit } = await harness({ ...TEAM, refresh: { autoRestart: 'lead' } });
     assert.deepEqual(await stalledLines(kit), []);
@@ -88,7 +103,7 @@ describe('RESTART-STALLED (#705)', () => {
 
   it("is in the guide's list of check warnings", () => {
     const guide = readFileSync(new URL('../../plugins/teamrig/skills/teamrig-guide/commands.md', import.meta.url), 'utf8').replaceAll(/\s+/g, ' ');
-    for (const words of ['RESTART-STALLED: a session', 'with its handover ready and noticed', 'no restart pending or parked', 'plus 10 minutes', 'its last row in the restart log']) {
+    for (const words of ['RESTART-STALLED: a session', 'with its handover ready and noticed', 'no restart pending or parked', 'plus 10 minutes', 'its Claude Code still running', 'its last row in the restart log']) {
       assert.ok(guide.includes(words), words);
     }
   });

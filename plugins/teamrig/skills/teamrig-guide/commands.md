@@ -770,8 +770,9 @@ session and every session waiting on it stand still; the [idle pass](hooks.md#th
 hold, and only a person at that tab can answer it, and RESTART-STALLED: a session the automatic restart covers
 (`refresh.autoRestart`) sits quiet with its handover ready and noticed, no restart pending or parked, for longer than
 `refresh.restartDelaySeconds` plus 10 minutes (a prompt cancelled its restart, or its runner died where no hook
-re-arms it); the row names how long it sat and its last row in the restart log (`refresh/restarts.jsonl`), it is
-raised once a handover, and typing /clear in its tab gives it its fresh start.
+re-arms it), its Claude Code still running (with its tab gone, its next start takes the handover); the row names how
+long it sat and its last row in the restart log (`refresh/restarts.jsonl`), it is raised once a handover, and typing
+/clear in its tab gives it its fresh start.
 Each row names the check it came from; the
 lead fixes it, hands it on (`teamrig add --owner <session>`) or settles the check. The lead's `start` shows them
 too, and any session's `start` posts the lead one inbox line per warning it was not told of yet, at most 5 per
