@@ -4,7 +4,9 @@
  * the host. Every edge makes the whole blocked by the part; a part with one whole also becomes its sub-issue, since
  * an issue has one parent at most. A started task cannot take an `after` edge, so it waits on a task instead
  * (`set --waits task:T10`): that wait makes it blocked by the other task's issue too, but never its parent, since a
- * task waited on is a blocker, not a part. Links are only ever added: one a person set on the host stays.
+ * task waited on is a blocker, not a part. Links are only ever added: one a person set on the host stays. A link is
+ * between two issues, not two tasks: two tasks can hold one issue, so the edges are kept once per issue pair, and an
+ * edge between two tasks of one issue makes no link (T3352).
  */
 import { ISSUE_REF_PREFIX } from "../register/model.js";
 import { parseIssueTarget } from "./host.js";
@@ -22,7 +24,7 @@ function partsOf(task) {
  * host's read of it, does not have yet. A dropped task makes no link: its plan no longer holds.
  */
 export function planLinks(tasks, repo, issues) {
-    const edges = [];
+    const edges = new Map();
     let otherRepo = 0;
     for (const whole of tasks.values()) {
         const wholeTarget = refTarget(whole);
@@ -35,17 +37,20 @@ export function planLinks(tasks, repo, issues) {
             if (partTarget === undefined) {
                 continue;
             }
-            if (partTarget.repo === repo) {
-                edges.push({ whole: wholeTarget, part: partTarget, sub });
-            }
-            else {
+            if (partTarget.repo !== repo) {
                 otherRepo += 1;
+            }
+            else if (partTarget.number !== wholeTarget.number) {
+                // GitHub takes each link once: a second add of one pair fails the run with a 422, so a pair held twice is one edge,
+                // a sub-issue when either of its task edges asks for one.
+                const key = `${wholeTarget.number}>${partTarget.number}`;
+                edges.set(key, { whole: wholeTarget, part: partTarget, sub: sub || (edges.get(key)?.sub ?? false) });
             }
         }
     }
     const byNumber = new Map(issues.map((issue) => [issue.number, issue]));
     const wholesOf = new Map();
-    for (const edge of edges.filter((each) => each.sub)) {
+    for (const edge of [...edges.values()].filter((each) => each.sub)) {
         wholesOf.set(edge.part.number, (wholesOf.get(edge.part.number) ?? 0) + 1);
     }
     const writes = [];
@@ -53,7 +58,7 @@ export function planLinks(tasks, repo, issues) {
     let otherParent = 0;
     let manyWholes = 0;
     let missing = 0;
-    for (const edge of edges) {
+    for (const edge of edges.values()) {
         const whole = byNumber.get(edge.whole.number);
         const part = byNumber.get(edge.part.number);
         if (whole === undefined || part === undefined) {
