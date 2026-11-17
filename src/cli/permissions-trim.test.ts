@@ -88,6 +88,15 @@ describe('teamrig permissions trim', () => {
     const tracked = await (await withSettings()).run(['permissions', 'trim'], { ...OPTIONS, pointerGit: sharedIs({ kind: 'tracked' }) });
     assert.equal(tracked.stdout[2], committed);
 
+    // git could not tell (no repository, or no answer): the file stays committed, and --yes leaves it as it was.
+    const unknown = await withSettings();
+    const before = unknown.files.get(SHARED);
+    const noGit = { ...OPTIONS, pointerGit: sharedIs({ kind: 'no-git' }) };
+    assert.equal((await unknown.run(['permissions', 'trim'], noGit)).stdout[2], committed);
+    const kept = await unknown.run(['permissions', 'trim', '--yes'], noGit);
+    assert.deepEqual([kept.code, kept.stdout.includes(`  ${SHARED}: 1 allow rules -> 0, removed Bash wide 1`)], [EXIT.ok, false]);
+    assert.equal(unknown.files.get(SHARED), before);
+
     for (const state of [{ kind: 'ignored' }, { kind: 'open', exclude: join(APP, '.git', 'info', 'exclude') }] satisfies PointerInGit[]) {
       const kit = await withSettings();
       const options = { ...OPTIONS, pointerGit: sharedIs(state) };

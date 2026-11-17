@@ -3,7 +3,16 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
-import { GIT_POINTER } from './pointer-git.ts';
+import type { GitRun } from '../core/git-run.ts';
+import { GIT_POINTER, pointerGitWith } from './pointer-git.ts';
+
+/** A git that answers rev-parse with the exclude file, and each other query with the run its first word names. */
+function fakeGit(runs: Readonly<Record<string, GitRun>>) {
+  return pointerGitWith((_dir, args) => (args[0] === 'rev-parse' ? { status: 0, stdout: '.git/info/exclude\n', stderr: '' } : (runs[args[0] ?? ''] ?? { status: 1, stdout: '', stderr: '' })));
+}
+
+const NO_ANSWER: GitRun = { status: null, stdout: '', stderr: '', unanswered: 'stopped by SIGTERM' };
+const NOT: GitRun = { status: 1, stdout: '', stderr: '' };
 
 describe('GIT_POINTER', () => {
   it('reads a folder git cannot run in as no-git', () => {
@@ -46,6 +55,21 @@ describe('GIT_POINTER', () => {
     } finally {
       repo.remove();
     }
+  });
+
+  it('reads an ls-files that gives no answer, or one other than 0 or 1, as no-git, never as not tracked (#837)', () => {
+    const pointer = join(tmpdir(), 'repo', '.teamrig.json');
+    const fatal: GitRun = { status: 128, stdout: '', stderr: 'fatal: index file corrupt' };
+    for (const run of [NO_ANSWER, fatal]) {
+      assert.deepEqual(fakeGit({ 'ls-files': run, 'check-ignore': NOT }).state(pointer), { kind: 'no-git' }, String(run.status));
+    }
+    assert.deepEqual(fakeGit({ 'ls-files': NOT, 'check-ignore': NO_ANSWER }).state(pointer), { kind: 'no-git' });
+    assert.deepEqual(fakeGit({ 'ls-files': NOT, 'check-ignore': NOT }).state(pointer), { kind: 'open', exclude: join(tmpdir(), 'repo', '.git', 'info', 'exclude') });
+  });
+
+  it('reads a rev-parse that gives no answer as no-git', () => {
+    const pointer = pointerGitWith(() => NO_ANSWER);
+    assert.deepEqual(pointer.state(join(tmpdir(), 'repo', '.teamrig.json')), { kind: 'no-git' });
   });
 
   it("reads the repository the pointer is in, never the one a caller's git hook names in GIT_DIR", () => {
