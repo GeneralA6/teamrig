@@ -4960,7 +4960,9 @@ dispatcher takes each parked step and runs it as `teamrig queue --detached-run <
 process, so thirty waiting steps cost one node process, not thirty. A step runs with the dispatcher's environment
 under its own parked variables: every other variable, credentials too, is the dispatcher's, held in memory, and
 whoever started the dispatcher (a session's `--detach`, or a start or idle pass) is the same OS user on the same host;
-`delivery.passEnv` still decides which credentials the step's command gets. The dispatcher ends once nothing is
+`delivery.passEnv` still decides which credentials the step's command gets. The dispatcher's teamrig and Claude Code
+session variables never reach a step: it keeps its own parker's session id and project folder, and goes without a
+messaging socket or token. The dispatcher ends once nothing is
 parked or running, and its
 own lines go to `<delivery dir>/detached/dispatcher.log`. Steps left parked with no dispatcher running, as after a
 reboot, get a new one from the next `teamrig start` of any session of the team or the next idle pass. The hidden run

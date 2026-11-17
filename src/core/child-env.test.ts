@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { CLAUDE_LOGIN_VARIABLES, CREDENTIAL_VARIABLES, dispatchedEnvOf, PARKED_VARIABLES, parkedEnvOf, withoutCredentials } from './child-env.ts';
+import {
+  CLAUDE_LOGIN_VARIABLES,
+  CLAUDE_SESSION_VARIABLES,
+  CREDENTIAL_VARIABLES,
+  dispatchedEnvOf,
+  PARKED_SESSION_VARIABLES,
+  PARKED_VARIABLES,
+  parkedEnvOf,
+  withoutCredentials,
+} from './child-env.ts';
 
 const VALUE = 'not-a-real-credential';
 
@@ -48,5 +57,24 @@ describe('dispatchedEnvOf (T4093)', () => {
   it("never gives a step the dispatcher's teamrig variables, nor a second copy of a name in another case", () => {
     const dispatcher = { TEAMRIG_SESSION: 'beta', TEAMRIG_HOST_LOCK: 'lock-1', Path: '/dispatcher/bin' };
     assert.deepEqual(dispatchedEnvOf(dispatcher, { PATH: '/step/bin' }), { PATH: '/step/bin' });
+  });
+
+  it("runs a step as its parker's Claude Code session, never the dispatcher's, and without a messaging token", () => {
+    const sessionOf = (id: string): Record<string, string> =>
+      Object.fromEntries(CLAUDE_SESSION_VARIABLES.map((name) => [name, name === 'CLAUDE_CODE_MESSAGING_TOKEN' ? VALUE : `${id}-${name}`]));
+    const dispatcher = { ...sessionOf('a'), PATH: '/dispatcher/bin' };
+    const parker = { ...sessionOf('b'), PATH: '/step/bin' };
+    assert.deepEqual(dispatchedEnvOf(dispatcher, parkedEnvOf(parker)), {
+      PATH: '/step/bin',
+      CLAUDECODE: 'b-CLAUDECODE',
+      CLAUDE_CODE_SESSION_ID: 'b-CLAUDE_CODE_SESSION_ID',
+      CLAUDE_CODE_ENTRYPOINT: 'b-CLAUDE_CODE_ENTRYPOINT',
+      CLAUDE_PROJECT_DIR: 'b-CLAUDE_PROJECT_DIR',
+    });
+  });
+
+  it('keeps only session variables that are no secret on disk', () => {
+    assert.ok(PARKED_SESSION_VARIABLES.every((name) => CLAUDE_SESSION_VARIABLES.includes(name)));
+    assert.ok(!PARKED_SESSION_VARIABLES.includes('CLAUDE_CODE_MESSAGING_TOKEN'));
   });
 });
