@@ -5,6 +5,7 @@ import { projectTranscriptPath } from '../budget/discover.ts';
 import type { CommitCharge } from '../delivery/memory.ts';
 import { inboxLineOf } from '../inbox/inbox.ts';
 import { lineHash } from '../inbox/line-hash.ts';
+import { FOCUS_TITLE_VAR } from '../open/focus.ts';
 import { decodePrompt, meetAsk, meetPrompt } from '../open/prompt.ts';
 import { SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
@@ -28,6 +29,8 @@ const CHARGE: CommitCharge = { usedMb: 40_000, limitMb: 100_700 };
 const CLOSED: CloseRecord = { kind: 'close', session: 'alpha', by: 'lead', at: '2030-01-08T08:00:00.000Z', claudeSession: CLAUDE_SESSION, idleMinutes: 75, freedMb: 1300 };
 /** Alpha's Claude Code, as its start recorded it and the host lists it. */
 const CLAUDE_PID = 8100;
+/** What bringing alpha's running tab to the front prints. */
+const FOCUSED = "FOCUSED app-alpha's Windows Terminal tab, [app] alpha";
 
 /** A transcript line the way Claude Code writes an assistant reply, with `tokens` of context. */
 function reply(tokens: number): string {
@@ -42,9 +45,12 @@ async function alphaWithACard(): Promise<CliHarness> {
   return kit;
 }
 
-/** The options of a host where alpha's Claude Code is `rows`' process (none: not running) and a new tab opens. */
+/**
+ * The options of a host where alpha's Claude Code is `rows`' process (none: not running), a new tab opens, and a
+ * running tab is brought to the front.
+ */
 function hostOf(rows: readonly { pid: number; parent: number; bytes: number }[]): { options: RunOptions; processes: FakeProcesses } {
-  const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+  const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' }).onRun('powershell.exe', { kind: 'exited', code: 0 });
   const transcripts = new MemoryTranscripts({ [TRANSCRIPT]: reply(40_000) }, Date.parse(CLOSED.at) - 2 * HOUR_MS);
   return { processes, options: { platform: 'win32', probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists(rows, CHARGE), processes, transcripts } };
 }
@@ -100,12 +106,13 @@ describe('teamrig meet <id|name>', () => {
     assert.deepEqual((await new SessionLog(kit.files, LOG).read()).records, [CLOSED, { kind: 'reopen', session: 'alpha', at: new Date(kit.clock.now()).toISOString() }]);
   });
 
-  it('wakes a running session with an inbox line from the owner and opens no tab', async () => {
+  it("brings a running session's tab to the front and wakes it with an inbox line from the owner, opening no tab (#1514)", async () => {
     const kit = await alphaWithACard();
     await runningAlpha(kit);
     const { options, processes } = hostOf([{ pid: CLAUDE_PID, parent: 8000, bytes: 1100 * MB }]);
     const result = ok(await kit.run(['meet', 'app-alpha'], options));
-    assert.deepEqual(result.stdout, [`WAKES app-alpha (session alpha) within about 15 s once its tab is idle (a running turn ends first): 1 card(s) waiting on owner; an inbox line asks it to bring them now`]);
+    assert.equal(processes.ran[0]?.env[FOCUS_TITLE_VAR], '[app] alpha');
+    assert.deepEqual(result.stdout, [FOCUSED, `WAKES app-alpha (session alpha) within about 15 s once its tab is idle (a running turn ends first): 1 card(s) waiting on owner; an inbox line asks it to bring them now`]);
     assert.deepEqual(processes.started, []);
     const asks = await new WakeAsks(kit.files, ASKS).read('alpha');
     assert.deepEqual(
@@ -136,13 +143,13 @@ describe('teamrig meet <id|name>', () => {
     ok(await kit.run(['meet', 'alpha'], running()));
     kit.clock.advance(20_000);
     const again = ok(await kit.run(['meet', 'alpha'], running()));
-    assert.deepEqual(again.stdout, ['ASKED app-alpha (session alpha) at 10:00 UTC: that ask still waits for its tab to be idle (a running turn ends first), so no second line was posted']);
+    assert.deepEqual(again.stdout, [FOCUSED, 'ASKED app-alpha (session alpha) at 10:00 UTC: that ask still waits for its tab to be idle (a running turn ends first), so no second line was posted']);
     const asks = new WakeAsks(kit.files, ASKS);
     assert.equal((await asks.read('alpha')).length, 1);
     const meetLines = async (): Promise<number> => ok(await kit.run(['inbox', 'read', '--session', 'alpha'])).stdout.filter((each) => each.endsWith(meetAsk('alpha', 'owner'))).length;
     assert.equal(await meetLines(), 1);
     await asks.remove('alpha', await asks.read('alpha'));
-    assert.match(ok(await kit.run(['meet', 'alpha'], running())).stdout[0] ?? '', /^WAKES app-alpha /);
+    assert.match(ok(await kit.run(['meet', 'alpha'], running())).stdout[1] ?? '', /^WAKES app-alpha /);
     assert.equal((await asks.read('alpha')).length, 1);
     assert.equal(await meetLines(), 1);
   });

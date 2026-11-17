@@ -37,9 +37,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       tab opened holds its MB for open.headroom.loadMinutes while it loads, counted by every team's next
       open and queued step
   meet <id|name> [--terminal <name>] [--project <dir>]   the owner meets one session on its cards
-      waiting on them: a running one gets an inbox line that wakes it at once (none more while that
-      ask waits), any other opens fresh in a new tab; refused when none waits on the owner now (it
-      names those put off with update --later)
+      waiting on them: a running one's tab comes to the front and gets an inbox line that wakes it
+      at once (none more while that ask waits), any other opens fresh in a new tab; refused when none
+      waits on the owner now (it names those put off with update --later)
   meet --cards [--session <id|name>]   the session's cards due on the owner, as card facts, and how
       to bring them one at a time and record each answer
   owner note <[team/]T<id>> --text "<what the owner tells its session>"   the owner's Note from the pane:

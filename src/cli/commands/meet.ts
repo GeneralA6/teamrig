@@ -1,8 +1,10 @@
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
+import { sessionDisplay } from '../../core/ids.ts';
 import { meetCardLines } from '../../meeting/meet.ts';
 import { WAKE_TICK_MS } from '../../mod/wake-hand.ts';
+import { focusTab } from '../../open/focus.ts';
 import { meetAsk, meetPrompt } from '../../open/prompt.ts';
 import { ownerCardsBySession, type OwnerCards } from '../../register/owner-waits.ts';
 import type { TaskTree } from '../../register/tree.ts';
@@ -15,7 +17,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 import { teamRanking } from '../team-ranking.ts';
 import { teamRegister } from '../team-register.ts';
 import { postAtOnce } from '../urgent-line.ts';
-import { openSession, printOpenResult, terminalFlag } from './open.ts';
+import { focusLine, openSession, printOpenResult, terminalFlag } from './open.ts';
 import { taskTreeOf } from './register.ts';
 import { sessionProjectOf } from './setup.ts';
 
@@ -89,8 +91,9 @@ async function meetCards(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCod
 
 /**
  * `meet <id|name> [--terminal <name>] [--project <dir>]`: the owner meets one session on its cards waiting on them
- * (T1295). A running session gets an inbox line that wakes its tab at once, unless such an ask still waits
- * (wakeToMeet); any other opens fresh in a new tab, its context only the meeting. Both ask it to run `meet --cards`.
+ * (T1295). A running session's tab is brought to the front, as `meeting start` brings it (#1514: the pane's Meet
+ * button runs this, and left the owner on another tab), then gets an inbox line that wakes it at once, unless such an
+ * ask still waits (wakeToMeet); any other opens fresh in a new tab, its context only the meeting. Both ask it to run `meet --cards`.
  * Refused when no card of it waits on the owner now.
  */
 export async function meet(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
@@ -98,8 +101,10 @@ export async function meet(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     return meetCards(args, runtime);
   }
   const facts = await meetFactsOf(runtime, onePositional(args, 'id|name'));
-  const { found, kit, config, roster, id } = facts;
+  const { found, kit, config, roster, id, name } = facts;
   if ((await runningRecordOf(runtime, kit.paths, roster.ids, id)) !== undefined) {
+    const title = sessionDisplay(kit.paths.team, name);
+    runtime.out.stdout(focusLine(await focusTab(runtime, config.open.terminal, title, runtime.cwd), name, title));
     runtime.out.stdout(await wakeToMeet(runtime, facts));
     return EXIT.ok;
   }

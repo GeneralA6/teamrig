@@ -3561,7 +3561,8 @@ new terminal and run this:` and the command, and exits 3. Show the user that com
 ### teamrig meet
 
 The owner meets one session on its own cards waiting on them (`teamrig meet <id|name>`), so the session that holds a
-decision brings it, not the lead's agenda. A running session gets an inbox line from the owner that wakes its tab
+decision brings it, not the lead's agenda. A running session's tab is brought to the front, as `meeting start`
+brings it (`FOCUSED`, or `NOT FOCUSED` with why), and gets an inbox line from the owner that wakes it
 at the next wake check once it is idle, not after the `wake.batchSeconds` other urgent lines wait, since the owner
 waits on it live. While that ask still waits (a turn still running), meeting the session again posts nothing and
 prints `ASKED` with the time it was asked. Any other session opens in a new tab as [teamrig open](#teamrig-open)
