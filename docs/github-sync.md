@@ -186,7 +186,8 @@ while it lasts; the first run on a repository only notes what is there.
   collaborator or member the team never listed counts as an outsider, since write access lets anyone push a
   `t<id>-` branch. A fork's or an outsider's pull request, or a branch that names no task, goes to
   `github.watcher` in the team config; unset, the session holding a service role with `issue comment`, the one that
-  answers on GitHub; else the lead.
+  answers on GitHub; else the lead. Who watches is staffing, not a permission: the lead sets it with
+  `teamrig config set github.watcher <session>`, which refuses a name that is not one of the sessions.
 - With `github.activity` on, the same news also goes to the owner of the task holding the pull request or an issue
   of the same repository it closes (a `Fixes #12` link GitHub knows), whatever its branch or author, and to each
   session following it (`teamrig follow`). Such a copy never wakes.
