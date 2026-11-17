@@ -42,3 +42,8 @@ export function withoutCredentials(env: Env, pass: readonly string[]): Env {
     }),
   );
 }
+
+/** Only the credential variables of `env`, names compared without case: what `withoutCredentials` leaves out. */
+export function credentialsOf(env: Env): Env {
+  return Object.fromEntries(Object.entries(env).filter(([name]) => CREDENTIAL_VARIABLES.includes(name.toUpperCase())));
+}

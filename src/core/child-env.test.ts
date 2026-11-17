@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { CLAUDE_LOGIN_VARIABLES, CREDENTIAL_VARIABLES, withoutCredentials } from './child-env.ts';
+import { CLAUDE_LOGIN_VARIABLES, CREDENTIAL_VARIABLES, credentialsOf, withoutCredentials } from './child-env.ts';
 
 const VALUE = 'not-a-real-credential';
 
@@ -24,5 +24,13 @@ describe('withoutCredentials', () => {
 
   it("lists Claude Code's own login among the credentials", () => {
     assert.ok(CLAUDE_LOGIN_VARIABLES.every((name) => CREDENTIAL_VARIABLES.includes(name)));
+  });
+});
+
+describe('credentialsOf', () => {
+  it('keeps only the credential variables, in any case: what withoutCredentials leaves out', () => {
+    const env = { gh_token: VALUE, NPM_TOKEN: VALUE, PATH: '/usr/bin' };
+    assert.deepEqual(credentialsOf(env), { gh_token: VALUE, NPM_TOKEN: VALUE });
+    assert.deepEqual({ ...withoutCredentials(env, []), ...credentialsOf(env) }, env);
   });
 });
