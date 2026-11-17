@@ -1,13 +1,17 @@
+import { errorMessage } from '../core/guards.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { lineOnClock, type InboxDeps } from './inbox.ts';
 import { lineHash } from './line-hash.ts';
 import { indexMarks, MARK_VERSION, type InboxMark } from './marks.ts';
 import { cutWhenShown, INJECT_CAPS, newestShownOf, unshownOf, type InjectCaps } from './shown.ts';
+import { unreadOf } from './unread.ts';
 
 /**
  * The prompt hook puts a session's new inbox lines into its prompt, so each line reaches the session
  * inside a turn that happens anyway, instead of a count that costs a turn of its own to read. Each
- * line is shown once per Claude Code session (shown.ts keeps track); showing never marks it read.
+ * line is shown once per Claude Code session (shown.ts keeps track), and a line shown whole is marked read (T3216):
+ * the session has seen it, so no unread count (`inbox status`, doctor, the pane) goes on counting it. A line cut to
+ * fit stays unread, and so does every line after it, until `inbox read` prints it whole.
  */
 
 /** The first lines within the caps: one at least, cut to the character cap when it alone is longer. */
@@ -24,10 +28,12 @@ export function fitLines(pending: readonly string[], caps: InjectCaps): string[]
   return out;
 }
 
-/** The hook's text for one prompt, and the shown mark to record with it. */
+/** The hook's text for one prompt, the shown mark to record with it, and the read mark through the lines shown whole. */
 export interface Injection {
   readonly text: string;
   readonly shown: InboxMark;
+  /** Null when the first unread line is one cut to fit, so nothing more is read. */
+  readonly read: InboxMark | null;
 }
 
 export interface InjectionInput {
@@ -53,31 +59,37 @@ export function injectionOf(input: InjectionInput, caps: InjectCaps = INJECT_CAP
     return undefined;
   }
   const through = input.lines.length - unshown.length + fitted.length;
-  const last = input.lines[through - 1];
   const more = unshown.length - fitted.length;
   const readAll = `${input.command} inbox read --session ${input.area}`;
   const cut = fitted.some((line, index) => line !== onClock[index]);
   const text = [
-    `INBOX ${input.area}, new in ${input.path} (each line is shown once; reading marks them read):`,
+    `INBOX ${input.area}, new in ${input.path} (each line is shown once, and marked read once shown whole):`,
     ...fitted,
     ...(cut ? [`The line above was cut at ${caps.maxChars} characters; \`${readAll}\` prints it whole.`] : []),
     ...(more > 0 ? [`+${more} more at your next prompt, or all now with: ${readAll}`] : []),
   ];
-  const shown: InboxMark = {
-    v: MARK_VERSION,
-    area: input.area,
-    line: through,
-    at: input.now.toISOString(),
-    claudeSession: input.claudeSession,
-    lastLineHash: last === undefined ? null : lineHash(last),
-  };
-  return { text: text.join('\n'), shown };
+  // The unread lines in order, each true when a prompt showed it whole: those shown before this prompt (unless one was
+  // cut, as inbox read tells it), then this prompt's. The read mark stops before the first one cut.
+  const unread = unreadOf(input.area, input.lines, input.read, lineHash).lines;
+  const readFrom = input.lines.length - unread.length;
+  const earlier = unread.slice(0, unread.length - unshown.length).map((line) => !cutWhenShown(line, caps));
+  const whole = [...earlier, ...fitted.map((line, index) => line === onClock[index])];
+  const firstCut = whole.indexOf(false);
+  const readThrough = readFrom + (firstCut === -1 ? whole.length : firstCut);
+  return { text: text.join('\n'), shown: markThrough(input, through), read: readThrough > readFrom ? markThrough(input, readThrough) : null };
+}
+
+/** A mark of `input`'s area through its first `through` lines, for this Claude Code session at this prompt. */
+function markThrough(input: InjectionInput, through: number): InboxMark {
+  const last = input.lines[through - 1];
+  return { v: MARK_VERSION, area: input.area, line: through, at: input.now.toISOString(), claudeSession: input.claudeSession, lastLineHash: last === undefined ? null : lineHash(last) };
 }
 
 /**
  * The new lines of `area`'s inbox for this prompt, recorded as shown before they are handed back: when
- * the record fails this throws, so a line is never shown twice for want of its record. Undefined when
- * the area has no inbox or nothing new.
+ * the record fails this throws, so a line is never shown twice for want of its record. Those shown whole
+ * are then marked read; when that fails the lines are still handed back, saying they stay unread, since
+ * they are recorded as shown. Undefined when the area has no inbox or nothing new.
  */
 export async function injectFor(
   deps: InboxDeps,
@@ -94,5 +106,14 @@ export async function injectFor(
     return undefined;
   }
   await deps.shown.append(injection.shown);
-  return injection.text;
+  if (injection.read === null) {
+    return injection.text;
+  }
+  try {
+    await deps.marks.append(injection.read);
+    return injection.text;
+  } catch (error) {
+    const readAll = `${input.command} inbox read --session ${input.area}`;
+    return `${injection.text}\nThey stay unread, as ${input.command} could not mark them read (${errorMessage(error)}); \`${readAll}\` does.`;
+  }
 }

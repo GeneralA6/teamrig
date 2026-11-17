@@ -47,7 +47,8 @@ async function everyOutput(): Promise<string[]> {
     [['inbox', 'add', '--to', 'bravo', '--text', 'T2 has its disk', '--session', 'lead']],
     [['inbox', 'status', '--session', 'bravo']],
     [['hook', 'inbox-reminder'], { ...AS_BRAVO, stdin: hookInput() }],
-    [['hook', 'inbox-reminder'], { stdin: hookInput({ session_title: 'Fix it' }) }],
+    // Another tab: bravo's tab is bound to bravo once the hook has read it the lines it showed whole.
+    [['hook', 'inbox-reminder'], { stdin: hookInput({ session_id: '0123abcd-0000-4000-8000-00000000000b', session_title: 'Fix it' }) }],
     [['inbox', 'read', '--session', 'bravo'], AS_BRAVO],
     [['list', '--status', 'all', '--session', 'lead']],
     [['list', '--priority', 'p1,p2', '--session', 'lead']],
