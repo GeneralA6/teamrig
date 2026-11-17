@@ -105,11 +105,11 @@ stays allowed
 ## No prompt while nobody answers
 
 A permission prompt holds a session until a human answers it; overnight that is hours of a session doing nothing.
-No teamrig hook ever asks a person (since 0.460.0): what the push and db-write guards, the commit, package and
+No teamrig hook ever asks a person: what the push and db-write guards, the commit, package and
 secret guards under `ask`, the service-role guard and the helper gate would ask about is refused with a reason naming
 the route to take, how to record a step that still needs your yes as waiting for your approval, and how to ask for a
 rule change, so the work queues for you instead of a session waiting on you. Refusals stay as they were. Under
-`prompts.hookAsks: refuse` (the default since 0.460.0), a prompt Claude Code raises on its own gets an answer for its
+`prompts.hookAsks: refuse` (the default), a prompt Claude Code raises on its own gets an answer for its
 case from a `PermissionRequest` hook (since 0.151.0): a line that runs one of the session's own
 jobs (a merge, a deploy, an exec request, a worktree removal, the register, a commit with its hooks, a push of its own
 task branch; since 0.268.0, and the first five run even where auto mode would refuse them, `prompts.routeAllow`) or
