@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { isNonNegativeInteger, isRecord } from "../core/guards.js";
 import { ENV } from "../core/home.js";
 import { isTransientFileError } from "../core/retry.js";
+import { compareVersions, parseVersion } from "../core/release-version.js";
 import { KIT_VERSION } from "../core/version.js";
 import { AdmitFile } from "./admit-file.js";
 import { admissionOrder, classOf, placeInLine } from "./admission.js";
@@ -10,6 +11,17 @@ import { shortText } from "./memory-gate.js";
 import { isLineRequest, takesShipSlot } from "./process-request.js";
 import { WAIT_CAUSES } from "./wait-cause.js";
 import { causeOfLockWait } from "./wait-log.js";
+/**
+ * The first teamrig whose release of a share also removes the share it set aside (T3336). A step can run a newer
+ * teamrig than the queue that took its share (ship.ts runs its own checkout's CLI); a share set aside under an older
+ * queue would outlive its step, as that queue's release looks only at the shares it knows.
+ */
+const FIRST_AWAY_KIT = { major: 0, minor: 448, patch: 0 };
+/** True when the teamrig `kit` names releases a share set aside; a share with no kit was taken by one older still. */
+function releasesAway(kit) {
+    const version = kit === undefined ? undefined : parseVersion(kit);
+    return version !== undefined && compareVersions(version, FIRST_AWAY_KIT) >= 0;
+}
 /** Tries per taking: a stale lock removed may be retaken by another step first. */
 const ATTEMPTS = 3;
 /**
@@ -552,13 +564,17 @@ export class HostLock {
      * request's checks (`teamrig step-away`): the share is released, so the ship slot, its heavy place and its MB go to
      * the next step in line, and kept in `<lock>.away/<id>.json` for {@link takeBack}. Its end is marked as a release's
      * is, so its class is charged the minutes it ran. A step holding the whole host keeps it: the lock file is the only
-     * guard of a team whose own deploy tool takes it, and the shares it let end are not waiting to come back.
+     * guard of a team whose own deploy tool takes it, and the shares it let end are not waiting to come back. A share an
+     * older teamrig took is kept too ({@link FIRST_AWAY_KIT}).
      */
     async setAside(id) {
         const found = await this.shareWith(id);
         if (found === undefined || this.isStale(found.share)) {
             const seen = await this.read();
             return seen.kind === 'held' && seen.info.id === id && !this.isStale(seen.info) ? { kind: 'whole', lock: seen.info } : { kind: 'none' };
+        }
+        if (!releasesAway(found.share.kit)) {
+            return { kind: 'olderKit', share: found.share };
         }
         // Not release(): it would take the away file just written for a share already set aside, and drop that instead.
         await this.ports.files.write(join(this.away, `${id}.json`), stored(found.share));
@@ -1090,7 +1106,10 @@ export class HostLock {
         }
         return found;
     }
-    /** The live shares, oldest first; a share whose process is gone, that expired or that cannot be read is removed (shares are written whole). */
+    /**
+     * The live shares, oldest first; a share whose process is gone, that expired or that cannot be read is removed (shares
+     * are written whole), and so is a share set aside whose step's process is gone ({@link dropGoneAway}).
+     */
     async liveShares() {
         const live = [];
         for (const { path, share } of await this.shareFiles()) {
@@ -1101,7 +1120,24 @@ export class HostLock {
                 live.push(share);
             }
         }
+        await this.dropGoneAway();
         return live.sort(byAcquiredAt);
+    }
+    /**
+     * Removes each share set aside whose step's process is gone, or that cannot be read: a step killed while it waited
+     * never releases it, and only its own step would take it back ({@link takeBack} removes it by the same rule). Its
+     * expiry is not looked at, as a merge may wait on its checks past the time its share was taken for.
+     */
+    async dropGoneAway() {
+        const { files } = this.ports;
+        for (const name of (await files.list(this.away)).filter((entry) => SHARE_NAME.test(entry))) {
+            const path = join(this.away, name);
+            const text = await files.read(path);
+            const share = text === undefined ? undefined : parseShare(text);
+            if (text !== undefined && (share === undefined || !this.ports.alive(share.pid))) {
+                await files.remove(path);
+            }
+        }
     }
     /** The share the taking with `id` wrote, and its file; undefined when there is none or the id is no file name. */
     async shareWith(id) {
