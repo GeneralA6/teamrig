@@ -298,6 +298,35 @@ test('a teamrig head with no raise and no dist replays its work and makes nothin
   assert.notEqual(git('rev-parse', 'HEAD'), sha);
 });
 
+test('a teamrig head caught up onto a main that tracks no dist drops its dist commit and builds none (T4355)', (t) => {
+  const repo = teamrigRepo(t);
+  const { git, commitFiles } = repo;
+  const base = git('rev-parse', 'HEAD');
+  git('rm', '-r', '-q', '--cached', 'plugins/teamrig/dist');
+  const tip = commitFiles({ '.gitignore': 'plugins/teamrig/dist/\n' }, 'build: main tracks no dist');
+  git('push', '-q', 'origin', 'main');
+  git('switch', '-q', '--create', HEAD, base);
+  commitFiles({ 'src/a.ts': 'export const a = 2;\n' }, 'a: a changes (T9)');
+  repo.build();
+  commitFiles({}, 'build: rebuild the plugin dist');
+  git('push', '-q', 'origin', HEAD);
+  const log: string[] = [];
+  const builds: string[] = [];
+  const deps: CatchUpDeps = {
+    git,
+    log: (line) => log.push(line),
+    readText: (path) => readFileSync(join(repo.dir, path), 'utf8'),
+    writeText: (path, text) => writeFileSync(join(repo.dir, path), text),
+    build: () => builds.push('build'),
+  };
+  const caught = catchUp(deps, { head: HEAD, stem: HEAD, tip, main: 'main', regenerated: listedPaths(TEAMRIG_REGENERATION) });
+  assert.equal(caught.kind, 'rebased');
+  assert.deepEqual(git('log', '--format=%s', `${tip}..HEAD`).split('\n'), ['a: a changes (T9)']);
+  assert.deepEqual(builds, []);
+  assert.equal(git('ls-files', '--', 'plugins/teamrig/dist'), '');
+  assert.match(log[0] ?? '', /replayed its work with the same diff, built no dist, as the tip tracks none, and pushed it as /);
+});
+
 /** The repo dir as a refused catch-up must leave it: on the head, clean, and no new branch here or on origin. */
 function assertRestored(git: (...args: string[]) => string, sha: string): void {
   assert.equal(git('rev-parse', '--abbrev-ref', 'HEAD'), HEAD);

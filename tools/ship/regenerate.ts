@@ -176,7 +176,10 @@ export function regenerate(deps: RegenerateDeps, regeneration: Regeneration, pla
     done.push(`raised the version ${formatVersion(raise.set)} again as ${formatVersion(to)}`);
   }
   if (plan.follow !== null) done.push(follow(deps, regeneration, plan.follow));
-  if (plan.rebuild) {
+  // A tip that tracks no dist (main since T4355: the release workflow builds it) gets none: the change's dropped dist
+  // commit was all of it, and a `git add` of the ignored folder would fail.
+  if (plan.rebuild && git('ls-files', '--', regeneration.dist).trim() === '') done.push('built no dist, as the tip tracks none');
+  else if (plan.rebuild) {
     deps.build();
     git('add', '--', regeneration.dist);
     const files = parseNumstat(git('diff', '--cached', '--numstat'));
