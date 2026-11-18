@@ -125,7 +125,7 @@ function commit(deps: ShipDeps, files: readonly string[], subject: string, body:
  * run sets those again), the ship renames the branch `<branch>-N` (a pushed branch is never rewritten, the
  * lead's ruling of 11-06) and goes again from step 0, at most SHIP_ATTEMPTS runs in all; the older pushed name
  * is deleted by the merge's sweep (leftovers.ts). A move that changed the same files is refused, naming them.
- * With --merge, local checks that fail on a branch main moved past go again the same way (T2725).
+ * Local checks that fail on a branch main moved past go again the same way (T2725), a run for review too (T4270).
  * A refusal throws `REFUSED <reason>`; a failed step throws its own error.
  */
 export async function shipCommits(args: ShipArgs, written: readonly Chunk[], deps: ShipDeps): Promise<number> {
@@ -270,8 +270,9 @@ async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDep
   deps.log(deps.git(['log', '--oneline', `${args.base}..HEAD`]));
   if (!verdict.passed) {
     // The plugin version gate fails once another ship merged the same raise meanwhile (T2725); a run on the moved
-    // main sets the raise again, and a failure of the change's own fails that run too.
-    const move = args.merge ? deps.mainMove() : null;
+    // main sets the raise again, and a failure of the change's own fails that run too. A run for review is no
+    // different: refused, it left its version and dist commits on the branch for a hand-made new branch (T4270).
+    const move = deps.mainMove();
     if (move === null) throw new Error(`REFUSED ${verdict.reason}`);
     deps.log(`\nlocal checks: ${verdict.reason}, and ${move.reason}`);
     return { kind: 'moved', ...move };
