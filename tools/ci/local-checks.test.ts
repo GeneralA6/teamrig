@@ -51,6 +51,11 @@ describe('localChecks', () => {
     assert.ok(at > checks.findIndex((check) => check.name === 'build: compile'), 'the mod loads the built dist');
   });
 
+  it('builds the plugin before the coverage gate, whose specs load the built dist (T4355)', () => {
+    const at = (name: string): number => checks.findIndex((check) => check.name === name);
+    assert.ok(at('build: integrity') >= 0 && at('build: integrity') < at('coverage gate'));
+  });
+
   it('checks the commits since the base, names each check once and reads no CI event', () => {
     assert.deepEqual(localChecks('upstream/main').find((check) => check.name === 'DCO')?.argv, ['node', 'tools/dco/cli.ts', '--range', 'upstream/main..HEAD']);
     assert.equal(new Set(checks.map((check) => check.name)).size, checks.length);

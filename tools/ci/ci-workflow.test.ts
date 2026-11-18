@@ -76,4 +76,12 @@ describe('ci.yml', () => {
       assert.ok(Number(minutes) <= 20, `job ${id} waits ${minutes} minutes`);
     }
   });
+
+  it('builds the plugin before each job runs the specs, which load the built dist (T4355)', () => {
+    for (const [id, specs] of [['coverage', '- run: node tools/ci/coverage-cli.ts'], ['test', '- run: npm test']] as const) {
+      const job = jobs.get(id) ?? '';
+      const build = job.indexOf('- run: npm run build\n');
+      assert.ok(build >= 0 && build < job.indexOf(specs), `job ${id} runs the specs before the build`);
+    }
+  });
 });
