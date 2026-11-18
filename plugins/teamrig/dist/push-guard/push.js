@@ -419,13 +419,13 @@ export function decisionReason(decision, protectedBranches) {
     const branches = protectedBranches.join(', ');
     return decision === 'deny'
         ? `Force-pushing, mirroring or deleting a protected branch (${branches}) is refused: it can overwrite other sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it.`
-        : `This push updates a protected branch (${branches}) while other sessions may be working. Confirm, or push your own branch and rebase it onto the current one.`;
+        : `This push updates a protected branch (${branches}) while other sessions may be working. Push your own branch and rebase it onto the current one instead.`;
 }
 /** Why the guard asks about a `--force-with-lease` push to a protected branch, which no `pushToProtected` choice covers. */
 export function leasedReason(protectedBranches) {
-    return `This --force-with-lease push may rewrite the history of a protected branch (${protectedBranches.join(', ')}) while other sessions may be working. Confirm, or push your own branch instead.`;
+    return `This --force-with-lease push may rewrite the history of a protected branch (${protectedBranches.join(', ')}) while other sessions may be working. Push your own branch instead.`;
 }
 /** Why the guard asks about a command line it cannot read with confidence, naming the team's protected branches. */
 export function doubtReason(doubt, protectedBranches) {
-    return `The guard cannot tell whether this command pushes to a protected branch (${protectedBranches.join(', ')}): ${doubt}. Confirm, or write the push out plainly.`;
+    return `The guard cannot tell whether this command pushes to a protected branch (${protectedBranches.join(', ')}): ${doubt}. Write the push out plainly, a branch named and no command built at run time.`;
 }

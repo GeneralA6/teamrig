@@ -245,7 +245,7 @@ async function budgetGateOf(runtime, scope, transcript) {
  */
 export async function helperGateOutput(runtime, scope, transcript) {
     const gate = await budgetGateOf(runtime, scope, transcript);
-    const decision = gate.kind === 'allow' ? {} : holdBack(gate.kind, gate.reason, scope.config.prompts.hookAsks);
+    const decision = gate.kind === 'allow' ? {} : holdBack(gate.kind, gate.reason);
     const additionalContext = helperLaunchReminder(scope.config.budget.subagentWeight);
     return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', ...decision, additionalContext } });
 }

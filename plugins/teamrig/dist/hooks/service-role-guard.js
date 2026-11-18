@@ -214,10 +214,9 @@ function namesTeamConfig(command, cwd, env, configPath) {
     return KIT_HOME_WORD.test(command) || here === home || here.startsWith(`${home}/`);
 }
 const ROLE_CHANGE_ASK = 'teamrig service-role guard: `teamrig roles grant` and `revoke` change who may run a service role\'s commands past ' +
-    'every permission check, a permission only the owner gives, so teamrig asks the owner at each session\'s call, ' +
-    'whatever --yes says. Owner: allow it only if you asked for this change; a grant first shows what its commands ' +
-    'reach, pull requests and outside authors included. A session does not retry it or route around it: the lead puts ' +
-    'the change to the owner, who runs it from their own terminal or prompt.';
+    'every permission check, a permission only the owner gives, so teamrig refuses it at every session\'s call, ' +
+    'whatever --yes says. The owner runs it from their own terminal, where a grant first shows what its commands ' +
+    'reach, pull requests and outside authors included; a session puts the change to its lead.';
 function editRefusalOf(reach) {
     return (`teamrig config guard: ${reach}. Its owner-gated keys (${OWNER_GATED_KEYS.map((keyPath) => keyPath.join('.')).join(', ')}) ` +
         'are permissions or owner gates, the owner\'s to change: a service role\'s holders with `teamrig roles grant` or ' +
@@ -266,5 +265,5 @@ export async function serviceRoleGuardOutput(payload, env) {
         const launch = teamrigLaunchOf(run, startsRoleChange);
         return launch !== undefined && startsRoleChange(launch.words);
     }) || runs.opaque.some((run) => opaqueGuardedWords(run, startsRoleChange) !== undefined);
-    return changes ? holdBackOutput('ask', ROLE_CHANGE_ASK, env.hookAsks) : '';
+    return changes ? holdBackOutput('ask', ROLE_CHANGE_ASK) : '';
 }
