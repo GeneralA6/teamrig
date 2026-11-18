@@ -5,7 +5,7 @@ import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testConfig } from '../testing/config.ts';
 import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
-import { checkTasks, formatFlag, leaderWaitFlags, noIssueFlags, PACE_DAYS, peerWaitFlags, runFileFlags, untriagedFlags } from './check.ts';
+import { checkTasks, formatFlag, leaderWaitFlags, noIssueFlags, PACE_DAYS, peerWaitFlags, runFileFlags, unknownGoalFlags, untriagedFlags } from './check.ts';
 import { RETAIN_DAYS } from './compaction.ts';
 import type { Task } from './fold.ts';
 import type { RunFiles } from './hand-step.ts';
@@ -832,5 +832,29 @@ describe('noIssueFlags', () => {
 
   it('flags nothing while github.issueAtAdd is unset', () => {
     assert.deepEqual(noIssueFlags([testTask({ id: 'T1' })], undefined), []);
+  });
+});
+
+describe('unknownGoalFlags (#846)', () => {
+  it('names the first 5 recorded tags in order and counts the rest', () => {
+    const recorded = new Set(['G7', 'G2', 'G6', 'G1', 'G5', 'G3', 'G4']);
+    assert.deepEqual(
+      unknownGoalFlags([testTask({ id: 'T1', goals: ['G1', 'X9'] })], recorded).map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`),
+      ['UNKNOWN-GOAL T1: goal X9 has no goal record (recorded: G1, G2, G3, G4, G5 and 2 more): update T1 --goals with a recorded one, or record it (goal add)'],
+    );
+  });
+
+  it('names every unrecorded tag of a task in one flag, and reads only active tasks', () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'waiting', goals: ['X1', 'A1', 'X2'] }),
+      testTask({ id: 'T2', status: 'verifying', goals: ['X1'] }),
+      testTask({ id: 'T3', status: 'done', goals: ['X1'] }),
+      testTask({ id: 'T4', status: 'dropped', goals: ['X1'] }),
+      testTask({ id: 'T5', goals: [] }),
+    ];
+    assert.deepEqual(
+      unknownGoalFlags(tasks, new Set(['A1'])).map((flag) => `${flag.task.id} ${flag.detail.split(' has ')[0] ?? ''}`),
+      ['T1 goal X1, X2', 'T2 goal X1'],
+    );
   });
 });
