@@ -60,7 +60,7 @@ Every step, merge and deploy waits in its turn for host memory: it starts only w
 what the steps sharing the host and the tabs still loading hold, leaves `delivery.queue.memoryFloorMb` (4096) plus its
 own, and the commit charge stays under `open.headroom.commitMaxPct` (92) with its own counted, so a build no longer
 starts on a host about to run out of memory, nor just as a tab opened. A step's own is the most its process tree held in its latest 20 runs under the same session and
-`--what`, plus a quarter: at least `heavyReserveMb` (2048) for a heavy step, else `smallReserveMb` (2048) before it
+`--what` (a commit id in it set aside), plus a quarter, one run more than twice the next highest set aside: at least `heavyReserveMb` (2048) for a heavy step, else `smallReserveMb` (2048) before it
 has a run.
 
 A small step, such as a spec run or a lint, runs with `--small`: it shares the host with other small steps instead
