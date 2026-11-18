@@ -3,7 +3,8 @@ import { parseArgs } from 'node:util';
 import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
 import { createGit } from '../lib/git.ts';
 import { runMain } from '../lib/run-main.ts';
-import { DIST_DIR, pullChangesDist, staleDistEntries } from './dist-fresh.ts';
+import { DIST_DIR } from '../build/dist-dir.ts';
+import { pullChangesDist, staleDistEntries } from './dist-fresh.ts';
 import { forkOfPull, githubEventFromEnv } from './github-range.ts';
 
 /**

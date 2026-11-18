@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TempRepo } from '../lib/temp-repo.ts';
-import { DIST_DIR } from './dist-fresh.ts';
+import { DIST_DIR } from '../build/dist-dir.ts';
 
 const CLI = fileURLToPath(new URL('./dist-fresh-cli.ts', import.meta.url));
 const MAIN = `${DIST_DIR}/cli/main.js`;

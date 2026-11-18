@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { CLIENT_FOLDERS, CLIENT_MANIFEST, clientFileHash, clientManifestText } from '../../src/exec/client-integrity.ts';
-import { DIST_DIR } from '../ci/dist-fresh.ts';
+import { DIST_DIR } from './dist-dir.ts';
 
 // Runs after tsc: lists a hash of every client file, so the exec guard can tell an installed client edited by hand
 // (src/exec/client-integrity.ts). The freshness check then catches a launcher or hook edited without a rebuild.

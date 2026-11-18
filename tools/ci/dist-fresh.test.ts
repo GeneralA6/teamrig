@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeGit } from '../lib/fake-git.ts';
-import { DIST_DIR, staleDistEntries } from './dist-fresh.ts';
+import { DIST_DIR } from '../build/dist-dir.ts';
+import { staleDistEntries } from './dist-fresh.ts';
 
 const STATUS = `status --porcelain --untracked-files=all -- ${DIST_DIR}`;
 
