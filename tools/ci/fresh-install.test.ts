@@ -6,9 +6,10 @@ import { cmdArg, freshInstall, inheritedValue, installEnv, installSteps, layoutO
 
 const HOME = join('scratch', 'home');
 const { clone, plugin, project } = layoutOf(HOME);
+const DIST = join('work', 'teamrig', 'plugins', 'teamrig', 'dist');
 
 function inputOf(platform: NodeJS.Platform): InstallInput {
-  return { platform, source: 'file:///work/teamrig', home: HOME, path: join('usr', 'bin'), nodePath: 'node', comspec: 'cmd.exe' };
+  return { platform, source: 'file:///work/teamrig', dist: DIST, home: HOME, path: join('usr', 'bin'), nodePath: 'node', comspec: 'cmd.exe' };
 }
 
 /** hooks.json with one exec-form hook per event, as the plugin ships it. */
@@ -51,6 +52,13 @@ describe('installSteps', () => {
       request: { file: 'git', args: ['clone', '-q', '--depth', '1', 'file:///work/teamrig', clone], input: '' },
       cwd: HOME,
     });
+    // main tracks no dist (T4355): the release branch adds the built one, which this step copies into the clone.
+    const copy = steps[1];
+    assert.ok(copy !== undefined);
+    assert.equal(copy.label, 'copy in the built dist, as the release branch carries it');
+    assert.equal(copy.request.file, 'node');
+    assert.deepEqual(copy.request.args.slice(2), [DIST, join(plugin, 'dist')]);
+    assert.equal(copy.cwd, HOME);
     // The new project holds no file, so its first commit is an empty one: a plain commit there exits 1.
     assert.deepEqual(steps.find((step) => step.label === 'git commit the project'), {
       label: 'git commit the project',
@@ -68,6 +76,7 @@ describe('installSteps', () => {
       steps.map((step) => step.label),
       [
         'git clone, no login',
+        'copy in the built dist, as the release branch carries it',
         'teamrig --version, bare on the PATH',
         'git init the project',
         'git commit the project',
@@ -157,10 +166,10 @@ describe('freshInstall', () => {
     });
     assert.deepEqual(report.findings, []);
     assert.deepEqual(read, [plugin]);
-    assert.equal(report.log.length, 12);
+    assert.equal(report.log.length, 13);
     assert.equal(report.log[0], 'exit 0 git clone, no login');
-    assert.equal(report.log[11], 'exit 0 PreToolUse hook (hook push-guard)');
-    const hook = calls[11];
+    assert.equal(report.log[12], 'exit 0 PreToolUse hook (hook push-guard)');
+    const hook = calls[12];
     assert.deepEqual(hook?.request.args, [`${plugin}/dist/hooks/main.js`, 'hook', 'push-guard']);
     assert.equal(hook?.request.file, 'node');
     assert.equal(hook?.cwd, project);
@@ -185,7 +194,7 @@ describe('freshInstall', () => {
     const report = freshInstall(input, run, () => assert.fail('no hook runs after a failed step'));
     assert.deepEqual(report.findings, ['team create: exit 1: no such project']);
     assert.equal(report.log.at(-1), 'exit 1 team create');
-    assert.equal(calls.length, 5);
+    assert.equal(calls.length, 6);
   });
 
   it('fails a step that exits 0 without the text it must print, and one that could not start', () => {

@@ -3,7 +3,7 @@ import { hookCommandsOf, type RunRequest, type RunResult } from './dist-smoke.ts
 
 /**
  * A new developer's first run, as far as it goes without Claude Code: clone the repo with no git login (what
- * `claude plugin marketplace add` does), put the plugin's bin folder on PATH (what Claude Code does for a tab's
+ * `claude plugin marketplace add` does) and add the built dist (the release branch's one commit over it), put the plugin's bin folder on PATH (what Claude Code does for a tab's
  * shell), set up a new team on a new project, run start, add, list, set and inbox, then fire every hook against
  * that team. Each step names the text its output must hold, so a step that exits 0 but did nothing still fails.
  */
@@ -11,6 +11,11 @@ export interface InstallInput {
   readonly platform: NodeJS.Platform;
   /** What git clones: the repo's URL, or a `file://` URL of a checkout. */
   readonly source: string;
+  /**
+   * The built dist folder, copied into the clone's plugin as the release branch carries it: main does not track the
+   * dist, which the release workflow builds and publishes to the release branch that installs read (T4355).
+   */
+  readonly dist: string;
   /** An empty folder that stands in for the developer's home; everything is written under it. */
   readonly home: string;
   /** The PATH the developer already has, which the plugin's bin folder goes in front of. */
@@ -115,10 +120,13 @@ function git(args: readonly string[]): RunRequest {
   return { file: 'git', args, input: '' };
 }
 
+/** Copies the folder `from` to `to` with this Node, so the step runs as every other one does, with no shell. */
+const COPY_FOLDER = "require('node:fs').cpSync(process.argv[1], process.argv[2], { recursive: true })";
+
 /** Every step of the first run but the hooks, which hooks.json in the clone names. */
 export function installSteps(input: InstallInput): readonly InstallStep[] {
-  const { clone, project } = layoutOf(input.home);
-  const teamrig = (label: string, args: readonly string[], expect: string): InstallStep => ({
+  const { clone, plugin, project } = layoutOf(input.home);
+  const teamrig =(label: string, args: readonly string[], expect: string): InstallStep => ({
     label,
     request: teamrigRequest(input, args),
     cwd: project,
@@ -126,6 +134,11 @@ export function installSteps(input: InstallInput): readonly InstallStep[] {
   });
   return [
     { label: 'git clone, no login', request: git(['clone', '-q', '--depth', '1', input.source, clone]), cwd: input.home },
+    {
+      label: 'copy in the built dist, as the release branch carries it',
+      request: { file: input.nodePath, args: ['-e', COPY_FOLDER, input.dist, join(plugin, 'dist')], input: '' },
+      cwd: input.home,
+    },
     { label: 'teamrig --version, bare on the PATH', request: teamrigRequest(input, ['--version']), cwd: input.home, expect: 'teamrig ' },
     { label: 'git init the project', request: git(['init', '-q', project]), cwd: input.home },
     // A new project holds no file yet, and team create needs a first commit to cut worktrees from.
