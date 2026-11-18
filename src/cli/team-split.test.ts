@@ -9,7 +9,10 @@ import { CLAUDE_SESSION, CliHarness, CONFIG_PATH, EVENTS_PATH, KIT, RENAMES_PATH
 import { configChangedMeanwhile, hired } from '../testing/config-race.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
+import { rotateRegister } from '../testing/rotation.ts';
 import { EXIT } from './runtime.ts';
+
+const DAY = 24 * 60 * 60_000;
 
 /** Team `app`: `carol` reviews security; the split moves `alpha`, leading, and `bravo` into `web`. */
 const TEAM = { sessions: ['lead', 'alpha', 'bravo', 'carol'], roles: { lead: 'lead', securityReviewer: 'carol' } };
@@ -164,6 +167,21 @@ describe('team split', () => {
     assert.deepEqual(await sessionsIn(kit, CONFIG_PATH), ['lead', 'carol']);
     assert.deepEqual(await sessionsIn(kit, join(WEB, 'config.json')), ['alpha', 'bravo']);
     assert.equal(kit.files.get(join(TEAM_HOME, 'backups', 'config.split.json')), formatConfig(TEAM));
+  });
+
+  it("moves a task created before the snapshot's event window with every line it has, read from the history (T4076)", async () => {
+    const kit = await withTask();
+    await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']);
+    // A compaction three days on keeps two days of events: T1's create and status are folded into its task line.
+    kit.clock.advance(3 * DAY);
+    await rotateRegister(kit.files, EVENTS_PATH, { now: new Date(kit.clock.now()) });
+    const result = await split(kit, WRITE);
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.ok(result.stdout.includes('VERIFIED 1 task(s) read the same in web, and app sends each there'), result.stdout.join('\n'));
+    const child = readRegister((await kit.files.read(join(WEB, 'state', 'events.jsonl'))) ?? '');
+    assert.deepEqual(child.read.events.map((event) => event.type), ['create', 'status']);
+    assert.equal(child.state.tasks.get('T1')?.status, 'in-progress');
+    assert.equal(child.state.tasks.get('T1')?.source, 'app/lead');
   });
 
   it("trims the parent's config as it reads under the config lock, keeping a session hired meanwhile", async () => {

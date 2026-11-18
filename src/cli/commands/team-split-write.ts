@@ -94,8 +94,10 @@ async function trimParent(split: SplitWrite): Promise<string> {
 
 /**
  * Under the parent register's lock: the tasks as the locked working set holds them, refused when a wait there blocks;
- * the child's register created with their lines, and the parent's events of the split. The child's register is created
- * exclusively, so a second split into the same team refuses here.
+ * the child's register created with their lines, and the parent's events of the split. A working set with an event
+ * window (a snapshot of task lines) lacks the lines written before it, a moving task's create among them, so the lines
+ * then come from the history. The child's register is created exclusively, so a second split into the same team
+ * refuses here.
  */
 async function moveTasks(split: SplitWrite): Promise<SplitTasks> {
   const { runtime, kit, config, plan, childPaths, by } = split;
@@ -107,7 +109,8 @@ async function moveTasks(split: SplitWrite): Promise<SplitTasks> {
     if (locked.blockers.length > 0) {
       return { ok: false, error: locked.blockers.map(blockerText).join('; ') };
     }
-    const lines = childRegisterOf(snapshot.read, new Set(locked.moving.map((task) => task.id)), plan.border);
+    const written = snapshot.window === null ? snapshot.read : (await register.history()).read;
+    const lines = childRegisterOf(written, new Set(locked.moving.map((task) => task.id)), plan.border);
     if (!(await runtime.files.createExclusive(childPaths.events, lines))) {
       return { ok: false, error: `${childPaths.events} exists already; a split makes a new team` };
     }
