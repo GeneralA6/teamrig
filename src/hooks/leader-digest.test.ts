@@ -40,7 +40,7 @@ function note(id: string, minute: number, by: string, text: string): RegisterEve
 }
 
 function digest(events: readonly RegisterEvent[], since: DigestCursor, tree: readonly string[] = ['lead', 'alpha', 'bravo'], leader = 'lead', isSecret = (text: string) => text.includes('hunter2')): string[] {
-  return digestLines({ events, tasks: foldEvents(events).tasks, since, leader, tree: new Set(tree), isSecret });
+  return digestLines({ events, atStart: new Map(), tasks: foldEvents(events).tasks, since, leader, tree: new Set(tree), isSecret });
 }
 
 describe('digestLines', () => {
@@ -100,6 +100,14 @@ describe('digestLines', () => {
     assert.equal(lines.length, DIGEST_MAX_LINES + 2);
     assert.equal(lines[1], `- T${DIGEST_MAX_LINES + 3} new -> open: Task T${DIGEST_MAX_LINES + 3}`);
     assert.equal(lines.at(-1), '...(+3 more: teamrig list)');
+  });
+
+  it("folds the events on top of a snapshot's window tasks, so a task created before the window is no new one (T4076)", () => {
+    const atStart = foldEvents([create('T1', 0, 'alpha'), status('T1', 1, 'alpha', 'in-progress')]).tasks;
+    const events = [note('T1', 2, 'alpha', 'wave 1 landed'), status('T1', 3, 'alpha', 'done', 'shipped')];
+    const tasks = foldEvents(events, [], { tasks: atStart, orphans: 0, nextId: 'T2', moved: new Map() }).tasks;
+    const lines = digestLines({ events, atStart, tasks, since: { at: at(2), seen: 1 }, leader: 'lead', tree: new Set(['lead', 'alpha']), isSecret: () => false });
+    assert.deepEqual(lines.slice(1), ['- T1 in-progress -> done: shipped']);
   });
 
   it('shows an event written at the instant of the cursor past the ones it had seen', () => {
