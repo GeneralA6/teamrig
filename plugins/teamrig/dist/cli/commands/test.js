@@ -28,15 +28,39 @@ function givenSession(args, runtime) {
 async function logPlace(runtime, session) {
     const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
     if (found.kind !== 'team') {
-        return { dir: join(resolveKitHome(runtime.env, runtime.userHome), 'logs'), session, maxFailureChars: DEFAULT_TESTS.maxFailureChars, passEnv: DEFAULT_PASS_ENV };
+        return { dir: join(resolveKitHome(runtime.env, runtime.userHome), 'logs'), session, maxFailureChars: DEFAULT_TESTS.maxFailureChars, passEnv: DEFAULT_PASS_ENV, queued: false };
     }
     const kit = await openKit(runtime, found.team);
     if (kit.load.status !== 'loaded') {
-        return { dir: kit.paths.logs, session, maxFailureChars: DEFAULT_TESTS.maxFailureChars, passEnv: DEFAULT_PASS_ENV };
+        return { dir: kit.paths.logs, session, maxFailureChars: DEFAULT_TESTS.maxFailureChars, passEnv: DEFAULT_PASS_ENV, queued: false };
     }
     const { config } = kit.load;
     const known = session === null ? undefined : (await rosterOf(runtime, kit, config)).lookup(session);
-    return { dir: kit.paths.logs, session: known?.ok === true ? known.id : session, maxFailureChars: config.tests.maxFailureChars, passEnv: config.delivery.passEnv };
+    return { dir: kit.paths.logs, session: known?.ok === true ? known.id : session, maxFailureChars: config.tests.maxFailureChars, passEnv: config.delivery.passEnv, queued: true };
+}
+/** A spec file's name, and the characters of a glob, which may match many. */
+const SPEC_FILE = /\.test\.[cm]?[jt]sx?$/;
+const GLOB = /[*?[]/;
+const NODE = /^node(\.exe)?$/i;
+/**
+ * Whether the words run one spec file with node (`node --test a.test.ts`, flags allowed), a small step for the host
+ * queue; a glob, a folder, a package script or a second file may run the whole suite, a heavy one.
+ */
+export function runsOneSpecFile(words) {
+    const tokens = words.flatMap((word) => word.split(/\s+/)).map((token) => token.replaceAll(/["']/g, '')).filter((token) => token !== '');
+    const program = tokens[0]?.split(/[\\/]/).pop() ?? '';
+    return NODE.test(program) && tokens.filter((token) => SPEC_FILE.test(token)).length === 1 && !tokens.some((token) => GLOB.test(token));
+}
+/**
+ * The words that run the test command through `teamrig queue` (T2323): in its turn for host memory and the host lock,
+ * below normal priority, one spec file as a small step and anything more as a heavy one. A bare run took none of these,
+ * so the whole suite ran beside the queued heavy steps, above them in priority, and the host froze. Under a queued step
+ * (`teamrig queue -- teamrig test ...`) the queue runs it at once, as part of that step.
+ */
+export function queuedWords(self, words, session) {
+    const size = runsOneSpecFile(words) ? ['--small'] : [];
+    const owner = session === null ? [] : ['--session', session];
+    return [self.node, self.script, 'queue', '--kind', 'test', ...size, '--what', `test: ${labelOf(words)}`, ...owner, '--', ...words];
 }
 /** Runs the command; when it cannot start, the log (holding the command line) says why before the error goes on. */
 async function runLogged(runtime, request, log) {
@@ -49,7 +73,7 @@ async function runLogged(runtime, request, log) {
     }
 }
 /**
- * `teamrig test -- <command ...>`: runs a test command in the shell, writes all it printed to a
+ * `teamrig test -- <command ...>`: runs a test command in the shell (in a team through the host queue, `queuedWords`), writes all it printed to a
  * numbered log (the session's newest 20 are kept) and prints one PASS or FAIL line, then each failing
  * test within `tests.maxFailureChars`, so a long test run costs the model a few lines. Exit 0 when the
  * command passed, 1 otherwise.
@@ -59,8 +83,9 @@ export async function test(args, runtime) {
     const place = await logPlace(runtime, givenSession(args, runtime));
     const command = commandLine(words, runtime.platform);
     const log = await reserveLog(runtime.files, place.dir, place.session, commandHeader(command));
+    const run = place.queued ? commandLine(queuedWords(runtime.self, words, place.session), runtime.platform) : command;
     const started = runtime.clock.now();
-    const result = await runLogged(runtime, { command, cwd: runtime.cwd, env: withoutCredentials(runtime.env, place.passEnv) }, log);
+    const result = await runLogged(runtime, { command: run, cwd: runtime.cwd, env: withoutCredentials(runtime.env, place.passEnv) }, log);
     const tookMs = runtime.clock.now() - started;
     const output = cleanOutput(result.output);
     await runtime.files.append(log, logBody(output, result.end));
