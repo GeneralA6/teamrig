@@ -14,6 +14,7 @@ import { type Credential, SHIP_TOKEN_TARGET, readCredential, windowsPowerShell }
 import { type MergeOutcome, type PullRequest, findOpenPull, openPull, rebaseMerge } from './pulls.ts';
 import { type MergedHead, pullsOfHead, sweepAfterMerge } from './leftovers.ts';
 import { type GateDeps, proveTree, realGateDeps } from './local-gate.ts';
+import { type LandingTurn, processLandingTurn } from './landing-turn.ts';
 import { realRenamedCallersDeps, renamedCallersRefusal } from './renamed-callers.ts';
 import { type LocalChecks, type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
 import { APPROVED_SHA } from './ship-plan.ts';
@@ -421,6 +422,21 @@ function awayDuring(proof: Proof, share: StepShare): ProofAway {
   };
 }
 
+/**
+ * The ci gate's proof, then the merge's turn: a head whose checks passed waits for the older merges of the repo to land,
+ * so it reads main once after them and is caught up once, not once for each (T4196).
+ */
+function inTurn(proof: Proof, turn: LandingTurn): Proof {
+  return {
+    before: sha => proof.before(sha),
+    prove: async (sha, log) => {
+      const failed = await proof.prove(sha, log);
+      if (failed === null) await turn.wait(log);
+      return failed;
+    },
+  };
+}
+
 /** The CLI of the checkout this tool runs from (main's current code, T3223), its lines going to the step's log. */
 const OWN_CLI = join(import.meta.dirname, '..', '..', 'src', 'cli', 'main.ts');
 
@@ -453,6 +469,8 @@ export interface MergeDeps {
   catchUp: (request: CatchUpRequest) => CatchUp;
   /** The queued step's host share, set aside while the merge waits on GitHub (T3336). */
   share: StepShare;
+  /** This merge's place in the repo's line: once its checks pass, it waits for older merges to land (landing-turn.ts, T4196). */
+  turn: LandingTurn;
   out: (line: string) => void;
   err: (line: string) => void;
 }
@@ -510,7 +528,8 @@ export const MERGE_ATTEMPTS = 3;
  * pushed) and merged in its place; anything else main's move does is refused (T2809). Main may also move while a
  * catch-up's push runs its gate, as another merge whose share was set aside for its CI wait lands (T3336): that head
  * is caught up again on the new tip, which raises the plugin version again (T4131). Each move counts, at most
- * MERGE_ATTEMPTS in all. A ship's own merge (mergeBranch) gets the move back instead and goes again from its plan (T2696).
+ * MERGE_ATTEMPTS in all. Merges of one repo land oldest first (landing-turn.ts), so the merges started before this one
+ * cost it one move, not one each (T4196). A ship's own merge (mergeBranch) gets the move back instead and goes again from its plan (T2696).
  */
 export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number> {
   let stem: string | null = null;
@@ -578,7 +597,7 @@ export async function mergeRun(args: MergeArgs, deps: MergeDeps, gate: MergeGate
   const gh = deps.ghFor(credential.secret);
   const proof =
     profile.gate === 'ci'
-      ? awayDuring(ciProof(gh, repo, head, { names: profile.checks, summary: profile.summary, flaky: profile.flaky }, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 }), deps.share)
+      ? awayDuring(inTurn(ciProof(gh, repo, head, { names: profile.checks, summary: profile.summary, flaky: profile.flaky }, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 }), deps.turn), deps.share)
       : { proof: localProof(args.dir, profile.local, deps.gate), away: () => false };
   const result = await mergeThroughPull(
     { repo, head, base: profile.main, sha, title: `Merge ${head} into ${profile.main}: ${subjects.length} commit(s)`, body: pullBody(subjects, note) },
@@ -642,6 +661,7 @@ export function realMergeDeps(dir: string): MergeDeps {
         request,
       ),
     share: stepShareOf(process.env, runOwnCli),
+    turn: processLandingTurn(dir, git),
     out,
     err,
   };

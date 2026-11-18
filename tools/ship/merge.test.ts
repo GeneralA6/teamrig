@@ -573,6 +573,15 @@ function runFixture(fixture: RunFixture = {}): {
         return Promise.resolve(fixture.lostShare ?? null);
       },
     },
+    // The turn's wait goes into the git calls, so a spec sees where it falls among main's reads.
+    turn: {
+      wait: () => {
+        gitCalls.push('turn wait');
+        return Promise.resolve();
+      },
+      beat: () => undefined,
+      end: () => undefined,
+    },
     out: line => out.push(line),
     err: line => err.push(line),
   };
@@ -828,6 +837,20 @@ test('a share the step kept (outside a queue, the whole host held) is never take
   const local = runFixture({ local: {} });
   assert.equal(await runMerge(ARGS, local.deps), 0);
   assert.deepEqual(local.shareCalls, []);
+});
+
+test('on the ci gate a head whose checks passed waits its turn behind older merges before main is read for a move (T4196)', async () => {
+  const MAIN_READ = 'rev-parse refs/remotes/origin/main';
+  const merged = runFixture();
+  assert.equal(await runMerge(ARGS, merged.deps), 0);
+  assert.equal(merged.gitCalls.filter(call => call === 'turn wait').length, 1);
+  const waited = merged.gitCalls.indexOf('turn wait');
+  assert.ok(merged.gitCalls.slice(0, waited).includes(MAIN_READ), 'after the check that the head is not behind main');
+  assert.ok(merged.gitCalls.slice(waited).includes(MAIN_READ), 'before main is read again for a move during the wait');
+
+  const failed = runFixture({ rounds: [[['gates', 'completed', 'failure'], ['test', 'completed', 'success']]] });
+  assert.equal(await runMerge(ARGS, failed.deps), 1);
+  assert.equal(failed.gitCalls.includes('turn wait'), false, 'a head whose checks failed lands nothing, so it waits on no one');
 });
 
 test("the step's share runs teamrig step-away and step-back only inside a queued step, failing closed on a nonzero exit (T3336)", async () => {
