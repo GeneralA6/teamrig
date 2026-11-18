@@ -212,7 +212,10 @@ stateDiagram-v2
 - The task list is one log that only grows, a line for every move. `teamrig compact` archives it: the log becomes
 the next file in `state/archive/` byte for byte and is never deleted, a fresh log starts with a line naming it,
 and `state/snapshot.jsonl` holds every task as it stood, so commands and the task pane read the snapshot and the
-recent lines instead of the whole history. Tasks done or dropped over 8 days ago, in no week plan from the current
+recent lines instead of the whole history. The snapshot holds one line per task as it stood two days before the
+compaction, then the events of those two days as written, so its size follows the tasks kept, not their history; a
+read that needs older events (`show` of an older task, `meeting end` of a meeting that started before, a leader
+digest from an older cursor, `team split`) reads the archive for them. Tasks done or dropped over 8 days ago, in no week plan from the current
 one on, leave the snapshot: `show`, `list --status done` and the plan of a past week still read them from the
 archive, and a task that left cannot be changed. `compact --dry-run` prints what it would archive and write, and writes nothing; a real run first
 reads the new files back and holds every task against the whole history, and writes nothing on any difference.
