@@ -191,7 +191,7 @@ export function holderText(holder, zone) {
             return `${holder.info.session} (${holder.info.purpose}) since ${zone.minute(new Date(holder.info.acquiredAt))}${kitText(holder.info.kit)}${waiting}`;
         }
         case 'queued':
-            return `${holder.first.session} (${holder.first.purpose}), first in line since ${zone.minute(new Date(holder.first.arrivedAt))}`;
+            return `${holder.first.session} (${holder.first.purpose}), next in line, ${nextInLineText(holder.first, zone)}`;
         case 'unknown':
             return 'a writer that has not finished writing';
         case 'draining':
@@ -212,6 +212,31 @@ export function holderText(holder, zone) {
         case 'admitting':
             return 'another step being admitted';
     }
+}
+/** A wait cause in words, for the waiter next in line as another waiter reads it. */
+const CAUSE_WORDS = {
+    lock: 'the host lock',
+    line: 'the line',
+    draining: 'the steps sharing the host',
+    memory: 'host memory',
+    commit: "the host's commit charge",
+    freeze: 'a deploy freeze',
+    check: 'a deploy check',
+    session: "its session's cap",
+    heavyCap: 'the heavy cap',
+    cpu: 'host CPU',
+    shipSlot: 'the ship slot',
+    smallCap: 'the small cap',
+};
+/**
+ * What the waiter next in line waits on, as its ticket last said: `waiting on host memory since <minute>`, or `waiting
+ * since <its arrival>` when its ticket says nothing yet (an older kit's, or one that has not looked yet). It names the
+ * cause rather than calling the waiter first in line since it arrived, which read as wrong beside a count of waiters
+ * ahead that rose as later steps ranked ahead (#1441).
+ */
+function nextInLineText(first, zone) {
+    const on = first.waitingOn;
+    return on === undefined ? `waiting since ${zone.minute(new Date(first.arrivedAt))}` : `waiting on ${CAUSE_WORDS[on.reason]} since ${zone.minute(new Date(on.since))}`;
 }
 /** `1 step`, `2 heavy steps`: `count` steps of `kind` (a word and a space, or nothing). */
 function stepsText(count, kind) {
@@ -258,9 +283,21 @@ export function sharesCount(shares) {
     }
     return heavy === shares.length ? stepsText(heavy, 'heavy ') : `${stepsText(heavy, 'heavy ')} and ${small}`;
 }
-/** A waiter's report: what it waits on, then how many waiters are ahead of it in line when any are. */
-export function waitText(holder, ahead, zone) {
-    return ahead === 0 ? holderText(holder, zone) : `${holderText(holder, zone)}; ${ahead} ahead in line`;
+/**
+ * A waiter's report: what it waits on, then how many waiters are ahead of it in line when any are, and how many of those
+ * arrived after it (`arrivedAfter`), which admission order ranked ahead of it.
+ */
+export function waitText(holder, ahead, zone, arrivedAfter = 0) {
+    if (ahead === 0) {
+        return holderText(holder, zone);
+    }
+    const later = arrivedAfter === 0 ? '' : ` (${arrivedAfter} arrived after this step)`;
+    return `${holderText(holder, zone)}; ${ahead} ahead in line${later}`;
+}
+/** How many of `ahead` arrived after `own`. */
+function arrivedAfterOwn(ahead, own) {
+    const at = Date.parse(own.arrivedAt);
+    return ahead.filter((waiter) => Date.parse(waiter.arrivedAt) > at).length;
 }
 /** Why a step was refused when its wait ran out: `host memory still short: …`, `session cap still reached: …` or `host lock still held by …`. */
 export function busyText(holder, zone) {
@@ -296,7 +333,7 @@ function waitKey(holder, ahead) {
         case 'held':
             return `held ${holder.info.id} ${idsOf(holder.waitsFor ?? [])} ${ahead}`;
         case 'queued':
-            return `queued ${holder.first.id} ${ahead}`;
+            return `queued ${holder.first.id} ${holder.first.waitingOn?.reason ?? ''} ${ahead}`;
         case 'unknown':
             return `unknown ${ahead}`;
         case 'draining':
@@ -327,16 +364,16 @@ class WaitReports {
         this.zone = zone;
     }
     /** Takes in the report of one look at `now`: what the ticket waits on next when it is new (and `onWait` heard it), else undefined. */
-    report(holder, ahead, now) {
-        const key = waitKey(holder, ahead);
+    report(holder, ahead, arrivedAfter, now) {
+        const key = `${waitKey(holder, ahead)} ${arrivedAfter}`;
         if (key === this.told) {
             return undefined;
         }
         this.told = key;
-        this.onWait(holder, ahead);
+        this.onWait(holder, ahead, arrivedAfter);
         const reason = causeOfLockWait(holder);
         const since = this.waitingOn?.reason === reason ? this.waitingOn.since : new Date(now).toISOString();
-        this.waitingOn = { reason, text: waitText(holder, ahead, this.zone), since };
+        this.waitingOn = { reason, text: waitText(holder, ahead, this.zone, arrivedAfter), since };
         return this.waitingOn;
     }
 }
@@ -729,7 +766,7 @@ export class HostLock {
             }
             const { holder } = result;
             unknownSince = holder.kind === 'unknown' ? (unknownSince ?? clock.now()) : undefined;
-            const waitingOn = reports.report(holder, ahead.length, clock.now());
+            const waitingOn = reports.report(holder, ahead.length, arrivedAfterOwn(ahead, ticket.waiter), clock.now());
             if (!(await this.waitOn(ticket, patience, standingBehind(ahead, holder), waitingOn))) {
                 return { kind: 'withdrawn' };
             }
@@ -916,7 +953,7 @@ export class HostLock {
                 return { kind: 'taken', lock: waited ? await this.renew(lock) : lock };
             }
             const holder = { kind: 'draining', shares };
-            const waitingOn = reports.report(holder, 0, clock.now());
+            const waitingOn = reports.report(holder, 0, 0, clock.now());
             if (!(await this.waitOn(ticket, patience, standingBehind([], holder), waitingOn))) {
                 await this.release(lock);
                 return { kind: 'withdrawn' };
