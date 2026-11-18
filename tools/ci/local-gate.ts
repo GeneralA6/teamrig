@@ -66,7 +66,7 @@ async function gitLine(git: Git, args: readonly string[]): Promise<string> {
 }
 
 /** What a proof of each scope prints its lines as. */
-const LABEL: Readonly<Record<CheckScope, string>> = { full: 'local checks', short: 'short checks' };
+const LABEL: Readonly<Record<CheckScope, string>> = { full: 'local checks', light: 'pre-push checks', short: 'short checks' };
 
 const commonDirOf = (deps: GateDeps): Promise<string> => gitLine(deps.git, ['rev-parse', '--git-common-dir']);
 

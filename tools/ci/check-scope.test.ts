@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { passRecordPath } from '../../src/push-guard/pass-record.ts';
 import { parseProfiles } from '../ship/repos.ts';
-import { pushScope, recordPathOf, recordPathsFor, shortRecordPath } from './check-scope.ts';
+import { lightRecordPath, pushScope, recordPathOf, recordPathsFor, shortRecordPath } from './check-scope.ts';
 
 const ROOT = resolve('work', 'repo');
 const TREE = 'a'.repeat(40);
@@ -31,6 +31,14 @@ describe('the records of each scope (T3414)', () => {
     assert.deepEqual(recordPathsFor('full', ROOT, '.git', TREE), [passRecordPath(ROOT, '.git', TREE)]);
     assert.deepEqual(recordPathsFor('short', ROOT, '.git', TREE), [passRecordPath(ROOT, '.git', TREE), shortRecordPath(ROOT, '.git', TREE)]);
   });
+
+  it('keeps a light proof apart from the pass record and the short one, and takes only a full pass besides its own (T4344)', () => {
+    const light = lightRecordPath(ROOT, '.git', TREE);
+    assert.equal(light, join(ROOT, '.git', 'local-ci', 'light', `${TREE}.json`));
+    assert.equal(recordPathOf('light', ROOT, '.git', TREE), light);
+    assert.deepEqual(recordPathsFor('light', ROOT, '.git', TREE), [passRecordPath(ROOT, '.git', TREE), light]);
+    assert.ok(!recordPathsFor('short', ROOT, '.git', TREE).includes(light), 'a light pass never proves a short one');
+  });
 });
 
 describe('pushScope', () => {
@@ -42,9 +50,13 @@ describe('pushScope', () => {
     }
   });
 
-  it("is full when a push goes to the repo's main, its switch is off, or the remote is not a listed GitHub repo", () => {
+  it('is light for a branch of a repo with the ci gate and the switch off (T4344)', () => {
+    assert.equal(pushScope(PROFILES, 'https://github.com/Owner/Full.git', branch), 'light');
+  });
+
+  it("is full when a push goes to the repo's main, the repo has the local gate, or the remote is not a listed GitHub repo", () => {
     assert.equal(pushScope(PROFILES, 'https://github.com/Owner/Short.git', ['refs/heads/topic', 'refs/heads/trunk']), 'full');
-    assert.equal(pushScope(PROFILES, 'https://github.com/Owner/Full.git', branch), 'full');
+    assert.equal(pushScope(PROFILES, 'https://github.com/Owner/Full.git', ['refs/heads/main']), 'full');
     assert.equal(pushScope(PROFILES, 'https://github.com/Owner/Local.git', branch), 'full');
     assert.equal(pushScope(PROFILES, 'https://github.com/Owner/Other.git', branch), 'full');
     assert.equal(pushScope(PROFILES, 'https://example.com/Owner/Short.git', branch), 'full');

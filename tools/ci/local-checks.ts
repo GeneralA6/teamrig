@@ -13,13 +13,8 @@ export const DEFAULT_BASE = 'origin/main';
  * runs the plugin's own tests (its mod's engine specs) in the Claude Code installed here, which CI does not.
  */
 export function localChecks(base: string): readonly LocalCheck[] {
-  const [scrubTree, scrubCommits, dco] = commitChecks(base);
   return [
-    scrubTree,
-    scrubCommits,
-    dco,
-    { name: 'size rule', argv: ['node', 'tools/ci/size-rule-cli.ts', '--base', base] },
-    { name: 'commit subjects', argv: ['node', 'tools/ci/commit-subjects-cli.ts', '--base', base] },
+    ...commitChecks(base),
     TYPECHECK,
     { name: 'coverage gate', argv: ['node', 'tools/ci/coverage-cli.ts'] },
     { name: 'build: clean', argv: ['node', 'tools/build/clean.ts'] },
@@ -28,23 +23,61 @@ export function localChecks(base: string): readonly LocalCheck[] {
     { name: 'dist matches the source', argv: ['node', 'tools/ci/dist-fresh-cli.ts'] },
     { name: 'dist smoke', argv: ['node', 'tools/ci/dist-smoke-cli.ts'] },
     { name: 'fresh install', argv: ['node', 'tools/ci/fresh-install-cli.ts'] },
-    // After the build: the mod's hooks load the built dist. An empty home: no account, settings or other plugins.
-    { name: 'plugin tests', argv: ['claude', 'plugin', 'test', 'plugins/teamrig'], isolatedHome: true },
-    { name: 'doc pictures', argv: ['node', 'tools/docs/images-cli.ts', '--check'] },
-    { name: 'doc config reference', argv: ['node', 'tools/docs/configuration-cli.ts', '--check'] },
-    { name: 'doc links', argv: ['node', 'tools/docs/doc-check-cli.ts'] },
+    // After the build: the mod's hooks load the built dist.
+    PLUGIN_TESTS,
+    ...DOC_CHECKS,
+  ];
+}
+
+/**
+ * The light checks (check-scope.ts, T4344), about 45 s: the pre-push hook's proof of a branch whose main merges only
+ * on GitHub's required checks, which run the rest (the whole suite with its coverage gate, the dist checks and the
+ * fresh install) on every OS before anything lands. Each is the full list's own entry but the compile, which emits
+ * nothing: the release bot owns the committed dist (T3346), so an emitting build would leave the checkout changed,
+ * and the plugin's tests load that committed dist. The hook runs `teamrig secrets pushed` before them.
+ */
+export function prePushChecks(base: string): readonly LocalCheck[] {
+  return [
+    ...commitChecks(base),
+    TYPECHECK,
+    { name: 'compile', argv: ['node', TSC, '-p', 'tsconfig.build.json', '--noEmit'] },
+    PLUGIN_TESTS,
+    ...DOC_CHECKS,
   ];
 }
 
 const TYPECHECK: LocalCheck = { name: 'typecheck', argv: ['node', TSC, '-p', 'tsconfig.json'] };
 
+/** The plugin's own tests, in an empty home: no account, settings or other plugins. */
+const PLUGIN_TESTS: LocalCheck = { name: 'plugin tests', argv: ['claude', 'plugin', 'test', 'plugins/teamrig'], isolatedHome: true };
+
+/** The checks that hold the docs to the code: the pictures, the configuration reference and the links. */
+const DOC_CHECKS: readonly LocalCheck[] = [
+  { name: 'doc pictures', argv: ['node', 'tools/docs/images-cli.ts', '--check'] },
+  { name: 'doc config reference', argv: ['node', 'tools/docs/configuration-cli.ts', '--check'] },
+  { name: 'doc links', argv: ['node', 'tools/docs/doc-check-cli.ts'] },
+];
+
+/** The scrub of the tree, then the scrub and the DCO sign-off of the commits since the base, their size and subjects. */
+function commitChecks(base: string): readonly LocalCheck[] {
+  return [...signedScrubbed(base), ...commitShape(base)];
+}
+
 /** The scrub of the tree, then the scrub and the DCO sign-off of the commits since the base. */
-function commitChecks(base: string): readonly [LocalCheck, LocalCheck, LocalCheck] {
+function signedScrubbed(base: string): readonly LocalCheck[] {
   const range = `${base}..HEAD`;
   return [
     { name: 'scrub: tree', argv: ['node', 'tools/scrub/cli.ts', '--tree'] },
     { name: 'scrub: commits', argv: ['node', 'tools/scrub/cli.ts', '--range', range] },
     { name: 'DCO', argv: ['node', 'tools/dco/cli.ts', '--range', range] },
+  ];
+}
+
+/** The size rule and the commit subjects of the commits since the base. */
+function commitShape(base: string): readonly LocalCheck[] {
+  return [
+    { name: 'size rule', argv: ['node', 'tools/ci/size-rule-cli.ts', '--base', base] },
+    { name: 'commit subjects', argv: ['node', 'tools/ci/commit-subjects-cli.ts', '--base', base] },
   ];
 }
 
@@ -54,7 +87,7 @@ function commitChecks(base: string): readonly [LocalCheck, LocalCheck, LocalChec
  * pre-push hook runs `teamrig secrets pushed` before them. With no spec to run, the specs' check is left out.
  */
 export function shortChecks(base: string, specs: readonly string[]): readonly LocalCheck[] {
-  const checks = [...commitChecks(base), TYPECHECK];
+  const checks = [...signedScrubbed(base), TYPECHECK];
   return specs.length === 0 ? checks : [...checks, { name: 'changed specs', argv: ['node', '--test', ...specs] }];
 }
 

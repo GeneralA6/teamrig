@@ -126,6 +126,12 @@ test('the runner check is the runner repos.json names, only when the tree holds 
   assert.equal(runnerCheck(DIR, CHECKS, () => false), null);
 });
 
+test("a partial proof's runner check passes the runner its scope's flag (T3414, T4344)", () => {
+  const exists = (path: string): boolean => path === join(DIR, 'tools/ci/local.ts');
+  assert.deepEqual(runnerCheck(DIR, CHECKS, exists, 'short'), { name: `${RUNNER} --short`, run: ['node', 'tools/ci/local.ts', '--short'] });
+  assert.deepEqual(runnerCheck(DIR, CHECKS, exists, 'light'), { name: `${RUNNER} --light`, run: ['node', 'tools/ci/local.ts', '--light'] });
+});
+
 test('refuses a repo that names no runner, or a tree that does not hold it, before running anything', () => {
   const none = fakeGate();
   assert.deepEqual(proveTree(DIR, { runner: null }, none.deps), { passed: false, reason: 'repos.json names no local runner for this repo: nothing would prove the tree' });

@@ -51,16 +51,18 @@ const seconds = (ms: number): string => `${Math.round(ms / 1000)}s`;
 const recordAt = (deps: GateDeps, path: string, tree: string): PassRecord | undefined => parsePassRecord(deps.readText(path) ?? undefined, tree);
 
 /**
- * The check that proves a tree: the repo's own runner, when repos.json names one and the tree holds it. A short
- * proof runs it with `--short`, which a repo whose entry says `"mergeChecks": "changed"` has its runner take.
+ * The check that proves a tree: the repo's own runner, when repos.json names one and the tree holds it. A partial
+ * proof runs it with its scope's flag (`--short`, `--light`), which a repo whose entry says `"mergeChecks": "changed"`
+ * has its runner take.
  */
 export function runnerCheck(dir: string, checks: LocalChecks, exists: GateDeps['exists'], scope: CheckScope = 'full'): LocalCheck | null {
   if (checks.runner === null || !exists(join(dir, checks.runner))) return null;
-  return scope === 'full' ? { name: `runner ${checks.runner}`, run: ['node', checks.runner] } : { name: `runner ${checks.runner} --short`, run: ['node', checks.runner, '--short'] };
+  if (scope === 'full') return { name: `runner ${checks.runner}`, run: ['node', checks.runner] };
+  return { name: `runner ${checks.runner} --${scope}`, run: ['node', checks.runner, `--${scope}`] };
 }
 
 /** What a proof of each scope prints its lines as. */
-const LABEL: Readonly<Record<CheckScope, string>> = { full: 'local checks', short: 'short checks' };
+const LABEL: Readonly<Record<CheckScope, string>> = { full: 'local checks', light: 'pre-push checks', short: 'short checks' };
 
 const noRunner = (dir: string, runner: string | null): string =>
   runner === null
