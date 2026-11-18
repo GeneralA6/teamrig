@@ -28,6 +28,7 @@ class FakeGit implements UpdateGit {
   readonly calls: string[] = [];
   sha = 'aaa111';
   version = '0.333.0';
+  marketplace = MARKETPLACE;
   online = true;
   /** Runs inside `ls-remote`, while the check is asking the network. */
   duringAsk: (() => Promise<void>) | undefined;
@@ -61,7 +62,7 @@ class FakeGit implements UpdateGit {
     if (command === 'show') {
       const path = args[1]?.replace(/^FETCH_HEAD:/, '');
       if (path === '.claude-plugin/marketplace.json') {
-        return MARKETPLACE;
+        return this.marketplace;
       }
       return path === 'plugins/teamrig/.claude-plugin/plugin.json' ? pluginJson(this.version) : undefined;
     }
@@ -105,6 +106,13 @@ describe('UpdateCheck.notices, a cloned marketplace', () => {
       published: { kit: { sha: 'aaa111', versions: { teamrig: '0.333.0' } } },
       dismissed: {},
     });
+  });
+
+  it('tells of the newer version a git-subdir entry installs, read from its path in the marketplace (T4355)', async () => {
+    const { git, check } = setup();
+    git.marketplace = JSON.stringify({ name: 'kit', plugins: [{ name: 'teamrig', source: { source: 'git-subdir', url: 'owner/kit', path: 'plugins/teamrig', ref: 'release' } }] });
+    assert.deepEqual(await check().notices(), [NOTICE]);
+    assert.ok(git.calls.includes(`${REPO}: show FETCH_HEAD:plugins/teamrig/.claude-plugin/plugin.json`));
   });
 
   it('tells nothing when the published version is the installed one', async () => {

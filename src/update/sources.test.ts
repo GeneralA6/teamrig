@@ -64,6 +64,15 @@ describe('pluginFolderOf', () => {
     assert.equal(pluginFolderOf(marketplace('./'), 'teamrig'), '');
   });
 
+  it("reads a git-subdir source's path, which main holds as its release branch does (T4355)", () => {
+    const subdir = (path: unknown): string => marketplace({ source: 'git-subdir', url: 'owner/teamrig', path, ref: 'release' });
+    assert.equal(pluginFolderOf(subdir('plugins/teamrig'), 'teamrig'), 'plugins/teamrig');
+    assert.equal(pluginFolderOf(subdir('./plugins/teamrig/'), 'teamrig'), 'plugins/teamrig');
+    for (const path of ['', '/abs/teamrig', 'plugins/../../elsewhere', 'plugins\\teamrig', 3]) {
+      assert.equal(pluginFolderOf(subdir(path), 'teamrig'), undefined, JSON.stringify(path));
+    }
+  });
+
   it('reads no folder for another kind of source, a path that climbs out, or an unlisted plugin', () => {
     assert.equal(pluginFolderOf(marketplace({ source: 'github', repo: 'owner/teamrig' }), 'teamrig'), undefined);
     assert.equal(pluginFolderOf(marketplace('./../elsewhere'), 'teamrig'), undefined);
