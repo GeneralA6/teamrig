@@ -10,7 +10,7 @@ import { SessionLog } from '../../sessions/log.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';
 import { postToHolder, sessionNameOn } from '../holder-team.ts';
 import { hooklessReopenLine, hooklessReopensOf, type HooklessReopen } from '../hookless-reopen.ts';
-import { idlePassOf, passLineOf, type PassStep } from '../idle-pass.ts';
+import { idlePassOf, passLineOf, type PassStep, type SessionFolderOf } from '../idle-pass.ts';
 import { readIdlePassState } from '../idle-pass-check.ts';
 import {
   actsToStart,
@@ -30,7 +30,6 @@ import {
 import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { postUrgentLine } from '../urgent-line.ts';
-import { sessionFoldersOf } from './setup.ts';
 import { fileLockOf } from '../file-locks.ts';
 import { sweepDeadDetachedRuns } from '../detached-sweep.ts';
 import { pagePromptHolds } from '../prompt-hold-page.ts';
@@ -47,13 +46,13 @@ async function hooklessReopensNow(runtime: CliRuntime, kit: Kit, roster: Roster,
 }
 
 /**
- * Runs the pass, each session in its own project folder as `teamrig sessions --pass` does by default. The pass reads
+ * Runs the pass, each session in the folder `folderOf` names, as `teamrig sessions --pass` does. The pass reads
  * the host's processes and every session's record, transcript and budget; a failure there is the pass's, logged as
  * such, and must not cost the tab its wake answer.
  */
-async function runPass(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, from: string, now: number): Promise<PassRun> {
+async function runPass(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, folderOf: SessionFolderOf, now: number): Promise<PassRun> {
   try {
-    const steps = await idlePassOf(runtime, kit, config, roster, sessionFoldersOf(runtime, config, undefined, from));
+    const steps = await idlePassOf(runtime, kit, config, roster, folderOf);
     return { kind: 'ran', steps, hookless: await hooklessReopensNow(runtime, kit, roster, now) };
   } catch (error) {
     return { kind: 'failed', error: errorMessage(error) };
@@ -126,10 +125,10 @@ async function startActs(runtime: CliRuntime, kit: Kit, roster: Roster, acts: re
  * (`stepsToLog`), or a new failure, with the host's commit charge; in mode `on` starts each act its steps ask for and
  * none pending; tells of each new hookless reopen; and keeps the state for the next pass.
  */
-async function passOnce(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, from: string, previous: IdlePassState | undefined, now: number): Promise<IdlePassState> {
+async function passOnce(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, folderOf: SessionFolderOf, previous: IdlePassState | undefined, now: number): Promise<IdlePassState> {
   const { mode } = config.open.idle;
   const { files } = runtime;
-  const run = await runPass(runtime, kit, config, roster, from, now);
+  const run = await runPass(runtime, kit, config, roster, folderOf, now);
   if (run.kind === 'failed') {
     if (previous?.failed !== run.error) {
       await files.append(kit.paths.idlePassLog, formatIdlePassRecord({ kind: 'failed', at: now, mode, error: run.error }));
@@ -158,23 +157,26 @@ async function passOnce(runtime: CliRuntime, kit: Kit, config: KitConfig, roster
  * in (src/cli/hookless-reopen.ts). In dry-run it changes nothing else; in `on` it starts the closes and the reopen
  * its steps ask for, and tells the lead of each hookless reopen with an urgent line. In both it tells each of the team's
  * detached queue runs that died with no end of its own (src/cli/detached-sweep.ts), and pages the owner once for each
- * tab held on a permission prompt (src/cli/prompt-hold-page.ts). With mode off it reads nothing.
+ * tab held on a permission prompt (src/cli/prompt-hold-page.ts). With mode off it reads nothing. Each session is read
+ * and acted on in the folder `folderOf` names. Whether this call ran the pass.
  */
-export async function runIdlePass(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, from: string): Promise<void> {
+export async function runIdlePass(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, folderOf: SessionFolderOf): Promise<boolean> {
   if (config.open.idle.mode === 'off') {
-    return;
+    return false;
   }
   const now = runtime.clock.now();
   if (!isPassDue(await readIdlePassState(runtime.files, kit.paths), now)) {
-    return;
+    return false;
   }
+  let ran = false;
   const { files } = runtime;
   const lock = fileLockOf(runtime, kit.paths.idlePassLock, { ...config.lock, waitMs: 0 });
   try {
     await lock.run(async () => {
       const previous = await readIdlePassState(runtime.files, kit.paths);
       if (isPassDue(previous, now)) {
-        await files.write(kit.paths.idlePass, formatIdlePassState(await passOnce(runtime, kit, config, roster, from, previous, now)));
+        ran = true;
+        await files.write(kit.paths.idlePass, formatIdlePassState(await passOnce(runtime, kit, config, roster, folderOf, previous, now)));
         (await sweepDeadDetachedRuns(runtime, kit, config)).problems.forEach((problem) => runtime.out.stderr(`WARN ${problem}`));
         (await pagePromptHolds(runtime, kit, new SecretScanner(config.register.secretPatterns), now)).forEach((problem) => runtime.out.stderr(`WARN ${problem}`));
       }
@@ -185,4 +187,5 @@ export async function runIdlePass(runtime: CliRuntime, kit: Kit, config: KitConf
       throw error;
     }
   }
+  return ran;
 }
