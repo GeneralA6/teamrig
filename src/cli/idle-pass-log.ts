@@ -141,6 +141,18 @@ export function isPassDue(state: IdlePassState | undefined, now: number): boolea
   return state === undefined || now < state.at || now - state.at >= IDLE_PASS_EVERY_MS;
 }
 
+/**
+ * How long a team's pass may go unrun before a tab of another team of its tree runs it (T3387). An idle open tab of
+ * the team runs it every `IDLE_PASS_EVERY_MS`; five missed in a row mean no tab of its own checks, as once the pass
+ * closed its last session, and only a pass run from elsewhere can reopen one.
+ */
+export const TREE_PASS_AFTER_MS = 5 * IDLE_PASS_EVERY_MS;
+
+/** Whether a tab of another team of the tree runs this team's pass now: `TREE_PASS_AFTER_MS` unrun, or the clock went back. */
+export function isTreePassDue(state: IdlePassState | undefined, now: number): boolean {
+  return state === undefined || now < state.at || now - state.at >= TREE_PASS_AFTER_MS;
+}
+
 /** How long the pass may go without running before `check` warns the lead (FLEET-STALE): fifteen missed passes. */
 export const IDLE_PASS_STALE_MS = 15 * MS_PER_MINUTE;
 
