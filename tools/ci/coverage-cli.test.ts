@@ -1,11 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { NO_COVERAGE_REPORT } from './coverage.ts';
+import { ENV } from '../../src/core/home.ts';
+import { NO_COVERAGE_REPORT, runDirPrefix } from './coverage.ts';
 
 const CLI = fileURLToPath(new URL('./coverage-cli.ts', import.meta.url));
 
@@ -145,4 +147,51 @@ describe('coverage-cli', () => {
     assert.equal(missing.status, 2, missing.output);
     assert.match(missing.output, /^coverage: /m);
   });
+
+  it('removes a dead run folder and reports one it cannot remove, keeping it, without failing the gate', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'teamrig-coverage-home-'));
+    const base = join(home, 'tmp', 'coverage');
+    // A process that has ended: its pid names a run that is gone.
+    const deadPid = spawnSync(process.execPath, ['-e', '']).pid;
+    const dead = join(base, `${runDirPrefix(deadPid)}dead`);
+    const held = join(base, `${runDirPrefix(deadPid)}held`);
+    mkdirSync(dead, { recursive: true });
+    mkdirSync(held);
+    writeFileSync(join(held, 'kept'), '');
+    const holder = await holdFolder(held);
+    try {
+      const { status, output } = gate({}, { ...process.env, [ENV.home]: home });
+      assert.equal(status, 0, output);
+      assert.ok(output.includes(`coverage: could not remove ${held} (`), output);
+      assert.deepEqual(readdirSync(base).sort(), [basename(held)]);
+    } finally {
+      await holder.release();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 });
+
+interface FolderHold {
+  release(): Promise<void>;
+}
+
+/**
+ * Makes `folder` one the gate cannot remove, the way a leftover process does (T4233). Windows refuses to remove a
+ * process's working folder; POSIX allows that, so there the folder is made read-only, which keeps its file (a root
+ * user, whom no mode stops, cannot run this spec).
+ */
+async function holdFolder(folder: string): Promise<FolderHold> {
+  if (process.platform !== 'win32') {
+    chmodSync(folder, 0o500);
+    return { release: async () => chmodSync(folder, 0o700) };
+  }
+  const child = spawn(process.execPath, ['-e', 'setTimeout(() => undefined, 60_000)'], { cwd: folder, stdio: 'ignore' });
+  await once(child, 'spawn');
+  return {
+    release: async () => {
+      const ended = once(child, 'exit');
+      child.kill();
+      await ended;
+    },
+  };
+}
