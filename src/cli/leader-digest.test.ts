@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
-import { APP, CLAUDE_SESSION, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, CONFIG_PATH, EVENTS_PATH, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { rotateRegister } from '../testing/rotation.ts';
 import { REGISTER_ONLY_LINE } from './commands/register.ts';
 import { EXIT } from './runtime.ts';
 
@@ -147,6 +148,23 @@ describe('the leader digest at UserPromptSubmit', () => {
     const shown = await prompt(kit, 'lead');
     assert.deepEqual(digestRows(shown), ['- T1 open: (note withheld: it matches a secret shape)']);
     assert.ok(!shown.includes('zebra'));
+  });
+
+  it("reads the history for changes older than the snapshot's event window, then moves its cursor to the window (T4076)", async () => {
+    const kit = new CliHarness(ON);
+    await addTask(kit, 'alpha', 'Ship the signup page');
+    await prompt(kit, 'lead');
+    kit.clock.advance(60 * 60_000);
+    await ok(kit, ['set', 'T1', '--status', 'in-progress', '--note', 'started', '--session', 'alpha']);
+    // A compaction three days on keeps two days of events: the change is in the archive alone.
+    kit.clock.advance(3 * 24 * 60 * 60_000);
+    await rotateRegister(kit.files, EVENTS_PATH, { now: new Date(kit.clock.now()) });
+    assert.deepEqual(digestRows(await prompt(kit, 'lead')), ['- T1 open -> in-progress: started']);
+    const cursor = kit.files.get(join(CURSORS, 'lead.json')) ?? '';
+    assert.match(cursor, /"at":"2030-01-09T11:00:01\.000Z","seen":0/, "the cursor stands at the window's start");
+    assert.doesNotMatch(await prompt(kit, 'lead'), HEADING);
+    await ok(kit, ['update', 'T1', '--note', 'wave 1 landed', '--session', 'alpha']);
+    assert.deepEqual(digestRows(await prompt(kit, 'lead')), ['- T1 in-progress: wave 1 landed'], 'a task line is no new task');
   });
 
   it('never wakes anyone: it posts no inbox line and asks no wake', async () => {
