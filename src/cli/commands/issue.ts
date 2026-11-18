@@ -129,14 +129,20 @@ async function followupOf(flags: Flags, runtime: CliRuntime, config: KitConfig):
   return { title: title.trim(), body: bodyFile === undefined ? '' : await bodyFileOf(bodyFile, runtime, config) };
 }
 
-/** The task holding the issue `target` as the status push picks it, refused when none does (the sync adds one). */
+/**
+ * The task holding the issue `target` as the status push picks it, refused when none does (the sync adds one) or when
+ * two or more active tasks share it, as the push then writes nothing to it and the reply's status would be a guess.
+ */
 async function holdingTask(runtime: CliRuntime, target: IssueTarget): Promise<Task> {
   const team = await openTeam(runtime, 'read');
-  const task = holderOf(target, (await team.register.snapshot()).state.tasks.values());
-  if (task === undefined) {
+  const holder = holderOf(target, (await team.register.snapshot()).state.tasks.values());
+  if (holder === undefined) {
     throw new RefusedError(`no task holds ${targetText(target)}, so the reply has no status to show: run teamrig issue sync, or add the task with --ref gh:${targetText(target)}; nothing was written`);
   }
-  return task;
+  if (holder.kind === 'shared') {
+    throw new RefusedError(`${holder.tasks.join(', ')} all hold ${targetText(target)}, so no one task's status speaks for it: finish or drop all but one, or move the others' --ref; nothing was written`);
+  }
+  return holder.task;
 }
 
 /**

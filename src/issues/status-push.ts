@@ -433,9 +433,18 @@ export function onePushPlan(repo: string, change: IssueChange): PushPlan {
   return { repo, changes: [change], deferred: [], heldCloses: [], unchanged: 0, closedActive: [], keptOpen: [], unlisted: [], shared: [], openPulls: [], wantsViewer: false };
 }
 
-/** The task speaking for `target`, as the push picks it (holders), or undefined when none holds it or none speaks for it. */
-export function holderOf(target: IssueTarget, tasks: Iterable<Task>): Task | undefined {
-  return holders(target.repo, tasks).speakers.get(target.number);
+/** Who holds one issue as the push picks it (holders): the one task speaking for it, or the active tasks sharing it. */
+export type IssueHolder = { readonly kind: 'speaker'; readonly task: Task } | { readonly kind: 'shared'; readonly tasks: readonly string[] };
+
+/** The holder of `target` as the push picks it (holders), or undefined when no task holds it. */
+export function holderOf(target: IssueTarget, tasks: Iterable<Task>): IssueHolder | undefined {
+  const held = holders(target.repo, tasks);
+  const speaker = held.speakers.get(target.number);
+  if (speaker !== undefined) {
+    return { kind: 'speaker', task: speaker };
+  }
+  const shared = held.shared.get(target.number);
+  return shared === undefined ? undefined : { kind: 'shared', tasks: shared };
 }
 
 /**

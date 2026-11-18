@@ -69,6 +69,19 @@ describe('teamrig issue reply (T3169)', () => {
     }
   });
 
+  it('writes nothing anywhere when two active tasks share the issue, as the status push speaks for neither (#1449)', async () => {
+    const kit = await replyKit();
+    const second = await kit.run(['add', '--title', 'Follow-up on the issue', '--description', 'More work on the same issue.', '--priority', 'p2', '--ref', 'gh:acme/web#922'], AS_LEAD);
+    assert.equal(second.code, EXIT.ok, [...second.stdout, ...second.stderr].join('\n'));
+    const gh = stale();
+    const result = await kit.run(['issue', 'reply', 'acme/web#922', '--body-file', 'reply.md', '--status', 'in progress'], { ...AS_LEAD, gh });
+    assert.equal(result.code, EXIT.refused, [...result.stdout, ...result.stderr].join('\n'));
+    assert.match(result.stdout.join('\n'), /T1, T2 all hold acme\/web#922, so no one task's status speaks for it/u);
+    assert.ok(gh.ran.every((request) => isIssueRead(request.args) || isLabelRead(request.args)), 'the refused reply wrote to GitHub');
+    const list = await kit.run(['list', '--session', 'lead'], AS_LEAD);
+    assert.doesNotMatch(list.stdout.join('\n'), /in-progress/u);
+  });
+
   it('refuses, running no gh, a caller not on the team, a repository not listed, a bad target or --pr, a body that is empty, secret or names a task id, and set flags without --status', async () => {
     const kit = await replyKit();
     const gh = new FakeGh();
