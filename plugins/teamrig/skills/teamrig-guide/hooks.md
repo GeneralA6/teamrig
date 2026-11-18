@@ -1434,6 +1434,14 @@ while the mark holds: 5 minutes, or until the session's step no longer asks for 
 is logged as `FAILED to start` and held the same way. A failure of the pass never costs the tab its wake answer; a pass 15 minutes old or failed shows in `teamrig check` as
 FLEET-STALE, a warning for the lead; a pass that never ran shows nothing, as a new team waits for its first idle tab.
 
+A team whose pass closed its last session has no tab left to run its pass, so nothing of its own would reopen a
+session once work is handed to it. A wake check whose own pass ran therefore also runs the pass of each other team
+of its tree that went 5 minutes unrun, under that team's own mode, lock and state. Each of that team's sessions is
+read and reopened in its `launch.<id>.project`, the team's `team.project`, else the folder its last close logged in
+`state/session-log.jsonl`, never the calling tab's folder; with none of them known its reopen is logged `LATER` with
+the key to set. A team whose pass fails this way is a `WARN` on the hook's stderr; the tab's wake answer and the other
+teams' passes stand.
+
 A tab held on a permission prompt runs no wake check of its own, so the pass watches for it too: a tab file in
 `state/tabs/` that has asked for a permission for 10 minutes, its Claude Code still running, pages the owner once
 through the same chat webhook an expired login pages ([alerts.pageWebhookFile] or [alerts.pageWebhookEnv], the team's
