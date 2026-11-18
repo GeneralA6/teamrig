@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
-import { TASK_STATUSES } from '../register/model.ts';
+import { BLOCKER_PRIORITY_ID, TASK_STATUSES } from '../register/model.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { UsageError } from './args.ts';
 import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, dropApprovalOf, goalsOf, instantOf, listFilterOf, pinOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, taskRefOf, typeOf, waitsOf, weekOf, withSecurityCard, type TypedTimes } from './inputs.ts';
@@ -47,6 +47,11 @@ describe('priorityOf', () => {
     assert.deepEqual(['p0', 'p1', 'p2', 'p5', 'p12', 'p99'].map(priorityOf), [0, 1, 2, 5, 12, 99]);
   });
 
+  it('reads blocker as the level above p0 (T4329)', () => {
+    assert.equal(priorityOf('blocker'), -1);
+    assert.equal(priorityOf('blocker'), BLOCKER_PRIORITY_ID);
+  });
+
   it('refuses the old tier spelling and a bare level with the spelling to write', () => {
     assert.throws(() => priorityOf('t2'), { name: 'UsageError', message: 'priority "t2" is the old tier spelling: write p2' });
     assert.throws(() => priorityOf('T3'), { name: 'UsageError', message: 'priority "T3" is the old tier spelling: write p3' });
@@ -55,8 +60,8 @@ describe('priorityOf', () => {
   });
 
   it('refuses any other text without a hint', () => {
-    for (const text of ['p00', 'p01', 'p100', 'P2', 'p1.5', 't0', 'high', '']) {
-      assert.throws(() => priorityOf(text), { name: 'UsageError', message: `priority "${text}" is not p<n>` }, text);
+    for (const text of ['p00', 'p01', 'p100', 'P2', 'p1.5', 't0', 'high', 'Blocker', 'p-1', '']) {
+      assert.throws(() => priorityOf(text), { name: 'UsageError', message: `priority "${text}" is not blocker or p<n>` }, text);
     }
   });
 });

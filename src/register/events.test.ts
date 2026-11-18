@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { JsonRecord } from '../core/guards.ts';
+import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { BLOCKER_PRIORITY_ID } from './model.ts';
 import { TEST_CARD } from '../testing/card.ts';
 import { EVENT_VERSION, eventRecord, parseEvent, TASK_LINE_VERSION, type EventParse, type RegisterEvent } from './events.ts';
 
@@ -39,6 +40,21 @@ describe('eventRecord', () => {
   it('reads back as the event it was written from', () => {
     const create: RegisterEvent = { ...BASE, v: 2, type: 'create', task: TASK };
     assert.deepEqual(parse(eventRecord(create), 2), { kind: 'event', event: create });
+  });
+
+  it('writes a blocker as p0 marked blocker, so an older reader sees p0, and reads it back as the blocker (T4329)', () => {
+    const create: RegisterEvent = { ...BASE, v: 2, type: 'create', task: { ...TASK, priority: BLOCKER_PRIORITY_ID } };
+    const written = eventRecord(create);
+    const task = written['task'];
+    assert.ok(isRecord(task));
+    assert.deepEqual([task['priority'], task['blocker']], [0, true]);
+    assert.deepEqual(parse(written, 2), { kind: 'event', event: create });
+    const raised: RegisterEvent = { ...BASE, v: 2, type: 'update', changes: { priority: BLOCKER_PRIORITY_ID }, note: null };
+    assert.deepEqual(eventRecord(raised), { ...raised, changes: { priority: 0, blocker: true } });
+    assert.deepEqual(parse(eventRecord(raised), 2), { kind: 'event', event: raised });
+    const lowered: RegisterEvent = { ...raised, changes: { priority: 0 } };
+    assert.deepEqual(eventRecord(lowered), lowered, 'a move off the blocker writes no mark');
+    assert.deepEqual(parse(eventRecord(lowered), 2), { kind: 'event', event: lowered });
   });
 });
 
@@ -347,6 +363,8 @@ describe('parseEvent', () => {
       [{ ...BASE, by: '', type: 'create', task: TASK }, /missing author/],
       [{ ...BASE, type: 'create', task: 'x' }, /task is not an object/],
       [{ ...BASE, type: 'create', task: { ...TASK, priority: -1 } }, /bad priority -1/],
+      [{ ...BASE, type: 'create', task: { ...TASK, priority: 2, blocker: true } }, /blocker on priority 2, not 0/],
+      [{ ...BASE, type: 'update', changes: { priority: 0, blocker: 'yes' } }, /bad blocker "yes"/],
       [{ ...BASE, type: 'create', task: { ...TASK, due: '2030-02-30' } }, /bad due/],
       [{ ...BASE, type: 'create', task: { ...TASK, week: 'next' } }, /bad week/],
       [{ ...BASE, type: 'create', task: { ...TASK, goals: [1] } }, /goals is not a list of text/],
