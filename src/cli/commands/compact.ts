@@ -22,7 +22,7 @@ export function rotationLines(plan: RotationPlan, tailFile: string): string[] {
   const changed = compaction.kept - plan.unchanged;
   return [
     `ARCHIVE ${tailFile} (${plan.tailEvents} event(s), ${bytes(plan.tailText)}) as ${segment}${plan.leftover ? ', replacing what a stopped rotation left there' : ''}`,
-    `SNAPSHOT ${SNAPSHOT_FILE}: ${compaction.header.events} event(s), ${bytes(compaction.text)}, covering segments 1-${plan.segment}; ` +
+    `SNAPSHOT ${SNAPSHOT_FILE}: ${compaction.header.tasks} task line(s), ${compaction.header.events} event(s), ${bytes(compaction.text)}, covering segments 1-${plan.segment}; ` +
       `folded from the ${plan.source} (${plan.sourceEvents} event(s))${skipped}`,
     ...(plan.rebuild === null ? [] : rebuildLines(plan.rebuild)),
     `TASKS ${compaction.kept} kept (${plan.unchanged} unchanged, ${changed} changed), ${compaction.retiredNow.length} retired now, ` +

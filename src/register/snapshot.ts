@@ -1,6 +1,6 @@
-import { parseJsonl } from '../core/jsonl.ts';
+import { parseJsonl, type JsonlParse } from '../core/jsonl.ts';
 import { EVENT_VERSION, parseEvent, type RegisterEvent } from './events.ts';
-import { foldEvents, type RegisterState } from './fold.ts';
+import { foldEvents, type RegisterState, type Task } from './fold.ts';
 import { parseMarker } from './marker.ts';
 import { TASK_ID } from './model.ts';
 
@@ -39,16 +39,32 @@ export interface RetiredTasks {
   readonly lastWeek: string | null;
 }
 
+/**
+ * Where a read's events start, when it holds only the recent ones (a snapshot of task lines, layout.ts): each task
+ * as it stood at `from`, which the read's events fold on top of. A reader that needs a task's events from before
+ * `from` reads the history.
+ */
+export interface EventWindow {
+  readonly from: string;
+  readonly tasks: ReadonlyMap<string, Task>;
+}
+
 /** The register as it stands: the replayed tasks, and what its log held that could not be read. */
 export interface RegisterSnapshot {
   readonly state: RegisterState;
   readonly read: EventLogRead;
   /** null when the state holds every task; else the working set, and what it leaves to the archive. */
   readonly retired: RetiredTasks | null;
+  /** null when `read.events` holds every event of the tasks in `state`; else where they start. */
+  readonly window: EventWindow | null;
 }
 
 export function readEvents(text: string): EventLogRead {
-  const parse = parseJsonl(text);
+  return readEventRecords(parseJsonl(text));
+}
+
+/** The events of lines already parsed: `readEvents` of the text they came from. */
+export function readEventRecords(parse: JsonlParse): EventLogRead {
   const events: RegisterEvent[] = [];
   const lines: string[] = [];
   const seenIds: string[] = [];
@@ -92,7 +108,7 @@ export function isWritable(read: EventLogRead): boolean {
 
 /** Replays a read log: every task as its events leave it, plus the counts `teamrig list` warns about. */
 export function snapshotOf(read: EventLogRead): RegisterSnapshot {
-  return { state: foldEvents(read.events, read.seenIds), read, retired: null };
+  return { state: foldEvents(read.events, read.seenIds), read, retired: null, window: null };
 }
 
 /**
