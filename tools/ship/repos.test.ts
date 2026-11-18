@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { parseProfiles, profileFor, readProfiles, repoSlugs, slugOf } from './repos.ts';
 import { DIST } from './ship-commits.ts';
-import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
+import { TEAMRIG_RELEASE_MANIFEST, TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 const LOCAL = '"local":{"runner":"tools/ci/local.ts"}';
 
@@ -79,9 +79,9 @@ test('the shipped repos.json names each repo\'s every-check-passed job its summa
   for (const slug of ['GeneralA6/teamrig', 'GeneralA6/teamrig-pane']) assert.equal(profileFor(profiles, slug).summary, 'every check passed', slug);
 });
 
-test('the shipped repos.json calls regenerated exactly the dist and the version files a ship writes again', () => {
+test('the shipped repos.json calls regenerated exactly the dist, the version files and the release manifest a ship writes again', () => {
   const profiles = readProfiles();
-  assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig').regenerated, [`${DIST}/`, ...TEAMRIG_VERSION_FILES.map(file => file.path)]);
+  assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig').regenerated, [`${DIST}/`, ...[...TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_MANIFEST].map(file => file.path)]);
   assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig-pane').regenerated, ['plugins/teamrig-pane/.claude-plugin/plugin.json']);
 });
 

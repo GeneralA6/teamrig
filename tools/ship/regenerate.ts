@@ -1,7 +1,7 @@
-import { isRegenerated, parseLog } from './leftovers.ts';
+import { type LoggedCommit, isRegenerated, parseLog } from './leftovers.ts';
 import { mentionsIn } from './sync.ts';
 import { DIST, DIST_SUBJECT, TRAILER, parseNumstat, weighDist } from './ship-commits.ts';
-import { type BumpKind, type Version, type VersionFile, TEAMRIG_VERSION_FILES, bumpKindOf, bumped, compareVersions, formatVersion, versionIn, versionMention, withVersion } from './version-bump.ts';
+import { type BumpKind, type Version, type VersionFile, TEAMRIG_RELEASE_MANIFEST, TEAMRIG_VERSION_FILES, bumpKindOf, bumped, compareVersions, formatVersion, versionIn, versionMention, withVersion } from './version-bump.ts';
 
 /**
  * The version raise and the dist of a pushed teamrig change, made again on a main that moved past it (T2988), so a
@@ -15,17 +15,22 @@ import { type BumpKind, type Version, type VersionFile, TEAMRIG_VERSION_FILES, b
 export interface Regeneration {
   /** The files that carry the plugin version, which the change raised once in a commit of their own. */
   readonly versionFiles: readonly VersionFile[];
+  /**
+   * Files that hold the plugin version but that no raise writes (release-please's manifest, T4298): a change that sets
+   * one to its head's plugin version, in a commit of its own, has it set again to the caught-up head's.
+   */
+  readonly followers: readonly VersionFile[];
   /** The folder `npm run build` writes, committed apart from the work. */
   readonly dist: string;
 }
 
-export const TEAMRIG_REGENERATION: Regeneration = { versionFiles: TEAMRIG_VERSION_FILES, dist: DIST };
+export const TEAMRIG_REGENERATION: Regeneration = { versionFiles: TEAMRIG_VERSION_FILES, followers: [TEAMRIG_RELEASE_MANIFEST], dist: DIST };
 
 /** The paths of a regeneration as repos.json lists them: a folder ends in `/` (leftovers.ts `isRegenerated`). */
-export const listedPaths = (regeneration: Regeneration): readonly string[] => [`${regeneration.dist}/`, ...regeneration.versionFiles.map((file) => file.path)];
+export const listedPaths = (regeneration: Regeneration): readonly string[] => [`${regeneration.dist}/`, ...[...regeneration.versionFiles, ...regeneration.followers].map((file) => file.path)];
 
 /**
- * teamrig's regeneration when a repo's profile calls exactly its version files and dist regenerated; null for any
+ * teamrig's regeneration when a repo's profile calls exactly its version files, followers and dist regenerated; null for any
  * other list (teamrig-pane raises its plugin.json by hand and builds no dist), which catch-up rebases as it was.
  */
 export function regenerationFor(regenerated: readonly string[]): Regeneration | null {
@@ -45,11 +50,22 @@ export interface Raise {
   readonly message: string;
 }
 
+/** The followers a change set to its head's plugin version, to set again to the caught-up head's. */
+export interface Follow {
+  readonly files: readonly VersionFile[];
+  /** The plugin version the change's head carries, which it set them to. */
+  readonly set: Version;
+  /** The message of the change's last commit that set them, which the commit on main keeps with the new version in it. */
+  readonly message: string;
+}
+
 export interface ReplayPlan {
   /** The commits that carry the work, oldest first: every commit of the change but its version and dist ones. */
   readonly work: readonly string[];
   /** The raise to make again; null when the change raised no version. */
   readonly raise: Raise | null;
+  /** The followers to set again; null when the change set none. */
+  readonly follow: Follow | null;
   /** Whether the change carried a dist, which is then built again from the replayed source. */
   readonly rebuild: boolean;
 }
@@ -57,6 +73,26 @@ export interface ReplayPlan {
 type Git = (...args: string[]) => string;
 
 const versionAt = (git: Git, rev: string, file: VersionFile): Version => versionIn(git('show', `${rev}:${file.path}`), file);
+
+/**
+ * The followers the change's dropped commits set, or why they cannot be set again: a commit that sets one together
+ * with a raise, or a follower the head holds at another version than its plugin version, which a catch-up has no rule
+ * to move.
+ */
+function followOf(git: Git, regeneration: Regeneration, dropped: readonly LoggedCommit[], sha: string): Follow | string | null {
+  const [first] = regeneration.versionFiles;
+  const setting = dropped.filter((commit) => commit.files.some((path) => regeneration.followers.some((file) => file.path === path)));
+  const last = setting.at(-1);
+  if (last === undefined || first === undefined) return null;
+  const versionPaths = regeneration.versionFiles.map((file) => file.path);
+  const mixed = setting.find((commit) => commit.files.some((path) => versionPaths.includes(path)));
+  if (mixed !== undefined) return `its commit ${mixed.sha.slice(0, 9)} raises the version and sets ${regeneration.followers.map((file) => file.path).join(', ')} together, so they cannot be made again apart`;
+  const files = regeneration.followers.filter((file) => setting.some((commit) => commit.files.includes(file.path)));
+  const set = versionAt(git, sha, first);
+  const other = files.find((file) => compareVersions(versionAt(git, sha, file), set) !== 0);
+  if (other !== undefined) return `its ${other.path} holds ${formatVersion(versionAt(git, sha, other))}, not its plugin version ${formatVersion(set)}, so it cannot be set again on that tip's`;
+  return { files, set, message: git('log', '-1', '--format=%B', last.sha) };
+}
 
 /**
  * How to replay the change `base..sha` on main's tip, or why it cannot be: a merge commit, a commit that mixes work
@@ -77,8 +113,10 @@ export function planReplay(git: Git, regeneration: Regeneration, base: string, s
   const raised = dropped.filter((commit) => commit.files.some((file) => versionPaths.includes(file))).at(-1);
   const rebuild = dropped.some((commit) => commit.files.some((file) => file.startsWith(`${regeneration.dist}/`)));
   const work = commits.filter((commit) => !dropped.includes(commit)).map((commit) => commit.sha);
+  const follow = followOf(git, regeneration, dropped, sha);
+  if (typeof follow === 'string') return follow;
   const [first] = regeneration.versionFiles;
-  if (raised === undefined || first === undefined) return { work, raise: null, rebuild };
+  if (raised === undefined || first === undefined) return { work, raise: null, follow, rebuild };
 
   const set = versionAt(git, sha, first);
   const kind = bumpKindOf(versionAt(git, base, first), set);
@@ -88,7 +126,7 @@ export function planReplay(git: Git, regeneration: Regeneration, base: string, s
     const named = mentionsIn(git('diff', '--unified=0', '--no-color', '--no-ext-diff', '--no-renames', base, sha, '--', ...workPathspec(regeneration)), versionMention(formatVersion(set)));
     if (named.size > 0) return `its work names the version ${formatVersion(set)} it raised to (${[...named.keys()].join(', ')}), which becomes ${formatVersion(to)} on that tip`;
   }
-  return { work, raise: { kind, set, message: git('log', '-1', '--format=%B', raised.sha) }, rebuild };
+  return { work, raise: { kind, set, message: git('log', '-1', '--format=%B', raised.sha) }, follow, rebuild };
 }
 
 export interface RegenerateDeps {
@@ -100,6 +138,22 @@ export interface RegenerateDeps {
   /** Runs the repo's `npm run build` steps in the repo dir; throws when one fails. */
   build: () => void;
   log: (line: string) => void;
+}
+
+/**
+ * Sets the change's followers to the plugin version the caught-up head carries, after its raise was made again, in one
+ * commit with the change's own message and its version replaced; none when the tip already holds that version there.
+ */
+function follow(deps: RegenerateDeps, regeneration: Regeneration, plan: Follow): string {
+  const [first] = regeneration.versionFiles;
+  if (first === undefined) throw new Error('no version file to follow');
+  const to = versionIn(deps.readText(first.path), first);
+  const paths = plan.files.map((file) => file.path);
+  for (const file of plan.files) deps.writeText(file.path, withVersion(deps.readText(file.path), file, to));
+  deps.git('add', '--', ...paths);
+  if (deps.git('diff', '--cached', '--name-only') === '') return `${paths.join(', ')} already at ${formatVersion(to)}`;
+  deps.git('commit', '-q', '-s', '-m', plan.message.replace(versionMention(formatVersion(plan.set), 'g'), formatVersion(to)));
+  return `set ${paths.join(', ')} ${formatVersion(plan.set)} again as ${formatVersion(to)}`;
 }
 
 /**
@@ -121,6 +175,7 @@ export function regenerate(deps: RegenerateDeps, regeneration: Regeneration, pla
     git('commit', '-q', '-s', '-m', raise.message.replace(versionMention(formatVersion(raise.set), 'g'), formatVersion(to)));
     done.push(`raised the version ${formatVersion(raise.set)} again as ${formatVersion(to)}`);
   }
+  if (plan.follow !== null) done.push(follow(deps, regeneration, plan.follow));
   if (plan.rebuild) {
     deps.build();
     git('add', '--', regeneration.dist);
