@@ -1,7 +1,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeProcesses } from '../testing/fake-processes.ts';
-import { SPOTLIGHT_VARS, WINDOWS_SPOTLIGHT_SCRIPT, spotlightLine, spotlightRequest, startSpotlight, type SpotlightPlace } from './spotlight.ts';
+import { MemoryFiles } from '../testing/memory-files.ts';
+import {
+  SPOTLIGHT_VARS,
+  WINDOWS_SPOTLIGHT_SCRIPT,
+  spotlightHolderPath,
+  spotlightLine,
+  spotlightRequest,
+  startSpotlight,
+  type SpotlightDeps,
+  type SpotlightPlace,
+} from './spotlight.ts';
 
 const STARTED_AT = '2030-01-08T10:00:00.000Z';
 const UNTIL = Date.parse('2030-01-08T10:45:00.000Z');
@@ -12,18 +22,24 @@ const TARGET: SpotlightPlace = {
   until: UNTIL,
   breakthroughFile: 'state/meeting-breakthrough.json',
   log: 'state/logs/meeting-spotlight.log',
+  holderFile: 'home/meeting-spotlight.json',
 };
 const ON = { enabled: true, dim: 0.6, breakthroughSeconds: 120 };
 
 /** Windows' limit on a whole command line, in characters. */
 const COMMAND_LINE_LIMIT = 32_767;
 
-function depsOn(platform: NodeJS.Platform, processes = new FakeProcesses()): { processes: FakeProcesses; env: Record<string, string>; platform: NodeJS.Platform } {
-  return { processes, env: { PATH: 'bin' }, platform };
+interface FakeSpotlightDeps extends SpotlightDeps {
+  readonly processes: FakeProcesses;
+  readonly files: MemoryFiles;
+}
+
+function depsOn(platform: NodeJS.Platform, files = new MemoryFiles()): FakeSpotlightDeps {
+  return { processes: new FakeProcesses(), files, env: { PATH: 'bin' }, platform };
 }
 
 describe('spotlightRequest', () => {
-  it("passes the title, the meeting file, its start, its lapse, the dim, the break-through file and its lift as variables beside the caller's", () => {
+  it("passes the title, the meeting file, its start, its lapse, the dim, the break-through file, its lift and the holder file as variables beside the caller's", () => {
     const request = spotlightRequest({ ...TARGET, dim: 0.4, liftMs: 30_000 }, { PATH: 'bin' }, 'work');
     assert.equal(request.command, 'powershell.exe');
     assert.equal(request.cwd, 'work');
@@ -38,6 +54,7 @@ describe('spotlightRequest', () => {
       [SPOTLIGHT_VARS.dim]: '0.4',
       [SPOTLIGHT_VARS.breakthrough]: 'state/meeting-breakthrough.json',
       [SPOTLIGHT_VARS.liftMs]: '30000',
+      [SPOTLIGHT_VARS.holder]: 'home/meeting-spotlight.json',
     });
   });
 
@@ -64,6 +81,21 @@ describe('spotlightRequest', () => {
     assert.ok(check >= 0 && WINDOWS_SPOTLIGHT_SCRIPT.indexOf('$lifted = Test-Lifted') > check, 'read at each 2 s check');
     assert.match(WINDOWS_SPOTLIGHT_SCRIPT, /if \(\$hole\.IsEmpty -or \$lifted\) \{\n\s*if \(\$overlay\.Visible\) \{ \$overlay\.Hide\(\) \}/);
   });
+
+  it('exits at the 2 s check once the holder file names another spotlight, and keeps dimming while it is missing or unreadable (T4294)', () => {
+    assert.match(WINDOWS_SPOTLIGHT_SCRIPT, /if \(-not \(Test-Path -LiteralPath \$holderFile\)\) \{ return \$true \}/);
+    assert.match(WINDOWS_SPOTLIGHT_SCRIPT, /ConvertFrom-Json \} catch \{ return \$true \}/);
+    assert.match(WINDOWS_SPOTLIGHT_SCRIPT, /return \(\$holder\.meetingFile -ceq \$meetingFile\) -and \(\$holder\.startedAt -ceq \$startedAt\)/);
+    const check = WINDOWS_SPOTLIGHT_SCRIPT.indexOf(`if ($tick % 8 -eq 0) {`);
+    const exit = WINDOWS_SPOTLIGHT_SCRIPT.indexOf('if (-not (Test-Holder)) { exit 0 }');
+    assert.ok(check >= 0 && exit > check && exit < WINDOWS_SPOTLIGHT_SCRIPT.indexOf('$hole = [System.Drawing.Rectangle]::Empty'), 'read at each 2 s check');
+  });
+});
+
+describe('spotlightHolderPath', () => {
+  it('is one file under the teamrig home, shared by every team on the host', () => {
+    assert.equal(spotlightHolderPath('home').replaceAll('\\', '/'), 'home/meeting-spotlight.json');
+  });
 });
 
 describe('startSpotlight', () => {
@@ -71,12 +103,14 @@ describe('startSpotlight', () => {
     const deps = depsOn('win32');
     assert.deepEqual(await startSpotlight(deps, { ...ON, enabled: false }, 'auto', TARGET, 'work'), { kind: 'off' });
     assert.deepEqual(deps.processes.hidden, []);
+    assert.deepEqual(deps.files.paths(), [], 'a spotlight that never starts lifts no other one');
   });
 
   it('starts nothing off Windows, and says why', async () => {
     const deps = depsOn('linux');
     assert.deepEqual(await startSpotlight(deps, ON, 'auto', TARGET, 'work'), { kind: 'unsupported', why: 'it needs Windows, and this is linux' });
     assert.deepEqual(deps.processes.hidden, []);
+    assert.deepEqual(deps.files.paths(), []);
   });
 
   for (const terminal of ['print', 'tmux'] as const) {
@@ -84,8 +118,18 @@ describe('startSpotlight', () => {
       const deps = depsOn('win32');
       assert.deepEqual(await startSpotlight(deps, ON, terminal, TARGET, 'work'), { kind: 'unsupported', why: `it needs Windows Terminal, and open.terminal is ${terminal}` });
       assert.deepEqual(deps.processes.hidden, []);
+      assert.deepEqual(deps.files.paths(), []);
     });
   }
+
+  it('names itself the holder before the overlay starts, over the spotlight on already (T4294)', async () => {
+    const daily = JSON.stringify({ meetingFile: 'state/meeting.json', startedAt: '2030-01-08T09:00:00.000Z' });
+    const deps = depsOn('win32', new MemoryFiles({ [TARGET.holderFile]: `${daily}\n` }));
+    const booked: SpotlightPlace = { ...TARGET, meetingFile: 'state/meeting-spotlit.json' };
+    await startSpotlight(deps, ON, 'auto', booked, 'work');
+    assert.deepEqual(JSON.parse(deps.files.get(TARGET.holderFile) ?? ''), { meetingFile: 'state/meeting-spotlit.json', startedAt: STARTED_AT });
+    assert.equal(deps.processes.hidden[0]?.env?.[SPOTLIGHT_VARS.holder], TARGET.holderFile);
+  });
 
   for (const terminal of ['auto', 'windows-terminal'] as const) {
     it(`starts the hidden overlay at the team's dim with open.terminal ${terminal}`, async () => {

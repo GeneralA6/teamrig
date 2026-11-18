@@ -1,4 +1,6 @@
+import { join } from 'node:path';
 import type { MeetingConfig, TerminalChoice } from '../config/types.ts';
+import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
 import { powerShellRequest } from '../core/powershell.ts';
 import { MS_PER_SECOND } from '../core/time.ts';
@@ -14,7 +16,9 @@ import type { HiddenRequest, StartOutcome } from '../open/processes.ts';
  * message that broke through the meeting to the lead (src/meeting/breakthrough.ts) hides it for a while, so the owner
  * sees that message at once; it dims again by itself after `meeting.spotlight.breakthroughSeconds` (T2524). Nothing is
  * typed into a terminal, and the tab's title, the meeting file's path and the times reach the script as variables,
- * never inside it.
+ * never inside it. One spotlight dims the host at a time, whichever team or meeting started it (T4294): a start names
+ * itself in the host's holder file, and an overlay lifts itself once that file names another, so a booked meeting
+ * started over the daily one, or two teams' meetings, never stack two dimming layers.
  */
 
 /** The spotlight's error log, in the team's logs folder: the overlay runs hidden, so a failure shows only there. */
@@ -29,7 +33,13 @@ export const SPOTLIGHT_VARS = {
   dim: 'TEAMRIG_SPOTLIGHT_DIM',
   breakthrough: 'TEAMRIG_SPOTLIGHT_BREAKTHROUGH',
   liftMs: 'TEAMRIG_SPOTLIGHT_LIFT_MS',
+  holder: 'TEAMRIG_SPOTLIGHT_HOLDER',
 } as const;
+
+/** The host's spotlight holder file, under the teamrig home: the newest spotlight's meeting file and start (T4294). */
+export function spotlightHolderPath(kitHome: string): string {
+  return join(kitHome, 'meeting-spotlight.json');
+}
 
 /** How often the overlay follows the window, in ms: a moved window's hole catches up within a quarter second. */
 const TICK_MS = 250;
@@ -122,6 +132,7 @@ export const WINDOWS_SPOTLIGHT_SCRIPT = [
   `  $dim = [double]::Parse($env:${SPOTLIGHT_VARS.dim}, [Globalization.CultureInfo]::InvariantCulture)`,
   `  $breakthroughFile = $env:${SPOTLIGHT_VARS.breakthrough}`,
   `  $liftMs = [long]$env:${SPOTLIGHT_VARS.liftMs}`,
+  `  $holderFile = $env:${SPOTLIGHT_VARS.holder}`,
   '  $element = [System.Windows.Automation.AutomationElement]',
   '  $scope = [System.Windows.Automation.TreeScope]',
   "  $terminalWindow = [System.Windows.Automation.PropertyCondition]::new($element::ClassNameProperty, 'CASCADIA_HOSTING_WINDOW_CLASS')",
@@ -148,6 +159,12 @@ export const WINDOWS_SPOTLIGHT_SCRIPT = [
   '    try { $breakthrough = Get-Content -LiteralPath $breakthroughFile -Raw | ConvertFrom-Json; $at = [long]$breakthrough.atMs } catch { return $false }',
   '    return ($breakthrough.startedAt -ceq $startedAt) -and ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -lt $at + $liftMs)',
   '  }',
+  // False once the host's holder file names another spotlight; a missing, unreadable or half-written file keeps it.
+  '  function Test-Holder {',
+  '    if (-not (Test-Path -LiteralPath $holderFile)) { return $true }',
+  '    try { $holder = Get-Content -LiteralPath $holderFile -Raw | ConvertFrom-Json } catch { return $true }',
+  '    return ($holder.meetingFile -ceq $meetingFile) -and ($holder.startedAt -ceq $startedAt)',
+  '  }',
   '  $overlay = New-Object TeamrigSpotlightForm -ArgumentList $dim',
   '  $window = [IntPtr]::Zero',
   '  $framed = [System.Drawing.Rectangle]::Empty',
@@ -159,6 +176,7 @@ export const WINDOWS_SPOTLIGHT_SCRIPT = [
   '      $open = Test-MeetingOpen',
   '      if ($null -eq $open) { $unreadable++ } elseif (-not $open) { exit 0 } else { $unreadable = 0 }',
   `      if ($unreadable -ge ${UNREADABLE_CHECKS}) { exit 0 }`,
+  '      if (-not (Test-Holder)) { exit 0 }',
   '      $lifted = Test-Lifted',
   '      if (-not [TeamrigSpotlightNative]::IsWindow($window)) { $window = Find-LeadWindow }',
   '    }',
@@ -197,6 +215,8 @@ export interface SpotlightTarget {
   readonly liftMs: number;
   /** The file its errors are appended to. */
   readonly log: string;
+  /** The host's holder file ({@link spotlightHolderPath}): a later start named there lifts this spotlight. */
+  readonly holderFile: string;
 }
 
 /** The hidden program that spotlights the window of `target.title` until the meeting is no longer open. */
@@ -218,6 +238,7 @@ export function spotlightRequest(target: SpotlightTarget, env: Env, cwd: string)
       [SPOTLIGHT_VARS.dim]: String(target.dim),
       [SPOTLIGHT_VARS.breakthrough]: target.breakthroughFile,
       [SPOTLIGHT_VARS.liftMs]: String(target.liftMs),
+      [SPOTLIGHT_VARS.holder]: target.holderFile,
     },
   };
 }
@@ -231,12 +252,18 @@ export type SpotlightOutcome =
   | { readonly kind: 'unsupported'; readonly why: string }
   | { readonly kind: 'start'; readonly outcome: StartOutcome };
 
+/** What starting a spotlight needs: the hidden program's start, and the files that name it the host's holder. */
+export interface SpotlightDeps extends OpenTabDeps {
+  readonly files: Files;
+}
+
 /**
  * Starts the spotlight when the team turned it on and the tab it frames can be found: Windows, with Windows Terminal among
- * the terminals the team's `open.terminal` tries. Never waits for the overlay to show.
+ * the terminals the team's `open.terminal` tries. It first names itself the host's holder, which lifts the spotlight on
+ * already, of this team or another (T4294). Never waits for the overlay to show.
  */
 export async function startSpotlight(
-  deps: OpenTabDeps,
+  deps: SpotlightDeps,
   config: MeetingConfig['spotlight'],
   terminal: TerminalChoice,
   target: SpotlightPlace,
@@ -251,6 +278,7 @@ export async function startSpotlight(
   if (!candidatesOf(terminal, deps).includes('windows-terminal')) {
     return { kind: 'unsupported', why: `it needs Windows Terminal, and open.terminal is ${terminal}` };
   }
+  await deps.files.write(target.holderFile, `${JSON.stringify({ meetingFile: target.meetingFile, startedAt: target.startedAt })}\n`);
   return { kind: 'start', outcome: await deps.processes.startHidden(spotlightRequest({ ...target, dim: config.dim, liftMs: config.breakthroughSeconds * MS_PER_SECOND }, deps.env, cwd)) };
 }
 

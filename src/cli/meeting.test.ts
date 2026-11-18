@@ -6,7 +6,7 @@ import { SPOTLIGHT_VARS } from '../meeting/spotlight.ts';
 import { MEETING_LAPSE_MS, MeetingStore } from '../meeting/state.ts';
 import { MergeLog, type SelfMerge } from '../merge/merge-log.ts';
 import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
-import { APP, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { SUB_TEAMS, teamConfigOf, teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { formatConfig } from '../config/load.ts';
@@ -152,6 +152,10 @@ describe('runCli: the daily meeting', () => {
     // The file the cold-send hook records a break-through in, and how long one lifts the dimming (T2524).
     assert.match(env[SPOTLIGHT_VARS.breakthrough] ?? '', /meeting-breakthrough\.json$/);
     assert.equal(env[SPOTLIGHT_VARS.liftMs], '45000');
+    // It names itself the host's one spotlight, in the kit home every team shares (T4294).
+    const holderFile = join(KIT, 'meeting-spotlight.json');
+    assert.equal(env[SPOTLIGHT_VARS.holder], holderFile);
+    assert.deepEqual(JSON.parse(kit.files.get(holderFile) ?? ''), { meetingFile: env[SPOTLIGHT_VARS.meeting], startedAt: '2030-01-08T10:00:00.000Z' });
 
     kit.clock.advance(10 * MINUTE);
     const again = await kit.run(['meeting', 'start', '--session', 'lead'], { platform: 'win32', processes });

@@ -23,7 +23,7 @@ import {
   type MeetingStatus,
   type ScheduledMeeting,
 } from '../../meeting/schedule.ts';
-import { SPOTLIGHT_LOG, spotlightLine, startSpotlight, type SpotlightPlace } from '../../meeting/spotlight.ts';
+import { SPOTLIGHT_LOG, spotlightHolderPath, spotlightLine, startSpotlight, type SpotlightPlace } from '../../meeting/spotlight.ts';
 import { SpotlitStore, spotlitUntil } from '../../meeting/spotlit.ts';
 import { MeetingStore, phaseOf } from '../../meeting/state.ts';
 import { WAKE_TICK_MS } from '../../mod/wake-hand.ts';
@@ -379,6 +379,7 @@ async function spotlightMeeting(runtime: CliRuntime, mk: MeetingsKit, meeting: S
     // A break-through lifts only the daily meeting's spotlight: the file names that meeting's start, never this one.
     breakthroughFile: mk.kit.paths.meetingBreakthrough,
     log: join(mk.kit.paths.logs, SPOTLIGHT_LOG),
+    holderFile: spotlightHolderPath(mk.kit.paths.kitHome),
   };
   const { spotlight } = mk.config.meeting;
   return spotlightLine(await startSpotlight(runtime, spotlight, mk.config.open.terminal, place, runtime.cwd), place, spotlight.dim);
