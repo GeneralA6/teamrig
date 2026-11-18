@@ -6,7 +6,8 @@ import { mergeStandingOf, type MergeStanding } from '../../src/cli/ship-approval
 import { CLAUDE_SESSION, CliHarness, TEAM_HOME } from '../../src/testing/cli-harness.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
 import { changePatch, clearMerge, clearMergeFrom, mergeClearance, type MergeReads, shipWritesOf, type StandingOf, type TabCallerOf, taskOfBranch, type WorkCommit, workChanges, workCommitsOf } from './approval.ts';
-import { TEAMRIG_RELEASE_STAMPS, TEAMRIG_VERSION_FILES } from './version-bump.ts';
+import { profileFor, readProfiles } from './repos.ts';
+import { TEAMRIG_RELEASE_MANIFEST, TEAMRIG_RELEASE_STAMPS, TEAMRIG_SHIP_VERSION_FILES, TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 const HEAD = '0123456789abcdef0123456789abcdef01234567';
 const MANIFEST = 'plugins/teamrig/.claude-plugin/plugin.json';
@@ -190,6 +191,15 @@ describe('shipWritesOf: how an approval reads the paths a ship writes again (T29
   it('refuses a file that is neither a folder nor a version file the ship rewrites', () => {
     assert.throws(() => shipWritesOf(['dist/', 'src/hooks.json'], TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS), /regenerated path src\/hooks\.json is no folder the build rebuilds and no version file/);
   });
+
+  it("masks the shipped repos.json's release manifest, which a catch-up sets again, and needs it known to (T4298)", () => {
+    const { regenerated } = profileFor(readProfiles(), 'GeneralA6/teamrig');
+    assert.deepEqual(
+      shipWritesOf(regenerated, TEAMRIG_SHIP_VERSION_FILES, TEAMRIG_RELEASE_STAMPS).versionFiles.map((file) => file.path),
+      [...TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_MANIFEST].map((file) => file.path),
+    );
+    assert.throws(() => shipWritesOf(regenerated, TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS), /regenerated path \.release-please-manifest\.json is no folder/);
+  });
 });
 
 describe('changePatch: the fingerprint of what a branch changes over main', () => {
@@ -239,6 +249,25 @@ describe('changePatch: the fingerprint of what a branch changes over main', () =
     const approved = patch();
     raise('0.2.0');
     assert.equal(patch(), approved);
+  });
+
+  it('keeps the fingerprint when a catch-up sets the release manifest again on a newer version, and moves it on any other edit there (T4298)', () => {
+    const RELEASE = TEAMRIG_RELEASE_MANIFEST.path;
+    const writes = shipWritesOf(['dist/', MANIFEST, VERSION_TS, RELEASE], TEAMRIG_SHIP_VERSION_FILES, TEAMRIG_RELEASE_STAMPS);
+    const release = (version: string, more = ''): string => `{\n  ".": "${version}"${more}\n}\n`;
+    const fingerprint = (): string => changePatch(git, 'HEAD', 'main', writes);
+    repo.git('checkout', '-q', 'main');
+    commitFiles('release: the manifest', { [RELEASE]: release('0.0.9') });
+    repo.git('checkout', '-q', 't1-change');
+    repo.git('rebase', '-q', 'main');
+    commitFiles("fix(release): the manifest starts from main's version, 0.1.0", { [RELEASE]: release('0.1.0') });
+    const approved = fingerprint();
+    repo.git('reset', '-q', '--hard', 'HEAD~1');
+    commitFiles("fix(release): the manifest starts from main's version, 0.2.0", { [RELEASE]: release('0.2.0') });
+    assert.equal(fingerprint(), approved);
+    repo.git('reset', '-q', '--hard', 'HEAD~1');
+    commitFiles("fix(release): the manifest starts from main's version, 0.1.0", { [RELEASE]: release('0.1.0', ',\n  "extra": "1.0.0"') });
+    assert.notEqual(fingerprint(), approved, 'a key beside the version is work');
   });
 
   it('moves the fingerprint on any change to the branch outside its generated folders', () => {
