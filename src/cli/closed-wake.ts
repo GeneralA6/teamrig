@@ -2,6 +2,10 @@ import type { Roster } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
 import { errorMessage } from '../core/guards.ts';
 import { KIT_NAME } from '../core/home.ts';
+import { LockBusyError } from '../core/lock.ts';
+import { fileLockOf } from './file-locks.ts';
+import { readIdlePassState } from './idle-pass-check.ts';
+import { formatIdlePassState, IDLE_ACT_HOLD_MS, IDLE_PASS_EVERY_MS, type IdlePassState } from './idle-pass-log.ts';
 import { closedOf, SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import type { Kit } from './kit.ts';
@@ -19,7 +23,8 @@ import type { CliRuntime } from './runtime.ts';
  */
 export type ClosedWake =
   | { readonly kind: 'open' }
-  | { readonly kind: 'reopening' }
+  /** `already`: a reopen another wake or the pass started is still pending, so none started now. */
+  | { readonly kind: 'reopening'; readonly already?: boolean }
   | { readonly kind: 'closed'; readonly why: string };
 
 /**
@@ -46,16 +51,46 @@ export async function wakeClosedSession(runtime: CliRuntime, kit: Pick<Kit, 'pat
     if (hold !== undefined) {
       return { kind: 'closed', why: hold };
     }
+    return await startReopenOnce(runtime, kit, config, id, folder);
+  } catch (error) {
+    if (error instanceof LockBusyError) {
+      return { kind: 'closed', why: 'the idle pass holds its lock now, and that pass or the next reopens it for the line' };
+    }
+    return { kind: 'closed', why: `its state could not be read (${errorMessage(error)})` };
+  }
+}
+
+/**
+ * Starts `idle-open` for `id` once: under the idle pass's lock it takes the pass's own pending mark for the session
+ * (src/cli/idle-pass-log.ts `heldActs`), so two wakes close together, or a wake beside a pass, never open two tabs of
+ * one session. A reopen already pending under `IDLE_ACT_HOLD_MS` starts none; the closed state is read again under
+ * the lock, as a reopen that ran meanwhile leaves the session open.
+ */
+async function startReopenOnce(runtime: CliRuntime, kit: Pick<Kit, 'paths'>, config: KitConfig, id: string, folder: string): Promise<ClosedWake> {
+  return fileLockOf(runtime, kit.paths.idlePassLock, config.lock).run(async () => {
+    const now = runtime.clock.now();
+    const state = await readIdlePassState(runtime.files, kit.paths);
+    const mark = state?.pending?.[id];
+    if (mark !== undefined && now >= mark.at && now - mark.at < IDLE_ACT_HOLD_MS) {
+      return { kind: 'reopening', already: true };
+    }
+    if (!(await closedByTeamrig(runtime, kit, id))) {
+      return { kind: 'open' };
+    }
     const started = await runtime.processes.startHidden({
       command: runtime.self.node,
       args: [runtime.self.script, 'idle-open', id, '--team', kit.paths.team, '--project', folder],
       cwd: folder,
       env: runtime.env,
     });
-    return started.kind === 'started' ? { kind: 'reopening' } : { kind: 'closed', why: `its reopen did not start (${started.kind === 'missing' ? 'node was not found' : started.error})` };
-  } catch (error) {
-    return { kind: 'closed', why: `its state could not be read (${errorMessage(error)})` };
-  }
+    if (started.kind !== 'started') {
+      return { kind: 'closed', why: `its reopen did not start (${started.kind === 'missing' ? 'node was not found' : started.error})` };
+    }
+    // With no pass yet, the state starts a pass interval back, so the next check still runs one.
+    const base: IdlePassState = state ?? { at: now - IDLE_PASS_EVERY_MS, kinds: {} };
+    await runtime.files.write(kit.paths.idlePass, formatIdlePassState({ ...base, pending: { ...base.pending, [id]: { act: 'reopen', at: now } } }));
+    return { kind: 'reopening' };
+  });
 }
 
 /**
@@ -86,7 +121,9 @@ export function closedWakeLine(wake: ClosedWake, label: string, id: string): str
     case 'open':
       return undefined;
     case 'reopening':
-      return `REOPENS ${label}: it was closed, and its reopen started now for this line; it opens once the host has room, the idle pass log saying REOPENED or KEPT with why (or run: ${KIT_NAME} open ${id})`;
+      return wake.already === true
+        ? `REOPENS ${label}: it was closed, and its reopen started a moment ago is still under way, so none started for this line; it opens once the host has room, the idle pass log saying REOPENED or KEPT with why (or run: ${KIT_NAME} open ${id})`
+        : `REOPENS ${label}: it was closed, and its reopen started now for this line; it opens once the host has room, the idle pass log saying REOPENED or KEPT with why (or run: ${KIT_NAME} open ${id})`;
     case 'closed':
       return `CLOSED: ${label} was not woken: ${wake.why}; the idle pass tries again each minute, or run: ${KIT_NAME} open ${id}`;
   }

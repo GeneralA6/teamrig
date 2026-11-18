@@ -903,6 +903,25 @@ describe('hook wake-check runs the idle pass', () => {
     assert.equal(processes.hidden.length, 2, 'started again once the hold ran out and its step still asks for it');
   });
 
+  it("in mode on starts no reopen for a session a wake's reopen is pending on (#1584)", async () => {
+    const kit = await teamWithAlphaTab(ON);
+    await new SessionLog(kit.files, SESSION_LOG).append({ kind: 'close', session: 'bravo', by: 'idle-pass', at: '2030-01-08T09:00:00.000Z', claudeSession: 'claude-bravo', idleMinutes: 75, freedMb: 1300, folder: APP });
+    const processes = new FakeProcesses();
+    const woke = await kit.run(['inbox', 'add', '--session', 'lead', '--to', 'bravo', '--text', 'Re-confirm now.', '--wake', 'now'], {
+      processes,
+      probe: new FakePathProbe({ folders: [APP] }),
+      memory: new FakeHostMemory().lists([], COMMIT),
+    });
+    assert.match(woke.stdout.join('\n'), /^REOPENS bravo: it was closed, and its reopen started now for this line;/m);
+    kit.clock.advance(MINUTE);
+    await passCheck(kit, { processes });
+    assert.deepEqual(
+      processes.hidden.map(({ args }) => args[1]),
+      ['idle-open'],
+      "the pass holds the wake's reopen as its own",
+    );
+  });
+
   it('in mode on logs a reopen that did not start, and holds its session as for one that did', async () => {
     const kit = await idleTeam(ON);
     await handBravo(kit);

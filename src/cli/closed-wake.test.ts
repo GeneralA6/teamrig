@@ -11,6 +11,7 @@ import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { SUB_TEAMS, teamConfigOf, teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import { WakeAsks } from '../wake/asks.ts';
+import { IDLE_ACT_HOLD_MS } from './idle-pass-log.ts';
 import { EXIT } from './runtime.ts';
 
 // #1581: a wake for a session teamrig closed never prints WAKES; its reopen starts at once
@@ -203,5 +204,29 @@ describe('a task due today handed to a session teamrig closed (#1581)', () => {
         assert.deepEqual([reopensStarted(processes), (await new WakeAsks(kit.files, opsAsks).read('lead')).length], [[], 0]);
       }
     }
+  });
+});
+
+describe('one reopen per closed session at a time (#1584)', () => {
+  it('two wakes close together start one reopen; the second says the first is under way', async () => {
+    const kit = await teamWithClosedAlpha();
+    const processes = new FakeProcesses();
+    const first = await run(kit, WAKE_NOW, ROOM, processes);
+    kit.clock.advance(1000);
+    const second = await run(kit, ['inbox', 'add', '--session', 'bravo', '--to', 'alpha', '--text', 'And #170.', '--wake', 'now'], ROOM, processes);
+    assert.equal(second.result.code, EXIT.ok, second.result.stderr.join('\n'));
+    assert.match(first.result.stdout.join('\n'), /^REOPENS alpha: it was closed, and its reopen started now for this line;/m);
+    assert.match(second.result.stdout.join('\n'), /^REOPENS alpha: it was closed, and its reopen started a moment ago is still under way, so none started for this line;/m);
+    assert.deepEqual(reopensStarted(processes), [['alpha', 'app', APP]]);
+    assert.equal(await asksOf(kit), 2, 'each line keeps its ask');
+  });
+
+  it('starts another once the pending reopen is older than its hold, the session still closed', async () => {
+    const kit = await teamWithClosedAlpha();
+    const processes = new FakeProcesses();
+    await run(kit, WAKE_NOW, ROOM, processes);
+    kit.clock.advance(IDLE_ACT_HOLD_MS);
+    await run(kit, WAKE_NOW, ROOM, processes);
+    assert.equal(reopensStarted(processes).length, 2);
   });
 });
