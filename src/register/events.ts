@@ -434,7 +434,7 @@ function textProblem(record: JsonRecord, keys: readonly string[]): string | unde
 }
 
 /** A status line's follow-ups: undefined when absent or null, else a list of task ids, or the reason it is not one. */
-function parseFollowups(value: unknown): readonly string[] | undefined | string {
+export function parseFollowups(value: unknown): readonly string[] | undefined | string {
   if (value === undefined || value === null) {
     return undefined;
   }
@@ -445,6 +445,11 @@ function parseFollowups(value: unknown): readonly string[] | undefined | string 
 function textOrNull(record: JsonRecord, key: string): string | null {
   const value = record[key];
   return typeof value === 'string' ? value : null;
+}
+
+/** Every task field a record gives, as a create's are read: a folded task line holds them too (task-line.ts). */
+export function parseCompleteTaskFields(record: JsonRecord): TaskFields | string {
+  return parseTaskFields(record, true);
 }
 
 /**
