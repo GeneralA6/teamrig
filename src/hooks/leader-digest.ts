@@ -37,6 +37,11 @@ export interface DigestCursor {
 export interface DigestInput {
   /** The register's events, in log order. */
   readonly events: readonly RegisterEvent[];
+  /**
+   * Each task as it stood before `events`, which fold on top of it: a snapshot of task lines' window tasks
+   * (snapshot.ts EventWindow), else none, as the events hold every task from its create.
+   */
+  readonly atStart: ReadonlyMap<string, Task>;
   /** The register's tasks as they stand now. */
   readonly tasks: ReadonlyMap<string, Task>;
   /** The cursor: only events after it count. */
@@ -111,7 +116,12 @@ function noteOf(event: RegisterEvent): string | undefined {
 
 function changesOf(input: DigestInput): TaskChange[] {
   const fresh = afterCursor(input.events, input.since);
-  const atCursor = foldEvents(input.events.filter((_, index) => fresh[index] !== true)).tasks;
+  const atStart = { tasks: input.atStart, orphans: 0, nextId: 'T1', moved: new Map<string, string>() };
+  const atCursor = foldEvents(
+    input.events.filter((_, index) => fresh[index] !== true),
+    [],
+    atStart,
+  ).tasks;
   const byTask = new Map<string, RegisterEvent[]>();
   input.events.forEach((event, index) => {
     if (fresh[index] === true) {
