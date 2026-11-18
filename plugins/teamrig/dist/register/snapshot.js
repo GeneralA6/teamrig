@@ -4,7 +4,10 @@ import { foldEvents } from "./fold.js";
 import { parseMarker } from "./marker.js";
 import { TASK_ID } from "./model.js";
 export function readEvents(text) {
-    const parse = parseJsonl(text);
+    return readEventRecords(parseJsonl(text));
+}
+/** The events of lines already parsed: `readEvents` of the text they came from. */
+export function readEventRecords(parse) {
     const events = [];
     const lines = [];
     const seenIds = [];
@@ -45,9 +48,16 @@ export function readEvents(text) {
 export function isWritable(read) {
     return read.newestVersion <= EVENT_VERSION;
 }
+/**
+ * True when the read lacks events from `at` on: its event window (a snapshot of task lines, layout.ts) opens after
+ * `at`, so a reader of the events since then reads the history.
+ */
+export function windowOpensAfter({ window }, at) {
+    return window !== null && at < Date.parse(window.from);
+}
 /** Replays a read log: every task as its events leave it, plus the counts `teamrig list` warns about. */
 export function snapshotOf(read) {
-    return { state: foldEvents(read.events, read.seenIds), read, retired: null };
+    return { state: foldEvents(read.events, read.seenIds), read, retired: null, window: null };
 }
 /**
  * The register that one log text describes, read the way every teamrig command reads a register that

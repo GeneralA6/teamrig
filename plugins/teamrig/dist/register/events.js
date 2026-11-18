@@ -250,7 +250,7 @@ function textProblem(record, keys) {
     return bad === undefined ? undefined : `${bad} is not text`;
 }
 /** A status line's follow-ups: undefined when absent or null, else a list of task ids, or the reason it is not one. */
-function parseFollowups(value) {
+export function parseFollowups(value) {
     if (value === undefined || value === null) {
         return undefined;
     }
@@ -260,6 +260,10 @@ function parseFollowups(value) {
 function textOrNull(record, key) {
     const value = record[key];
     return typeof value === 'string' ? value : null;
+}
+/** Every task field a record gives, as a create's are read: a folded task line holds them too (task-line.ts). */
+export function parseCompleteTaskFields(record) {
+    return parseTaskFields(record, true);
 }
 function parseTaskFields(record, complete) {
     const legacy = legacyMarkOf(record);

@@ -15,6 +15,7 @@ import { SPOTLIGHT_LOG, spotlightLine, startSpotlight } from "../../meeting/spot
 import { MEETING_LAPSE_MS, MeetingStore, phaseOf, startingKindOf, stoppedAt } from "../../meeting/state.js";
 import { MergeLog } from "../../merge/merge-log.js";
 import { goalScores } from "../../register/goal-board.js";
+import { windowOpensAfter } from "../../register/snapshot.js";
 import { currentWeekOf } from "../../register/week.js";
 import { fitLines } from "../../register/fit.js";
 import { noPositionals, UsageError } from "../args.js";
@@ -244,6 +245,13 @@ export async function meetingAgenda(args, runtime) {
     return EXIT.ok;
 }
 /**
+ * The team's register holding every event since `since`: its working set, or its whole history when the snapshot's
+ * event window opens later (T4076), as a meeting that lapsed unended may hold decisions only the history keeps.
+ */
+async function withEventsSince(rolled, since) {
+    return windowOpensAfter(rolled.snapshot, since) ? { ...rolled, snapshot: await rolled.history() } : rolled;
+}
+/**
  * `meeting end`: closes the open meeting, or one that lapsed unended, and tells each session whose tasks the lead
  * updated during the meeting those updates (the decisions recorded) by one inbox line, in a team under the lead's
  * too (T1018); a session with none gets no line. Every card the agenda asked that got no answer (a Decided or a Later)
@@ -269,8 +277,9 @@ export async function meetingEnd(args, runtime) {
     }
     const { meeting } = phase;
     const rollUp = await meetingRegisters(runtime, mk);
-    const { own, teams } = rollUp;
     const startedAt = Date.parse(meeting.startedAt);
+    const own = await withEventsSince(rollUp.own, startedAt);
+    const teams = await Promise.all(rollUp.teams.map((rolled) => (rolled === rollUp.own ? own : withEventsSince(rolled, startedAt))));
     const asked = askedDecisions(decisionAgendaOf(rollUp, runtime, mk.now, meeting.carried));
     const answered = answeredKeys(teams.map((rolled) => ({ events: rolled.snapshot.read.events, decidedBy: decidedByOf(rolled, own, mk.lead), team: rolled.team === own.team ? undefined : rolled.team })), startedAt);
     const carried = carriedKeys([...asked.daily, ...asked.batch], answered);

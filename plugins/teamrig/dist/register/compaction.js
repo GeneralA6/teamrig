@@ -3,11 +3,19 @@ import { MS_PER_DAY } from "../core/time.js";
 import { currentWeekOf } from "./week.js";
 import { RegisterFold, taskNumber } from "./fold.js";
 import { snapshotHeaderRecord } from "./layout.js";
+import { TASK_LINES_LAYOUT_VERSION } from "./marker.js";
+import { taskLineRecord } from "./task-line.js";
 /**
  * How long a finished task stays in the working set: a week plan, its review and a day more. The pane
  * shows tasks finished within a day, so it never needs a retired one.
  */
 export const RETAIN_DAYS = 8;
+/**
+ * How far back a snapshot keeps events as written (T4076); before that it holds each task's folded state. A
+ * meeting lasts under a day and a leader's digest cursor is hours old, so their reads stay on the working set;
+ * `show` of an older task, and any read from further back, reads the history.
+ */
+export const EVENT_WINDOW_DAYS = 2;
 /**
  * A task leaves the working set when every reader that skips the history can do without it: finished
  * (done or dropped) at least `retainMs` ago, and in no week plan from the one in force (`floor`) on. Then
@@ -32,14 +40,30 @@ function lineOf(read, index) {
     return line;
 }
 /**
- * The snapshot of a register's working set after a compaction: the header, then, in write order, every
- * event but those of the tasks it retires, so `show` lists the same events for every task it keeps. Each
- * is its line as written, never re-serialized, so a field this code does not parse is kept. The orphans
- * among the events left out are counted in the header. A task that moved to another team retires at once, whatever
- * its age, with its moved line: the other team's register holds it, and the history still says where it went.
- * `source` must hold in `read.events` exactly the events its state folds from (a working-set or a
- * history read), and hold no line from a newer teamrig's format or status: those are no events, so the
- * snapshot would drop them, and such a log is never compacted (rotate.ts).
+ * Where the new snapshot's events start: EVENT_WINDOW_DAYS before the compaction, and never before the events
+ * `source` holds, since the task lines must stand at a time its events reach back to.
+ */
+function windowStart(source, now) {
+    const start = new Date(now - EVENT_WINDOW_DAYS * MS_PER_DAY).toISOString();
+    const held = source.window?.from;
+    return held !== undefined && Date.parse(held) > Date.parse(start) ? held : start;
+}
+/** The fold `source.read.events` goes on from: its window's tasks, or nothing when it holds every event. */
+function foldStart(source) {
+    return source.window === null ? new RegisterFold() : new RegisterFold({ tasks: source.window.tasks, orphans: 0, nextId: 'T1', moved: new Map() });
+}
+/**
+ * The snapshot of a register's working set after a compaction (layout.ts): the header, then a task line for
+ * each task it keeps as that task stood at `windowFrom`, then, in write order, every event written from then on
+ * (the first event at or after `windowFrom` and every one after it) but those of the tasks it retires. Each such
+ * event is its line as written, never re-serialized, so a field this code does not parse is kept; a task line
+ * holds the task as this code folds it, so such a field of an older event is left to the archive, which keeps
+ * every line, and `teamrig compact --from-history` folds again from it. The orphans among the events left out
+ * are counted in the header. A task that moved to another team retires at once, whatever its age, with its moved
+ * line: the other team's register holds it, and the history still says where it went.
+ * `source` must hold in `read.events` exactly the events its state folds from on top of its window (a
+ * working-set or a history read), and hold no line from a newer teamrig's format or status: those are no events,
+ * so the snapshot would drop them, and such a log is never compacted (rotate.ts).
  */
 export function compactRegister(source, options) {
     const now = options.now.getTime();
@@ -48,19 +72,26 @@ export function compactRegister(source, options) {
     const retiring = [...source.state.tasks.values()].filter((task) => !options.keep.has(task.id) && isRetirable(task, now, retainMs, floor));
     const moved = [...source.state.moved.keys()];
     const retiredIds = new Set([...retiring.map((task) => task.id), ...moved]);
-    const fold = new RegisterFold();
-    const kept = [];
+    const windowFrom = windowStart(source, now);
+    const cut = Date.parse(windowFrom);
+    const fold = foldStart(source);
+    let atCut;
+    const eventLines = [];
     let keptOrphans = 0;
     for (const [index, event] of source.read.events.entries()) {
+        atCut ??= Date.parse(event.at) >= cut ? fold.state().tasks : undefined;
         const applied = fold.apply(event);
-        if (!retiredIds.has(event.id)) {
-            kept.push(lineOf(source.read, index));
+        if (atCut !== undefined && !retiredIds.has(event.id)) {
+            eventLines.push(lineOf(source.read, index));
             keptOrphans += applied ? 0 : 1;
         }
     }
+    const lined = [...(atCut ?? fold.state().tasks).values()].filter((task) => !retiredIds.has(task.id)).sort((a, b) => taskNumber(a.id) - taskNumber(b.id));
     const header = {
         covered: options.covered,
-        events: kept.length,
+        events: eventLines.length,
+        tasks: lined.length,
+        windowFrom,
         nextId: source.state.nextId,
         orphans: source.state.orphans - keptOrphans,
         unreadable: source.read.unreadable,
@@ -70,7 +101,8 @@ export function compactRegister(source, options) {
         retiredLastWeek: newestWeek([source.retired?.lastWeek ?? null, ...retiring.map((task) => task.week)]),
         at: options.now.toISOString(),
     };
-    const text = [toJsonlLine(snapshotHeaderRecord(header)), ...kept.map((line) => `${line}\n`)].join('');
+    const taskLines = lined.map((task) => toJsonlLine(taskLineRecord(TASK_LINES_LAYOUT_VERSION, task)));
+    const text = [toJsonlLine(snapshotHeaderRecord(header)), ...taskLines, ...eventLines.map((line) => `${line}\n`)].join('');
     const retiredNow = [...retiredIds].sort((a, b) => taskNumber(a) - taskNumber(b));
-    return { header, text, kept: source.state.tasks.size - retiring.length, retiredNow };
+    return { header, text, eventLines, kept: source.state.tasks.size - retiring.length, retiredNow };
 }

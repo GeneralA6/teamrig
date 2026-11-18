@@ -60,7 +60,8 @@ function noteOf(event) {
 }
 function changesOf(input) {
     const fresh = afterCursor(input.events, input.since);
-    const atCursor = foldEvents(input.events.filter((_, index) => fresh[index] !== true)).tasks;
+    const atStart = { tasks: input.atStart, orphans: 0, nextId: 'T1', moved: new Map() };
+    const atCursor = foldEvents(input.events.filter((_, index) => fresh[index] !== true), [], atStart).tasks;
     const byTask = new Map();
     input.events.forEach((event, index) => {
         if (fresh[index] === true) {

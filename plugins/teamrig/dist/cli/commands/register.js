@@ -30,6 +30,7 @@ import { noProgressFlag } from "../../register/progress.js";
 import { sliceLateFlags } from "../../register/slice-late.js";
 import { overSizeFlags } from "../../register/over-size.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
+import { windowOpensAfter } from "../../register/snapshot.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, watchQueue } from "../../register/verify.js";
 import { readAs, TaskTree } from "../../register/tree.js";
@@ -751,8 +752,7 @@ export async function readRegisters(args, runtime) {
 async function settle(runtime, { own, teams }, needsHistory) {
     const settled = [];
     for (const rolled of teams) {
-        const { retired } = rolled.snapshot;
-        const snapshot = retired !== null && needsHistory(retired, rolled.snapshot) ? await rolled.history() : rolled.snapshot;
+        const snapshot = needsHistory(rolled.snapshot) ? await rolled.history() : rolled.snapshot;
         warnDamage(runtime, snapshot, rolled.paths.events);
         settled.push({ ...rolled, snapshot });
     }
@@ -766,11 +766,21 @@ export function taskTreeOf({ snapshot, config, elsewhere, ranking }, runtime) {
 }
 /** A filter that selects finished tasks, the only ones a compaction retires. */
 function selectsFinished(filter) {
-    return () => (filter.statuses ?? ACTIVE_STATUSES).some((status) => !ACTIVE_STATUSES.includes(status));
+    return ({ retired }) => retired !== null && (filter.statuses ?? ACTIVE_STATUSES).some((status) => !ACTIVE_STATUSES.includes(status));
 }
 /** A week plan no newer than the newest one among the retired tasks may name some of them. */
 function weekMayBeRetired(week) {
-    return (retired) => retired.lastWeek !== null && week <= retired.lastWeek;
+    return ({ retired }) => retired !== null && retired.lastWeek !== null && week <= retired.lastWeek;
+}
+/**
+ * `show` prints a task's history and counts its events, so it reads the whole history for a task the working set
+ * lacks (retired) or one created before the snapshot's event window, whose older events only the history holds.
+ */
+function showNeedsHistory(id) {
+    return (snapshot) => {
+        const task = snapshot.state.tasks.get(id);
+        return task === undefined ? snapshot.retired !== null : windowOpensAfter(snapshot, Date.parse(task.createdAt));
+    };
 }
 /** The filter with `list`'s switches read for one team, as `--untriaged` asks for that team's own leaders. */
 function switchedFilter(args, filter, { config, above }) {
@@ -825,7 +835,7 @@ export async function list(args, runtime) {
  */
 export async function show(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
-    const { own } = await settle(runtime, await ownRegister(runtime), (_retired, working) => !working.state.tasks.has(id));
+    const { own } = await settle(runtime, await ownRegister(runtime), showNeedsHistory(id));
     const { snapshot } = own;
     const task = snapshot.state.tasks.get(id);
     if (task === undefined) {
@@ -996,7 +1006,7 @@ export async function checkReport(args, runtime) {
     // retires (limits.ts); a stopgap tag may name a finished task it retired, so only a tag the own team's working set
     // lacks makes it read that team's whole history.
     const working = read.own.snapshot;
-    const { own, teams } = await settle(runtime, read, (_retired, snapshot) => snapshot === working && tags.some((tag) => !snapshot.state.tasks.has(tag.id)));
+    const { own, teams } = await settle(runtime, read, (snapshot) => snapshot.retired !== null && snapshot === working && tags.some((tag) => !snapshot.state.tasks.has(tag.id)));
     const zone = teamZone(own.config, runtime);
     const week = weekFor(args, own.snapshot, now, zone);
     const bursts = await readBursts(runtime, own.paths, own.config.budget, now.getTime());
