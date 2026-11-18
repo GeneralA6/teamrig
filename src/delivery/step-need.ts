@@ -94,12 +94,16 @@ function highestOf(peaks: readonly number[]): number {
   return sorted.length >= OUTLIER_MIN_RUNS && highest > next * OUTLIER_FACTOR ? next : highest;
 }
 
+/** A `re-run` (or `rerun`) word, which sessions add to a repeated step's free-text label. */
+const RERUN_WORD = /\s+re-?run\b/gi;
+
 /**
- * A label with its commit ids set aside, so a re-run whose label names a new commit matches its earlier runs (#1670):
- * a word of 7 to 40 hex characters holding a digit and a letter, which a plain word (`defaced`) or a number never is.
+ * A label with its commit ids and `re-run` words set aside, so a re-run whose label names a new commit matches its
+ * earlier runs (#1670): `merge re-run (approved 0ad3ea56a)` keys as `merge (approved 1b2c3d4e5)` does. A commit id is a
+ * word of 7 to 40 hex characters holding a digit and a letter, which a plain word (`defaced`) or a number never is.
  */
 function labelKey(what: string): string {
-  return what.replace(COMMIT_ID, '<commit>');
+  return what.replace(RERUN_WORD, '').replace(COMMIT_ID, '<commit>');
 }
 
 /** The need the latest NEED_RUNS of `runs` show, when they show one over 0 MB, with the median minutes those runs took. */

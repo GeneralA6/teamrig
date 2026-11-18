@@ -5076,7 +5076,7 @@ the host's RAM is enough. Until then it waits first in line (`...; host memory: 
 short: ...`.
 
 The MB held for a step is its need, learned from its latest 20 ended runs under the same session and `--what` in the
-ledger, a commit id in the label set aside (7 to 40 hex characters with a digit and a letter, so a re-run at a new
+ledger, a commit id and a `re-run` word in the label set aside (7 to 40 hex characters with a digit and a letter, so a re-run at a new
 commit matches its earlier runs): the most their process tree held, plus a quarter (from 3 runs on, one run that held
 more than twice the next highest is set aside, so a single heavier run does not pin the need), or the median of what the host's free memory fell by while
 they ran (`startFreeMb` less `lowFreeMb`), whichever is more. With no such run, it learns from its session's runs of

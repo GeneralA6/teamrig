@@ -51,6 +51,14 @@ describe('learnedNeedOf', () => {
     assert.equal(learnedNeedOf([ran('ship 1234567', { peakTreeMb: 2000 })], { ...ask, what: 'ship 7654321' }), undefined, 'a number is no commit id');
   });
 
+  it('matches a re-run to its first run, a `re-run` word set aside like a commit id (#1670)', () => {
+    const records = [ran('merge (approved 1b2c3d4e5)', { peakTreeMb: 2000 })];
+    for (const what of ['merge re-run (approved 0ad3ea56a)', 'merge rerun (approved 0ad3ea56a)']) {
+      assert.equal(learnedNeedOf(records, { ...ASK, what, kind: 'other' })?.from, 'label', what);
+    }
+    assert.equal(learnedNeedOf([ran('merge prerun', { peakTreeMb: 2000 })], { ...ASK, what: 'merge', kind: 'other' }), undefined, 'only a whole word');
+  });
+
   it('learns the median minutes the same runs took, start to end, unrounded, a clock set back counting none', () => {
     const took = (what: string, endedAt: string): QueuedStepRecord => ran(what, { peakTreeMb: 1000, endedAt });
     const odd = [took('T7 build', '2030-01-07T10:02:00.000Z'), took('T7 build', '2030-01-07T10:30:00.000Z'), took('T7 build', '2030-01-07T10:04:00.000Z')];
