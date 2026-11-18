@@ -120,6 +120,9 @@ export async function remove(args, runtime) {
     if (decision.kind === 'refused') {
         throw new RefusedError(decision.reason);
     }
+    if (decision.plan.unchecked !== undefined) {
+        runtime.out.stdout(`NOTE ${decision.plan.unchecked}`);
+    }
     if (decision.kind === 'leftover') {
         // No session check: a leftover has no branch to own and holds only links and empty folders, nothing to lose (T1051).
         if (args.switches.has('dry-run')) {

@@ -889,12 +889,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       one and empty its target, then runs git worktree remove; a folder git no longer lists, directly in
       a worktree folder and holding only folders and links (a removal git stopped partway), any session
       clears the same way, its folders removed once empty; REFUSED before any change for the main
-      checkout, a dirty tree or a real node_modules folder, and in a team for another session's worktree:
-      a session removes its own (its t<id>- branch names a task it owns) and those of the sessions it
-      leads, the lead any, and any session one on a detached HEAD whose every commit is on the branch
-      origin/HEAD names, as teamrig merge leaves it. --delete-branch: deletes its branch too, once every
-      commit of it is on --base (default the branch origin/HEAD names), even when git stops partway, as
-      a rerun no longer knows the branch; --dry-run: prints the steps
+      checkout, a dirty tree, a real node_modules folder or another program running inside it (read on
+      Linux and macOS; on Windows a rename aside and back fails), and in a team for another session's
+      worktree: a session removes its own (its t<id>- branch names a task it owns) and those of the
+      sessions it leads, the lead any, and any session one on a detached HEAD whose every commit is on
+      the branch origin/HEAD names, as teamrig merge leaves it. --delete-branch: deletes its branch too,
+      once every commit of it is on --base (default the branch origin/HEAD names), even when git stops
+      partway, as a rerun no longer knows the branch; --dry-run: prints the steps
   queue --what <label> [--session <id|name>] [--max-minutes <n>] [--kind <kind>] [--task <T id>] [--memory-mb <MB>] [--small] [--exclusive] [--pre-push] [--detach] -- <command ...>   runs one queued step
       (a build, a test run, a database script) in its turn under the host lock, so the host runs only what its memory allows, and at
       below-normal CPU priority (nice 10 on POSIX), which every process it starts inherits, so your

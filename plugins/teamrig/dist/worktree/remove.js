@@ -30,6 +30,46 @@ function gitName(top, path) {
 function within(inner, outer) {
     return inner === outer || inner.startsWith(outer.endsWith(sep) ? outer : `${outer}${sep}`);
 }
+/** The programs whose working folder is inside `top`, named, or the line saying the system could not tell (#797). */
+async function holdersCheck(files, top, canonicalTop) {
+    const probe = await files.moveProbe(canonicalTop);
+    switch (probe.kind) {
+        case 'movable':
+            return { kind: 'free' };
+        case 'held':
+            return {
+                kind: 'held',
+                reason: `Windows refused to move ${top} (${probe.code}): a program runs inside it or holds a file in it open, so git would stop partway; close that program or move it out of the folder, then run this again`,
+            };
+        case 'stuck':
+            return {
+                kind: 'held',
+                reason: `checking ${top} for programs inside it renamed it to ${probe.moved}, and renaming it back failed (${probe.reason}); nothing else was changed: rename ${probe.moved} back to ${top}, then run this again`,
+            };
+        case 'unknown':
+            return { kind: 'unchecked', line: `could not check for other programs running inside ${top}: ${probe.reason}; going on` };
+        case 'not-needed':
+            break;
+    }
+    const read = await files.workingFolders();
+    if (read.kind === 'unknown') {
+        return { kind: 'unchecked', line: `could not check for other programs running inside ${top}: ${read.reason}; going on` };
+    }
+    const inside = read.programs.filter((program) => within(program.folder, canonicalTop));
+    if (inside.length === 0) {
+        return { kind: 'free' };
+    }
+    const named = inside.slice(0, NAMED_CHANGES).map((program) => `${program.pid} ${program.name} (in ${program.folder})`);
+    const more = inside.length > NAMED_CHANGES ? `, and ${inside.length - NAMED_CHANGES} more` : '';
+    return {
+        kind: 'held',
+        reason: `other programs run inside ${top}: ${named.join(', ')}${more}; a folder a program runs in cannot be deleted on Windows, so git would stop partway: close them or move them out of it, then run this again`,
+    };
+}
+/** The `unchecked` field of a plan, present only when the check could not run. */
+function uncheckedOf(check) {
+    return check.kind === 'unchecked' ? { unchecked: check.line } : {};
+}
 /** Every link in the worktree and every real `node_modules` folder, walking real folders only and skipping `.git`. */
 async function scanTree(files, top) {
     const links = [];
@@ -156,12 +196,16 @@ async function leftoverDecision(request, ports, canonicalPath, top) {
     if (request.deleteBranch) {
         return refused(`git no longer knows which branch ${path} had: clear it without --delete-branch, then delete the branch with git branch -d <name>`);
     }
+    const holders = await holdersCheck(files, path, canonicalPath);
+    if (holders.kind === 'held') {
+        return refused(holders.reason);
+    }
     const links = [];
     for (const link of scan.links) {
         const target = await files.linkTarget(link);
         links.push({ path: link, name: gitName(path, link), target, targetEntries: await files.entryCount(target) });
     }
-    return { kind: 'leftover', plan: { top: path, links, folders: scan.folders } };
+    return { kind: 'leftover', plan: { top: path, links, folders: scan.folders, ...uncheckedOf(holders) } };
 }
 /** Every check, before anything changes: the plan to carry out, or the reason to refuse. */
 export async function planRemoval(request, ports) {
@@ -198,6 +242,10 @@ export async function planRemoval(request, ports) {
     const canonicalCwd = await files.canonical(request.cwd);
     if (canonicalCwd !== undefined && within(canonicalCwd, canonicalTop)) {
         return refused(`this runs inside ${top}, which a running program keeps from being deleted: run it from another folder`);
+    }
+    const holders = await holdersCheck(files, top, canonicalTop);
+    if (holders.kind === 'held') {
+        return refused(holders.reason);
     }
     const scan = await scanTree(files, top);
     const linkNames = scan.links.map((link) => gitName(top, link));
@@ -240,7 +288,7 @@ export async function planRemoval(request, ports) {
         links.push({ path: link, name: untrackedNames[index] ?? link, target, targetEntries: await files.entryCount(target) });
     }
     const mergedInto = mine.branch === undefined ? detachedMergedInto(git, top) : undefined;
-    return { kind: 'ready', plan: { top, mainDir: main.path, links, branch, onBranch: mine.branch, mergedInto } };
+    return { kind: 'ready', plan: { top, mainDir: main.path, links, branch, onBranch: mine.branch, mergedInto, ...uncheckedOf(holders) } };
 }
 function entriesText(count) {
     return count === undefined ? 'missing' : `${count} ${count === 1 ? 'entry' : 'entries'}`;
