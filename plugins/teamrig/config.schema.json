@@ -812,7 +812,7 @@
               "default": 150
             },
             "maxRunMinutes": {
-              "description": "A queued step still running after this many minutes is killed with every process it started. At most lockTtlMinutes less 10.",
+              "description": "A queued step still running after this many minutes is killed with every process it started; the time its share is set aside by teamrig step-away, until teamrig step-back takes it back, does not count. At most lockTtlMinutes less 10.",
               "type": "integer",
               "minimum": 1,
               "maximum": 1430,
