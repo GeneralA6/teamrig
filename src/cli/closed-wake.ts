@@ -72,7 +72,9 @@ async function startReopenOnce(runtime: CliRuntime, kit: Pick<Kit, 'paths'>, con
     const state = await readIdlePassState(runtime.files, kit.paths);
     const mark = state?.pending?.[id];
     if (mark !== undefined && now >= mark.at && now - mark.at < IDLE_ACT_HOLD_MS) {
-      return { kind: 'reopening', already: true };
+      // The pass marks its closes pending too, and takes no second act on a session while one is: a pending close is
+      // no reopen under way, so it is said as it is.
+      return mark.act === 'reopen' ? { kind: 'reopening', already: true } : { kind: 'closed', why: 'its close a moment ago is still settling' };
     }
     if (!(await closedByTeamrig(runtime, kit, id))) {
       return { kind: 'open' };

@@ -11,7 +11,7 @@ import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { SUB_TEAMS, teamConfigOf, teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import { WakeAsks } from '../wake/asks.ts';
-import { IDLE_ACT_HOLD_MS } from './idle-pass-log.ts';
+import { formatIdlePassState, IDLE_ACT_HOLD_MS } from './idle-pass-log.ts';
 import { EXIT } from './runtime.ts';
 
 // #1581: a wake for a session teamrig closed never prints WAKES; its reopen starts at once
@@ -219,6 +219,19 @@ describe('one reopen per closed session at a time (#1584)', () => {
     assert.match(second.result.stdout.join('\n'), /^REOPENS alpha: it was closed, and its reopen started a moment ago is still under way, so none started for this line;/m);
     assert.deepEqual(reopensStarted(processes), [['alpha', 'app', APP]]);
     assert.equal(await asksOf(kit), 2, 'each line keeps its ask');
+  });
+
+  it('a close the pass made a moment ago is no reopen under way: says CLOSED with why, starts none, keeps the ask', async () => {
+    const kit = await teamWithClosedAlpha();
+    const now = kit.clock.now();
+    await kit.files.write(join(TEAM_HOME, 'state', 'idle-pass.json'), formatIdlePassState({ at: now, kinds: {}, pending: { alpha: { act: 'close', at: now - 30_000 } } }));
+    const { result, processes } = await run(kit, WAKE_NOW);
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    const out = result.stdout.join('\n');
+    assert.match(out, /^CLOSED: alpha was not woken: its close a moment ago is still settling; the idle pass tries again each minute, or run: teamrig open alpha$/m);
+    assert.doesNotMatch(out, /WAKES|REOPENS/);
+    assert.deepEqual(reopensStarted(processes), []);
+    assert.equal(await asksOf(kit), 1);
   });
 
   it('starts another once the pending reopen is older than its hold, the session still closed', async () => {
