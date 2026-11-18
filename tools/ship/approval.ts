@@ -208,6 +208,50 @@ function shipsInAt(git: GitText, from: string, rev: string): ShipsIn {
   };
 }
 
+/** A release stamp a change adds at a version it does not ship in (T4259). */
+export interface StrayStamp {
+  readonly path: string;
+  readonly version: string;
+  /** The versions the change ships in, one of which the stamp must be. */
+  readonly shipsIn: readonly string[];
+}
+
+/** The release stamp kind `path` is a file of, the first that names it, as `normalizedOf` reads it. */
+const stampOf = (stamps: readonly ReleaseStamp[], path: string): ReleaseStamp | undefined =>
+  stamps.find((one) => (typeof one.path === 'string' ? one.path === path : one.path.test(path)));
+
+/** The versions a stamp kind names on the lines of `section` that start with `mark`. */
+function stampVersions(section: readonly string[], stamp: ReleaseStamp, mark: '+' | '-'): string[] {
+  const token = new RegExp(stamp.pattern.source, `${stamp.pattern.flags.replace('g', '')}g`);
+  return section
+    .filter((line) => line.startsWith(mark) && !line.startsWith(mark.repeat(3)))
+    .flatMap((line) => [...line.matchAll(token)].flatMap((match) => (match[2] === undefined ? [] : [match[2]])));
+}
+
+/**
+ * Each stamp `rev` adds over `mainRef` at a version it does not ship in, of a kind whose new stamps always name that
+ * version (`ReleaseStamp.onlyShipsIn`); a version a removed line of the same file held is an existing stamp moved or
+ * edited, not a new one. The approval hash masks only a stamp of a version the change ships in (T3419), so a stale one,
+ * copied from a branch cut on an older main, hashes as work at review, then as masked once the merge's raise sets it:
+ * the merge refuses the approved head as changed (T4259).
+ */
+export function strayStamps(git: GitText, rev: string, mainRef: string, writes: ShipWrites): StrayStamp[] {
+  if (!writes.releaseStamps.some((stamp) => stamp.onlyShipsIn)) return [];
+  const from = git(['merge-base', rev, mainRef]).trim();
+  const shipsIn = shipsInAt(git, from, rev);
+  const diff = git(['diff', '--unified=0', ...DIFF_OPTIONS, from, rev, '--', '.', ...excludedOf(writes.generated)]);
+  return sectionsOf(linesOf(diff)).flatMap((section) => {
+    const path = sectionPath(section);
+    const stamp = path === undefined ? undefined : stampOf(writes.releaseStamps, path);
+    if (path === undefined || stamp === undefined || !stamp.onlyShipsIn) return [];
+    const versions = shipsIn(stamp);
+    const existing = new Set(stampVersions(section, stamp, '-'));
+    return stampVersions(section, stamp, '+')
+      .filter((version) => !versions.includes(version) && !existing.has(version))
+      .map((version) => ({ path, version, shipsIn: versions }));
+  });
+}
+
 /**
  * A diff's sections, each version file's masked (`maskedSection`) and each release stamp file's added stamps
  * (`stampedSection`); a version-only change leaves no line.
@@ -217,7 +261,7 @@ function normalizedOf(diff: string, writes: ShipWrites, shipsIn: ShipsIn): strin
     const path = sectionPath(section);
     const file = writes.versionFiles.find((one) => one.path === path);
     if (file !== undefined) return maskedSection(section, file);
-    const stamp = path === undefined ? undefined : writes.releaseStamps.find((one) => (typeof one.path === 'string' ? one.path === path : one.path.test(path)));
+    const stamp = path === undefined ? undefined : stampOf(writes.releaseStamps, path);
     return stamp === undefined ? section : stampedSection(section, stamp, shipsIn(stamp));
   });
 }

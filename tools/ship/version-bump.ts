@@ -61,6 +61,12 @@ export interface ReleaseStamp {
   readonly pattern: RegExp;
   /** The version file holding the version the change ships in, which a stamp the change adds is read against. */
   readonly shipsIn: VersionFile;
+  /**
+   * Whether a stamp of this kind a change adds, and no line it removes held, names a version the change ships in, so a
+   * ship refuses any other before an approval is spent on it (T4259): a new migration first ships in this change, while
+   * a new docs line may say since which older release a setting has been there.
+   */
+  readonly onlyShipsIn: boolean;
 }
 
 const TEAMRIG_KIT_VERSION: VersionFile = { path: 'src/core/version.ts', pattern: /(KIT_VERSION = ')(\d+\.\d+\.\d+)(')/ };
@@ -78,9 +84,9 @@ export const TEAMRIG_VERSION_FILES: readonly VersionFile[] = [
  * config schema, which docs/configuration.md is generated from (#1411).
  */
 export const TEAMRIG_RELEASE_STAMPS: readonly ReleaseStamp[] = [
-  { path: 'src/config/migrate.ts', pattern: /(firstRelease: ')(\d+\.\d+\.\d+)(')/, shipsIn: TEAMRIG_KIT_VERSION },
+  { path: 'src/config/migrate.ts', pattern: /(firstRelease: ')(\d+\.\d+\.\d+)(')/, shipsIn: TEAMRIG_KIT_VERSION, onlyShipsIn: true },
   // Read with `.test`: no `g` or `y` flag, which would make it remember its last match between files.
-  { path: /(?:^|\/)[^/]+\.md$|^plugins\/teamrig\/config\.schema\.json$/, pattern: /(\bsince )(\d+\.\d+\.\d+)()/, shipsIn: TEAMRIG_KIT_VERSION },
+  { path: /(?:^|\/)[^/]+\.md$|^plugins\/teamrig\/config\.schema\.json$/, pattern: /(\bsince )(\d+\.\d+\.\d+)()/, shipsIn: TEAMRIG_KIT_VERSION, onlyShipsIn: false },
 ];
 
 /**
