@@ -218,6 +218,7 @@ const COMMANDS = {
     'issue edit': { effect: 'write', flags: ['session', 'body-file'], load: async () => (await issueCommands()).issueEdit },
     'issue close': { effect: 'write', flags: ['session', 'comment', 'reason', 'duplicate-of'], load: async () => (await issueCommands()).issueClose },
     'issue label': { effect: 'write', flags: ['session', 'add', 'remove'], load: async () => (await issueCommands()).issueLabel },
+    'issue similar': { effect: 'read', flags: [], load: async () => (await issueCommands()).issueSimilar },
     'pr conflicts': { effect: 'write', flags: ['base'], load: async () => (await prCommands()).prConflicts },
     'issue links': { effect: 'write', flags: ['repo'], switches: ['yes'], load: async () => (await issueLinksCommands()).issueLinks },
     follow: { effect: 'write', flags: ['session'], switches: ['list'], load: async () => (await followCommands()).follow },
@@ -764,6 +765,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       label to add must already be one of the repository's, but design (talk only, not work to take
       until agreed) and a label the repository's .github/labels.json defines, which it makes first
       (MADE); the first failure stops it
+  issue similar <owner/name#n>   the issues the task list mirrors that may be duplicates of this one,
+      best first: at most 3 at or above github.similarThreshold by TF-IDF over their titles and bodies,
+      with no model and no GitHub call; reads the task list only, so issue sync must have added the issue
   pr conflicts <owner/name#n> [--base <branch>]   in a clone of that repository, fetches the pull
       request's head and prints the files it conflicts on against origin's newest base (its default
       branch unless --base) and the rebase it needs; changes no local branch or file of the clone and

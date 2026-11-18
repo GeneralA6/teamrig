@@ -1,8 +1,11 @@
 import { resolve } from 'node:path';
 import { ENV } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
+import { issueRef } from "../../github/map.js";
 import { CLOSE_REASONS, hostKindOf, parseIssueTarget, targetText } from "../../issues/host.js";
+import { issueDoc, mirroredIssues, similarIssues } from "../../issues/similar.js";
 import { editIssueBody, labelIssue, labelRefusal, postRefusal, writeIssue } from "../../issues/write.js";
+import { ISSUE_REF_PREFIX } from "../../register/model.js";
 import { RegisterPolicy } from "../../register/policy.js";
 import { secretRulesOf } from "../../secret-guard/rules.js";
 import { onePositional, requiredFlag } from "../args.js";
@@ -149,6 +152,32 @@ function duplicateOfFlag(text, target, reason) {
         throw new RefusedError(`--duplicate-of names ${targetText(target)} itself: name the issue it duplicates`);
     }
     return original;
+}
+/**
+ * `issue similar <owner/name#n>` (T2695): the issues the register mirrors that may be duplicates of the one named, best
+ * first (issues/similar.ts): TF-IDF over the mirrored titles and bodies, at most SIMILAR_TOP at or above
+ * `github.similarThreshold`. It reads the register only, never the host, so the issue must be in it (`issue sync` adds
+ * it). Exit 0, with or without candidates.
+ */
+export async function issueSimilar(args, runtime) {
+    const target = targetOf(args);
+    const { config, register } = await openTeam(runtime, 'read');
+    const tasks = [...(await register.snapshot()).state.tasks.values()];
+    const ref = issueRef(target.repo, target.number);
+    const own = tasks.find((task) => task.ref?.toLowerCase() === ref);
+    if (own === undefined || own.ref === null) {
+        throw new RefusedError(`${targetText(target)} is not in the task list: teamrig issue sync adds a task for each open issue of github.repos`);
+    }
+    const corpus = mirroredIssues(tasks, new Date(runtime.clock.now()), config.github.closedDays).filter((doc) => doc.ref !== own.ref);
+    const threshold = config.github.similarThreshold;
+    const matches = similarIssues(issueDoc(own.ref, own), corpus, threshold);
+    const ids = new Map(tasks.flatMap((task) => (task.ref === null ? [] : [[task.ref, task.id]])));
+    const found = matches.length === 0 ? 'none' : String(matches.length);
+    runtime.out.stdout(`SIMILAR ${targetText(target)} (${own.id}): ${found} of ${corpus.length} mirrored issues at or above ${threshold} (github.similarThreshold)`);
+    for (const match of matches) {
+        runtime.out.stdout(`${match.score.toFixed(2)} ${match.ref.slice(ISSUE_REF_PREFIX.length)} ${ids.get(match.ref) ?? '-'} ${match.title}`);
+    }
+    return EXIT.ok;
 }
 /** The issue or pull request the one positional names; refused when it names none. */
 function targetOf(args) {
