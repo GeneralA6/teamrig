@@ -39,6 +39,17 @@ export const TERMINAL_LABELS = {
     konsole: 'Konsole tab',
     'x-terminal-emulator': 'terminal window',
 };
+/** What bringing the running tab of session `name`, titled `title`, to the front prints. */
+export function focusLine(outcome, name, title) {
+    switch (outcome.kind) {
+        case 'focused':
+            return `FOCUSED ${name}'s ${TERMINAL_LABELS[outcome.terminal]}, ${title}`;
+        case 'behind':
+            return `SELECTED ${name}'s ${TERMINAL_LABELS[outcome.terminal]}, ${title}, in its window; Windows kept another app's window in front`;
+        case 'none':
+            return `NOT FOCUSED ${name}'s tab, ${title}: ${outcome.reasons.join('; ')}`;
+    }
+}
 /** The terminal `--terminal` names; undefined when it names none. */
 export function terminalFlag(flag) {
     if (flag !== undefined && !isTerminalChoice(flag)) {

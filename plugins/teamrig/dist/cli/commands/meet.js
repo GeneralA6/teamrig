@@ -1,6 +1,8 @@
 import { KIT_NAME } from "../../core/home.js";
+import { sessionDisplay } from "../../core/ids.js";
 import { meetCardLines } from "../../meeting/meet.js";
 import { WAKE_TICK_MS } from "../../mod/wake-hand.js";
+import { focusTab } from "../../open/focus.js";
 import { meetAsk, meetPrompt } from "../../open/prompt.js";
 import { ownerCardsBySession } from "../../register/owner-waits.js";
 import { onePositional, UsageError } from "../args.js";
@@ -12,7 +14,7 @@ import { EXIT, RefusedError } from "../runtime.js";
 import { teamRanking } from "../team-ranking.js";
 import { teamRegister } from "../team-register.js";
 import { postAtOnce } from "../urgent-line.js";
-import { openSession, printOpenResult, terminalFlag } from "./open.js";
+import { focusLine, openSession, printOpenResult, terminalFlag } from "./open.js";
 import { taskTreeOf } from "./register.js";
 import { sessionProjectOf } from "./setup.js";
 const NO_CARDS = { due: [], later: [] };
@@ -69,8 +71,9 @@ async function meetCards(args, runtime) {
 }
 /**
  * `meet <id|name> [--terminal <name>] [--project <dir>]`: the owner meets one session on its cards waiting on them
- * (T1295). A running session gets an inbox line that wakes its tab at once, unless such an ask still waits
- * (wakeToMeet); any other opens fresh in a new tab, its context only the meeting. Both ask it to run `meet --cards`.
+ * (T1295). A running session's tab is brought to the front, as `meeting start` brings it (#1514: the pane's Meet
+ * button runs this, and left the owner on another tab), then gets an inbox line that wakes it at once, unless such an
+ * ask still waits (wakeToMeet); any other opens fresh in a new tab, its context only the meeting. Both ask it to run `meet --cards`.
  * Refused when no card of it waits on the owner now.
  */
 export async function meet(args, runtime) {
@@ -78,12 +81,16 @@ export async function meet(args, runtime) {
         return meetCards(args, runtime);
     }
     const facts = await meetFactsOf(runtime, onePositional(args, 'id|name'));
-    const { found, kit, config, roster, id } = facts;
+    const { found, kit, config, roster, id, name } = facts;
+    // `--terminal` names where the session's tab is, so it picks the terminal searched for a running tab as well as the
+    // one a closed session opens in.
+    const terminal = terminalFlag(args.flags.get('terminal')) ?? config.open.terminal;
     if ((await runningRecordOf(runtime, kit.paths, roster.ids, id)) !== undefined) {
+        const title = sessionDisplay(kit.paths.team, name);
+        runtime.out.stdout(focusLine(await focusTab(runtime, terminal, title, runtime.cwd), name, title));
         runtime.out.stdout(await wakeToMeet(runtime, facts));
         return EXIT.ok;
     }
-    const terminal = terminalFlag(args.flags.get('terminal')) ?? config.open.terminal;
     const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
     const team = found.team;
     // The meeting tab is the one the owner asked for, so it takes the focus even while a meeting is open (T2510).

@@ -19,7 +19,7 @@ import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } fro
 import { liveRunOf } from "../live-run.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { inboxDepsOf } from "./inbox.js";
-import { openSession, TERMINAL_LABELS } from "./open.js";
+import { focusLine, openSession } from "./open.js";
 import { ownRegister } from "./register.js";
 import { sessionProjectOf } from "./setup.js";
 import { fileLockOf } from "../file-locks.js";
@@ -320,17 +320,6 @@ async function spotlightMeeting(runtime, mk, meeting) {
     };
     const { spotlight } = mk.config.meeting;
     return spotlightLine(await startSpotlight(runtime, spotlight, mk.config.open.terminal, place, runtime.cwd), place, spotlight.dim);
-}
-/** What bringing the running tab of session `name`, titled `title`, to the front prints. */
-function focusLine(outcome, name, title) {
-    switch (outcome.kind) {
-        case 'focused':
-            return `FOCUSED ${name}'s ${TERMINAL_LABELS[outcome.terminal]}, ${title}`;
-        case 'behind':
-            return `SELECTED ${name}'s ${TERMINAL_LABELS[outcome.terminal]}, ${title}, in its window; Windows kept another app's window in front`;
-        case 'none':
-            return `NOT FOCUSED ${name}'s tab, ${title}: ${outcome.reasons.join('; ')}`;
-    }
 }
 /**
  * Brings the opening prompt to the session met and returns what that prints. While its tab runs, the tab is brought
