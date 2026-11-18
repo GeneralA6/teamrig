@@ -18,6 +18,7 @@ import { WakeAsks } from "../../wake/asks.js";
 import { wakeCost } from "../../wake/decide.js";
 import { noPositionals, requiredFlag, UsageError } from "../args.js";
 import { underClaudeCode } from "../claude-code-env.js";
+import { closedByTeamrig, closedTimedWakeLine, closedWakeLine, wakeClosedSession } from "../closed-wake.js";
 import { hookLogOf } from "../hook-logs.js";
 import { callerOf, instantOf, sessionRef } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
@@ -325,7 +326,8 @@ function wakeTargetOf(own, recipient) {
  * prints: a WAKE FAILED line for each ask that could not be posted (its line stays posted), then the WAKES line. A
  * recipient whose team has `wake.enabled` false gets no ask. A `--wake-by` ask carries its time and the hash of the
  * line posted at `now`, so it wakes only while that line is unseen. Each wake's cost runs from the recipient's last
- * write to its latest tabs' transcripts until the wake, as the wake check reckons it.
+ * write to its latest tabs' transcripts until the wake, as the wake check reckons it. A recipient teamrig closed is
+ * never counted in WAKES: its line says REOPENS or CLOSED in its place (#1581).
  */
 async function postWakes(runtime, own, recipients, text, now, when) {
     const wPerPct = await readTodayWPerPct(runtime, own.paths, own.config, now);
@@ -340,6 +342,7 @@ async function postWakes(runtime, own, recipients, text, now, when) {
     const failed = [];
     const off = [];
     const wakes = [];
+    const closedLines = [];
     for (const recipient of recipients) {
         if (!recipient.config.wake.enabled) {
             off.push(recipient.label);
@@ -353,12 +356,34 @@ async function postWakes(runtime, own, recipients, text, now, when) {
             failed.push(`WAKE FAILED for ${recipient.label}: ${errorMessage(error)}; its line is posted`);
             continue;
         }
+        // A session teamrig closed has no tab to take the ask: its reopen starts now, or the sender is told why not (#1581).
+        const closedLine = await closedWakeLineOf(runtime, recipient, when);
+        if (closedLine !== undefined) {
+            closedLines.push(closedLine);
+            continue;
+        }
         const last = await lastWriteOf(runtime.transcripts, projects, tabsOf(await marksOf(recipient), recipient.id, RECEIVER_TABS));
         const measured = await readMeasuredTurns(runtime, recipient.paths, recipient.id, recipient.config.sessions, now);
         const cost = wakeCost(last === undefined ? undefined : wakeAt - last, recipient.config.messages.coldAfterMinutes, wPerPct, measured);
         wakes.push({ label: recipient.label, team: recipient.team, batchSeconds: recipient.config.wake.batchSeconds, cost });
     }
-    return wakes.length === 0 && off.length === 0 ? failed : [...failed, wakesLine(wakes, off, when)];
+    return wakes.length === 0 && off.length === 0 ? [...failed, ...closedLines] : [...failed, ...closedLines, wakesLine(wakes, off, when)];
+}
+/**
+ * The line for a recipient teamrig closed, in place of WAKES (#1581): `--wake now` starts its reopen at once
+ * (src/cli/closed-wake.ts), REOPENS or CLOSED with why; `--wake-by` says the line waits for the pass. Undefined for a
+ * recipient that is not closed, which the WAKES line counts as before.
+ */
+async function closedWakeLineOf(runtime, recipient, when) {
+    if (!(await closedByTeamrig(runtime, recipient, recipient.id))) {
+        return undefined;
+    }
+    if (when.kind === 'by') {
+        return closedTimedWakeLine(recipient.label, recipient.id, when.clock);
+    }
+    const kit = await openKit(runtime, recipient.team);
+    const roster = await rosterOf(runtime, kit, recipient.config);
+    return closedWakeLine(await wakeClosedSession(runtime, recipient, recipient.config, roster, recipient.id), recipient.label, recipient.id);
 }
 /** The wake `--wake now` or `--wake-by <time>` asks; undefined with neither. A `--wake-by` time not after now is refused. */
 function wakeWhenOf(wake, wakeBy, now, zone) {

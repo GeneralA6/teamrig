@@ -151,7 +151,7 @@ export async function idlePassOf(runtime, kit, config, roster, folderOf) {
  * is copied runs without teamrig's hooks, so an unsettled install holds it first (`installStateOf`, the host's room
  * then unread), else a host without room for it.
  */
-async function reopenHoldOf(runtime, kit, config, roster, project, id) {
+export async function reopenHoldOf(runtime, kit, config, roster, project, id) {
     const install = await installStateOf(runtime, project);
     if (install.kind === 'unsettled') {
         return settleWaitText(install.why);

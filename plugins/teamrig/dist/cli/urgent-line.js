@@ -4,6 +4,8 @@ import { inboxLineOf, postLine } from "../inbox/inbox.js";
 import { lineHash } from "../inbox/line-hash.js";
 import { WakeAsks } from "../wake/asks.js";
 import { inboxDepsOf } from "./commands/inbox.js";
+import { closedByTeamrig, closedWakeLine, wakeClosedSession } from "./closed-wake.js";
+import { rosterOf } from "./kit.js";
 import { RefusedError } from "./runtime.js";
 /**
  * The ask that makes the posted line wake its receiver. An `atOnce` one is a timed ask due at its post time, bound to
@@ -37,6 +39,13 @@ export async function postUrgentLine(runtime, kit, config, line) {
     }
     catch (error) {
         return `posted to the inbox, but it does not wake ${line.to}: ${errorMessage(error)}`;
+    }
+    // A session teamrig closed has no tab to take the ask: its reopen starts now, or the caller is told why not (#1581).
+    if (await closedByTeamrig(runtime, kit, line.to)) {
+        const said = closedWakeLine(await wakeClosedSession(runtime, kit, config, await rosterOf(runtime, kit, config), line.to), line.to, line.to);
+        if (said !== undefined) {
+            runtime.out.stderr(said);
+        }
     }
     return undefined;
 }
