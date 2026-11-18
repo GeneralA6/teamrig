@@ -1844,6 +1844,11 @@
               "minimum": 0,
               "maximum": 1000,
               "default": 10
+            },
+            "reopenForDueToday": {
+              "description": "A task due today or overdue handed to a session the idle pass closed starts its reopen at once, with a wake ask, when the session adding it may wake that session as inbox add --wake now allows (its own team, a team lead waking a team below, any team's lead or a session its config names in roles); otherwise its line is posted and it waits for a pass. false, the default, leaves every such reopen to a pass.",
+              "type": "boolean",
+              "default": false
             }
           }
         }

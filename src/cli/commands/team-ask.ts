@@ -1,4 +1,6 @@
+import { LeadTree } from '../../config/lead-tree.ts';
 import type { KitConfig } from '../../config/types.ts';
+import { WAKE_AT_ONCE, wakeRefusal, type WakeSender, type WakeTarget } from '../../inbox/wake-now.ts';
 import type { TeamTree } from '../../config/tree.ts';
 import { formatAddress, type SessionAddress } from '../../core/address.ts';
 import type { AddInput, Verdict } from '../../register/policy.ts';
@@ -87,11 +89,26 @@ export async function askTeam(runtime: CliRuntime, caller: TreeCaller, ask: Team
     : await target.register.addFromTeam(from, { ...owned, source: from });
   if (verdict.ok) {
     const { task } = verdict.value;
-    await tellAssigned(runtime, target, from, task, formatAddress({ team: asked, id: task.owner }));
+    const owner = formatAddress({ team: asked, id: task.owner });
+    await tellAssigned(runtime, target, from, task, owner, mayWakeOwner(caller, target, asked, task.owner));
     if (task.owner !== lead) {
       const shown = formatAddress({ team: asked, id: lead });
       await tellLine(runtime, target, from, lead, askedNotice(task, target.zone), `${shown} was not told of ${task.id}`, shown);
     }
   }
   return { verdict, target };
+}
+
+/**
+ * Whether the caller may wake `owner` of team `asked` as `inbox add --wake now` gates it (wakeRefusal): its own team,
+ * else only as a team lead waking a session of a team below, any team's lead, or a session its config names in roles.
+ */
+function mayWakeOwner(caller: TreeCaller, target: Team, asked: string, owner: string): boolean {
+  const leads = new LeadTree(caller.config);
+  const { from } = caller;
+  const sender: WakeSender = { team: from.team, id: from.id, leader: leads.isLeader(from.id), teamLead: leads.lead === from.id, below: caller.tree.descendantsOf(from.team) };
+  const label = formatAddress({ team: asked, id: owner });
+  const { deliveryOwner, securityReviewer } = caller.config.roles;
+  const wakeTarget: WakeTarget = { label, team: asked, teamLead: target.config.roles.lead === owner, servesSender: [deliveryOwner, securityReviewer].includes(label) };
+  return wakeRefusal(sender, false, [wakeTarget], WAKE_AT_ONCE) === undefined;
 }

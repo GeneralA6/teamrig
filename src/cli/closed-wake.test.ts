@@ -1,12 +1,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { formatConfig } from '../config/load.ts';
+import type { JsonRecord } from '../core/guards.ts';
 import type { CommitCharge } from '../delivery/memory.ts';
 import { SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
+import { SUB_TEAMS, teamConfigOf, teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import { WakeAsks } from '../wake/asks.ts';
 import { EXIT } from './runtime.ts';
 
@@ -25,8 +28,11 @@ interface Run {
   readonly processes: FakeProcesses;
 }
 
-async function teamWithClosedAlpha(closed = true): Promise<CliHarness> {
-  const kit = new CliHarness(TEAM);
+/** {@link TEAM} with a task due today starting a closed owner's reopen (`open.idle.reopenForDueToday`). */
+const DUE_TODAY_TEAM: JsonRecord = { ...TEAM, open: { idle: { reopenForDueToday: true } } };
+
+async function teamWithClosedAlpha(closed = true, config: JsonRecord = TEAM): Promise<CliHarness> {
+  const kit = new CliHarness(config);
   if (closed) {
     await new SessionLog(kit.files, LOG).append(CLOSED);
   }
@@ -143,7 +149,7 @@ describe('a task due today handed to a session teamrig closed (#1581)', () => {
   const add = (due: string): readonly string[] => ['add', '--title', 'Re-confirm #169', '--description', 'what and why', '--priority', 'p2', '--owner', 'alpha', '--due', due, '--session', 'lead'];
 
   it('posts a wake ask and starts its reopen at once, though p2 is past wake.priority', async () => {
-    const kit = await teamWithClosedAlpha();
+    const kit = await teamWithClosedAlpha(true, DUE_TODAY_TEAM);
     const today = new Date(kit.clock.now()).toISOString().slice(0, 10);
     const { result, processes } = await run(kit, add(today));
     assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
@@ -153,14 +159,49 @@ describe('a task due today handed to a session teamrig closed (#1581)', () => {
   });
 
   it('a task due a later day, or one for an open session, posts no ask and starts nothing', async () => {
-    const later = await teamWithClosedAlpha();
+    const later = await teamWithClosedAlpha(true, DUE_TODAY_TEAM);
     const tomorrow = new Date(later.clock.now() + 2 * 86_400_000).toISOString().slice(0, 10);
     const notToday = await run(later, add(tomorrow));
     assert.deepEqual([reopensStarted(notToday.processes), await asksOf(later)], [[], 0]);
-    const open = await teamWithClosedAlpha(false);
+    const open = await teamWithClosedAlpha(false, DUE_TODAY_TEAM);
     const today = new Date(open.clock.now()).toISOString().slice(0, 10);
     const notClosed = await run(open, add(today));
     assert.deepEqual([reopensStarted(notClosed.processes), await asksOf(open)], [[], 0]);
     assert.doesNotMatch(notClosed.result.stderr.join('\n'), /REOPENS|CLOSED/);
+  });
+
+  it('with open.idle.reopenForDueToday off, the default, posts the line alone: no ask, no reopen (#1584)', async () => {
+    const kit = await teamWithClosedAlpha();
+    const today = new Date(kit.clock.now()).toISOString().slice(0, 10);
+    const { result, processes } = await run(kit, add(today));
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    assert.deepEqual([reopensStarted(processes), await asksOf(kit)], [[], 0]);
+    assert.doesNotMatch(result.stderr.join('\n'), /REOPENS|CLOSED/);
+  });
+
+  it("from another team, reopens only for an adder inbox add --wake now lets wake the owner: a sibling team's lead, not its member (#1584)", async () => {
+    const ops = { ...SUB_TEAMS['ops'], open: { idle: { reopenForDueToday: true } } };
+    const closedOpsLead: CloseRecord = { ...CLOSED, session: 'lead' };
+    const opsAsks = join(teamHomeOf('ops'), 'state', 'wake-asks');
+    for (const [adder, wakes] of [['front', false], ['lead', true]] as const) {
+      const kit = await treeHarness();
+      await kit.files.write(teamConfigOf('ops'), formatConfig(ops));
+      await new SessionLog(kit.files, join(teamHomeOf('ops'), 'state', 'session-log.jsonl')).append(closedOpsLead);
+      const today = new Date(kit.clock.now()).toISOString().slice(0, 10);
+      const argv = ['add', '--team', 'ops', '--owner', 'lead', '--title', 'Re-confirm #169', '--description', 'what and why', '--priority', 'p2', '--due', today, '--session', adder];
+      const options: RunOptions = { env: { TEAMRIG_TEAM: 'web' }, processes: new FakeProcesses(), memory: new FakeHostMemory().lists([], ROOM), probe: new FakePathProbe({ folders: [APP] }) };
+      const result = await kit.run(argv, options);
+      assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+      assert.match(kit.files.get(teamInboxOf('ops', 'lead')) ?? '', /: T1 is yours \(p2, due /, 'the line is posted');
+      const stderr = result.stderr.join('\n');
+      const processes = options.processes as FakeProcesses;
+      if (wakes) {
+        assert.match(stderr, /^REOPENS ops\/lead: it was closed, and its reopen started now for this line;/m);
+        assert.deepEqual([reopensStarted(processes).length, (await new WakeAsks(kit.files, opsAsks).read('lead')).length], [1, 1]);
+      } else {
+        assert.match(stderr, /^NOTE ops\/lead is closed and T1 is due today: its line is posted with no wake ask and no reopen, since web\/front may not wake it/m);
+        assert.deepEqual([reopensStarted(processes), (await new WakeAsks(kit.files, opsAsks).read('lead')).length], [[], 0]);
+      }
+    }
   });
 });

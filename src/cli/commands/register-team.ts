@@ -44,13 +44,14 @@ export async function openTeam(runtime: CliRuntime, access: Access): Promise<Tea
  * One inbox line telling a task's owner the task is its own, true when posted; `shown` names the owner in the NOTE
  * (another team's by address). A p0 task also says the owner is woken: its team's wake check wakes an idle owner for
  * it (src/wake/decide.ts: a p0 wakes even past the budget and in blocking quiet hours), so the asker needs no
- * `inbox add --wake now` (T2686).
+ * `inbox add --wake now` (T2686). `mayWake`: whether `by` may wake the owner as `inbox add --wake now` gates it
+ * (wakeRefusal); a session of the owner's own team always may, so only an ask from another team passes it.
  */
-export async function tellAssigned(runtime: CliRuntime, team: Team, by: string, task: Task, shown = task.owner): Promise<boolean> {
+export async function tellAssigned(runtime: CliRuntime, team: Team, by: string, task: Task, shown = task.owner, mayWake = true): Promise<boolean> {
   const text = assignedNotice(task, team.zone);
   const posted = await tellLine(runtime, team, by, task.owner, text, `${shown} was not told of ${task.id}`, shown);
   if (posted) {
-    await reopenForDueToday(runtime, team, by, task, text, shown);
+    await reopenForDueToday(runtime, team, { by, mayWake }, task, text, shown);
   }
   if (posted && task.priority === HELD_PRIORITY && team.config.wake.enabled) {
     runtime.out.stderr(`NOTE ${shown} is woken at its idle prompt for ${task.id}, a p0, so no --wake now is needed`);
@@ -62,14 +63,23 @@ export async function tellAssigned(runtime: CliRuntime, team: Team, by: string, 
  * A task due today (or overdue) handed to a session teamrig closed (#1581): a closed session reopens for work only
  * within `wake.priority` or at its next day start, so a p2 due this afternoon waited for tomorrow. Its line gets a
  * wake ask, as `inbox add --wake now` does, and its reopen starts at once through the idle pass's own act
- * (src/cli/closed-wake.ts), the line saying REOPENS or CLOSED with why. Nothing for an open session, a task with no due
- * time or one due a later day, or with the team's wakes off.
+ * (src/cli/closed-wake.ts), the line saying REOPENS or CLOSED with why. Only with `open.idle.reopenForDueToday` on,
+ * and only from an adder that may wake the owner (`inbox add --wake now`'s gate): a wake spends the owner's turn and
+ * its team's budget line, so an add from a session that may not wake it posts the line alone and says why. Nothing
+ * for an open session, a task with no due time or one due a later day, or with the team's wakes off.
  */
-async function reopenForDueToday(runtime: CliRuntime, team: Team, by: string, task: Task, text: string, shown: string): Promise<void> {
+async function reopenForDueToday(runtime: CliRuntime, team: Team, adder: { readonly by: string; readonly mayWake: boolean }, task: Task, text: string, shown: string): Promise<void> {
   const due = dueTime(task, team.zone);
   const now = runtime.clock.now();
   const today = due !== undefined && (due <= now || team.zone.day(new Date(due)) === team.zone.day(new Date(now)));
-  if (!today || !team.config.wake.enabled || !(await closedByTeamrig(runtime, team, task.owner))) {
+  if (!today || !team.config.open.idle.reopenForDueToday || !team.config.wake.enabled || !(await closedByTeamrig(runtime, team, task.owner))) {
+    return;
+  }
+  const { by } = adder;
+  if (!adder.mayWake) {
+    runtime.out.stderr(
+      `NOTE ${shown} is closed and ${task.id} is due today: its line is posted with no wake ask and no reopen, since ${by} may not wake it (a wake reaches another team only from a team lead); the idle pass reopens it for the line, or ask your lead to wake it`,
+    );
     return;
   }
   try {

@@ -1696,7 +1696,8 @@ function parseIdle(read: ConfigReader, raw: JsonRecord, sessions: readonly strin
   });
   const leaders = read.string(raw, 'leaders', path, DEFAULT_IDLE.leaders, (value) => (isIdleLeaderKeep(value) ? undefined : `expected one of ${IDLE_LEADER_KEEPS.join(', ')}`));
   const reopenUnreadLines = read.integer(raw, 'reopenUnreadLines', path, DEFAULT_IDLE.reopenUnreadLines, CONFIG_LIMITS.idleReopenUnreadLines);
-  return { mode: isIdleMode(mode) ? mode : DEFAULT_IDLE.mode, keepOpen, leaders: isIdleLeaderKeep(leaders) ? leaders : DEFAULT_IDLE.leaders, reopenUnreadLines };
+  const reopenForDueToday = read.boolean(raw, 'reopenForDueToday', path, DEFAULT_IDLE.reopenForDueToday);
+  return { mode: isIdleMode(mode) ? mode : DEFAULT_IDLE.mode, keepOpen, leaders: isIdleLeaderKeep(leaders) ? leaders : DEFAULT_IDLE.leaders, reopenUnreadLines, reopenForDueToday };
 }
 
 /** `open.headroom`: the room a new session needs on the host. */

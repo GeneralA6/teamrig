@@ -38,8 +38,11 @@ Flags:
   says so (`NOTE api has an inbox line: ...`). A p0 also wakes the owner at its idle prompt, its team's wake check
   reading the task from its register (on another team's too), and stderr says so: `NOTE api is woken at its idle
   prompt for T1, a p0, so no --wake now is needed` (none while the owner's team has `wake.enabled` false).
-  A task due today (or overdue) handed to a session teamrig closed gets a wake ask and its reopen at once, whatever
-  its priority, and stderr says `REOPENS <id>` or `CLOSED: <id> was not woken: <why>`, ending `(T1 is due today)`.
+  With `open.idle.reopenForDueToday` on (off by default), a task due today (or overdue) handed to a session teamrig
+  closed gets a wake ask and its reopen at once, whatever its priority, when you may wake that session as
+  `inbox add --wake now` allows, and stderr says `REOPENS <id>` or `CLOSED: <id> was not woken: <why>`, ending
+  `(T1 is due today)`; from a session that may not wake it, only the line is posted and a NOTE says why. One reopen
+  per session runs at a time: a wake while one is under way starts none.
 - `--source <session>|owner`: who asked; default you. `--source owner` marks an order from the human
   (`register.ownerSource`).
 - `--ref <where it was asked>`: a pointer to the ask, such as a file and line or an inbox date; at most 300
