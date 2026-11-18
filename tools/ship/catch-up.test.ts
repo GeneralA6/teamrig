@@ -199,6 +199,9 @@ test('regenerationFor makes teamrig\'s version files and dist again only for exa
 
 const PLUGIN = 'plugins/teamrig/.claude-plugin/plugin.json';
 const KIT = 'src/core/version.ts';
+const RELEASE = '.release-please-manifest.json';
+/** release-please's manifest at `version`, which main leaves at an older release than its plugin version. */
+const release = (version: string): string => `{\n  ".": "${version}"\n}\n`;
 
 /**
  * A teamrig-like repo and its bare origin: plugin.json and version.ts carry the version, and the "build" writes one
@@ -232,7 +235,7 @@ function teamrigRepo(t: { after: (fn: () => void) => void }): { dir: string; git
     build();
     return commitFiles({}, 'build: rebuild the plugin dist');
   };
-  commitFiles({ 'src/a.ts': 'export const a = 1;\n', [KIT]: "export const KIT_VERSION = '0.1.0';\n", [PLUGIN]: '{\n  "name": "teamrig",\n  "version": "0.1.0"\n}\n', 'README.md': '# r\n' }, 'base');
+  commitFiles({ 'src/a.ts': 'export const a = 1;\n', [KIT]: "export const KIT_VERSION = '0.1.0';\n", [PLUGIN]: '{\n  "name": "teamrig",\n  "version": "0.1.0"\n}\n', 'README.md': '# r\n', [RELEASE]: release('0.0.5') }, 'base');
   build();
   commitFiles({}, 'build: the first dist');
   return { dir, git, build, commitFiles, raise };
@@ -305,6 +308,64 @@ function assertRestored(git: (...args: string[]) => string, sha: string): void {
 }
 
 const reasonOf = (caught: ReturnType<typeof catchUp>): string => (caught.kind === 'refused' ? caught.reason : '');
+
+/** main moved to 0.2.0; the change, from the base at 0.1.0, carries a tools edit and then what `change` commits (T4298). */
+function manifestChange(t: { after: (fn: () => void) => void }, change: (repo: ReturnType<typeof teamrigRepo>) => void) {
+  const repo = teamrigRepo(t);
+  const { git, commitFiles, raise } = repo;
+  const base = git('rev-parse', 'HEAD');
+  commitFiles({ 'src/b.ts': 'export const b = 1;\n' }, 'main: its own work');
+  const tip = raise('0.2.0', 'plugin: version 0.2.0');
+  git('push', '-q', 'origin', 'main');
+  git('switch', '-q', '--create', HEAD, base);
+  commitFiles({ 'tools/x.ts': 'export const x = 1;\n' }, 'tools: x');
+  change(repo);
+  const sha = git('rev-parse', 'HEAD');
+  const request: CatchUpRequest = { head: HEAD, stem: HEAD, tip, main: 'main', regenerated: listedPaths(TEAMRIG_REGENERATION) };
+  const log: string[] = [];
+  const deps: CatchUpDeps = { git, log: (line) => log.push(line), readText: (path) => readFileSync(join(repo.dir, path), 'utf8'), writeText: (path, text) => writeFileSync(join(repo.dir, path), text), build: repo.build };
+  return { ...repo, base, tip, sha, request, deps, log };
+}
+
+const SET_MANIFEST = (version: string): string => `fix(release): the release manifest starts from main's version, ${version} (T9)`;
+
+test("a release manifest the change set to its plugin version is set again to the caught-up head's, in a commit of its own (T4298)", (t) => {
+  const { git, dir, base, tip, sha, request, deps, log } = manifestChange(t, ({ commitFiles }) => commitFiles({ [RELEASE]: release('0.1.0') }, SET_MANIFEST('0.1.0')));
+  assert.equal(catchUp(deps, request).kind, 'rebased');
+  assert.deepEqual(git('log', '--format=%s', `${tip}..HEAD`).split('\n'), [SET_MANIFEST('0.2.0'), 'tools: x']);
+  assert.equal(git('show', '--format=', '--name-only', 'HEAD'), RELEASE, 'the manifest alone');
+  assert.equal(readFileSync(join(dir, RELEASE), 'utf8'), release('0.2.0'), "main's plugin version");
+  assert.equal(git('status', '--porcelain'), '');
+  assert.equal(ownDiff(git, tip, 'HEAD', workPathspec(TEAMRIG_REGENERATION)), ownDiff(git, base, sha, workPathspec(TEAMRIG_REGENERATION)), 'the approved work, unchanged');
+  assert.match(log[0] ?? '', /: replayed its work with the same diff, set \.release-please-manifest\.json 0\.1\.0 again as 0\.2\.0, and pushed it as t9-change-2 /);
+});
+
+test('a release manifest set beside a raise follows the raise made again, before the dist (T4298)', (t) => {
+  const { git, dir, tip, request, deps } = manifestChange(t, ({ commitFiles, raise }) => {
+    commitFiles({ 'src/a.ts': 'export const a = 2;\n' }, 'a: a changes (T9)');
+    raise('0.1.1', 'plugin: version 0.1.1, a changes (T9)');
+    commitFiles({ [RELEASE]: release('0.1.1') }, SET_MANIFEST('0.1.1'));
+  });
+  assert.equal(catchUp(deps, request).kind, 'rebased');
+  assert.deepEqual(git('log', '--format=%s', `${tip}..HEAD`).split('\n'), ['build: rebuild the plugin dist', SET_MANIFEST('0.2.1'), 'plugin: version 0.2.1, a changes (T9)', 'a: a changes (T9)', 'tools: x']);
+  assert.equal(readFileSync(join(dir, RELEASE), 'utf8'), release('0.2.1'));
+});
+
+test('a release manifest set in the raise commit, or to another version than the plugin version, is refused before any branch (T4298)', (t) => {
+  for (const [change, why] of [
+    [
+      ({ commitFiles }: ReturnType<typeof teamrigRepo>) =>
+        commitFiles({ [PLUGIN]: '{\n  "name": "teamrig",\n  "version": "0.1.1"\n}\n', [KIT]: "export const KIT_VERSION = '0.1.1';\n", [RELEASE]: release('0.1.1') }, 'plugin: version 0.1.1'),
+      /, and its commit [0-9a-f]{9} raises the version and sets \.release-please-manifest\.json together, so they cannot be made again apart: ship it again with its plan/,
+    ],
+    [({ commitFiles }: ReturnType<typeof teamrigRepo>) => commitFiles({ [RELEASE]: release('0.0.7') }, SET_MANIFEST('0.0.7')), /, and its \.release-please-manifest\.json holds 0\.0\.7, not its plugin version 0\.1\.0, so it cannot be set again/],
+  ] as const) {
+    const { git, sha, request, deps } = manifestChange(t, change);
+    assert.match(reasonOf(catchUp(deps, request)), why);
+    assertRestored(git, sha);
+  }
+});
+
 
 test('a work commit that conflicts with main is aborted and refused, the repo dir back on the head (T2988)', (t) => {
   const { git, request, deps, sha } = movedPast(t, { 'src/a.ts': 'export const a = 2;\n' }, { 'src/a.ts': 'export const a = 3;\n' });
