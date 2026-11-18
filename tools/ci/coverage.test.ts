@@ -18,6 +18,7 @@ import {
   suiteWorkers,
   suiteEnv,
   coverageTempBase,
+  removeRunDirs,
   runDirPrefix,
   staleRunDirs,
   type CoveragePolicy,
@@ -210,6 +211,33 @@ describe('coverage run folders (#1585)', () => {
     assert.equal(runDirPrefix(42), 'run-42-');
     const alive = (pid: number): boolean => pid === 42;
     assert.deepEqual(staleRunDirs(['run-42-aB3', 'run-7-xY9', 'notes', 'run-x-1', 'run-8-'], alive), ['run-7-xY9', 'run-8-']);
+  });
+
+  it('removes every folder it can and reports, without throwing, each one a process still holds (T4233)', () => {
+    const removed: string[] = [];
+    const remove = (path: string): void => {
+      if (path.endsWith('held')) {
+        throw Object.assign(new Error(`EPERM, Permission denied: '${path}'`), { code: 'EPERM' });
+      }
+      if (path.endsWith('odd')) {
+        throw new Error('the disk went away');
+      }
+      if (path.endsWith('thrown')) {
+        throw 'a bare string';
+      }
+      removed.push(path);
+    };
+    const left = removeRunDirs(['/c/run-1-a', '/c/run-2-held', '/c/run-3-b', '/c/run-4-odd', '/c/run-5-thrown'], remove);
+    assert.deepEqual(removed, ['/c/run-1-a', '/c/run-3-b']);
+    assert.deepEqual(left, [
+      'could not remove /c/run-2-held (EPERM); a process may still use it, and a later run tries again',
+      'could not remove /c/run-4-odd (the disk went away); a process may still use it, and a later run tries again',
+      'could not remove /c/run-5-thrown (a bare string); a process may still use it, and a later run tries again',
+    ]);
+  });
+
+  it('reports nothing when every folder is removed', () => {
+    assert.deepEqual(removeRunDirs(['/c/run-1-a'], () => undefined), []);
   });
 });
 
