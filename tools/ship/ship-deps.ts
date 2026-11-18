@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { nodeFiles } from '../../src/core/files.ts';
 import { gitSyncIn } from '../lib/git.ts';
 import { realSleep, systemClock } from '../../src/core/lock.ts';
-import { changePatch, clearMergeFrom, shipWritesOf, workCommitsOf } from './approval.ts';
+import { changePatch, clearMergeFrom, shipWritesOf, strayStamps, workCommitsOf } from './approval.ts';
 import { buildScriptOf, buildSteps } from './build-steps.ts';
 import { proveTree, realGateDeps } from './local-gate.ts';
 import { mergeBranch } from './merge.ts';
@@ -52,5 +52,6 @@ export function realShipDeps(repo: string, noteFile: string | null): ShipDeps {
     clearMerge: clearMergeFrom(process.env, { env: process.env, userHome: homedir(), files: nodeFiles(realSleep), clock: systemClock }),
     patchOf: (rev) => changePatch(git, rev, `refs/remotes/origin/${profile.main}`, shipWritesOf(profile.regenerated, TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS)),
     workOf: (rev) => workCommitsOf(git, rev, `refs/remotes/origin/${profile.main}`, shipWritesOf(profile.regenerated, TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS)),
+    strayStampsOf: (rev) => strayStamps(git, rev, `refs/remotes/origin/${profile.main}`, shipWritesOf(profile.regenerated, TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS)),
   };
 }
