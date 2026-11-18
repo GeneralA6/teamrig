@@ -2,7 +2,9 @@ import type { Roster } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
 import type { TimeZone } from '../core/zone.ts';
+import { isRightNow } from '../config/priorities.ts';
 import type { Task } from '../register/fold.ts';
+import type { WaitingOnYou } from '../register/tree.ts';
 import { parkRulesOf } from '../register/park.ts';
 import { noRoomText } from '../sessions/headroom.ts';
 import { reopenVerdict, type ReopenInput, type ReopenVerdict } from '../sessions/idle.ts';
@@ -70,8 +72,20 @@ async function folderOrRefusalOf(folderOf: SessionFolderOf, id: string): Promise
   }
 }
 
-/** The pass's pick: urgent lines first, the oldest first, then the most urgent top task, then a pile of unseen lines. */
-function byReopenOrder(a: ReopenWish, b: ReopenWish): number {
+/** True for a wish whose top task is right-now work (`isRightNow`), which goes first in the pass's line (T4414). */
+function isRightNowWish(wish: ReopenWish): boolean {
+  return wish.top !== undefined && isRightNow(wish.top.priority);
+}
+
+/**
+ * The pass's pick: right-now work first, the most urgent first, then urgent lines, the oldest first, then the most
+ * urgent top task, then a pile of unseen lines.
+ */
+export function byReopenOrder(a: ReopenWish, b: ReopenWish): number {
+  const rightNow = Number(isRightNowWish(b)) - Number(isRightNowWish(a));
+  if (rightNow !== 0) {
+    return rightNow;
+  }
   if (a.reopening.kind === 'asked') {
     return b.reopening.kind === 'asked' ? a.reopening.at - b.reopening.at : -1;
   }
@@ -152,9 +166,13 @@ export async function judgeSession(runtime: CliRuntime, kit: Kit, config: KitCon
   if (asAwake.kind === 'asked') {
     return wishOf(folderOf, id, asAwake, undefined);
   }
+  // Right-now work wakes past every rest, so its reopen needs no weighing.
+  if (asAwake.kind === 'needed') {
+    return wishOf(folderOf, id, asAwake, asAwake.waiting[0]?.task);
+  }
   const reopening = asAwake.kind === 'stay' ? asAwake : reopenVerdict({ ...input, ...(await wakeWeightOf(runtime, kit, config, roster, id, config.wake.priority)) });
-  // Never asked here: a session with asks reopened for them above.
-  if (reopening.kind === 'stay' || reopening.kind === 'asked') {
+  // Never asked or needed here: a session with either reopened for it above.
+  if (reopening.kind === 'stay' || reopening.kind === 'asked' || reopening.kind === 'needed') {
     return { kind: 'closed', id };
   }
   if (reopening.kind === 'piled') {
@@ -218,11 +236,19 @@ function idsText(tasks: readonly Task[]): string {
   return tasks.map((task) => task.id).join(', ');
 }
 
+/** `T12 (p0, owner bravo) waits on your approval, your T7`. */
+function neededText({ task, needs, asks }: WaitingOnYou): string {
+  const what = [...asks.map((ask) => `your ${ask.kind}`), ...needs.map((need) => `your ${need.id}`)];
+  return `${task.id} (p${task.priority}, owner ${task.owner}) waits on ${what.join(', ')}`;
+}
+
 /** Why a closed session reopens, as the pass's lines say it. */
 export function reopeningText(reopening: Reopening, zone: TimeZone): string {
   switch (reopening.kind) {
     case 'asked':
       return urgentLinesText(reopening.asks);
+    case 'needed':
+      return `right-now work of others waiting on it: ${reopening.waiting.map(neededText).join('; ')}`;
     case 'handed':
       return `work handed to it since its close: ${idsText(reopening.tasks)}`;
     case 'piled':
