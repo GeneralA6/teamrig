@@ -466,7 +466,7 @@ async function afterPrePush(runtime, prePush, what, code, waitedMs) {
  * under the host lock, so the host's queued steps run one at a time. Refused from `delivery.schedule.queueCutoffUtc`
  * to midnight UTC, also when the wait for the lock ran past it, and once its line for the lock has not moved for
  * `delivery.queue.waitMinutes`. The step is killed with every process it started after `maxRunMinutes`
- * (`--max-minutes`), and its start and end go to the delivery ledger, with when it began to wait and, sampled
+ * (`--max-minutes`), the time its share is set aside (`teamrig step-away`) not counted, and its start and end go to the delivery ledger, with when it began to wait and, sampled
  * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes
  * get `$TEAMRIG_HOST_LOCK`, so a `queue` among them (a git hook's checks) runs at once under this lock. Every step
  * waits in its turn until the host's free memory leaves `memoryFloorMb` besides the MB held for it and for the small
@@ -577,7 +577,10 @@ export async function queue(args, runtime) {
             }
             say(`running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
             await reporting.started();
-            const run = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(step.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
+            // A merge that steps away while its checks run (teamrig step-away) holds nothing meanwhile: that time, and its wait
+            // in line to take its share back, does not count against its limit (T4218).
+            const awayMs = () => lock.awayMs(taking.lock.id);
+            const run = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(step.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, awayMs, stop: watching.stop };
             const mark = { ...owner, what, ...waited, ...(taking.sharing === undefined || taking.sharing.heavy ? {} : { shared: true }), request: run };
             const end = await runRecorded(runtime, { places, delivery, opened: (start) => reporting.opened({ ledger: places.ledger, start }) }, mark);
             const code = await report(runtime, say, end, step);
