@@ -1,40 +1,73 @@
 import { MS_PER_DAY, parseUtcDeadline } from "../core/time.js";
-/** How many uses of a grant are left: its count less the uses taken, never below 0. */
-export function resetsLeft(stock) {
-    return Math.max(0, stock.count - stock.usedUtc.length);
+/** An account switched to is free again a week later, when its own week has run (types.ts RESET_KINDS). */
+export const ACCOUNT_BACK_MS = 7 * MS_PER_DAY;
+/** When each use of an account stock that is still within its week ends, soonest first. */
+function accountsBackAt(stock, now) {
+    return stock.usedUtc
+        .map((used) => parseUtcDeadline(used))
+        .flatMap((used) => (used === undefined ? [] : [used.getTime() + ACCOUNT_BACK_MS]))
+        .filter((back) => back > now)
+        .sort((a, b) => a - b);
+}
+/**
+ * How many uses of a stock are left, never below 0: a grant's count less the uses taken; an account stock's count less
+ * the switches of the last week.
+ */
+export function resetsLeft(stock, now) {
+    const used = stock.kind === 'account' ? accountsBackAt(stock, now).length : stock.usedUtc.length;
+    return Math.max(0, stock.count - used);
 }
 /** Whole days from `now` to the grant's expiry, rounded down; undefined when its expiry does not parse. */
 export function daysToExpiry(stock, now) {
     const expires = parseUtcDeadline(stock.expiresUtc);
     return expires === undefined ? undefined : Math.floor((expires.getTime() - now) / MS_PER_DAY);
 }
-function stockLine(stock, now, zone) {
-    const left = `${resetsLeft(stock)} of ${stock.count} left`;
+function inDays(at, now) {
+    const days = Math.floor((at - now) / MS_PER_DAY);
+    return `in ${days} day${days === 1 ? '' : 's'}`;
+}
+function grantWhen(stock, now, zone) {
     const expires = parseUtcDeadline(stock.expiresUtc);
-    const days = daysToExpiry(stock, now);
-    const when = expires === undefined || days === undefined
-        ? `expiry unreadable (${stock.expiresUtc})`
-        : expires.getTime() <= now
-            ? `expired ${zone.minute(expires)}`
-            : `expire ${zone.minute(expires)} (in ${days} day${days === 1 ? '' : 's'})`;
+    if (expires === undefined) {
+        return `expiry unreadable (${stock.expiresUtc})`;
+    }
+    return expires.getTime() <= now ? `expired ${zone.minute(expires)}` : `expire ${zone.minute(expires)} (${inDays(expires.getTime(), now)})`;
+}
+function accountWhen(stock, now, zone) {
+    const next = accountsBackAt(stock, now)[0];
+    return next === undefined ? 'each back a week after its switch' : `the next back ${zone.minute(new Date(next))} (${inDays(next, now)})`;
+}
+function stockLine(stock, now, zone) {
+    const left = `${resetsLeft(stock, now)} of ${stock.count} left`;
+    const when = stock.kind === 'account' ? accountWhen(stock, now, zone) : grantWhen(stock, now, zone);
     const note = stock.note === undefined ? '' : ` — ${stock.note}`;
     return `  ${stock.kind}: ${left}, ${when}${note}`;
 }
-/** The grants with uses left and an expiry still ahead, summed per kind in the order the config lists them. */
+/** When a stock's uses lapse: a grant's expiry, undefined for an account stock; null when the stock is gone. */
+function lapseOf(stock, now) {
+    if (stock.kind === 'account') {
+        return undefined;
+    }
+    const expires = parseUtcDeadline(stock.expiresUtc);
+    return expires === undefined || expires.getTime() <= now ? null : expires;
+}
+function sooner(a, b) {
+    if (a === undefined || b === undefined) {
+        return a ?? b;
+    }
+    return a.getTime() <= b.getTime() ? a : b;
+}
+/** The stocks with uses left that have not lapsed, summed per kind in the order the config lists them. */
 function liveStockByKind(resets, now) {
     const byKind = new Map();
     for (const stock of resets) {
-        const left = resetsLeft(stock);
-        const expires = parseUtcDeadline(stock.expiresUtc);
-        if (left === 0 || expires === undefined || expires.getTime() <= now) {
+        const left = resetsLeft(stock, now);
+        const lapse = lapseOf(stock, now);
+        if (left === 0 || lapse === null) {
             continue;
         }
         const seen = byKind.get(stock.kind);
-        byKind.set(stock.kind, {
-            kind: stock.kind,
-            left: (seen?.left ?? 0) + left,
-            nextExpiry: seen === undefined || expires.getTime() < seen.nextExpiry.getTime() ? expires : seen.nextExpiry,
-        });
+        byKind.set(stock.kind, { kind: stock.kind, left: (seen?.left ?? 0) + left, nextExpiry: seen === undefined ? lapse : sooner(seen.nextExpiry, lapse) });
     }
     return [...byKind.values()];
 }
@@ -51,10 +84,7 @@ export function resetSummaryLine(resets, now, zone, command) {
     if (kinds.length === 0) {
         return `Resets in stock: none left (\`${command} budget\` lists the grants).`;
     }
-    const parts = kinds.map(({ kind, left, nextExpiry }) => {
-        const days = Math.floor((nextExpiry.getTime() - now) / MS_PER_DAY);
-        return `${kind} ${left} left, the next expiring ${zone.minute(nextExpiry)} (in ${days} day${days === 1 ? '' : 's'})`;
-    });
+    const parts = kinds.map(({ kind, left, nextExpiry }) => nextExpiry === undefined ? `${kind} ${left} left` : `${kind} ${left} left, the next expiring ${zone.minute(nextExpiry)} (${inDays(nextExpiry.getTime(), now)})`);
     return `Resets in stock: ${parts.join('; ')}.`;
 }
 /** The "Resets in stock" block of the budget view; no lines when the account lists no grants. */
