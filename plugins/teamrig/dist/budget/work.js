@@ -57,7 +57,7 @@ function appended(map, session, id) {
  * that names it for an approval or a decision. A task that is itself waiting gives its owner nothing to do yet, and a
  * session's wait on its own work is no other session's block, so neither counts. Ids in the register's order.
  */
-function awaitedAnswers(all) {
+export function awaitedAnswers(all) {
     const byId = new Map(all.map((task) => [task.id, task]));
     const awaited = new Map();
     for (const waiter of all) {

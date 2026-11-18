@@ -36,7 +36,7 @@ export async function otherTeamsOnAccount(runtime, asking, now, usedPct) {
  */
 export async function teamsOnAccountOf(runtime, asking, now, usedPct) {
     const { lifts } = await new LiftLog(runtime.files, asking.liftsPath).read();
-    const split = budgetSplitOf({ team: asking.team, ids: asking.ids, sessions: asking.config.budget.sessions, leads: asking.config.leads, work: asking.work, pausable: pausableOf(asking.config, asking.team, asking.ids), lifts, now, usedPct });
+    const split = budgetSplitOf({ team: asking.team, ids: asking.ids, sessions: asking.config.budget.sessions, leads: asking.config.leads, work: asking.work, asks: asking.asks, pausable: pausableOf(asking.config, asking.team, asking.ids), lifts, now, usedPct });
     return { split, others: await otherTeamsOnAccount(runtime, asking, now, usedPct) };
 }
 /**

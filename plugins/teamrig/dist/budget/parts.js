@@ -58,9 +58,19 @@ function nodesAt(nodes, path) {
 export function shareOf(split, id) {
     return split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE;
 }
-/** A session's weight in the split: its `share` times its top queued task's weight (`workWeights`), at least 1 so a session with none still gets a part. */
+/**
+ * How many of a session's waiting asks weigh in the split, each as one task of weight 1: enough that a queue of review
+ * asks moves the day's split towards their answerer, and no more, so one session's queue never takes the whole day.
+ */
+export const ASK_CAP = 5;
+/**
+ * A session's weight in the split: its `share` times its top queued task's weight (`workWeights`), at least 1 so a
+ * session with none still gets a part, plus one per answer others wait on it for (`asks`), up to {@link ASK_CAP}: a
+ * wait on a session blocks another, so its part grows with them and its budget does not hold them (T3037).
+ */
 export function sessionWeightOf(split, id) {
-    return shareOf(split, id) * Math.max(1, workWeightOf(split.work.get(id)));
+    const asks = Math.min(ASK_CAP, split.asks.get(id)?.length ?? 0);
+    return shareOf(split, id) * (Math.max(1, workWeightOf(split.work.get(id))) + asks);
 }
 /** A session as a split-tree leaf, weighed by its weight and funded part (`funded`), with its session lift in force. */
 function leafOf(split, id) {
