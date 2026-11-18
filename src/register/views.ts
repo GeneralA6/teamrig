@@ -585,6 +585,12 @@ export function formatNextMove(task: Task, tree: TaskTree, team: string | undefi
   return `Next move: ${who} (${taskLabel(move.task, team)})${what}${behind}`;
 }
 
+/** `T12 (p0, owner bravo) waits on your approval, your T7`: what one task of another owner waits on, said to the session. */
+export function waitingOnYouText({ task, needs, asks }: WaitingOnYou): string {
+  const what = [...asks.map((ask) => `your ${ask.kind}`), ...needs.map((need) => `your ${need.id}`)];
+  return `${task.id} (${priorityText(task.priority)}, owner ${task.owner}) waits on ${what.join(', ')}`;
+}
+
 /**
  * A row of the waiting-on-you block: another session's task as its short row, then what it waits on from you:
  * ` · needs your T2, T3` and ` · waits on your decision and approval`.

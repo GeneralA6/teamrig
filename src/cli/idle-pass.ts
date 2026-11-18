@@ -4,8 +4,8 @@ import { KIT_NAME } from '../core/home.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { isRightNow } from '../config/priorities.ts';
 import type { Task } from '../register/fold.ts';
-import type { WaitingOnYou } from '../register/tree.ts';
 import { parkRulesOf } from '../register/park.ts';
+import { waitingOnYouText } from '../register/views.ts';
 import { noRoomText } from '../sessions/headroom.ts';
 import { reopenVerdict, type ReopenInput, type ReopenVerdict } from '../sessions/idle.ts';
 import { closedOf, SessionLog, type SessionLogRecord } from '../sessions/log.ts';
@@ -236,19 +236,13 @@ function idsText(tasks: readonly Task[]): string {
   return tasks.map((task) => task.id).join(', ');
 }
 
-/** `T12 (p0, owner bravo) waits on your approval, your T7`. */
-function neededText({ task, needs, asks }: WaitingOnYou): string {
-  const what = [...asks.map((ask) => `your ${ask.kind}`), ...needs.map((need) => `your ${need.id}`)];
-  return `${task.id} (p${task.priority}, owner ${task.owner}) waits on ${what.join(', ')}`;
-}
-
 /** Why a closed session reopens, as the pass's lines say it. */
 export function reopeningText(reopening: Reopening, zone: TimeZone): string {
   switch (reopening.kind) {
     case 'asked':
       return urgentLinesText(reopening.asks);
     case 'needed':
-      return `right-now work of others waiting on it: ${reopening.waiting.map(neededText).join('; ')}`;
+      return `right-now work of others waiting on it: ${reopening.waiting.map(waitingOnYouText).join('; ')}`;
     case 'handed':
       return `work handed to it since its close: ${idsText(reopening.tasks)}`;
     case 'piled':
