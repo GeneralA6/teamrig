@@ -2,6 +2,7 @@ import { isRecord, stringField } from "../../core/guards.js";
 import { ENV, resolveKitHome } from "../../core/home.js";
 import { ID_PATTERN } from "../../core/ids.js";
 import { KIT_VERSION } from "../../core/version.js";
+import { INBOX_ADD_LAUNCHER_SCRIPT, inboxAddLauncherPath } from "../../inbox/host-launcher.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { dayProbePath, dayProbeReleaseLine } from "../../restore/day-probe.js";
 import { DayProbeStore } from "../../restore/day-probe-store.js";
@@ -174,7 +175,10 @@ async function trackLaunchers(event, runtime, kitHome) {
     const { files, restore } = runtime;
     await refreshLaunchers({
         machine: { files, kitHome, node: runtime.self.node, userHome: runtime.userHome, logon: restore.logon, shortcuts: restore.shortcuts },
-        others: [{ path: launcherPath(kitHome), text: LAUNCHER_SCRIPT }],
+        others: [
+            { path: launcherPath(kitHome), text: LAUNCHER_SCRIPT },
+            { path: inboxAddLauncherPath(kitHome), text: INBOX_ADD_LAUNCHER_SCRIPT, create: true },
+        ],
         lock: fileLockOf(runtime, `${launcherRecordPath(kitHome)}.lock`, LAUNCHER_REFRESH_LOCK),
         version: KIT_VERSION,
         now: runtime.clock.now(),
