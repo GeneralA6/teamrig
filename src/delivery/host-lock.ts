@@ -33,6 +33,11 @@ export interface HostLockInfo {
   readonly acquiredAt: string;
   /** An ISO time; from it on, the lock is stale. */
   readonly expiresAt: string;
+  /**
+   * The ms its step spent with its share set aside before this taking (`teamrig step-away` until `teamrig step-back`
+   * took it back), which the step's time limit does not count (T4218); left out when none.
+   */
+  readonly awayMs?: number;
 }
 
 /**
@@ -195,6 +200,21 @@ export interface StepAsk {
 export interface StepBack {
   readonly id: string;
   readonly pid: number;
+  /** The ms the step spent away before it last stepped away ({@link HostLockInfo.awayMs}). */
+  readonly awayMs: number;
+  /** When it last stepped away (epoch ms); left out for a share an older teamrig set aside, whose away time counts nothing. */
+  readonly awayAt?: number;
+}
+
+/** Who a taking names as its holder: its step's process, and the ms that step spent away before it (a share taken back). */
+interface Holding {
+  readonly pid: number;
+  readonly awayMs?: number;
+}
+
+/** A share set aside, as `<lock>.away/<id>.json` keeps it: `awayAt`, when it was set aside; left out by an older teamrig. */
+interface AwayShare extends HostShare {
+  readonly awayAt?: string;
 }
 
 /**
@@ -473,7 +493,8 @@ function isHostLockInfo(value: unknown): value is HostLockInfo {
     typeof value['purpose'] === 'string' &&
     isKit(value['kit']) &&
     isTime(value['acquiredAt']) &&
-    isTime(value['expiresAt'])
+    isTime(value['expiresAt']) &&
+    (value['awayMs'] === undefined || isNonNegativeInteger(value['awayMs']))
   );
 }
 
@@ -518,6 +539,15 @@ function tidyTicket(value: unknown): unknown {
   return withoutUnreadable(withoutUnreadable(value, 'waitingOn', isWaitingOn), 'request', isTicketRequest);
 }
 
+/** A lock's or a share's away times that {@link withoutUnreadable} drops: they only move its step's time limit (T4218), never hold the host. */
+function tidyAway(value: unknown): unknown {
+  return withoutUnreadable(withoutUnreadable(value, 'awayMs', isNonNegativeInteger), 'awayAt', isTime);
+}
+
+function isAwayShare(value: unknown): value is AwayShare {
+  return isHostShare(value) && isRecord(value) && (value['awayAt'] === undefined || isTime(value['awayAt']));
+}
+
 function isHostShare(value: unknown): value is HostShare {
   return (
     isHostLockInfo(value) &&
@@ -541,7 +571,7 @@ function parseAs<T>(text: string, is: (value: unknown) => value is T, tidy: (val
 }
 
 function parseLock(text: string): HostLockInfo | undefined {
-  return parseAs(text, isHostLockInfo);
+  return parseAs(text, isHostLockInfo, tidyAway);
 }
 
 function parseWaiter(text: string): LockWaiter | undefined {
@@ -549,7 +579,11 @@ function parseWaiter(text: string): LockWaiter | undefined {
 }
 
 function parseShare(text: string): HostShare | undefined {
-  return parseAs(text, isHostShare, tidyTicket);
+  return parseAs(text, isHostShare, (value) => tidyAway(tidyTicket(value)));
+}
+
+function parseAway(text: string): AwayShare | undefined {
+  return parseAs(text, isAwayShare, (value) => tidyAway(tidyTicket(value)));
 }
 
 /**
@@ -910,17 +944,17 @@ export class HostLock {
    * removed and the lock taken, for a waiter that has seen it so long enough. It does not look at the line.
    */
   async tryTake(session: string, purpose: string, removeUnknown: boolean = false): Promise<Look> {
-    return this.take(session, purpose, removeUnknown, undefined, this.ports.pid);
+    return this.take(session, purpose, removeUnknown, undefined, { pid: this.ports.pid });
   }
 
   /**
    * {@link tryTake}, the lock carrying `id` when given (a waiter's ticket id), else a new one each attempt, and naming
-   * `pid` as its holder's process.
+   * `holding` as its holder.
    */
-  private async take(session: string, purpose: string, removeUnknown: boolean, id: string | undefined, pid: number): Promise<Look> {
+  private async take(session: string, purpose: string, removeUnknown: boolean, id: string | undefined, holding: Holding): Promise<Look> {
     let mayRemoveUnknown = removeUnknown;
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
-      const lock = this.newLock(session, purpose, id ?? this.ports.newId(), pid);
+      const lock = this.newLock(session, purpose, id ?? this.ports.newId(), holding);
       if (await this.ports.files.createExclusive(this.path, stored(lock))) {
         return { kind: 'taken', lock };
       }
@@ -1024,7 +1058,8 @@ export class HostLock {
       return { kind: 'olderKit', share: found.share };
     }
     // Not release(): it would take the away file just written for a share already set aside, and drop that instead.
-    await this.ports.files.write(join(this.away, `${id}.json`), stored(found.share));
+    const away: AwayShare = { ...found.share, awayAt: new Date(this.ports.clock.now()).toISOString() };
+    await this.ports.files.write(join(this.away, `${id}.json`), stored(away));
     await this.dropHeld(id);
     return { kind: 'aside', share: found.share };
   }
@@ -1044,7 +1079,7 @@ export class HostLock {
     }
     const path = join(this.away, name);
     const text = await files.read(path);
-    const share = text === undefined ? undefined : parseShare(text);
+    const share = text === undefined ? undefined : parseAway(text);
     if (share === undefined || share.id !== id || !this.ports.alive(share.pid)) {
       await files.remove(path);
       return { kind: 'none' };
@@ -1053,13 +1088,38 @@ export class HostLock {
       need: { shares: share.heavy !== true, reserveMb: share.reserveMb },
       ...(share.request === undefined ? {} : { request: share.request }),
       arrivedAt: Date.parse(share.acquiredAt),
-      back: { id, pid: share.pid },
+      back: { id, pid: share.pid, awayMs: share.awayMs ?? 0, ...(share.awayAt === undefined ? {} : { awayAt: Date.parse(share.awayAt) }) },
     };
     const taking = await this.acquire(share.session, share.purpose, maxWaitMs, pollMs, onWait, ask, stop);
     if (taking.kind === 'taken') {
       await files.remove(path);
     }
     return taking;
+  }
+
+  /**
+   * The ms the step holding `id` has spent with its share set aside so far (T4218): the time before its taking now and,
+   * while it is set aside or back in line to take it back, the time since it stepped away. Read in that order, as a
+   * taking back writes its share before it removes the away record, so a step coming back meanwhile is seen in one of
+   * them. 0 for an id nothing holds or set aside.
+   */
+  async awayMs(id: string): Promise<number> {
+    const name = `${id}.json`;
+    if (!SHARE_NAME.test(name)) {
+      return 0;
+    }
+    const text = await this.ports.files.read(join(this.away, name));
+    const away = text === undefined ? undefined : parseAway(text);
+    if (away !== undefined && away.id === id) {
+      const since = away.awayAt === undefined ? 0 : Math.max(0, this.ports.clock.now() - Date.parse(away.awayAt));
+      return (away.awayMs ?? 0) + since;
+    }
+    const held = await this.shareWith(id);
+    if (held !== undefined) {
+      return held.share.awayMs ?? 0;
+    }
+    const seen = await this.read();
+    return seen.kind === 'held' && seen.info.id === id ? (seen.info.awayMs ?? 0) : 0;
   }
 
   /**
@@ -1238,9 +1298,20 @@ export class HostLock {
   /** One look in its turn behind the waiters `ahead`: the lock for a step that takes the whole host ({@link takeInTurn}), else a share of it ({@link shareInTurn}). */
   private async inTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, ask: StepAsk, rules: AdmissionRules | undefined): Promise<Look> {
     const hold = this.holdOf(ask, rules);
-    // A step taking back its share is held by its own process, not the command that asks for it (StepBack).
-    const pid = ask.back?.pid ?? this.ports.pid;
-    return hold.kind === 'whole' ? this.takeInTurn(waiter, ahead, removeUnknown, ask.need, pid) : this.shareInTurn(waiter, ahead, removeUnknown, ask.need, hold, pid);
+    const holding = this.holdingOf(ask.back);
+    return hold.kind === 'whole' ? this.takeInTurn(waiter, ahead, removeUnknown, ask.need, holding) : this.shareInTurn(waiter, ahead, removeUnknown, ask.need, hold, holding);
+  }
+
+  /**
+   * Who a taking now is held by: a step taking back its share by its own process, not the command that asks for it,
+   * with the ms it has spent away until now (StepBack); any other by this process.
+   */
+  private holdingOf(back: StepBack | undefined): Holding {
+    if (back === undefined) {
+      return { pid: this.ports.pid };
+    }
+    const since = back.awayAt === undefined ? 0 : Math.max(0, this.ports.clock.now() - back.awayAt);
+    return { pid: back.pid, awayMs: back.awayMs + since };
   }
 
   /** The rules the line is ordered by as the team's config reads now ({@link HostLockPorts.admission}); none for a lock with no rules. */
@@ -1487,7 +1558,7 @@ export class HostLock {
    * its ticket's id, holding its need's MB ({@link heldMbOf}), once the memory gate finds room for it beside the steps
    * already sharing it (at once with no gate); a stale lock is left for the next step that takes the lock.
    */
-  private async shareInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, need: StepNeed | undefined, hold: Exclude<Hold, { kind: 'whole' }>, pid: number): Promise<Look> {
+  private async shareInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, need: StepNeed | undefined, hold: Exclude<Hold, { kind: 'whole' }>, holding: Holding): Promise<Look> {
     const seen = await this.read();
     if (seen.kind === 'held' && !this.isStale(seen.info)) {
       return { kind: 'busy', holder: await this.heldBy(seen.info) };
@@ -1535,7 +1606,7 @@ export class HostLock {
       return { kind: 'busy', holder: { ...look, shares: others } };
     }
     const share: HostShare = {
-      ...this.newLock(waiter.session, waiter.purpose, waiter.id, pid),
+      ...this.newLock(waiter.session, waiter.purpose, waiter.id, holding),
       reserveMb: this.heldMbOf(need),
       ...(heavy ? { heavy: true } : {}),
       ...(waiter.request === undefined ? {} : { request: waiter.request }),
@@ -1631,7 +1702,7 @@ export class HostLock {
    * joining the line to releasing the lock; the steps still sharing the host (small or heavy) count as holding their
    * MB, as the step that took the lock waits for them to end.
    */
-  private async takeInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, need: StepNeed | undefined, pid: number): Promise<Look> {
+  private async takeInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, need: StepNeed | undefined, holding: Holding): Promise<Look> {
     const seen = await this.read();
     if (seen.kind === 'held' && !this.isStale(seen.info)) {
       return { kind: 'busy', holder: await this.heldBy(seen.info) };
@@ -1648,7 +1719,7 @@ export class HostLock {
     if (look !== undefined && look.kind !== 'room') {
       return { kind: 'busy', holder: { ...look, shares } };
     }
-    return this.take(waiter.session, waiter.purpose, removeUnknown, waiter.id, pid);
+    return this.take(waiter.session, waiter.purpose, removeUnknown, waiter.id, holding);
   }
 
   /**
@@ -1749,16 +1820,17 @@ export class HostLock {
     return Date.parse(entry.expiresAt) <= this.ports.clock.now() || !this.ports.alive(entry.pid);
   }
 
-  private newLock(session: string, purpose: string, id: string, pid: number): HostLockInfo {
+  private newLock(session: string, purpose: string, id: string, holding: Holding): HostLockInfo {
     const now = this.ports.clock.now();
     return {
       id,
-      pid,
+      pid: holding.pid,
       session,
       purpose,
       kit: KIT_VERSION,
       acquiredAt: new Date(now).toISOString(),
       expiresAt: new Date(now + this.ttlMs).toISOString(),
+      ...(holding.awayMs === undefined ? {} : { awayMs: holding.awayMs }),
     };
   }
 
