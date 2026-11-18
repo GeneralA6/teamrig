@@ -47,7 +47,7 @@ export async function issuePush(args, runtime) {
     }
     const totals = await pushRepos({
         // github.repos is GitHub's list, so every repository it names is GitHub's.
-        host: hostOf('github', runtime, new SecretScanner(config.register.secretPatterns)),
+        host: hostOf('github', runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp),
         repos: reposOf(config.github.repos, args.flags.get('repo')),
         since: closedSince(new Date(runtime.clock.now()), config.github.closedDays),
         tasks: async () => (await team.register.snapshot()).state.tasks.values(),

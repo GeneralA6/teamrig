@@ -486,6 +486,7 @@ function parseGithub(read, raw, sessions) {
         followMax: read.integer(raw, 'followMax', 'github', DEFAULT_GITHUB.followMax, CONFIG_LIMITS.githubFollowMax),
         ...readGithubWatcher(read, raw, sessions),
         ...(issueAtAdd === undefined ? {} : { issueAtAdd }),
+        stamp: read.boolean(raw, 'stamp', 'github', DEFAULT_GITHUB.stamp),
     };
 }
 /** `github.issueAtAdd`: unset, or one of `repos` in lowercase; any other repository is reported and reads as unset. */

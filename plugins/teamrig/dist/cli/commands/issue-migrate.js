@@ -92,7 +92,7 @@ function planLines(plan) {
 async function openIssues(runtime, team, by, creates, scanner) {
     const say = (line) => runtime.out.stdout(line);
     // planMigration plans issues only for github.repos, GitHub's list, so every one is GitHub's.
-    const host = hostOf('github', runtime, scanner);
+    const host = hostOf('github', runtime, scanner, team.config.github.stamp);
     const told = new Set();
     let opened = 0;
     const stopped = (id) => `STOPPED at ${id} after opening ${opened} issue(s); fix the cause and rerun: tasks holding their issue are skipped`;

@@ -181,7 +181,7 @@ async function anySessionRuns(runtime, kit, config) {
 }
 /** Probes every repository: changed when any did (with the marks to keep once synced), else failed when one failed. */
 async function probeRound(runtime, config, marks) {
-    const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns));
+    const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp);
     const pending = new Map();
     let failed = false;
     for (const repo of config.github.repos) {

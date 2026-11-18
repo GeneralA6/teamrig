@@ -17,9 +17,12 @@ export function addIssueAskOf(flags, input) {
         priority: input.priority,
     };
 }
-/** The host a new task's issue opens on: GitHub, with the token saved for the repository's owner, or none while GitHub is off here. */
-export function addIssueHost(runtime, scanner) {
-    return githubOff(runtime.env) ? undefined : hostOf('github', runtime, scanner);
+/**
+ * The host a new task's issue opens on: GitHub, with the token saved for the repository's owner, or none while GitHub is
+ * off here. stamp is the team's github.stamp: whether the issue's body ends with the made-with-teamrig footer.
+ */
+export function addIssueHost(runtime, scanner, stamp) {
+    return githubOff(runtime.env) ? undefined : hostOf('github', runtime, scanner, stamp);
 }
 /**
  * Adds a task with its issue, all or nothing: the add is judged, the issue opened, then the task written with its ref

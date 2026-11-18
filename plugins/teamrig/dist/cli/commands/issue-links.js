@@ -32,7 +32,7 @@ export async function issueLinks(args, runtime) {
     }
     const tasks = (await teamRegister(runtime, kit.paths, config).snapshot()).state.tasks;
     // github.repos is GitHub's list, so every repository it names is GitHub's.
-    const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns));
+    const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp);
     const told = new Set();
     let failed = false;
     let added = 0;

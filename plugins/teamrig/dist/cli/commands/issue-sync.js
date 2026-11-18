@@ -75,7 +75,7 @@ export async function issueSync(args, runtime) {
     /** The issues of each repository read, for the claim pass, which writes to GitHub only when the run pushes. */
     const claimRead = new Map();
     // github.repos is GitHub's list, so every repository it names is GitHub's.
-    const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns));
+    const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp);
     const told = new Set();
     const ends = [];
     const added = [];
