@@ -12,7 +12,8 @@ import { formatIdlePassTrouble } from "./idle-pass-log.js";
  * check turned off (SECRET-GUARD-OFF, T1369) is the owner's call, which the lead takes to the owner; a five-hour
  * window near full (FIVE-HOUR, T1968) stalls every session on the account at once; a part of this machine that
  * starts the restore and starts a file gone or something install did not set up (RESTORE-DEAD, RESTORE-STRAY, T2030)
- * is the machine's, every team's on it, so each of their leads hears of it. Such a
+ * is the machine's, every team's on it, so each of their leads hears of it; a state or inbox file near the task
+ * pane's read limit (LOG-SIZE, T3482) is the team's state, no one area's. Such a
  * warning goes to the team's lead, with the check it came from, so it never reaches no one: the lead fixes it, hands
  * it on or settles the check.
  */

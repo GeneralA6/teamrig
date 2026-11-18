@@ -21,10 +21,7 @@ export class JsonlEventLog {
     async append(events) {
         await this.files.append(this.path, events.map((event) => toJsonlLine(eventRecord(event))).join(''));
     }
-    async rotateIfDue(written, now, zone) {
-        if (written.read.rotatedAfter === 0) {
-            return null;
-        }
+    async rotateIfDue(now, zone) {
         const tailText = (await this.files.read(this.path)) ?? '';
         if (tailText.length < AUTO_ROTATE_CHARS) {
             return null;

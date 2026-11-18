@@ -208,5 +208,8 @@ export function nodeFiles(sleep) {
         async modifiedAt(path) {
             return (await fileStatsOf(path))?.mtimeMs;
         },
+        async size(path) {
+            return (await fileStatsOf(path))?.size;
+        },
     };
 }
