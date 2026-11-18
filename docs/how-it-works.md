@@ -205,6 +205,8 @@ stateDiagram-v2
   of them has used. So a wait or an `after` may name another team's task of the tree: `set` and `update` take it,
   `list`, `check`, `plan` and `verify` hold the task while that one is open, `show` prints it read-only, and the
   wake check, the idle pass and keep-working wake, reopen or send its owner on once that team finishes it. A team
+  of the tree whose idle pass went 5 minutes unrun, as once it closed the team's last session, is passed from another
+  team's idle tab, so its closed sessions still reopen for work handed to them. A team
   outside a tree reads only its own log: the others are read only when an active task names an id its own list
   lacks.
 - The task list is one log that only grows, a line for every move. `teamrig compact` archives it: the log becomes
