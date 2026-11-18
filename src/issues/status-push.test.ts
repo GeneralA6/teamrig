@@ -227,6 +227,34 @@ describe('planPush (T2682)', () => {
     }
   });
 
+  it('lets the one active team task speak over finished ones on its issue, and the newest finished one when none is active (#1449)', () => {
+    const tasks = [holding('T2', 7, { status: 'done' }), holding('T6', 7, { status: 'dropped' }), holding('T11', 7, { status: 'in-progress' })];
+    for (const order of [tasks, [...tasks].reverse()]) {
+      const plan = planPush(REPO, [testHostIssue(7, { labels: ['status:open'] })], order);
+      assert.deepEqual(
+        plan.changes.map((change) => change.task),
+        ['T11'],
+      );
+      assert.deepEqual(plan.shared, []);
+    }
+    const finished = [holding('T2', 7, { status: 'dropped' }), holding('T10', 7, { status: 'done' })];
+    for (const order of [finished, [...finished].reverse()]) {
+      const plan = planPush(REPO, [testHostIssue(7, { labels: ['status:open'] })], order);
+      assert.deepEqual(
+        plan.changes.map((change) => change.task),
+        ['T10'],
+      );
+      assert.deepEqual(plan.shared, []);
+    }
+  });
+
+  it('names only the active team tasks of an issue it leaves shared (#1449)', () => {
+    const tasks = [holding('T1', 7, { status: 'done' }), holding('T3', 7), holding('T9', 7, { status: 'waiting' })];
+    const plan = planPush(REPO, [testHostIssue(7)], tasks);
+    assert.deepEqual(plan.changes, []);
+    assert.deepEqual(plan.shared, [{ target: { repo: REPO, number: 7 }, tasks: ['T3', 'T9'] }]);
+  });
+
   it('plans in issue order and sends whole changes within the run, leaving the rest for the next run', () => {
     // Each change swaps a label: two writes, so the run's writes hold half as many changes.
     const count = PUSH_WRITES_PER_RUN / 2 + 3;
