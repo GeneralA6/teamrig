@@ -229,6 +229,14 @@ describe('changePatch: the fingerprint of what a branch changes over main', () =
     assert.equal(patch(), approved);
   });
 
+  it('keeps the fingerprint when the raise is the last file of the diff, approved without it and merged with it (T4216)', () => {
+    repo.git('checkout', '-q', '-b', 't2-lock', 'main');
+    commitFiles('core: lock', { 'src/core/lock.ts': 'lock\n' });
+    const approved = patch();
+    raise('0.2.0');
+    assert.equal(patch(), approved);
+  });
+
   it('moves the fingerprint on any change to the branch outside its generated folders', () => {
     const approved = patch();
     const sneaked = commitFiles('core: more', { 'src/b.ts': 'b, changed\n' });

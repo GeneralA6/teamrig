@@ -214,7 +214,7 @@ function shipsInAt(git: GitText, from: string, rev: string): ShipsIn {
  */
 function normalizedOf(diff: string, writes: ShipWrites, shipsIn: ShipsIn): string[] {
   const fileOf = <File extends VersionFile>(files: readonly File[], section: readonly string[]): File | undefined => files.find((one) => section[0] === `diff --git a/${one.path} b/${one.path}`);
-  return sectionsOf(diff.split('\n')).flatMap((section) => {
+  return sectionsOf(linesOf(diff)).flatMap((section) => {
     const file = fileOf(writes.versionFiles, section);
     if (file !== undefined) return maskedSection(section, file);
     const stamp = fileOf(writes.releaseStamps, section);
@@ -232,6 +232,14 @@ function diffHash(diff: string, writes: ShipWrites, shipsIn: ShipsIn): string {
     .map((line) => (line.startsWith('@@') ? '@@' : line))
     .join('\n');
   return createHash('sha256').update(normalized).digest('hex');
+}
+
+/**
+ * A diff's lines, less the empty one its closing newline leaves: kept, it would ride in the last file's section, so a
+ * version raise sorting last would drop it with that section and move the hash of an unchanged change (T4216).
+ */
+function linesOf(diff: string): string[] {
+  return diff === '' ? [] : diff.replace(/\n$/, '').split('\n');
 }
 
 /** A diff's lines cut into one list per file, each starting at its `diff --git` line. */
