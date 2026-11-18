@@ -9,6 +9,7 @@ import { CommandHelp } from "./help.js";
 import { parseArgs, UsageError } from "./args.js";
 import { RENAMED } from "./renamed.js";
 import { EXIT, RefusedError } from "./runtime.js";
+import { hookLockDeadline } from "./hook-timeouts.js";
 const registerCommands = () => import("./commands/register.js");
 const tabSessionCommands = () => import("./commands/tab-session.js");
 const statsCommands = () => import("./commands/stats.js");
@@ -1121,7 +1122,8 @@ export async function runCli(given, runtime) {
             await (await tabSessionCommands()).refuseAnotherTabSession(args, runtime);
         }
         const command = await spec.load();
-        return await command(args, runtime);
+        const lockDeadline = hookLockDeadline(args.command, runtime.clock.now());
+        return await command(args, lockDeadline === undefined ? runtime : { ...runtime, lockDeadline });
     }
     catch (error) {
         if (error instanceof UsageError) {
