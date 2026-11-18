@@ -16,6 +16,10 @@ const HOOKS_KEY = ',\n  "hooks": "./hooks/hooks.json"';
 const manifest = (version: string, more = ''): string => `{\n  "name": "teamrig",\n  "version": "${version}",\n  "description": "the kit"${more}\n}\n`;
 const versionTs = (version: string): string => `/** The kit's version. */\nexport const KIT_VERSION = '${version}';\n`;
 const MIGRATE_TS = 'src/config/migrate.ts';
+const GUIDE = 'docs/guides/run.md';
+/** A guide whose one line names the release that added its key. */
+const GUIDE_BASE = '# Run\n\n- `open.idle.mode` (since 0.1.0) closes it.\n';
+const SCHEMA = 'plugins/teamrig/config.schema.json';
 /** A config migration from `from`, first read by release `release`. */
 const migration = (from: number, release: string): string => `export const STEP_${from} = {\n  from: ${from},\n  firstRelease: '${release}',\n};\n`;
 
@@ -205,7 +209,7 @@ describe('changePatch: the fingerprint of what a branch changes over main', () =
   beforeEach(() => {
     repo = new TempRepo('approval').init();
     repo.git('symbolic-ref', 'HEAD', 'refs/heads/main');
-    commitFiles('base', { 'src/a.ts': lines(1, 20), 'src/b.ts': 'b\n', 'dist/a.js': 'a\n', [MANIFEST]: manifest('0.1.0'), [VERSION_TS]: versionTs('0.1.0'), [MIGRATE_TS]: migration(1, '0.1.0') });
+    commitFiles('base', { 'src/a.ts': lines(1, 20), 'src/b.ts': 'b\n', 'dist/a.js': 'a\n', [MANIFEST]: manifest('0.1.0'), [VERSION_TS]: versionTs('0.1.0'), [MIGRATE_TS]: migration(1, '0.1.0'), [GUIDE]: GUIDE_BASE, [SCHEMA]: '{}\n' });
     repo.git('checkout', '-q', '-b', 't1-change');
     commitFiles('core: a', { 'src/a.ts': lines(1, 20).replace('line 15\n', 'line fifteen\n'), 'src/new.ts': 'new\n' });
   });
@@ -302,6 +306,45 @@ describe('changePatch: the fingerprint of what a branch changes over main', () =
     repo.git('checkout', '-q', '-b', 't1-from', 'HEAD~1');
     commitFiles('config: migration 2 from 3', { [MIGRATE_TS]: `${migration(1, '0.1.0')}${migration(2, '0.3.0').replace('from: 2', 'from: 3')}` });
     assert.notEqual(patch(), patch(approved), 'a line beside the stamp');
+  });
+
+  /**
+   * A change that adds a docs line naming the version it ships in, approved at its raise to 0.2.0; then main takes
+   * 0.2.0, and the same change is made again on it, its raise and the line's version set to 0.3.0 (#1411).
+   */
+  function sinceAgain(): string {
+    const docs = (version: string): Record<string, string> => ({
+      [GUIDE]: `${GUIDE_BASE}- \`open.idle.x\` (since ${version}) reopens it.\n`,
+      [SCHEMA]: `{ "x": { "description": "Reopens it (since ${version})." } }\n`,
+    });
+    commitFiles('docs: x', docs('0.2.0'));
+    raise('0.2.0');
+    const approved = repo.git('rev-parse', 'HEAD').trim();
+    repo.git('checkout', '-q', 'main');
+    raise('0.2.0');
+    repo.git('checkout', '-q', '-b', 't1-again');
+    commitFiles('core: a', { 'src/a.ts': lines(1, 20).replace('line 15\n', 'line fifteen\n'), 'src/new.ts': 'new\n' });
+    commitFiles('docs: x', docs('0.3.0'));
+    raise('0.3.0');
+    return approved;
+  }
+
+  it("keeps the fingerprint and each patch id when an added docs line's since is set again with the raise on a newer main (#1411)", () => {
+    const approved = sinceAgain();
+    assert.equal(patch(), patch(approved));
+    assert.deepEqual(workChanges(workCommitsOf(git, approved, 'main', WRITES), workCommitsOf(git, 'HEAD', 'main', WRITES)), []);
+  });
+
+  it("moves the fingerprint on an existing docs line's since, a since of another version, or other words on the added line (#1411)", () => {
+    const approved = sinceAgain();
+    const old = commitFiles('docs: restamp the old line', { [GUIDE]: `${GUIDE_BASE.replace('0.1.0', '0.3.0')}- \`open.idle.x\` (since 0.3.0) reopens it.\n` });
+    assert.notEqual(patch(old), patch(approved), 'a line the change does not add');
+    repo.git('checkout', '-q', '-b', 't1-other', 'HEAD~1');
+    commitFiles('docs: x older', { [GUIDE]: `${GUIDE_BASE}- \`open.idle.x\` (since 0.1.5) reopens it.\n` });
+    assert.notEqual(patch(), patch(approved), 'a version the change does not ship in');
+    repo.git('checkout', '-q', '-b', 't1-words', 't1-again');
+    commitFiles('docs: x closes', { [GUIDE]: `${GUIDE_BASE}- \`open.idle.x\` (since 0.3.0) closes it.\n` });
+    assert.notEqual(patch(), patch(approved), 'other words on the line');
   });
 
   it('keeps the fingerprint of a head whose raise is not committed yet, its stamp the next release, made again on a newer main (T3419)', () => {

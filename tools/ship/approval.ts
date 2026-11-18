@@ -142,7 +142,7 @@ export type GitText = (args: readonly string[]) => string;
  * - `versionFiles`: files of which the ship rewrites only the version token, hashed with that token masked, so a
  *   version raise drops out while any other edit (code in version.ts, a hooks key in plugin.json) counts as work;
  * - `releaseStamps`: files in which a line the change adds may carry the version it ships in, such as a new config
- *   migration's `firstRelease`, hashed with that token masked on the added lines only, and only where it is the
+ *   migration's `firstRelease` or a docs line's `since <version>` (#1411), hashed with that token masked on the added lines only, and only where it is the
  *   version the change ships in (T3419), so the stamp set again with a raise on a newer main keeps the approval, while
  *   a stamp of any other version, or an edit to an existing stamp, counts as work.
  */
@@ -213,11 +213,11 @@ function shipsInAt(git: GitText, from: string, rev: string): ShipsIn {
  * (`stampedSection`); a version-only change leaves no line.
  */
 function normalizedOf(diff: string, writes: ShipWrites, shipsIn: ShipsIn): string[] {
-  const fileOf = <File extends VersionFile>(files: readonly File[], section: readonly string[]): File | undefined => files.find((one) => section[0] === `diff --git a/${one.path} b/${one.path}`);
   return sectionsOf(linesOf(diff)).flatMap((section) => {
-    const file = fileOf(writes.versionFiles, section);
+    const path = sectionPath(section);
+    const file = writes.versionFiles.find((one) => one.path === path);
     if (file !== undefined) return maskedSection(section, file);
-    const stamp = fileOf(writes.releaseStamps, section);
+    const stamp = path === undefined ? undefined : writes.releaseStamps.find((one) => (typeof one.path === 'string' ? one.path === path : one.path.test(path)));
     return stamp === undefined ? section : stampedSection(section, stamp, shipsIn(stamp));
   });
 }
@@ -232,6 +232,19 @@ function diffHash(diff: string, writes: ShipWrites, shipsIn: ShipsIn): string {
     .map((line) => (line.startsWith('@@') ? '@@' : line))
     .join('\n');
   return createHash('sha256').update(normalized).digest('hex');
+}
+
+/**
+ * The path a diff section is of, from its `diff --git a/<path> b/<path>` line, both sides the same path with renames
+ * off; undefined for a section of no such line.
+ */
+function sectionPath(section: readonly string[]): string | undefined {
+  const header = section[0] ?? '';
+  const prefix = 'diff --git a/';
+  const length = (header.length - prefix.length - ' b/'.length) / 2;
+  if (!header.startsWith(prefix) || !Number.isInteger(length) || length <= 0) return undefined;
+  const path = header.slice(prefix.length, prefix.length + length);
+  return header === `${prefix}${path} b/${path}` ? path : undefined;
 }
 
 /**
@@ -273,7 +286,7 @@ function maskedSection(section: readonly string[], file: VersionFile): string[] 
 }
 
 /** A line with each version token of `file` in it masked, or only each one of `versions` when it names them. */
-function maskedLine(line: string, file: VersionFile, versions?: readonly string[]): string {
+function maskedLine(line: string, file: Pick<VersionFile, 'pattern'>, versions?: readonly string[]): string {
   const token = new RegExp(file.pattern.source, `${file.pattern.flags.replace('g', '')}g`);
   return line.replace(token, (match: string, before: string, version: string, after: string) => (versions === undefined || versions.includes(version) ? `${before}<version>${after}` : match));
 }

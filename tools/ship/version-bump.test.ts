@@ -61,6 +61,15 @@ test('a change ships in its head\'s version when it raises it, else in one of th
   assert.deepEqual(shipsInVersions(v('0.454.2'), v('0.454.2')), ['0.454.3', '0.455.0', '1.0.0']);
 });
 
-test('teamrig\'s release stamp is read against the kit version', () => {
-  assert.deepEqual(TEAMRIG_RELEASE_STAMPS.map((stamp) => [stamp.path, stamp.shipsIn.path]), [['src/config/migrate.ts', kitVersion?.path]]);
+test("teamrig's release stamps are read against the kit version: a migration's first release and a docs line's since (#1411)", () => {
+  assert.deepEqual(
+    TEAMRIG_RELEASE_STAMPS.map((stamp) => stamp.shipsIn.path),
+    [kitVersion?.path, kitVersion?.path],
+  );
+  const covering = (path: string): number[] =>
+    TEAMRIG_RELEASE_STAMPS.flatMap((stamp, index) => ((typeof stamp.path === 'string' ? stamp.path === path : stamp.path.test(path)) ? [index] : []));
+  assert.deepEqual(
+    ['src/config/migrate.ts', 'docs/configuration.md', 'docs/guides/keep-it-safe.md', 'README.md', 'plugins/teamrig/config.schema.json', 'src/cli/run.ts', 'docs/md.ts', 'plugins/teamrig/plugin.json'].map(covering),
+    [[0], [1], [1], [1], [1], [], [], []],
+  );
 });

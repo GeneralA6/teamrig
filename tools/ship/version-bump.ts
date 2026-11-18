@@ -51,8 +51,14 @@ export interface VersionFile {
   readonly pattern: RegExp;
 }
 
-/** A version a change stamps beside its raise, which must be the version the change ships in. */
-export interface ReleaseStamp extends VersionFile {
+/**
+ * A version a change stamps beside its raise, which must be the version the change ships in: in the file at `path`, or
+ * in each file whose path `path` matches.
+ */
+export interface ReleaseStamp {
+  readonly path: string | RegExp;
+  /** The stamp's three groups: the text before it, the version, and the text after it. */
+  readonly pattern: RegExp;
   /** The version file holding the version the change ships in, which a stamp the change adds is read against. */
   readonly shipsIn: VersionFile;
 }
@@ -66,11 +72,15 @@ export const TEAMRIG_VERSION_FILES: readonly VersionFile[] = [
 ];
 
 /**
- * The release stamps a change carries beside the version raise: a config migration's first release
- * (`firstRelease` in src/config/migrate.ts), set to the version the change ships in (the kit's), so it follows each
- * raise the ship sets again on a newer main (T3419).
+ * The release stamps a change carries beside the version raise, each set to the version the change ships in (the
+ * kit's), so it follows each raise the ship sets again on a newer main: a config migration's first release
+ * (`firstRelease` in src/config/migrate.ts, T3419), and a docs line's `since <version>` in a Markdown file or in the
+ * config schema, which docs/configuration.md is generated from (#1411).
  */
-export const TEAMRIG_RELEASE_STAMPS: readonly ReleaseStamp[] = [{ path: 'src/config/migrate.ts', pattern: /(firstRelease: ')(\d+\.\d+\.\d+)(')/, shipsIn: TEAMRIG_KIT_VERSION }];
+export const TEAMRIG_RELEASE_STAMPS: readonly ReleaseStamp[] = [
+  { path: 'src/config/migrate.ts', pattern: /(firstRelease: ')(\d+\.\d+\.\d+)(')/, shipsIn: TEAMRIG_KIT_VERSION },
+  { path: /(?:^|\/)[^/]+\.md$|^plugins\/teamrig\/config\.schema\.json$/, pattern: /(\bsince )(\d+\.\d+\.\d+)()/, shipsIn: TEAMRIG_KIT_VERSION },
+];
 
 /**
  * The versions a change may ship in, from its version at its merge base and at its head (T3419): the head's when the
