@@ -102,13 +102,15 @@ export async function meet(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   }
   const facts = await meetFactsOf(runtime, onePositional(args, 'id|name'));
   const { found, kit, config, roster, id, name } = facts;
+  // `--terminal` names where the session's tab is, so it picks the terminal searched for a running tab as well as the
+  // one a closed session opens in.
+  const terminal = terminalFlag(args.flags.get('terminal')) ?? config.open.terminal;
   if ((await runningRecordOf(runtime, kit.paths, roster.ids, id)) !== undefined) {
     const title = sessionDisplay(kit.paths.team, name);
-    runtime.out.stdout(focusLine(await focusTab(runtime, config.open.terminal, title, runtime.cwd), name, title));
+    runtime.out.stdout(focusLine(await focusTab(runtime, terminal, title, runtime.cwd), name, title));
     runtime.out.stdout(await wakeToMeet(runtime, facts));
     return EXIT.ok;
   }
-  const terminal = terminalFlag(args.flags.get('terminal')) ?? config.open.terminal;
   const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
   const team = found.team;
   // The meeting tab is the one the owner asked for, so it takes the focus even while a meeting is open (T2510).

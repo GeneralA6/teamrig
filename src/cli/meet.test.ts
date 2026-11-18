@@ -123,6 +123,17 @@ describe('teamrig meet <id|name>', () => {
     assert.ok(inbox.some((line) => line.endsWith(`owner: ${meetAsk('alpha', 'owner')}`)), inbox.join('\n'));
   });
 
+  it("searches the terminal --terminal names for a running session's tab (#1514)", async () => {
+    const kit = await alphaWithACard();
+    await runningAlpha(kit);
+    const { options, processes } = hostOf([{ pid: CLAUDE_PID, parent: 8000, bytes: 1100 * MB }]);
+    processes.onRun('tmux', { kind: 'exited', code: 0 });
+    const result = ok(await kit.run(['meet', 'alpha', '--terminal', 'tmux'], options));
+    assert.deepEqual(processes.ran.map((request) => request.command), ['tmux']);
+    assert.equal(result.stdout[0], "FOCUSED app-alpha's tmux window, [app] alpha");
+    assert.match(result.stdout[1] ?? '', /^WAKES app-alpha /);
+  });
+
   it('asks at once, bound to its inbox line, not after wake.batchSeconds as a plain ask (T2207)', async () => {
     const kit = await alphaWithACard();
     await runningAlpha(kit);
