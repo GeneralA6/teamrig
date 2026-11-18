@@ -543,7 +543,9 @@ export async function queue(args, runtime) {
         const need = await needOf(runtime, places.ledger, { session, what, kind: request.kind, small, ...(declaredMb === undefined ? {} : { declaredMb }) }, delivery.queue);
         const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';
         const arrivedAt = firstArrival ?? runtime.clock.now();
-        const taking = await unlessStopped(watching.stop, lock.acquire(session, `heavy: ${what}`, delivery.queue.waitMinutes * MINUTE_MS, delivery.wait.pollSeconds * 1_000, (holder, ahead, arrivedAfter) => {
+        const taking = await unlessStopped(watching.stop, lock.acquire(session, 
+        // The purpose is what withdraw's list and other steps' wait lines show, so it names the step's real weight (#1511).
+        `${small ? 'small' : 'heavy'}: ${what}`, delivery.queue.waitMinutes * MINUTE_MS, delivery.wait.pollSeconds * 1_000, (holder, ahead, arrivedAfter) => {
             const text = `${waiting}: ${waitText(holder, ahead, zone, arrivedAfter)}`;
             waits.tell({ cause: causeOfLockWait(holder), text });
             say(text);
