@@ -12,9 +12,29 @@ import { openKit, rosterOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
-/** Whether the owner's daily meeting is open now (src/meeting/state.ts). */
+/**
+ * Whether the owner's daily meeting is open now (src/meeting/state.ts). An unreadable meeting file reads as closed:
+ * the meeting only picks the refusal's reason, so the guard refuses the picker either way (T3015).
+ */
 async function meetingOpen(runtime, kit) {
-    return phaseOf(await new MeetingStore(runtime.files, kit.paths.meeting).read(), runtime.clock.now()).kind === 'open';
+    try {
+        return phaseOf(await new MeetingStore(runtime.files, kit.paths.meeting).read(), runtime.clock.now()).kind === 'open';
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * The id of the meeting held in `session`'s tab now (src/meeting/schedule.ts), else undefined. An unreadable schedule
+ * reads as no meeting, as `meetingOpen` does, so the guard refuses the picker either way (T3015).
+ */
+async function meetingInTab(runtime, kit, session) {
+    try {
+        return meetingInTabOf((await new MeetingSchedule(runtime.files, kit.paths.meetings).read()).meetings, session, runtime.clock.now())?.id;
+    }
+    catch {
+        return undefined;
+    }
 }
 /**
  * The team's parent lead when its config names a parent team, read from every team config (cli/tree.ts); undefined
@@ -44,8 +64,7 @@ export async function pickerRefusal(runtime, kit, config, payload) {
     if (asker === undefined) {
         return undefined;
     }
-    const now = runtime.clock.now();
-    const inTab = asker.role === 'helper' ? undefined : meetingInTabOf((await new MeetingSchedule(runtime.files, kit.paths.meetings).read()).meetings, asker.session, now)?.id;
+    const inTab = asker.role === 'helper' ? undefined : await meetingInTab(runtime, kit, asker.session);
     const meeting = { open: (asker.role === 'lead' || asker.role === 'subteam-lead') && (await meetingOpen(runtime, kit)), inTab };
     return pickerReason(KIT_NAME, asker, meeting);
 }
