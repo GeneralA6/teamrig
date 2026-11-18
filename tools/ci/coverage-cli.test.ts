@@ -151,10 +151,8 @@ describe('coverage-cli', () => {
   it('removes a dead run folder and reports one it cannot remove, keeping it, without failing the gate', async () => {
     const home = mkdtempSync(join(tmpdir(), 'teamrig-coverage-home-'));
     const base = join(home, 'tmp', 'coverage');
-    // A process that has ended: its pid names a run that is gone.
-    const deadPid = spawnSync(process.execPath, ['-e', '']).pid;
-    const dead = join(base, `${runDirPrefix(deadPid)}dead`);
-    const held = join(base, `${runDirPrefix(deadPid)}held`);
+    const dead = join(base, `${runDirPrefix(NEVER_ALIVE_PID)}dead`);
+    const held = join(base, `${runDirPrefix(NEVER_ALIVE_PID)}held`);
     mkdirSync(dead, { recursive: true });
     mkdirSync(held);
     writeFileSync(join(held, 'kept'), '');
@@ -169,7 +167,19 @@ describe('coverage-cli', () => {
       rmSync(home, { recursive: true, force: true });
     }
   });
+
+  it('names its run folders with a pid no live process has, so the gate reads that run as gone', () => {
+    assert.throws(() => process.kill(NEVER_ALIVE_PID, 0), { code: 'ESRCH' });
+  });
 });
+
+/**
+ * A pid no process can have, so a run folder named for it is always one whose run is gone (T4358). A pid of a child
+ * that just ended is no such pid: the host may give it to another process while the gate runs, which then reads that
+ * run as alive and leaves its folders. This one is above every host's pid range (Linux's pid_max is at most 2^22,
+ * macOS and the BSDs stay under 100000, and Windows hands out ids far below 2^31), and kill(pid, 0) answers ESRCH.
+ */
+const NEVER_ALIVE_PID = 2 ** 31 - 4;
 
 interface FolderHold {
   release(): Promise<void>;
@@ -185,7 +195,12 @@ async function holdFolder(folder: string): Promise<FolderHold> {
     chmodSync(folder, 0o500);
     return { release: async () => chmodSync(folder, 0o700) };
   }
-  const child = spawn(process.execPath, ['-e', 'setTimeout(() => undefined, 60_000)'], { cwd: folder, stdio: 'ignore' });
+  // It holds the folder until it is killed, never for a set time a loaded host may outrun (T4358), and ends once its
+  // stdin closes, so a spec run that dies before release leaves no process behind.
+  const child = spawn(process.execPath, ['-e', "process.stdin.on('end', () => process.exit()).resume()"], {
+    cwd: folder,
+    stdio: ['pipe', 'ignore', 'ignore'],
+  });
   await once(child, 'spawn');
   return {
     release: async () => {
