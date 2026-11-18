@@ -953,9 +953,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       delivery.queue.memoryFloorMb plus the MB held for it, for the small steps running and for the tabs
       still loading (at most half the host's RAM), and the commit charge under open.headroom.commitMaxPct
       with its MB and those tabs' counted. A step
-      holds the need its latest 20 runs under its session and --what show (their most held and a
-      quarter, or their median host drop, whichever is more; with no such run, its session's runs of
-      the same --kind and size, never other), or its --memory-mb when more; at least
+      holds the need its latest 20 runs under its session and --what (commit ids aside) show
+      (their most held, one outlier aside, and a quarter, or their median host drop, whichever is
+      more; with no such run, its session's runs of the same --kind and size, never other), or
+      its --memory-mb when more; at least
       delivery.queue.heavyReserveMb without --small, else with neither delivery.queue.smallReserveMb.
       The wait line says where a learned or declared need came from. --small (a spec run, a lint):
       shares the host with other small steps, waiting in a line of its own, never behind a heavy step,

@@ -28,6 +28,29 @@ describe('learnedNeedOf', () => {
     assert.deepEqual(learnedNeedOf(records, ASK), { reserveMb: 2375, medianMinutes: 5, runs: 20, from: 'label' });
   });
 
+  it('sets aside one run whose peak is more than twice the next highest, from 3 runs on (#1670)', () => {
+    const outlier = [ran('T7 build', { peakTreeMb: 1000 }), ran('T7 build', { peakTreeMb: 9000 }), ran('T7 build', { peakTreeMb: 1200 }), ran('T7 build', { peakTreeMb: 1100 })];
+    assert.equal(learnedNeedOf(outlier, ASK)?.reserveMb, 1500, 'the 9000 MB run is set aside: 1200 with a quarter more');
+    assert.equal(learnedNeedOf(outlier, ASK)?.runs, 4, 'the set-aside run still counts among the runs read');
+    const twice = [ran('T7 build', { peakTreeMb: 9000 }), ran('T7 build', { peakTreeMb: 8500 }), ran('T7 build', { peakTreeMb: 1000 })];
+    assert.equal(learnedNeedOf(twice, ASK)?.reserveMb, 11_250, 'two high runs are no outlier');
+    const close = [ran('T7 build', { peakTreeMb: 2000 }), ran('T7 build', { peakTreeMb: 1000 }), ran('T7 build', { peakTreeMb: 900 })];
+    assert.equal(learnedNeedOf(close, ASK)?.reserveMb, 2500, 'twice the next highest is no outlier');
+    const two = [ran('T7 build', { peakTreeMb: 9000 }), ran('T7 build', { peakTreeMb: 1000 })];
+    assert.equal(learnedNeedOf(two, ASK)?.reserveMb, 11_250, 'with 2 runs neither is set aside');
+    const drop = [dropped('T7 build', 9000, 12_000, 11_000), dropped('T7 build', 1000, 12_000, 2000), dropped('T7 build', 1000, 12_000, 2500)];
+    assert.equal(learnedNeedOf(drop, ASK)?.reserveMb, 9500, 'the median host drop still counts beside the peaks');
+  });
+
+  it('matches a label\'s earlier runs with its commit ids set aside (#1670)', () => {
+    const records = [ran('ship T7 0de9a71', { peakTreeMb: 2000 }), ran('ship T8 0de9a71', { peakTreeMb: 9000 }), ran('ship T7 4f2c9e1b7a3d', { peakTreeMb: 3000 })];
+    const ask: NeedAsk = { ...ASK, what: 'ship T7 a1b2c3d', kind: 'other' };
+    assert.deepEqual(learnedNeedOf(records, ask), { reserveMb: 3750, medianMinutes: 5, runs: 2, from: 'label' });
+    const words = [ran('ship defaced', { peakTreeMb: 2000 })];
+    assert.equal(learnedNeedOf(words, { ...ask, what: 'ship acceded' }), undefined, 'a hex word with no digit is a word, not a commit id');
+    assert.equal(learnedNeedOf([ran('ship 1234567', { peakTreeMb: 2000 })], { ...ask, what: 'ship 7654321' }), undefined, 'a number is no commit id');
+  });
+
   it('learns the median minutes the same runs took, start to end, unrounded, a clock set back counting none', () => {
     const took = (what: string, endedAt: string): QueuedStepRecord => ran(what, { peakTreeMb: 1000, endedAt });
     const odd = [took('T7 build', '2030-01-07T10:02:00.000Z'), took('T7 build', '2030-01-07T10:30:00.000Z'), took('T7 build', '2030-01-07T10:04:00.000Z')];

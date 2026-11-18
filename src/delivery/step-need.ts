@@ -9,6 +9,15 @@ export const NEED_RUNS = 20;
 /** The most a run's process tree held counts with this margin, as the tree's sampled peak can miss a short burst. */
 export const PEAK_MARGIN = 1.25;
 
+/** The fewest measured peaks among which the highest may be set aside as an outlier. */
+const OUTLIER_MIN_RUNS = 3;
+
+/** How many times the next highest peak the highest must pass to be set aside as an outlier. */
+const OUTLIER_FACTOR = 2;
+
+/** A commit id in a step's label: 7 to 40 hex characters, a digit and a letter among them, as a whole word. */
+const COMMIT_ID = /\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b/gi;
+
 /** What a queued step asks of the host, as its need is learned from the runs before it. */
 export interface NeedAsk {
   readonly session: string;
@@ -69,8 +78,28 @@ function minutesOf(run: EndedRun): number {
 function measuredMbOf(runs: readonly EndedRun[]): number {
   const peaks = runs.flatMap((run) => (run.peakTreeMb === undefined ? [] : [run.peakTreeMb]));
   const drops = runs.flatMap((run) => (run.startFreeMb === undefined || run.lowFreeMb === undefined ? [] : [Math.max(0, run.startFreeMb - run.lowFreeMb)]));
-  const peakMb = peaks.length === 0 ? 0 : Math.ceil(Math.max(...peaks) * PEAK_MARGIN);
+  const peakMb = peaks.length === 0 ? 0 : Math.ceil(highestOf(peaks) * PEAK_MARGIN);
   return Math.max(peakMb, drops.length === 0 ? 0 : medianOf(drops));
+}
+
+/**
+ * The highest of `peaks`, which are not empty, save one outlier (#1670): from OUTLIER_MIN_RUNS peaks on, a highest more
+ * than OUTLIER_FACTOR times the next is one unusual run (a heavier coverage run), which would otherwise make every later
+ * run ask for far more than it uses; the next highest stands for it. Two high runs are no outlier, so a step that grew
+ * keeps its higher need from its second such run on.
+ */
+function highestOf(peaks: readonly number[]): number {
+  const sorted = [...peaks].sort((a, b) => b - a);
+  const [highest = 0, next = 0] = sorted;
+  return sorted.length >= OUTLIER_MIN_RUNS && highest > next * OUTLIER_FACTOR ? next : highest;
+}
+
+/**
+ * A label with its commit ids set aside, so a re-run whose label names a new commit matches its earlier runs (#1670):
+ * a word of 7 to 40 hex characters holding a digit and a letter, which a plain word (`defaced`) or a number never is.
+ */
+function labelKey(what: string): string {
+  return what.replace(COMMIT_ID, '<commit>');
 }
 
 /** The need the latest NEED_RUNS of `runs` show, when they show one over 0 MB, with the median minutes those runs took. */
@@ -87,8 +116,9 @@ function learnedOf(runs: readonly EndedRun[], from: LearnedNeed['from']): Learne
  */
 export function learnedNeedOf(records: readonly LedgerRecord[], ask: NeedAsk): LearnedNeed | undefined {
   const runs = records.filter(isMeasuredRun).filter((run) => run.session === ask.session);
+  const label = labelKey(ask.what);
   const byLabel = learnedOf(
-    runs.filter((run) => run.what === ask.what),
+    runs.filter((run) => labelKey(run.what) === label),
     'label',
   );
   if (byLabel !== undefined || ask.kind === 'other') {
