@@ -18,15 +18,24 @@ export function commandLine(words, platform) {
 }
 /** A line break, where cmd.exe ends the line it runs. */
 const LINE_BREAK = /[\r\n]/;
+/** The chain operators a POSIX shell and cmd.exe both read, which `commandLine` quotes when it is a word of its own. */
+const CHAIN_OPERATORS = ['&&', '||', ';'];
 /**
  * Why the platform's shell would not run these words as given, or undefined when it would. A blank command runs
- * nothing and exits 0 in every shell. cmd.exe ends its `/c` line at the first line break, and no quoting keeps one, so
- * on Windows only what comes before the break runs: a `bash -c` script that starts with one runs nothing, exit 0. A
- * POSIX shell keeps a quoted line break.
+ * nothing and exits 0 in every shell. Of several words, one that is only `&&`, `||` or `;` was meant as a chain, but
+ * `commandLine` quotes it and the first program gets it as an argument, often after a long wait for the host lock
+ * (#661): one word, the whole chain, runs as a shell line. cmd.exe ends its `/c` line at the first line break, and no
+ * quoting keeps one, so on Windows only what comes before the break runs: a `bash -c` script that starts with one runs
+ * nothing, exit 0. A POSIX shell keeps a quoted line break.
  */
 export function unrunnableReason(words, platform) {
     if (words.every((word) => word.trim() === '')) {
         return 'the command after -- is empty, and a shell runs an empty command as nothing, exit 0';
+    }
+    const operator = words.length > 1 ? words.find((word) => CHAIN_OPERATORS.includes(word)) : undefined;
+    if (operator !== undefined) {
+        return (`the word "${operator}" of the command is a shell operator, and of several words each is passed to the first program as is, ` +
+            `so it would get "${operator}" as an argument; pass the whole chain as one quoted word: -- "${words.join(' ')}"`);
     }
     if (platform === 'win32' && words.some((word) => LINE_BREAK.test(word))) {
         return ('a word of the command holds a line break, and cmd.exe, which runs the command on Windows, stops reading at it: ' +
