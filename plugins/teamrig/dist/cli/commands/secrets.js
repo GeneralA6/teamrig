@@ -94,7 +94,8 @@ function repoRoot(runtime) {
 async function scannerOf(runtime, root) {
     const load = (await guardLoadOf(undefined, runtime))?.load;
     const rules = secretRulesOf(secretGuardOf(load), runtime.userHome, runtime.platform, secretPatternsOf(load));
-    return new CommitScanner(rules.shapes, rules.paths, root);
+    const git = runtime.secretsGit;
+    return new CommitScanner(rules.shapes, rules.paths, root, (revision, path) => git.blob(runtime.cwd, revision, path));
 }
 function refuseFound(head, findings, fix) {
     if (findings.length > 0) {
