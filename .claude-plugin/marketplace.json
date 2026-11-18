@@ -7,7 +7,12 @@
   "plugins": [
     {
       "name": "teamrig",
-      "source": "./plugins/teamrig",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/teamrig/teamrig.git",
+        "path": "plugins/teamrig",
+        "ref": "release"
+      },
       "description": "Coordinate a team of Claude Code sessions: a task register, inboxes, always-loaded team rules, skill hygiene and safety hooks."
     }
   ]

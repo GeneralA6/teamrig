@@ -33,10 +33,23 @@ export function readCatalog(text: string): Catalog {
     if ('version' in entry) {
       problems.push(`${name}: drop "version" from its ${MARKETPLACE} entry; Claude Code installs the version in plugin.json and ignores this one`);
     }
-    const source = stringField(entry, 'source');
-    if (source?.startsWith('./')) {
-      plugins.push({ name, folder: source.slice(2).replace(/\/+$/, '') });
+    const folder = folderOf(entry['source']);
+    if (folder !== undefined) {
+      plugins.push({ name, folder });
     }
   }
   return { plugins, problems };
+}
+
+/**
+ * The repo folder an entry's source names, `/`-separated with no `./` or trailing `/`: a `./` path, or the `path` of a
+ * `git-subdir` source, which installs that folder of a branch of this repo (teamrig's entry reads the release branch,
+ * where the release workflow publishes the built dist: T4355). Undefined for any other kind of source.
+ */
+function folderOf(source: unknown): string | undefined {
+  if (typeof source === 'string') {
+    return source.startsWith('./') ? source.slice(2).replace(/\/+$/, '') : undefined;
+  }
+  if (!isRecord(source) || source['source'] !== 'git-subdir') return undefined;
+  return stringField(source, 'path')?.replace(/^\.\//, '').replace(/\/+$/, '');
 }
