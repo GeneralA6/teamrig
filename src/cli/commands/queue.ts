@@ -8,7 +8,8 @@ import { pipelineFrozenRefusal } from '../../delivery/pipeline-freezes.ts';
 import { formatRunRecord, RUN_RECORD_FORMAT, runRecordPathOf, type DetachedRunRecord, type LedgerStep } from '../../delivery/detached-runs.ts';
 import { deliveryPlaces, detachedDirOf, detachedLogOf } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
-import { isStepKind, kindOfCommand, processRequest, STEP_KINDS, taskOfLabel, type ProcessRequest, type StepKind } from '../../delivery/process-request.ts';
+import { isStepKind, kindOfCommand, processRequest, STEP_KINDS, takesShipSlot, taskOfLabel, type LineRequest, type ProcessRequest, type StepKind } from '../../delivery/process-request.ts';
+import type { MergeGit } from '../../merge/git.ts';
 import { recordRefusal, runRecorded, type RefusalMark, type StepOwner } from '../../delivery/recorded-step.ts';
 import { stepNeedOf, type NeedAsk } from '../../delivery/step-need.ts';
 import { causeOfLockWait, WaitLog } from '../../delivery/wait-log.ts';
@@ -112,6 +113,16 @@ function requestOf(args: ParsedArgs, words: readonly string[], what: string): Pr
 function withShipTask(request: ProcessRequest, shipped: () => string | undefined): ProcessRequest {
   const task = request.task ?? shipped();
   return task === request.task ? request : processRequest(request.kind, task);
+}
+
+/**
+ * `line`, for a step that holds the ship slot, with the repository it moves (#1711): the shared git folder of the
+ * folder it queued in, so a ship of another repository passes it. Left as it is for any other step, and for one queued
+ * outside a repository, which then holds the slot of every repository.
+ */
+function withRepo(line: LineRequest, git: Pick<MergeGit, 'commonDir'>, cwd: string): LineRequest {
+  const repo = takesShipSlot(line.kind) ? git.commonDir(cwd) : undefined;
+  return repo === undefined || repo === '' ? line : { ...line, repo };
 }
 
 /**
@@ -654,7 +665,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     await refuseUnstartable(runtime, gate);
     // The register and the front are read only for a step that queues: a nested step or one refused at once records nothing.
     const shipped = withShipTask(request, () => shipTaskOfWords(runtime.mergeGit, kit, config, words, runtime.cwd));
-    const line = await requests.current(shipped);
+    const line = withRepo(await requests.current(shipped), runtime.mergeGit, runtime.cwd);
     // Only the ticket carries the class for now: the ledger's start and refusal records keep the fields their readers take.
     const owner: StepOwner = { session, ...processRequest(line.kind, line.task, line.priority) };
     const waits = new WaitLog(runtime.clock, runtime.memory.freeMb());

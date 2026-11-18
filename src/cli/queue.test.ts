@@ -1533,6 +1533,27 @@ describe("teamrig queue gives a ship step the task its worktree's branch names (
     });
   }
 
+  it("records on a ship's share the repository its folder is in, and none for a build or a ship outside a repository (#1711)", async () => {
+    const repoOf = async (kind: string, inRepo: boolean): Promise<unknown> => {
+      const { kit, steps } = harness({ ...TEAM, delivery: { queue: { maxHeavyParallel: 3 } } });
+      const git = new FakeMergeGit();
+      if (inRepo) {
+        git.checkouts.set(APP, { top: APP, branch: 'feat/t1-cli', mainCheckout: MAIN_CHECKOUT, linked: true });
+      }
+      let held: unknown;
+      steps.ends(0, MINUTE).whileRunning(async () => {
+        const share = JSON.parse(kit.files.get(`${SHARED}/id-1.json`) ?? kit.files.get(LOCK) ?? '{}') as { request?: { repo?: string } };
+        held = share.request === undefined ? 'no request' : share.request.repo;
+      });
+      const result = await kit.run(['queue', '--session', 'alpha', '--what', 'step', '--kind', kind, '--', 'node', '/repo/app/run.ts'], { steps, mergeGit: git });
+      assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+      return held;
+    };
+    assert.equal(await repoOf('ship', true), `${MAIN_CHECKOUT}/.git`, 'a worktree names its main checkout, so every worktree of it shares the slot');
+    assert.equal(await repoOf('build', true), undefined);
+    assert.equal(await repoOf('ship', false), undefined);
+  });
+
   it('names no task for a step that runs no ship tool, whatever the branch of a folder it names', async () => {
     const { kit, steps } = harness(SHIPPING);
     const result = await kit.run(['queue', '--session', 'alpha', '--what', 'checks', '--', 'node', '/repo/other/run.ts', WORKTREE, PLAN], { steps, mergeGit: worktreeGit('feat/t1-cli') });
