@@ -72,6 +72,16 @@ export const TEAMRIG_VERSION_FILES: readonly VersionFile[] = [
 ];
 
 /**
+ * release-please's manifest, which holds the last released plugin version (T3346). No change raises it, so it is no
+ * version file of a raise: a change that sets it to its own plugin version has it set again to the version it lands
+ * on when a catch-up replays it on a newer main (T4298).
+ */
+export const TEAMRIG_RELEASE_MANIFEST: VersionFile = { path: '.release-please-manifest.json', pattern: /("\.":\s*")(\d+\.\d+\.\d+)(")/ };
+
+/** Every teamrig file of which a ship or a catch-up rewrites only the version token, which an approval masks (approval.ts). */
+export const TEAMRIG_SHIP_VERSION_FILES: readonly VersionFile[] = [...TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_MANIFEST];
+
+/**
  * The release stamps a change carries beside the version raise, each set to the version the change ships in (the
  * kit's), so it follows each raise the ship sets again on a newer main: a config migration's first release
  * (`firstRelease` in src/config/migrate.ts, T3419), and a docs line's `since <version>` in a Markdown file or in the
