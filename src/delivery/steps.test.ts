@@ -8,7 +8,10 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { STEP_PRIORITY } from './priority.ts';
 import { exitCodeOf, nodeStepRunner, stepLaunchOf, STOPPED_EXIT, TIMED_OUT_EXIT } from './steps.ts';
 import { nodeTreeKill, type TreeKill } from './tree-kill.ts';
-import { livenessOf, parseWrittenProcess, WRITE_PROCESS_SCRIPT, type WrittenProcess } from '../testing/process-liveness.ts';
+import { endingOf, livenessOf, parseWrittenProcess, WRITE_PROCESS_SCRIPT, type WrittenProcess } from '../testing/process-liveness.ts';
+
+/** How long a spec's idle step or child waits before it ends by itself: a kill that missed it holds the run at most this long (T4233). */
+const IDLE_MS = 30_000;
 
 /**
  * The real tree kill, held until `started` exists, so the spec kills a grandchild that runs, not a step whose shell
@@ -68,6 +71,9 @@ describe('stepLaunchOf', () => {
 describe('nodeStepRunner', () => {
   let dir = '';
   const runner = nodeStepRunner(process.platform);
+  /** The `started` files of `idleStep`s: a step whose kill missed it, started late say, is ended here (T4233). */
+  const idlers: string[] = [];
+  const ending = endingOf(process.platform);
 
   before(async () => {
     // The folder's real path: macOS's temp folder sits under /var, a link to /private/var, and a step's
@@ -76,6 +82,12 @@ describe('nodeStepRunner', () => {
   });
 
   after(async () => {
+    for (const started of idlers) {
+      const written = existsSync(started) ? parseWrittenProcess(await readFile(started, 'utf8')) : undefined;
+      if (written !== undefined) {
+        await ending(written);
+      }
+    }
     // Windows frees an ended step's hold on its folder (its working directory) a moment after the
     // process ends, so under load the first rmdir can meet EBUSY; rm retries those.
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
@@ -104,8 +116,15 @@ describe('nodeStepRunner', () => {
   /** A step that starts a grandchild, which writes its pid and the time to `started` once it runs, then idles 10 s. */
   async function stepWithGrandchild(started: string): Promise<string> {
     await writeFile(join(dir, 'grandchild.cjs'), `${WRITE_PROCESS_SCRIPT}; setTimeout(() => undefined, 10_000);`);
-    await writeFile(join(dir, 'child.cjs'), `require('node:child_process').spawn(process.execPath, [${JSON.stringify(join(dir, 'grandchild.cjs'))}, process.argv[2]], { stdio: 'ignore' }); setInterval(() => undefined, 1000);`);
+    await writeFile(join(dir, 'child.cjs'), `require('node:child_process').spawn(process.execPath, [${JSON.stringify(join(dir, 'grandchild.cjs'))}, process.argv[2]], { stdio: 'ignore' }); setTimeout(() => undefined, ${IDLE_MS});`);
     return `node child.cjs "${started}"`;
+  }
+
+  /** A step whose node writes its pid and the time to `started` once it runs, then idles; `after` ends it if it runs on. */
+  async function idleStep(started: string): Promise<string> {
+    idlers.push(started);
+    await writeFile(join(dir, 'idle.cjs'), `${WRITE_PROCESS_SCRIPT}; setTimeout(() => undefined, ${IDLE_MS});`);
+    return `node idle.cjs "${started}"`;
   }
 
   it('kills the step with every process it started once its time is up, before it reports the end', async () => {
@@ -135,7 +154,9 @@ describe('nodeStepRunner', () => {
       await wait(200);
       events.push('kill done');
     };
-    const end = await nodeStepRunner(process.platform, slowKill).run({ command: 'node -e "setInterval(() => undefined, 1000)"', cwd: dir, env: process.env, timeoutMs: 300 });
+    const started = join(dir, 'slow-kill-step-started');
+    // Killed before its shell started node, under load, the step's node ran on with the suite's output held (T4233).
+    const end = await nodeStepRunner(process.platform, killOnceStarted(started, slowKill)).run({ command: await idleStep(started), cwd: dir, env: process.env, timeoutMs: 300 });
     events.push('reported');
     assert.deepEqual(end, { kind: 'timedOut' });
     assert.deepEqual(events, ['kill done', 'reported']);
