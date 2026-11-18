@@ -5,7 +5,7 @@ import { mergeStandingOf, tabCallerOf, type MergeStanding } from '../../src/cli/
 import { ENV, type Env } from '../../src/core/home.ts';
 import { approvedTaskOf } from '../../src/register/approval.ts';
 import { branchTaskOf } from '../../src/worktree/owner.ts';
-import { shipsInVersions, versionIn, type ReleaseStamp, type Version, type VersionFile } from './version-bump.ts';
+import { shipsInVersions, TEAMRIG_RELEASE_STAMPS, TEAMRIG_SHIP_VERSION_FILES, versionIn, type ReleaseStamp, type Version, type VersionFile } from './version-bump.ts';
 
 /**
  * Whether a merge may go ahead (T2788, security verdict on T2763): refused with why; the caller's own say (a root
@@ -150,6 +150,15 @@ export interface ShipWrites {
   readonly generated: readonly string[];
   readonly versionFiles: readonly VersionFile[];
   readonly releaseStamps: readonly ReleaseStamp[];
+}
+
+/**
+ * teamrig's `ShipWrites` for a repo profile's regenerated paths: every version file a ship or catch-up sets again,
+ * the release manifest too, with teamrig's release stamps. The ship and `ship.ts merge` both read work through it,
+ * so a path repos.json adds is known to each (a merge given the shorter list refused every approved head, T4298).
+ */
+export function teamrigShipWritesOf(regenerated: readonly string[]): ShipWrites {
+  return shipWritesOf(regenerated, TEAMRIG_SHIP_VERSION_FILES, TEAMRIG_RELEASE_STAMPS);
 }
 
 /**

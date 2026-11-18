@@ -6,7 +6,7 @@ import { nodeFiles } from '../../src/core/files.ts';
 import { ENV } from '../../src/core/home.ts';
 import { gitSyncIn } from '../lib/git.ts';
 import { realSleep, systemClock } from '../../src/core/lock.ts';
-import { type ClearMerge, type WorkCommit, approvedRebase, clearMergeFrom, shipWritesOf, workCommitsOf } from './approval.ts';
+import { type ClearMerge, type WorkCommit, approvedRebase, clearMergeFrom, teamrigShipWritesOf, workCommitsOf } from './approval.ts';
 import { buildScriptOf, buildSteps } from './build-steps.ts';
 import { type CatchUp, type CatchUpRequest, catchUp } from './catch-up.ts';
 import { type CheckOutcome, type Gh, type RequiredChecks, ghWithToken, readChecks, rerunFailedJobs, verdictOf } from './github.ts';
@@ -19,7 +19,6 @@ import { realRenamedCallersDeps, renamedCallersRefusal } from './renamed-callers
 import { type LocalChecks, type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
 import { APPROVED_SHA } from './ship-plan.ts';
 import { describeCredential } from './token-check.ts';
-import { TEAMRIG_RELEASE_STAMPS, TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 /**
  * `ship.ts merge`, the only merge route the auto-mode briefing grants for these repos.
@@ -675,7 +674,7 @@ export function realMergeDeps(dir: string): MergeDeps {
       ),
     workOf: rev => {
       const profile = profileFor(readProfiles(), slugOf(git('remote', 'get-url', 'origin')));
-      return workCommitsOf(runGit, rev, `refs/remotes/origin/${profile.main}`, shipWritesOf(profile.regenerated, TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS));
+      return workCommitsOf(runGit, rev, `refs/remotes/origin/${profile.main}`, teamrigShipWritesOf(profile.regenerated));
     },
     share: stepShareOf(process.env, runOwnCli),
     turn: processLandingTurn(dir, git),
