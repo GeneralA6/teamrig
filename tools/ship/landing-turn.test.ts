@@ -45,17 +45,23 @@ function fakeLine(start = 1_000_000): FakeLine {
 
 const alive = (pids: ReadonlySet<number>) => (pid: number): boolean => pids.has(pid);
 
-test('a merge takes its place in line when it starts, and leaves it as it ends', () => {
+/** A merge whose checks passed when it started. */
+const ready = (pid: number, startedAt: number, beatAt: number): Ticket => ({ pid, startedAt, beatAt, readyAt: startedAt });
+
+/** A merge still waiting on its checks. */
+const inChecks = (pid: number, startedAt: number, beatAt: number): Ticket => ({ pid, startedAt, beatAt, readyAt: null });
+
+test('a merge takes its place in line when it starts, not ready, and leaves it as it ends', () => {
   const line = fakeLine();
   const turn = landingTurn({ store: line.store, pid: 7, pidAlive: alive(new Set([7])), clock: line.clock }, TIMES);
-  assert.deepEqual(line.tickets.get(7), { pid: 7, startedAt: 1_000_000, beatAt: 1_000_000 });
+  assert.deepEqual(line.tickets.get(7), inChecks(7, 1_000_000, 1_000_000));
   turn.end();
   assert.equal(line.tickets.size, 0);
 });
 
 test('with no older merge in line it goes on at once and says nothing', async () => {
   const line = fakeLine();
-  line.tickets.set(9, { pid: 9, startedAt: 2_000_000, beatAt: 2_000_000 });
+  line.tickets.set(9, ready(9, 2_000_000, 2_000_000));
   const turn = landingTurn({ store: line.store, pid: 7, pidAlive: alive(new Set([7, 9])), clock: line.clock }, TIMES);
   const said: string[] = [];
   await turn.wait(line => said.push(line));
@@ -66,11 +72,11 @@ test('with no older merge in line it goes on at once and says nothing', async ()
 
 test('waits while an older live merge is in line, then goes on once its ticket is gone (T4196)', async () => {
   const line = fakeLine();
-  line.tickets.set(5, { pid: 5, startedAt: 999_000, beatAt: 999_000 });
+  line.tickets.set(5, ready(5, 999_000, 999_000));
   const pids = new Set([5, 7]);
   const turn = landingTurn({ store: line.store, pid: 7, pidAlive: alive(pids), clock: line.clock }, TIMES);
   // The older merge beats while it waits on its checks, then lands and leaves the line.
-  line.clock.at(1000, () => line.tickets.set(5, { pid: 5, startedAt: 999_000, beatAt: 1_001_000 }));
+  line.clock.at(1000, () => line.tickets.set(5, ready(5, 999_000, 1_001_000)));
   line.clock.at(3000, () => line.tickets.delete(5));
   const said: string[] = [];
   await turn.wait(text => said.push(text));
@@ -84,7 +90,7 @@ test('waits while an older live merge is in line, then goes on once its ticket i
 
 test('an older ticket whose process ended frees the turn at once and is removed', async () => {
   const line = fakeLine();
-  line.tickets.set(5, { pid: 5, startedAt: 999_000, beatAt: 1_000_000 });
+  line.tickets.set(5, ready(5, 999_000, 1_000_000));
   const turn = landingTurn({ store: line.store, pid: 7, pidAlive: alive(new Set([7])), clock: line.clock }, TIMES);
   await turn.wait(() => undefined);
   assert.deepEqual(line.clock.slept, []);
@@ -93,7 +99,7 @@ test('an older ticket whose process ended frees the turn at once and is removed'
 
 test("an older ticket past its heartbeat's stale time is not waited on, though a process holds its id (Windows reuses ids)", async () => {
   const line = fakeLine();
-  line.tickets.set(5, { pid: 5, startedAt: 900_000, beatAt: 1_000_000 - TIMES.staleMs - 1 });
+  line.tickets.set(5, ready(5, 900_000, 1_000_000 - TIMES.staleMs - 1));
   const turn = landingTurn({ store: line.store, pid: 7, pidAlive: alive(new Set([5, 7])), clock: line.clock }, TIMES);
   await turn.wait(() => undefined);
   assert.deepEqual(line.clock.slept, []);
@@ -102,8 +108,8 @@ test("an older ticket past its heartbeat's stale time is not waited on, though a
 
 test('two merges started at the same ms land in pid order', async () => {
   const line = fakeLine();
-  line.tickets.set(9, { pid: 9, startedAt: 1_000_000, beatAt: 1_000_000 });
-  line.tickets.set(3, { pid: 3, startedAt: 1_000_000, beatAt: 1_000_000 });
+  line.tickets.set(9, ready(9, 1_000_000, 1_000_000));
+  line.tickets.set(3, ready(3, 1_000_000, 1_000_000));
   const turn = landingTurn({ store: line.store, pid: 7, pidAlive: alive(new Set([3, 7, 9])), clock: line.clock }, TIMES);
   line.clock.at(1000, () => line.tickets.delete(3));
   const said: string[] = [];
@@ -114,8 +120,8 @@ test('two merges started at the same ms land in pid order', async () => {
 
 test('names the older merges again only when they change', async () => {
   const line = fakeLine();
-  line.tickets.set(4, { pid: 4, startedAt: 998_000, beatAt: 1_000_000 });
-  line.tickets.set(5, { pid: 5, startedAt: 999_000, beatAt: 1_000_000 });
+  line.tickets.set(4, ready(4, 998_000, 1_000_000));
+  line.tickets.set(5, ready(5, 999_000, 1_000_000));
   const turn = landingTurn({ store: line.store, pid: 7, pidAlive: alive(new Set([4, 5, 7])), clock: line.clock }, TIMES);
   line.clock.at(2000, () => line.tickets.delete(4));
   line.clock.at(4000, () => line.tickets.delete(5));
@@ -130,8 +136,8 @@ test('gives up after its time out and lands anyway, saying so', async () => {
   const line = fakeLine();
   const turn = landingTurn({ store: line.store, pid: 7, pidAlive: () => true, clock: line.clock }, TIMES);
   // The older merge keeps beating and never lands.
-  for (let ms = 0; ms <= TIMES.timeoutMs; ms += TIMES.pollMs) line.clock.at(ms, () => line.tickets.set(5, { pid: 5, startedAt: 999_000, beatAt: 1_000_000 + ms }));
-  line.tickets.set(5, { pid: 5, startedAt: 999_000, beatAt: 1_000_000 });
+  for (let ms = 0; ms <= TIMES.timeoutMs; ms += TIMES.pollMs) line.clock.at(ms, () => line.tickets.set(5, ready(5, 999_000, 1_000_000 + ms)));
+  line.tickets.set(5, ready(5, 999_000, 1_000_000));
   const said: string[] = [];
   await turn.wait(text => said.push(text));
   assert.equal(line.clock.slept.length, TIMES.timeoutMs / TIMES.pollMs);
@@ -140,7 +146,7 @@ test('gives up after its time out and lands anyway, saying so', async () => {
 
 test('a store that cannot write or remove never stops the merge', async () => {
   const line = fakeLine();
-  line.tickets.set(5, { pid: 5, startedAt: 999_000, beatAt: 1_000_000 });
+  line.tickets.set(5, ready(5, 999_000, 1_000_000));
   const broken: TicketStore = {
     list: line.store.list,
     write: () => {
@@ -157,8 +163,53 @@ test('a store that cannot write or remove never stops the merge', async () => {
   assert.deepEqual(line.clock.slept, []);
 });
 
-test('parseTicket reads a written ticket and refuses a torn or foreign one', () => {
-  assert.deepEqual(parseTicket('{"pid":5,"startedAt":1,"beatAt":2}'), { pid: 5, startedAt: 1, beatAt: 2 });
+test('an older merge still waiting on its checks does not hold a merge whose checks passed (T4196)', async () => {
+  const line = fakeLine();
+  line.tickets.set(4, inChecks(4, 998_000, 1_000_000));
+  line.tickets.set(5, inChecks(5, 999_000, 1_000_000));
+  const turn = landingTurn({ store: line.store, pid: 7, pidAlive: alive(new Set([4, 5, 7])), clock: line.clock }, TIMES);
+  const said: string[] = [];
+  await turn.wait(text => said.push(text));
+  assert.deepEqual(line.clock.slept, [], 'it lands at once');
+  assert.deepEqual(said, []);
+  assert.equal(line.tickets.has(4) && line.tickets.has(5), true, 'a live merge in its checks keeps its ticket');
+});
+
+test('an older merge that turns ready while a newer one waits holds it until it lands', async () => {
+  const line = fakeLine();
+  line.tickets.set(4, ready(4, 998_000, 1_000_000));
+  line.tickets.set(5, inChecks(5, 999_000, 1_000_000));
+  const turn = landingTurn({ store: line.store, pid: 7, pidAlive: alive(new Set([4, 5, 7])), clock: line.clock }, TIMES);
+  line.clock.at(1000, () => line.tickets.set(5, { ...inChecks(5, 999_000, 1_001_000), readyAt: 1_001_000 }));
+  line.clock.at(2000, () => line.tickets.delete(4));
+  line.clock.at(3000, () => line.tickets.delete(5));
+  const said: string[] = [];
+  await turn.wait(text => said.push(text));
+  assert.deepEqual(line.clock.slept, [1000, 1000, 1000]);
+  assert.match(said[0] ?? '', /1 older merge\(s\).*pid 4 started/);
+  assert.match(said[1] ?? '', /2 older merge\(s\).*pid 4.*pid 5/);
+  assert.match(said[2] ?? '', /1 older merge\(s\).*pid 5 started/);
+});
+
+test('a merge turns ready as it first waits, and stays ready through its catch-ups', async () => {
+  const line = fakeLine();
+  const turn = landingTurn({ store: line.store, pid: 7, pidAlive: alive(new Set([7])), clock: line.clock }, TIMES);
+  await line.clock.sleep(5000);
+  await turn.wait(() => undefined);
+  assert.equal(line.tickets.get(7)?.readyAt, 1_005_000);
+  // Main moved: its catch-up runs its checks again, beating meanwhile, and waits again once they pass.
+  await line.clock.sleep(60_000);
+  turn.beat();
+  assert.equal(line.tickets.get(7)?.readyAt, 1_005_000, 'a beat in the catch-up keeps it ready');
+  await turn.wait(() => undefined);
+  assert.equal(line.tickets.get(7)?.readyAt, 1_005_000, 'it keeps its first ready time');
+});
+
+test('parseTicket reads a written ticket, one written before readyAt as not ready, and refuses a torn or foreign one', () => {
+  assert.deepEqual(parseTicket('{"pid":5,"startedAt":1,"beatAt":2,"readyAt":1}'), ready(5, 1, 2));
+  assert.deepEqual(parseTicket('{"pid":5,"startedAt":1,"beatAt":2,"readyAt":null}'), inChecks(5, 1, 2));
+  assert.deepEqual(parseTicket('{"pid":5,"startedAt":1,"beatAt":2}'), inChecks(5, 1, 2));
+  assert.equal(parseTicket('{"pid":5,"startedAt":1,"beatAt":2,"readyAt":"1"}'), null);
   assert.equal(parseTicket('{"pid":5,"startedAt":1'), null);
   assert.equal(parseTicket('{"pid":"5","startedAt":1,"beatAt":2}'), null);
   assert.equal(parseTicket('[1,2]'), null);
@@ -170,11 +221,11 @@ test('the file store writes, lists and removes tickets, skipping files that are 
     const dir = join(root, 'ship-landing');
     const store = fileTicketStore(dir);
     assert.deepEqual(store.list(), [], 'no folder yet is an empty line');
-    store.write({ pid: 5, startedAt: 1, beatAt: 2 });
-    store.write({ pid: 5, startedAt: 1, beatAt: 3 });
+    store.write(ready(5, 1, 2));
+    store.write(ready(5, 1, 3));
     writeFileSync(join(dir, '6.json'), '{"pid":6');
     writeFileSync(join(dir, 'notes.txt'), 'x');
-    assert.deepEqual(store.list(), [{ pid: 5, startedAt: 1, beatAt: 3 }]);
+    assert.deepEqual(store.list(), [ready(5, 1, 3)]);
     assert.deepEqual(readdirSync(dir).sort(), ['5.json', '6.json', 'notes.txt'], 'a write leaves no part file');
     store.remove(5);
     store.remove(5);

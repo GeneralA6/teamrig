@@ -9,6 +9,11 @@ import { isRecord } from './json.ts';
  * where it would otherwise be caught up once per merge that landed during its own CI wait, and refused at the third
  * (MERGE_ATTEMPTS in merge.ts).
  *
+ * Only an older merge that is ready, whose checks passed, holds the turn: it lands within minutes, or catches up and
+ * holds the turn through that catch-up's checks. An older merge still in its first CI wait does not: waiting on it
+ * held a green merge the whole `timeoutMs` behind merges that were themselves waiting, after which all of them landed
+ * at once and main moved past each again (T4196, T4270 and T4259 merges refused 11-18).
+ *
  * A ticket is live while its process runs and its heartbeat is fresh: Windows hands an ended process's id to a new
  * one within seconds under load (T990), so a running id alone could hold every newer merge back. A process that
  * ended without removing its ticket frees the turn at once, one whose id was reused at most `staleMs` after its
@@ -22,6 +27,8 @@ export interface Ticket {
   readonly startedAt: number;
   /** Its last heartbeat, in ms since the epoch. */
   readonly beatAt: number;
+  /** When its checks first passed, in ms since the epoch; null while it waits on them, and in a ticket written before readyAt. */
+  readonly readyAt: number | null;
 }
 
 /** Where the repo's tickets are kept, one per process. */
@@ -58,7 +65,10 @@ export interface TurnTimes {
 export const TURN_TIMES: TurnTimes = { pollMs: 30_000, staleMs: 10 * 60_000, timeoutMs: 20 * 60_000 };
 
 export interface LandingTurn {
-  /** Waits while an older merge of the repo is live, at most `timeoutMs`; says what it waited on. */
+  /**
+   * Marks this merge ready, its checks passed, then waits while an older ready merge of the repo is live, at most
+   * `timeoutMs`; says what it waited on. It stays ready through its catch-ups, so newer merges wait on them.
+   */
   wait(log: (line: string) => void): Promise<void>;
   /** Marks this merge live now. */
   beat(): void;
@@ -66,7 +76,7 @@ export interface LandingTurn {
   end(): void;
 }
 
-const olderThan = (ticket: Ticket, own: Ticket): boolean =>
+const olderThan = (ticket: Ticket, own: Pick<Ticket, 'pid' | 'startedAt'>): boolean =>
   ticket.startedAt < own.startedAt || (ticket.startedAt === own.startedAt && ticket.pid < own.pid);
 
 const clockOf = (ms: number): string => new Date(ms).toISOString().slice(11, 19);
@@ -84,16 +94,17 @@ export function landingTurn(deps: TurnDeps, times: TurnTimes = TURN_TIMES): Land
       // Made again at the next beat, or left to go stale.
     }
   };
-  const beat = (): void => tried(() => store.write({ pid, startedAt, beatAt: clock.now() }));
+  let readyAt: number | null = null;
+  const beat = (): void => tried(() => store.write({ pid, startedAt, beatAt: clock.now(), readyAt }));
   beat();
-  const own = { pid, startedAt, beatAt: startedAt };
+  const own = { pid, startedAt };
 
-  /** The older live tickets; a dead one is removed, so the next reader skips it at once. */
+  /** The older live tickets that are ready; a dead one is removed, so the next reader skips it at once. */
   const ahead = (): Ticket[] => {
     const now = clock.now();
     return store.list().filter(ticket => {
       if (ticket.pid === pid || !olderThan(ticket, own)) return false;
-      if (pidAlive(ticket.pid) && now - ticket.beatAt <= times.staleMs) return true;
+      if (pidAlive(ticket.pid) && now - ticket.beatAt <= times.staleMs) return ticket.readyAt !== null;
       tried(() => store.remove(ticket.pid));
       return false;
     });
@@ -104,6 +115,7 @@ export function landingTurn(deps: TurnDeps, times: TurnTimes = TURN_TIMES): Land
     end: () => tried(() => store.remove(pid)),
     wait: async log => {
       const since = clock.now();
+      readyAt ??= since;
       let said = '';
       for (;;) {
         beat();
@@ -134,9 +146,10 @@ export function parseTicket(text: string): Ticket | null {
     return null;
   }
   if (!isRecord(body)) return null;
-  const { pid, startedAt, beatAt } = body;
+  const { pid, startedAt, beatAt, readyAt = null } = body;
   if (typeof pid !== 'number' || typeof startedAt !== 'number' || typeof beatAt !== 'number') return null;
-  return { pid, startedAt, beatAt };
+  if (readyAt !== null && typeof readyAt !== 'number') return null;
+  return { pid, startedAt, beatAt, readyAt };
 }
 
 /** Tickets as `<pid>.json` files in `dir`, each written whole by a rename, so a reader never sees half of one. */
