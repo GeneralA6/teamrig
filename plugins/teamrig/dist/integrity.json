@@ -826,7 +826,7 @@
     "dist/worktree/branch-name.js": "5105570e132d40a2f3a820887483a8e31a7e355e20925bf0006566df562fe0ea",
     "dist/worktree/files.js": "9f65182a3c070f7ffcb7d4546375c48be1cd12bbc22209e12c284d2f46d06662",
     "dist/worktree/git.js": "aab2e19260b1be14e67d8c088540fac1d8ce6282b8cc14fa45936236df010c9f",
-    "dist/worktree/owner.js": "1ba82beee3292603ff5d6fc7ad9e25c0f9cede043cc2760e4d6711d48a7b6113",
+    "dist/worktree/owner.js": "2dfc59e2974dbf48955de5d7d2c8cefb52fb915d49ecf9dbba9f183bf3d58560",
     "dist/worktree/remove.js": "2d6d2b15d13c3e7aeb58e3de294a0189eb6fb93f14f7881518f97f1f429c1c6f",
     "hooks/hooks.json": "0fa683f4c5c843a498eaa19227282c7f5c7e2206cf1e2e73f77f9068547a1e32",
     "hooks/register.ts": "0bec572830840c06ca32ab73ee9b829fa98ed0973a537118b6110f287cd3d423"
