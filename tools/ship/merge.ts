@@ -6,7 +6,7 @@ import { nodeFiles } from '../../src/core/files.ts';
 import { ENV } from '../../src/core/home.ts';
 import { gitSyncIn } from '../lib/git.ts';
 import { realSleep, systemClock } from '../../src/core/lock.ts';
-import { type ClearMerge, clearMergeFrom } from './approval.ts';
+import { type ClearMerge, type WorkCommit, approvedRebase, clearMergeFrom, shipWritesOf, workCommitsOf } from './approval.ts';
 import { buildScriptOf, buildSteps } from './build-steps.ts';
 import { type CatchUp, type CatchUpRequest, catchUp } from './catch-up.ts';
 import { type CheckOutcome, type Gh, type RequiredChecks, ghWithToken, readChecks, rerunFailedJobs, verdictOf } from './github.ts';
@@ -19,6 +19,7 @@ import { realRenamedCallersDeps, renamedCallersRefusal } from './renamed-callers
 import { type LocalChecks, type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
 import { APPROVED_SHA } from './ship-plan.ts';
 import { describeCredential } from './token-check.ts';
+import { TEAMRIG_RELEASE_STAMPS, TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 /**
  * `ship.ts merge`, the only merge route the auto-mode briefing grants for these repos.
@@ -467,6 +468,8 @@ export interface MergeDeps {
   clearMerge: ClearMerge;
   /** A head main moved past, rebased onto main's tip and pushed as a new branch when its diff stays the same (catch-up.ts). */
   catchUp: (request: CatchUpRequest) => CatchUp;
+  /** The work commits `rev` carries over origin's main, with their patch ids (approval.ts `workCommitsOf`). */
+  workOf: (rev: string) => readonly WorkCommit[];
   /** The queued step's host share, set aside while the merge waits on GitHub (T3336). */
   share: StepShare;
   /** This merge's place in the repo's line: once its checks pass, it waits for older merges to land (landing-turn.ts, T4196). */
@@ -502,6 +505,11 @@ const CLEARED_BY_SHIP: MergeGate = () => Promise.resolve(null);
  * lines (a rebase onto main's tip, nothing else), so that head merges on the first one's clearance: the approval
  * names the first sha, and asking again for a sha nobody could approve beforehand would stop every caught-up merge
  * (T2809). A refused first head never reaches a catch-up, since mergeRun returns its refusal as done.
+ *
+ * A first head that is not the approved one clears on that approval only as its rebase, the same work commits patch
+ * for patch (approval.ts `approvedRebase`, as `ship.ts --merge` reads it): a run again on the head an earlier run's
+ * catch-up pushed, after GitHub failed that run's merge call, needs no new approval (#1450), while a commit added on
+ * top of it is refused.
  */
 function approvalGate(args: MergeArgs, deps: MergeDeps): MergeGate {
   let cleared: { head: string; sha: string; by: string } | null = null;
@@ -510,10 +518,15 @@ function approvalGate(args: MergeArgs, deps: MergeDeps): MergeGate {
       deps.out(`merge of ${head} ${sha.slice(0, 9)}: caught up from ${cleared.head} ${cleared.sha.slice(0, 9)}, ${cleared.by}`);
       return null;
     }
-    const clearance = await deps.clearMerge(head, sha, args.approved);
+    const rebase = args.approved === null || sha.startsWith(args.approved) ? null : approvedRebase((gitArgs) => deps.git(...gitArgs), deps.workOf, args.approved, sha);
+    if (rebase !== null && rebase.kind !== 'rebased') {
+      return rebase.kind === 'differs' ? `${rebase.reason}. Ask for approval of the new head, naming it` : rebase.reason;
+    }
+    const clearance = await deps.clearMerge(head, rebase === null ? sha : rebase.approved, args.approved);
     if (clearance.kind === 'refused') return clearance.reason;
     const by = clearance.kind === 'self' ? "the caller's own, a root team's lead" : `approved by ${clearance.by}`;
-    deps.out(`merge of ${head} ${sha.slice(0, 9)}: ${by}`);
+    const carried = rebase === null ? '' : `carries the approved ${rebase.approved.slice(0, 9)}'s ${rebase.work} work commit(s), patch for patch, `;
+    deps.out(`merge of ${head} ${sha.slice(0, 9)}: ${carried}${by}`);
     cleared = { head, sha, by };
     return null;
   };
@@ -660,6 +673,10 @@ export function realMergeDeps(dir: string): MergeDeps {
         },
         request,
       ),
+    workOf: rev => {
+      const profile = profileFor(readProfiles(), slugOf(git('remote', 'get-url', 'origin')));
+      return workCommitsOf(runGit, rev, `refs/remotes/origin/${profile.main}`, shipWritesOf(profile.regenerated, TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS));
+    },
     share: stepShareOf(process.env, runOwnCli),
     turn: processLandingTurn(dir, git),
     out,

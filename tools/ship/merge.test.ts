@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { mock, test } from 'node:test';
-import type { MergeClearance } from './approval.ts';
+import type { MergeClearance, WorkCommit } from './approval.ts';
 import type { CatchUp } from './catch-up.ts';
 import type { Gh, RequiredChecks } from './github.ts';
 import type { Credential } from './keychain.ts';
@@ -442,6 +442,8 @@ interface RunFixture {
   lostShare?: string;
   /** Whether main, at BASE when the merge starts, moves to MOVED while the first head's checks run (mainTip unset). */
   movesDuringWait?: boolean;
+  /** The work commits each head carries over main (approval.ts `workCommitsOf`); SHA and REBASED the same two unless given. */
+  work?: Readonly<Record<string, readonly WorkCommit[]>>;
 }
 
 /** The head a catch-up pushes: BRANCH rebased onto MOVED. */
@@ -449,6 +451,16 @@ const NEXT = 't9-change-2';
 const REBASED = 'rebased0ccc';
 const CAUGHT_UP: CatchUp = { kind: 'rebased', head: NEXT, sha: REBASED };
 const CAUGHT_UP_REFUSED: CatchUp = { kind: 'refused', reason: 'main moved to moved00, which t9-change abc1234 does not contain, and rebasing it onto that tip conflicts' };
+
+/** The approved head's two work commits, and the same patches as REBASED carries them. */
+const APPROVED_WORK: readonly WorkCommit[] = [
+  { sha: 'aaaa1111aaaa', subject: 'cli: a', merge: false, patch: 'patch-a' },
+  { sha: 'bbbb2222bbbb', subject: 'docs: b', merge: false, patch: 'patch-b' },
+];
+const REBASED_WORK: readonly WorkCommit[] = [
+  { sha: 'cccc3333cccc', subject: 'cli: a', merge: false, patch: 'patch-a' },
+  { sha: 'dddd4444dddd', subject: 'docs: b', merge: false, patch: 'patch-b' },
+];
 
 /** The git folder as git names it for a linked worktree: absolute on every OS ('C:/repo/.git' is relative on POSIX). */
 const GIT_DIR = resolve('/repo/.git');
@@ -528,6 +540,7 @@ function runFixture(fixture: RunFixture = {}): {
     [`log --reverse --format=%s refs/remotes/origin/main..${REBASED}`]: fixture.subjects ?? 'cli: a\ndocs: b',
     [`merge-base ${REBASED} ${MOVED}`]: fixture.rebasedBehind === true ? BASE : MOVED,
     [`rev-parse ${REBASED}^{tree}`]: 'tree-checked',
+    'rev-parse --verify --quiet abc1234^{commit}': SHA,
   };
   const out: string[] = [];
   const err: string[] = [];
@@ -563,6 +576,7 @@ function runFixture(fixture: RunFixture = {}): {
     sweep,
     clearMerge,
     catchUp,
+    workOf: (rev) => (fixture.work ?? { [SHA]: APPROVED_WORK, [REBASED]: REBASED_WORK })[rev] ?? [],
     share: {
       away: () => {
         shareCalls.push(`away after ${catchUp.mock.callCount()} catch-up(s)`);
@@ -743,6 +757,24 @@ test('a caught-up head merges on the approval of the head it was caught up from,
   assert.deepEqual(err, []);
   assert.deepEqual(clearMerge.mock.calls.map(call => call.arguments), [[BRANCH, SHA, 'abc1234']]);
   assert.deepEqual(out.slice(0, 2), [APPROVED_LINE, `merge of ${NEXT} rebased0c: caught up from ${BRANCH} abc1234de, approved by lead`]);
+});
+
+test('a merge run again on the head its catch-up pushed, after GitHub failed the merge call, clears on the approval of the head it was caught up from (#1450)', async () => {
+  const { deps, out, err, clearMerge, catchUp } = runFixture({ mainTip: MOVED });
+  assert.equal(await runMerge({ ...ARGS, head: NEXT, approved: 'abc1234' }, deps), 0, err.join('\n'));
+  assert.deepEqual(clearMerge.mock.calls.map(call => call.arguments), [[NEXT, SHA, 'abc1234']]);
+  assert.equal(out[0], `merge of ${NEXT} rebased0c: carries the approved abc1234de's 2 work commit(s), patch for patch, approved by lead`);
+  assert.equal(out.at(-1), 'MERGED #3 into main, now at main999');
+  assert.equal(catchUp.mock.callCount(), 0);
+});
+
+test('a commit added on top of the head a catch-up pushed is refused before any clearance or GitHub call (#1450)', async () => {
+  const extra: WorkCommit = { sha: 'eeee5555eeee', subject: 'cli: c', merge: false, patch: 'patch-c' };
+  const { deps, err, clearMerge, ghFor } = runFixture({ mainTip: MOVED, work: { [SHA]: APPROVED_WORK, [REBASED]: [...REBASED_WORK, extra] } });
+  assert.equal(await runMerge({ ...ARGS, head: NEXT, approved: 'abc1234' }, deps), 1);
+  assert.deepEqual(err, ['REFUSED the head rebased0c is not the approved abc1234de rebased: added eeee5555e "cli: c". Ask for approval of the new head, naming it']);
+  assert.equal(clearMerge.mock.callCount(), 0);
+  assert.equal(ghFor.mock.callCount(), 0);
 });
 
 test('a head refused clearance is never caught up, even when main moved past it', async () => {
