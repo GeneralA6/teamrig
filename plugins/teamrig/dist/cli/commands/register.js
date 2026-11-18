@@ -25,7 +25,9 @@ import { heldFirst } from "../../register/leader-wait.js";
 import { bugHint } from "../../register/bug-hint.js";
 import { reviewGap, reviewGapText } from "../../register/review.js";
 import { renderPlan } from "../../register/plan.js";
+import { readGoals } from "../../register/goals.js";
 import { noProgressFlag } from "../../register/progress.js";
+import { sliceLateFlags } from "../../register/slice-late.js";
 import { overSizeFlags } from "../../register/over-size.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
@@ -907,9 +909,10 @@ function weekFor(args, snapshot, now, zone) {
  * `check --tree`, its task ids name it. `leftPct` is what is left of the week's usage target (one account's limit
  * covers every team read). A wait on another register's task of the tree is judged against that task, and one on the
  * parent team's lead, `above`, is the lead's own approver's (T1140). `runFiles` is what each card's hand step file
- * hashes to now (RUN-CHANGED).
+ * hashes to now (RUN-CHANGED). `goals` are the register's own team's goal records, whose slices past their ship day
+ * with no proof raise SLICE-LATE (T2203).
  */
-function checkRegister({ snapshot, config, elsewhere, above, ranking }, now, zone, week, leftPct, runFiles, team) {
+function checkRegister({ snapshot, config, elsewhere, above, ranking }, goals, now, zone, week, leftPct, runFiles, team) {
     const tasks = [...snapshot.state.tasks.values()];
     const tree = new TaskTree(snapshot.state.tasks, now, zone, week, elsewhere, ranking);
     const dayStart = teamDayStartAt(config.wake.dayStartUtc, now.getTime());
@@ -917,6 +920,7 @@ function checkRegister({ snapshot, config, elsewhere, above, ranking }, now, zon
     const leads = new LeadTree(config, above);
     const flags = [
         ...checkTasks(tasks, now, zone, week, config.register, elsewhere, ranking),
+        ...sliceLateFlags(goals, snapshot.state.tasks, tree, zone.day(now)),
         ...peerWaitFlags(tasks, leads, config.roles, config.register.ownerSource),
         ...runFileFlags(tasks, runFiles),
         // In plan order, so the leader reads the most urgent wait first.
@@ -926,6 +930,13 @@ function checkRegister({ snapshot, config, elsewhere, above, ranking }, now, zon
         ...(progress === undefined ? [] : [progress]),
     ];
     return { team, flags: flags.sort(byFlagKind), tree };
+}
+/**
+ * A team's own goal records, never a team's above it: a slice's tasks are ids of the register of the team holding
+ * its goal, so only that team's plan and check read them.
+ */
+async function ownGoalsOf(runtime, rolled) {
+    return readGoals(await runtime.files.read(rolled.paths.goals)).goals;
 }
 /**
  * The week's fit to the weekly limit over every team read (one account's limit covers them all): what is left of
@@ -993,8 +1004,9 @@ export async function checkReport(args, runtime) {
     const { overSizeMultiple } = own.config.register.check;
     const spent = overSizeMultiple > 0 ? await readTaskSpend(runtime, own.paths, own.config, now.getTime()) : undefined;
     const runFiles = await readRunFiles(runtime, teams.flatMap((rolled) => [...rolled.snapshot.state.tasks.values()]));
-    const checked = teams.map((rolled) => {
-        const section = checkRegister(rolled, now, teamZone(rolled.config, runtime), week, leftPct, runFiles, tree ? rolled.team : undefined);
+    const goals = await Promise.all(teams.map(async (rolled) => ownGoalsOf(runtime, rolled)));
+    const checked = teams.map((rolled, index) => {
+        const section = checkRegister(rolled, goals[index] ?? new Map(), now, teamZone(rolled.config, runtime), week, leftPct, runFiles, tree ? rolled.team : undefined);
         const ownFlags = rolled.team === own.team
             ? [...stopgapFlags(tags, rolled.snapshot.state.tasks, zone), ...(spent === undefined ? [] : overSizeFlags(rolled.snapshot.state.tasks.values(), spent, overSizeMultiple))]
             : [];
@@ -1046,7 +1058,8 @@ export async function check(args, runtime) {
     return EXIT.ok;
 }
 /**
- * `plan [--tree]`: with `--tree`, one section per team, the lead's team first, for the lead's week. The week's fit
+ * `plan [--tree] [--by-slice]`: with `--tree`, one section per team, the lead's team first, for the lead's week; with
+ * `--by-slice` (T2203), each section heads the week's tasks by the slices of its team's goals, then the rest by band. The week's fit
  * to the weekly limit sits under the first section's counts, for the week in force only (the limit read is this
  * week's): with `--tree`, one fit over every team shown.
  */
@@ -1062,11 +1075,14 @@ export async function plan(args, runtime) {
         throw new RefusedError('no week plan tagged yet; pass --week <YYYY-MM-DD>');
     }
     const fit = week === currentWeekOf(settled.own.snapshot, now, zone) ? fitLines(await weekFitOf(runtime, settled, week, tree)) : [];
+    const bySlice = args.switches.has('by-slice');
+    const goals = bySlice ? await Promise.all(settled.teams.map(async (rolled) => ownGoalsOf(runtime, rolled))) : [];
     const sections = settled.teams.map((rolled, index) => renderPlan(rolled.snapshot.state.tasks.values(), week, now, teamZone(rolled.config, runtime), {
         team: tree ? rolled.team : undefined,
         fit: index === 0 ? fit : [],
         elsewhere: rolled.elsewhere,
         ranking: rolled.ranking,
+        ...(bySlice ? { bySlice: goals[index] ?? new Map() } : {}),
     }));
     runtime.out.stdout(sections.join('\n\n'));
     return EXIT.ok;
