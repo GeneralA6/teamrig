@@ -49,6 +49,7 @@ import { teamRegister } from '../team-register.ts';
 import { budgetFactsOf } from './hook-budget.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { runIdlePass } from './hook-idle-pass.ts';
+import { runTreeIdlePasses } from './hook-tree-idle-pass.ts';
 import { sessionFoldersOf } from './setup.ts';
 import { parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
 import { armParkedRestart, parkedHere, rearmDeadRestart, type RearmScope } from './hook-restart.ts';
@@ -490,8 +491,11 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
     return answer(runtime, scope);
   }
   const { kit, config, id, tab } = scope;
-  // The pass is the team's, not this tab's wake: before the holds that keep only this session from waking.
-  await runIdlePass(runtime, kit, config, scope.roster, sessionFoldersOf(runtime, config, undefined, scope.from));
+  // The pass is the team's, not this tab's wake: before the holds that keep only this session from waking. A pass
+  // this check ran also runs the stale passes of the tree's other teams, which may have no tab left to run their own.
+  if (await runIdlePass(runtime, kit, config, scope.roster, sessionFoldersOf(runtime, config, undefined, scope.from))) {
+    await runTreeIdlePasses(runtime, kit.paths.team);
+  }
   if (await meetingHoldsWake(runtime, scope)) {
     return answer(runtime, waitAnswer(scope, null));
   }

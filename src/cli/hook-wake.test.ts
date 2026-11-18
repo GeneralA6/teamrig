@@ -18,7 +18,7 @@ import { SessionRecordStore } from '../sessions/record.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { EXIT } from './runtime.ts';
-import { IDLE_PASS_LOG_EVERY_MS } from './idle-pass-log.ts';
+import { formatIdlePassState, IDLE_PASS_LOG_EVERY_MS, passedState, TREE_PASS_AFTER_MS } from './idle-pass-log.ts';
 import { DAY_PROBE_RECHECK_MS, RESTART_RECHECK_MS } from './commands/hook-wake.ts';
 import { GIVE_UP_MS } from '../refresh/restart.ts';
 import type { RefreshState, RestartRequest } from '../refresh/state.ts';
@@ -1025,6 +1025,68 @@ describe('hook wake-check runs the idle pass', () => {
       assert.equal(team.files.get(PASS_LOG), undefined);
       assert.equal(team.files.get(PASS_STATE), undefined);
     }
+  });
+
+  describe("of the tree's other teams, whose own tabs may all be closed (T3387)", () => {
+    const WEB = resolve('/', 'work', 'web');
+    const webState = (team: string, file: string): string => join(teamHomeOf(team), 'state', file);
+
+    /** App in mode on as the tree's root, and `team` (under app unless `parent` is null) whose `front` was closed at 09:00 UTC. */
+    async function treeWithClosedFront(team = 'web', { parent = 'app', folder = WEB }: { readonly parent?: string | null; readonly folder?: string | null } = {}): Promise<CliHarness> {
+      const kit = await idleTeam({ ...ON, team: { id: 'app' } });
+      const node = parent === null ? { id: team } : { id: team, parent };
+      await kit.files.write(teamConfigOf(team), formatConfig({ configVersion: 1, team: node, sessions: ['lead', 'front'], roles: { lead: 'lead' } }));
+      const close = { kind: 'close', session: 'front', by: 'lead', at: '2030-01-08T09:00:00.000Z', claudeSession: 'claude-front', idleMinutes: 75, freedMb: 1300 } as const;
+      await new SessionLog(kit.files, webState(team, 'session-log.jsonl')).append(folder === null ? close : { ...close, folder });
+      const handed = await kit.run(['add', '--owner', 'front', '--title', 'Ship the form', '--description', 'what and why', '--priority', 'p1', '--session', 'lead'], { env: { TEAMRIG_TEAM: team } });
+      assert.equal(handed.code, 0, handed.stderr.join('\n'));
+      return kit;
+    }
+
+    const reopensOf = (processes: FakeProcesses): readonly JsonRecord[] => processes.hidden.map(({ args, cwd }) => ({ args: args.slice(1), cwd }));
+    const stepsOf = async (kit: CliHarness, team: string): Promise<unknown[]> =>
+      (await logLines(kit, webState(team, 'idle-pass.jsonl'))).flatMap((record) => (isRecord(record) && Array.isArray(record['steps']) ? record['steps'] : []));
+
+    it("reopens a child team's closed session in the folder its close logged, once no tab of its own ran its pass for 5 minutes", async () => {
+      const kit = await treeWithClosedFront();
+      const processes = new FakeProcesses();
+      const reopen = { args: ['idle-open', 'front', '--team', 'web', '--project', WEB], cwd: WEB };
+      assert.deepEqual(answerOf(await passCheck(kit, { processes, folders: [APP, WEB] })), WAIT);
+      assert.deepEqual(reopensOf(processes), [reopen], 'a team whose pass never ran is due at once');
+      await kit.files.write(webState('web', 'idle-pass.json'), formatIdlePassState(passedState(kit.clock.now(), [])));
+      kit.clock.advance(TREE_PASS_AFTER_MS - MINUTE);
+      await passCheck(kit, { processes, folders: [APP, WEB] });
+      assert.equal(processes.hidden.length, 1, "within 5 minutes of the team's own pass, its own tabs still run it");
+      kit.clock.advance(MINUTE);
+      await passCheck(kit, { processes, folders: [APP, WEB] });
+      assert.deepEqual(reopensOf(processes), [reopen, reopen]);
+    });
+
+    it('passes no team outside the tree', async () => {
+      const kit = await treeWithClosedFront('shop', { parent: null });
+      const processes = new FakeProcesses();
+      assert.deepEqual(answerOf(await passCheck(kit, { processes, folders: [APP, WEB] })), WAIT);
+      assert.deepEqual(processes.hidden, []);
+      assert.equal(kit.files.get(webState('shop', 'idle-pass.json')), undefined);
+    });
+
+    it('leaves for later, starting nothing, the reopen of a session with no folder known, never the calling tab’s', async () => {
+      const kit = await treeWithClosedFront('web', { folder: null });
+      const processes = new FakeProcesses();
+      await passCheck(kit, { processes, folders: [APP, WEB] });
+      assert.deepEqual(processes.hidden, []);
+      const later = (await stepsOf(kit, 'web')).filter((step) => isRecord(step) && step['kind'] === 'later');
+      assert.deepEqual(later, [{ kind: 'later', id: 'front', line: 'LATER web-front (session front): work handed to it since its close: T1; no folder is known for session front: set launch.front.project or team.project' }]);
+    });
+
+    it("warns on stderr when a team's pass fails, and the wake answer and its own pass stand", async () => {
+      const kit = await treeWithClosedFront();
+      const faulty = new FaultyFiles(kit.files).fail('read', webState('web', 'session-log.jsonl'), systemError('EACCES', 'EACCES: permission denied'));
+      const result = await passCheck(kit, { files: faulty, folders: [APP, WEB] });
+      assert.deepEqual(answerOf(result), WAIT);
+      assert.deepEqual(result.stderr, ['WARN the idle pass of team web, run from team app, failed: EACCES: permission denied; the next pass tries again']);
+      assert.notEqual(kit.files.get(PASS_STATE), undefined, "app's own pass ran");
+    });
   });
 });
 

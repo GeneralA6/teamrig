@@ -16,9 +16,11 @@ import {
   IDLE_PASS_STALE_MS,
   idlePassTrouble,
   isPassDue,
+  isTreePassDue,
   parseIdlePassState,
   passedState,
   stepsToLog,
+  TREE_PASS_AFTER_MS,
 } from './idle-pass-log.ts';
 
 const AT = Date.parse('2030-01-08T10:00:00.000Z');
@@ -90,6 +92,15 @@ describe('the idle pass state', () => {
     assert.equal(isPassDue(last, AT + IDLE_PASS_EVERY_MS - 1), false);
     assert.equal(isPassDue(last, AT + IDLE_PASS_EVERY_MS), true);
     assert.equal(isPassDue(last, AT - 1), true);
+  });
+
+  it("is due from another team's tab with no pass yet, five minutes after the last, or when the clock went back (T3387)", () => {
+    const last = passedState(AT, STEPS);
+    assert.equal(TREE_PASS_AFTER_MS, 5 * IDLE_PASS_EVERY_MS);
+    assert.equal(isTreePassDue(undefined, AT), true);
+    assert.equal(isTreePassDue(last, AT + TREE_PASS_AFTER_MS - 1), false, 'its own tabs still run it');
+    assert.equal(isTreePassDue(last, AT + TREE_PASS_AFTER_MS), true);
+    assert.equal(isTreePassDue(last, AT - 1), true);
   });
 
   it('names every step at the first pass, then only those whose kind changed', () => {
