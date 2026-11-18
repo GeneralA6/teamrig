@@ -8,7 +8,7 @@ import { SpotlitStore, type SpotlitMeeting } from '../meeting/spotlit.ts';
 import { FOCUS_EXIT, FOCUS_TITLE_VAR } from '../open/focus.ts';
 import { decodePrompt } from '../open/prompt.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
-import { APP, CliHarness, TEAM, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { APP, CliHarness, KIT, TEAM, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
@@ -290,6 +290,10 @@ describe('runCli: meeting start <id>', () => {
     // Its 30 minutes and the 15 minutes' grace from the start, not the daily meeting's 4 h.
     assert.equal(env[SPOTLIGHT_VARS.until], String(Date.parse('2030-01-08T10:45:00.000Z')));
     assert.deepEqual(await spotlitOf(kit), { id: 'M1', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null });
+    // It names itself the host's one spotlight, which lifts the daily meeting's if that one is on (T4294).
+    const holderFile = join(KIT, 'meeting-spotlight.json');
+    assert.equal(env[SPOTLIGHT_VARS.holder], holderFile);
+    assert.deepEqual(JSON.parse(kit.files.get(holderFile) ?? ''), { meetingFile: SPOTLIT_PATH, startedAt: '2030-01-08T10:00:00.000Z' });
 
     kit.clock.advance(20 * MS_PER_MINUTE);
     assert.equal((await kit.run(['meeting', 'end', 'M1', '--session', 'lead'])).code, EXIT.ok);

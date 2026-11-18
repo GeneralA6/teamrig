@@ -14,7 +14,7 @@ import { answeredKeys, carriedKeys } from '../../meeting/carried.ts';
 import { mergeDigestLines, type MergeDigestInput, type MergeLogAt } from '../../meeting/merges.ts';
 import { decisionsByOwner, endNotice, type NoticeFacts } from '../../meeting/notices.ts';
 import { MeetingSchedule } from '../../meeting/schedule.ts';
-import { SPOTLIGHT_LOG, spotlightLine, startSpotlight, type SpotlightPlace } from '../../meeting/spotlight.ts';
+import { SPOTLIGHT_LOG, spotlightHolderPath, spotlightLine, startSpotlight, type SpotlightPlace } from '../../meeting/spotlight.ts';
 import { MEETING_LAPSE_MS, MeetingStore, phaseOf, startingKindOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
 import { MergeLog } from '../../merge/merge-log.ts';
 import { goalScores, type BoardTeam, type GoalScore } from '../../register/goal-board.ts';
@@ -284,6 +284,7 @@ export async function meetingStart(args: ParsedArgs, runtime: CliRuntime): Promi
     until: Date.parse(meeting.startedAt) + MEETING_LAPSE_MS,
     breakthroughFile: mk.kit.paths.meetingBreakthrough,
     log: join(mk.kit.paths.logs, SPOTLIGHT_LOG),
+    holderFile: spotlightHolderPath(mk.kit.paths.kitHome),
   };
   const { spotlight } = mk.config.meeting;
   const line = spotlightLine(await startSpotlight(runtime, spotlight, mk.config.open.terminal, spotlit, runtime.cwd), spotlit, spotlight.dim);
