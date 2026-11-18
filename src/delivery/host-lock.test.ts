@@ -1985,6 +1985,17 @@ describe('HostLock ship slot (T2727)', () => {
     }
   });
 
+  it('lets a build pass a merge first in line while a ship holds the slot, though the merge last waited on the admit file (T4333)', async () => {
+    const merge = ticket(waiterOf('2030-01-08T08:00:00.000Z', { request: { ...REQUEST, kind: 'merge', needMb: 0, heavy: true, exclusive: false }, waitingOn: { reason: 'line', text: 'another step being admitted', since: '2030-01-08T09:59:00.000Z' } }));
+    const looks: string[] = [];
+    for (const holder of [runningOf('ship', { id: 's1' }), runningOf('build', { id: 'b1' })]) {
+      const { lock } = world(Object.fromEntries([shareFile(holder), merge]), undefined, undefined, PIPELINE);
+      const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined, { request: { ...REQUEST, kind: 'build' } });
+      looks.push(taking.kind === 'busy' ? taking.holder.kind : taking.kind);
+    }
+    assert.deepEqual(looks, ['taken', 'queued'], 'with no ship running, the merge may start, so the build stays behind it');
+  });
+
   it('names the step holding the slot while it waits and when its wait runs out', () => {
     const slot: LockWait = { kind: 'shipSlot', running: [runningOf('ship')] };
     assert.deepEqual(

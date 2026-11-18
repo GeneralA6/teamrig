@@ -14,7 +14,7 @@ const NO_TURNS: ReadonlyMap<string, number> = new Map();
 
 /** The steps running now: `counts` heavy steps of each session, then `small` small steps of each. */
 function runs(counts: Readonly<Record<string, number>>, small: Readonly<Record<string, number>> = {}): RunningStep[] {
-  const steps = (by: Readonly<Record<string, number>>, isSmall: boolean): RunningStep[] => Object.entries(by).flatMap(([session, count]) => Array.from({ length: count }, () => ({ session, small: isSmall })));
+  const steps = (by: Readonly<Record<string, number>>, isSmall: boolean): RunningStep[] => Object.entries(by).flatMap(([session, count]) => Array.from({ length: count }, () => ({ session, small: isSmall, shipSlot: false })));
   return [...steps(counts, false), ...steps(small, true)];
 }
 
@@ -322,6 +322,23 @@ describe('placeInLine', () => {
       };
       assert.deepEqual(ahead('later'), ['early', 'build'], 'a ship ahead of the slot waiter still holds it back');
       assert.deepEqual(ahead('merge2'), ['early', 'ship', 'ship2'], 'ships keep their order');
+    });
+
+    it('lets a step that holds no slot pass every slot-taking waiter while a running share holds the slot, whatever they last recorded (T4333)', () => {
+      const line: InLine[] = [
+        ticket('merge', { session: 'alpha', waitedMinutes: 30, kind: 'merge', waitingOn: { reason: 'line', forMinutes: 0 } }),
+        ticket('deploy', { session: 'gamma', waitedMinutes: 20, kind: 'deploy', waitingOn: { reason: 'heavyCap', forMinutes: 5 } }),
+        ticket('build', { session: 'epsilon', waitedMinutes: 12, kind: 'build', waitingOn: { reason: 'cpu', forMinutes: 5 } }),
+        ticket('later', { session: 'beta', waitedMinutes: 1, kind: 'test' }),
+      ];
+      const ahead = (id: string, running: readonly RunningStep[]): string[] => {
+        const name = line.find((entry) => idsOf([entry])[0] === id)?.name ?? '';
+        return idsOf(placeInLine(line, name, running, PIPELINE, NOW)?.ahead ?? []);
+      };
+      const shipping: RunningStep[] = [{ session: 'charlie', small: false, shipSlot: true }];
+      assert.deepEqual(ahead('later', shipping), ['build'], 'the build ahead still holds it back');
+      assert.deepEqual(ahead('later', runs({ charlie: 1 })), ['merge', 'deploy', 'build'], 'with the slot free, the merge may start next');
+      assert.deepEqual(ahead('deploy', shipping), ['merge'], 'ships keep their order');
     });
   });
 });

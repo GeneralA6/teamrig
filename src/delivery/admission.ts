@@ -101,10 +101,11 @@ export function laneOf(waiter: InLine['waiter']): Lane {
   return waiter.request?.heavy === false ? 'small' : 'heavy';
 }
 
-/** A step running now as admission counts it: its session, and whether it is a small step's share (T3286). */
+/** A step running now as admission counts it: its session, whether it is a small step's share (T3286), and whether its share holds the ship slot (T4333). */
 export interface RunningStep {
   readonly session: string;
   readonly small: boolean;
+  readonly shipSlot: boolean;
 }
 
 function byName(a: InLine, b: InLine): number {
@@ -210,13 +211,16 @@ function passesOnRoom(waiter: InLine['waiter'], idle: boolean, now: number, memo
  * the first waiter its last look found waiting on the slot, for as long as the ship ahead runs, as the slot keeps the
  * waiter out whatever ends, and every slot-taking waiter after it, which waits behind that one whatever its own reason
  * (T3336: a second ship waits on the line, not the slot, yet starts no sooner, and held every build and test back).
+ * While a running share holds the slot (`slotHeld`), every slot-taking waiter is passed, whatever its last look
+ * recorded (T4333): the first one, finding the admit file held by a step passing it, recorded a wait in line, so the
+ * steps behind it stopped passing it and the whole line flapped behind one ship.
  */
-function passedOnShipSlot(before: readonly InLine[], mine: boolean): ReadonlySet<number> {
+function passedOnShipSlot(before: readonly InLine[], mine: boolean, slotHeld: boolean): ReadonlySet<number> {
   const passed = new Set<number>();
   if (mine) {
     return passed;
   }
-  let shut = false;
+  let shut = slotHeld;
   before.forEach(({ waiter }, at) => {
     const onSlot = waiter.waitingOn?.reason === 'shipSlot';
     shut ||= onSlot;
@@ -254,7 +258,7 @@ export function placeInLine<T extends InLine>(order: readonly T[], name: string,
   const capped = (session: string): boolean => cap > 0 && runs(session) >= cap;
   // Idle means no queued step at all runs: a small step's end frees room too, so it counts here.
   const idle = running.length === 0;
-  const onSlot = passedOnShipSlot(before, takesShipSlot(mine.waiter.request?.kind));
+  const onSlot = passedOnShipSlot(before, takesShipSlot(mine.waiter.request?.kind), running.some((step) => step.shipSlot));
   const ahead = before.filter(({ waiter }, at) => !capped(waiter.session) && !passesOnRoom(waiter, idle, now, rules.memoryPassMinutes) && !onSlot.has(at));
   const own = runs(mine.waiter.session);
   return capped(mine.waiter.session) ? { kind: 'sessionCap', ahead, running: own, cap } : { kind: 'inLine', ahead };
