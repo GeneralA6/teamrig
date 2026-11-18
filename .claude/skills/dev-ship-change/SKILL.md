@@ -1,6 +1,6 @@
 ---
 name: dev-ship-change
-description: Land a finished teamrig change through small signed commits with Conventional subjects, a dist rebuild, npm run check, a push through the local gate and a rebase-merged pull request.
+description: Land a finished teamrig change through small signed commits with Conventional subjects, npm run check, a push through the local gate and a rebase-merged pull request.
 ---
 
 # Ship a change
@@ -16,8 +16,8 @@ description: Land a finished teamrig change through small signed commits with Co
    `<type>(<area>): <what>` with the area optional (`feat(cli): ...`, `fix(ship): ...`, `docs: ...`); the
    `commit subjects` check fails any other (CONTRIBUTING.md, Branches and releases). A commit past 400 changed non-test lines or 15
    non-test files carries a `Large-commit: <reason>` line.
-4. After a `src/` change, run `npm run build` and commit `plugins/teamrig/dist` on its own
-   (`build: rebuild the plugin dist`): the `dist-fresh` check refuses a dist that does not match the source.
+4. Commit no dist: main ignores `plugins/teamrig/dist`. `npm run build` writes it for the specs and checks that load
+   it, and the release workflow builds it and publishes it to the `release` branch, which installs read.
 5. Never raise the version in `plugins/teamrig/.claude-plugin/plugin.json` or `src/core/version.ts`: the release
    pull request does, from the subjects. While the version is 0.x, a `feat` or a breaking change (`!`) raises the
    minor, a `fix` or `perf` the patch, so pick the type for what the change does for users.
@@ -38,11 +38,11 @@ description: Land a finished teamrig change through small signed commits with Co
 
 - Queue a `tools/ship` run without `--merge` as `--kind test`, and only a `--merge` run as `--kind ship`: the queue
   refuses a run whose kind does not fit, as only a merge moves main and holds the host's one ship slot.
-- Main moved while you worked: the merge catches the branch up itself when the dist sits in a commit of its own
-  (`tools/ship/merge.ts`). When it refuses, rebase onto `origin/main` by hand and rebuild the dist.
-- `tools/ship` run without `--merge`, for an approval, leaves the work alone on the head: it builds the dist only to
-  run the checks, then takes it back. The `--merge` run commits the dist once, on the base it lands on, and the
-  approval still holds, as it reads the change apart from the dist.
+- Main moved while you worked: the merge catches the branch up itself (`tools/ship/merge.ts`), dropping a
+  `build: rebuild the plugin dist` commit a branch cut before main stopped tracking the dist still carries. When it
+  refuses, rebase onto `origin/main` by hand.
+- `tools/ship` builds the dist only to run the checks and commits none, as main tracks none; a run without
+  `--merge`, for an approval, leaves the work alone on the head.
 - The local gate proves a committed tree, so it refuses uncommitted changes: commit or stash them first.
 - The pre-push hook's light checks leave the suite to CI: a failing spec shows on the pull request, not at the push.
   Run `npm run check` yourself first when the change reaches far.

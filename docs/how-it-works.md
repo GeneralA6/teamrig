@@ -73,7 +73,8 @@ child teams, hires and retires, and setting up a team with a tab for each sessio
 ## Updating the plugin
 
 Claude Code installs the version that the plugin's `plugin.json` gives and moves an install only when that version
-rises, so every change to the plugin raises it. To take the newest one:
+rises, so every change to the plugin raises it. It installs from the repository's `release` branch, where each
+release is main's commit with the built plugin on top. To take the newest one:
 
 ```sh
 claude plugin marketplace update teamrig

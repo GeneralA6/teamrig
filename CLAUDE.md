@@ -18,8 +18,8 @@ project skills in `.claude/skills/` hold the steps of each repeated job.
   mechanical change alone), committed as each step passes. A commit past 400 changed non-test lines or 15 non-test
   files carries a `Large-commit: <reason>` line.
 - **Signed off**: every commit is `git commit -s` (DCO).
-- **Dist and version**: after a `src/` change, `npm run build` and commit `plugins/teamrig/dist` on its own. Never
-  raise the version in `plugins/teamrig/.claude-plugin/plugin.json` or `src/core/version.ts`: the release pull
+- **Dist and version**: never commit `plugins/teamrig/dist`: main ignores it, `npm run build` writes it for the
+  checks, and the release workflow publishes it to the `release` branch, which installs read. Never raise the version in `plugins/teamrig/.claude-plugin/plugin.json` or `src/core/version.ts`: the release pull
   request does, from the commit subjects.
 - **Conventional subjects**: `<type>(<area>): <what>`, the area optional; the types are `feat`, `fix`, `perf`,
   `refactor`, `docs`, `test`, `build`, `ci`, `chore` and `revert`, with `!` before the colon for a breaking change.
@@ -37,6 +37,6 @@ project skills in `.claude/skills/` hold the steps of each repeated job.
 | `dev-add-command` | a new CLI command, or a flag on one |
 | `dev-add-config-key` | a new key in the team config |
 | `dev-update-docs` | the docs a change must update, and the checks that hold them to the code |
-| `dev-ship-change` | from the last commit to the merge: dist, checks, push, pull request |
+| `dev-ship-change` | from the last commit to the merge: checks, push, pull request |
 | `dev-design-issue` | joining a design issue: a reasoned comment, nothing taken until it is agreed, no sensitive data |
 | `dev-github-intake` | a maintainer taking in issues and pull requests: labels, best fix first, landing with credit, design issues |
