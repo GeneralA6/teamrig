@@ -144,11 +144,24 @@ test('takes back an earlier run first, then syncs, commits each chunk, builds an
     'git add -- src/b.ts src/b.test.ts',
     committed('release: 0.134.0', 'raises 0.134.0'),
     'node tools/build/bundle.ts',
+    `git ls-files -- ${DIST}`,
     `git add -- ${DIST}`,
     'git diff --cached --numstat',
     'prove',
     'git log --oneline origin/main..HEAD',
   ]);
+});
+
+test('builds a dist the tree does not track for the checks alone, committing none and leaving none to take back (T4355)', async () => {
+  const { deps, events, logs } = fake({ numstat: `3\t1\t${DIST}/a.js\n`, answers: { [`ls-files -- ${DIST}`]: '' } });
+  assert.equal(await shipCommits(ARGS, CHUNKS, deps), 0);
+  assert.deepEqual(events.slice(events.indexOf('node tools/build/bundle.ts')), [
+    'node tools/build/bundle.ts',
+    `git ls-files -- ${DIST}`,
+    'prove',
+    'git log --oneline origin/main..HEAD',
+  ]);
+  assert.ok(!logs.some((line) => line.startsWith('dist:')));
 });
 
 test('commits a rebuilt dist apart, with a Large-commit line only when it goes over the size rule', async () => {
@@ -204,6 +217,7 @@ test('without --merge, the review head holds the work alone: the raise and the d
     `git add -- ${VERSION_FILES}`,
     committed('plugin: version 0.134.0, a', 'raises 0.134.0'),
     'node tools/build/bundle.ts',
+    `git ls-files -- ${DIST}`,
     `git add -- ${DIST}`,
     'git diff --cached --numstat',
     `git add -- ${DIST}`,
