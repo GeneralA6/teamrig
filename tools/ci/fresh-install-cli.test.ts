@@ -54,8 +54,12 @@ describe('fresh-install-cli', () => {
   });
   afterEach(() => repo.remove());
 
-  /** Commits a plugin with the repo's launchers, the stand-in CLI and one hook, as the clone takes it. */
+  /**
+   * Commits a plugin with the repo's launchers and one hook, as the clone takes it, and builds the stand-in CLI into
+   * its dist, which main ignores (T4355).
+   */
   function commitPlugin(fail: string): void {
+    repo.write('.gitignore', 'plugins/teamrig/dist/\n');
     repo.write('plugins/teamrig/package.json', JSON.stringify({ type: 'module' }));
     repo.write('plugins/teamrig/hooks/hooks.json', MANIFEST);
     repo.write('plugins/teamrig/hook.mjs', HOOK);
@@ -69,11 +73,13 @@ describe('fresh-install-cli', () => {
     repo.git('commit', '-q', '-m', 'plugin');
   }
 
-  it('clones the committed tree, runs every step from the PATH in a new team, then its hook', () => {
+  it('clones the committed tree, adds the built dist it does not track, runs every step from the PATH in a new team, then its hook', () => {
     commitPlugin('none');
+    assert.equal(repo.git('ls-files', 'plugins/teamrig/dist').trim(), '');
     const result = repo.run(CLI);
     assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
     assert.match(result.stdout, /^ {2}exit 0 git clone, no login$/m);
+    assert.match(result.stdout, /^ {2}exit 0 copy in the built dist, as the release branch carries it$/m);
     assert.match(result.stdout, /^ {2}exit 0 inbox read$/m);
     assert.match(result.stdout, /^ {2}exit 0 SessionStart hook \(hook session-start\)$/m);
     assert.match(result.stdout, new RegExp(`^fresh-install: a new team runs from a fresh clone on ${process.platform}\\n$`, 'm'));

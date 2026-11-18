@@ -2,14 +2,15 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { DIST_DIR } from '../build/dist-dir.ts';
 import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
 import { runMain } from '../lib/run-main.ts';
 import { freshInstall, inheritedValue, installEnv, type InstallInput, type InstallRunner } from './fresh-install.ts';
 import { spawnRun } from './spawn-run.ts';
 
 /**
- * A new developer's first run of the committed tree in this checkout, cloned over `file://` into an empty home
- * (fresh-install.ts). Prints each step's exit, then what failed.
+ * A new developer's first run of the committed tree in this checkout, cloned over `file://` into an empty home with
+ * the dist this checkout built (fresh-install.ts). Prints each step's exit, then what failed.
  */
 async function main(): Promise<number> {
   // The native realpath spells out Windows' short 8.3 names, which cmd.exe would otherwise have to take as written.
@@ -18,6 +19,7 @@ async function main(): Promise<number> {
     const input: InstallInput = {
       platform: process.platform,
       source: pathToFileURL(resolve('.')).href,
+      dist: resolve(DIST_DIR),
       home,
       path: inheritedValue(process.env, 'PATH', ''),
       nodePath: process.execPath,
