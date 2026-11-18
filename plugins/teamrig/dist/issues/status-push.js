@@ -1,4 +1,4 @@
-import { GITHUB_SOURCE, ISSUE_REF_PREFIX } from "../register/model.js";
+import { ACTIVE_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX } from "../register/model.js";
 import { DESIGN_LABEL } from "./design-label.js";
 import { parseIssueTarget, targetText } from "./host.js";
 /**
@@ -126,8 +126,9 @@ export const SESSION_PUSH = { writesPerRun: PUSH_WRITES_PER_RUN, closes: true };
 /**
  * The push of `repo`: for each issue of it a task holds, by `ref: gh:<repo>#<n>`, the writes that make the issue
  * show the task's status, planned against `issues` as the host listed them now (open ones and those closed lately).
- * When a team task and an imported one hold the same issue, the team task speaks for it: the issue is its work.
- * The run sends at most `limits.writesPerRun` writes; the rest is deferred. Without `limits.closes` a closing change
+ * When a team task and an imported one hold the same issue, the team task speaks for it: the issue is its work. When
+ * two or more active team tasks hold it, none does: the plan writes nothing to it and names them (SharedIssue); one
+ * active team task speaks over finished ones (holders). The run sends at most `limits.writesPerRun` writes; the rest is deferred. Without `limits.closes` a closing change
  * is held instead, taking none of the run's writes. With `logins` an open issue of a scheduled task with no assignee
  * is assigned (assigneeOf); without, the plan assigns nobody.
  */
@@ -138,7 +139,8 @@ export function planPush(repo, issues, tasks, limits = SESSION_PUSH, logins) {
     const keptOpen = [];
     const unlisted = [];
     let unchanged = 0;
-    for (const [target, task] of [...holders(repo, tasks)].sort(([a], [b]) => a - b).map(([number, holder]) => [{ repo, number }, holder])) {
+    const held = holders(repo, tasks);
+    for (const [target, task] of [...held.speakers].sort(([a], [b]) => a - b).map(([number, holder]) => [{ repo, number }, holder])) {
         const issue = listed.get(target.number);
         const goal = issueGoal(task, { assigned: issue !== undefined && issue.assignees.length > 0, design: issue?.labels.includes(DESIGN_LABEL) ?? false });
         if (issue === undefined) {
@@ -172,7 +174,8 @@ export function planPush(repo, issues, tasks, limits = SESSION_PUSH, logins) {
     const heldCloses = limits.closes ? [] : planned.filter((change) => change.close !== undefined);
     const sendable = limits.closes ? planned : planned.filter((change) => change.close === undefined);
     const { changes, deferred } = withinRun(sendable, limits.writesPerRun);
-    return { repo, changes, deferred, heldCloses, unchanged, closedActive, keptOpen, unlisted };
+    const shared = [...held.shared].sort(([a], [b]) => a - b).map(([number, ids]) => ({ target: { repo, number }, tasks: ids }));
+    return { repo, changes, deferred, heldCloses, unchanged, closedActive, keptOpen, unlisted, shared };
 }
 /**
  * Why a finished task's close of the open `issue` is left, or undefined when the close is the task's to send. The
@@ -187,20 +190,43 @@ function closeLeft(repo, issue, logins) {
     const outside = issue.assignees.filter((login) => !team.has(login.toLowerCase()));
     return issue.assignees.length > 0 && outside.length === issue.assignees.length ? { kind: 'taken', assignees: outside } : undefined;
 }
-/** The task speaking for each issue number of `repo` a task holds: a team task over one the import added. */
+/**
+ * The tasks holding each issue number of `repo`: in `speakers`, the one task speaking for it, else the first one the
+ * import added; in `shared`, the ids of an issue two or more active team tasks hold, which none speaks for.
+ * A team task speaks when it is the only active one holding the issue: a finished task often keeps its ref, so a done
+ * task beside its open follow-up never freezes the issue. With none active, the newest finished one speaks (the last
+ * word on the issue), so old finished tasks never name an issue SHARED on every push.
+ */
 function holders(repo, tasks) {
-    const byNumber = new Map();
+    const team = new Map();
+    const imported = new Map();
     for (const task of tasks) {
         const target = heldIssue(task);
         if (target?.repo !== repo) {
             continue;
         }
-        const held = byNumber.get(target.number);
-        if (held === undefined || (held.source === GITHUB_SOURCE && task.source !== GITHUB_SOURCE)) {
-            byNumber.set(target.number, task);
+        if (task.source !== GITHUB_SOURCE) {
+            team.set(target.number, [...(team.get(target.number) ?? []), task]);
+        }
+        else if (!imported.has(target.number)) {
+            imported.set(target.number, task);
         }
     }
-    return byNumber;
+    const speakers = new Map(imported);
+    const shared = new Map();
+    for (const [number, held] of team) {
+        speakers.delete(number);
+        const byId = [...held].sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }));
+        const active = byId.filter((task) => ACTIVE_STATUSES.includes(task.status));
+        const speaker = active.length === 0 ? byId.at(-1) : active.length === 1 ? active[0] : undefined;
+        if (speaker !== undefined) {
+            speakers.set(number, speaker);
+        }
+        else {
+            shared.set(number, active.map((task) => task.id));
+        }
+    }
+    return { speakers, shared };
 }
 /** The issue a task holds by its `gh:` ref, or undefined when its ref names none. */
 export function heldIssue(task) {
