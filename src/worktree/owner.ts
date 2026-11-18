@@ -14,10 +14,11 @@ import type { LeadTree } from '../config/lead-tree.ts';
 /**
  * The task a branch is named for: `T12` for `t12-parser`, `T12`, or a part of the name that starts with the id, as
  * `delivery.branches` patterns put it (`feat/t12-parser`, T2690); the first such part counts. Undefined for a branch
- * named for none.
+ * named for none. An id with a leading zero (`t05-x`) names no task, as the register never writes one, so it cannot
+ * read as a task whose id differs from the one the register holds (T3269).
  */
 export function branchTaskOf(branch: string | undefined): string | undefined {
-  const digits = branch === undefined ? undefined : /(?:^|\/)t(\d+)(?:[-/]|$)/i.exec(branch)?.[1];
+  const digits = branch === undefined ? undefined : /(?:^|\/)t([1-9]\d*)(?:[-/]|$)/i.exec(branch)?.[1];
   return digits === undefined ? undefined : `T${digits}`;
 }
 

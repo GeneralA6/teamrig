@@ -38,6 +38,13 @@ describe('branchTaskOf', () => {
     assert.equal(branchTaskOf('feat/parser-t4'), undefined);
     assert.equal(branchTaskOf(undefined), undefined);
   });
+
+  it('reads no task from an id with a leading zero, which the register never writes (T3269)', () => {
+    assert.equal(branchTaskOf('t05-parser'), undefined);
+    assert.equal(branchTaskOf('feat/T012-routes'), undefined);
+    assert.equal(branchTaskOf('t0'), undefined);
+    assert.equal(branchTaskOf('feat/t05-a/t5-b'), 'T5');
+  });
 });
 
 describe('removalRefusal', () => {
