@@ -95,6 +95,20 @@ describe('teamrig issue sync --push', () => {
     ]);
   });
 
+  it('writes nothing for an issue two team tasks hold, and names them (#1449)', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    await addHolding(kit, 'Old plan for login', 'gh:acme/web#7');
+    await addHolding(kit, 'Land the login fix', 'gh:acme/web#7');
+    await step(kit, ['set', 'T2', '--status', 'in-progress', '--note', 'on it'], AS_LEAD);
+    const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login', assignees: ['octocat'], labels: ['status:in progress'] })]).holds('acme/api', []);
+    const lines = await expectRun(kit, ['issue', 'sync', '--push', '--repo', 'acme/web'], gh, EXIT.ok);
+    assert.deepEqual(lines, [
+      'PUSH acme/web: 0 to change, 0 unchanged, 1 held by two or more tasks',
+      'SHARED acme/web#7 T1, T2: two or more team tasks hold it, so the push writes nothing; give the ref to one of them',
+      `PREVIEW nothing was written; a push would send 0 write(s) now, at most ${PUSH_WRITES_PER_RUN} a run, and plan the rest again on the next`,
+    ]);
+  });
+
   it('plans only the repository --repo names', async () => {
     const kit = new CliHarness(GITHUB_TEAM);
     const lines = await expectRun(kit, ['issue', 'sync', '--push', '--repo', 'acme/api'], issues(), EXIT.ok);

@@ -209,6 +209,24 @@ describe('planPush (T2682)', () => {
     );
   });
 
+  it('writes nothing for an issue two team tasks hold, and names them, while pushing the other issues (#1449)', () => {
+    const tasks = [
+      holding('T3', 7),
+      holding('T5', 7, { source: 'github' }),
+      holding('T9', 7, { status: 'in-progress' }),
+      holding('T4', 8, { status: 'in-progress' }),
+    ];
+    for (const order of [tasks, [...tasks].reverse()]) {
+      const plan = planPush(REPO, [testHostIssue(7, { labels: ['status:in progress'] }), testHostIssue(8)], order);
+      assert.deepEqual(
+        plan.changes.map((change) => change.task),
+        ['T4'],
+      );
+      assert.deepEqual(plan.shared, [{ target: { repo: REPO, number: 7 }, tasks: ['T3', 'T9'] }]);
+      assert.equal(plan.unchanged, 0);
+    }
+  });
+
   it('plans in issue order and sends whole changes within the run, leaving the rest for the next run', () => {
     // Each change swaps a label: two writes, so the run's writes hold half as many changes.
     const count = PUSH_WRITES_PER_RUN / 2 + 3;
