@@ -289,6 +289,35 @@ export function staleRunDirs(names: readonly string[], alive: (pid: number) => b
   });
 }
 
+/** Removes one folder with everything in it; throws when it cannot. */
+export type RemoveFolder = (path: string) => void;
+
+/**
+ * Removes each run folder through `remove` and returns a line for each one it could not. A process that outlived its
+ * run, such as a test's child its kill missed, can keep a file or its working folder there open, and Windows then
+ * refuses the removal. A leftover folder never fails the gate: the run still reports its own result, and the next run
+ * tries the folder again (T4233).
+ */
+export function removeRunDirs(paths: readonly string[], remove: RemoveFolder): string[] {
+  const left: string[] = [];
+  for (const path of paths) {
+    try {
+      remove(path);
+    } catch (error) {
+      left.push(`could not remove ${path} (${removalProblem(error)}); a process may still use it, and a later run tries again`);
+    }
+  }
+  return left;
+}
+
+/** An error's code, such as EPERM, else its message. */
+function removalProblem(error: unknown): string {
+  if (error instanceof Error) {
+    return 'code' in error && typeof error.code === 'string' ? error.code : error.message;
+  }
+  return String(error);
+}
+
 const LCOV_FIELDS:Readonly<Record<string, readonly [Metric, keyof Counts]>> = {
   LF: ['lines', 'found'],
   LH: ['lines', 'hit'],

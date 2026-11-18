@@ -13,6 +13,7 @@ import {
   coverageTotals,
   parsePolicy,
   POLICY_FILE,
+  removeRunDirs,
   runDirPrefix,
   SOURCE_DIRS,
   staleRunDirs,
@@ -28,7 +29,7 @@ import { hangFinding, runSuite } from './suite-run.ts';
  * A suite that prints nothing for the policy's suiteIdleSeconds is stopped with its tree and fails as hung.
  * The run keeps its temporary files, Node's coverage folder among them, in one folder under teamrig's home
  * (`<home>/tmp/coverage`) that it removes at the end; a later run removes the folders of runs that were killed before
- * they could (#1585).
+ * they could (#1585). A folder a leftover process still holds is reported and kept, never a failed gate (T4233).
  */
 async function main(args: readonly string[]): Promise<number> {
   const { root: given, rest } = takeRoot(args);
@@ -45,9 +46,7 @@ async function main(args: readonly string[]): Promise<number> {
   const listing = listed.split('\0').filter((path) => path !== '' && existsSync(join(root, path)));
   const base = coverageTempBase(process.env, homedir());
   mkdirSync(base, { recursive: true });
-  for (const stale of staleRunDirs(readdirSync(base), isAlive)) {
-    rmSync(join(base, stale), { recursive: true, force: true });
-  }
+  reportLeft(removeRunDirs(staleRunDirs(readdirSync(base), isAlive).map((name) => join(base, name)), removeFolder));
   const out = mkdtempSync(join(base, runDirPrefix(process.pid)));
   const temp = join(out, 'tmp');
   mkdirSync(temp);
@@ -75,8 +74,16 @@ async function main(args: readonly string[]): Promise<number> {
     findings.forEach((finding) => console.log(`  ${finding}`));
     return EXIT_FINDINGS;
   } finally {
-    rmSync(out, { recursive: true, force: true });
+    reportLeft(removeRunDirs([out], removeFolder));
   }
+}
+
+function removeFolder(path: string): void {
+  rmSync(path, { recursive: true, force: true });
+}
+
+function reportLeft(lines: readonly string[]): void {
+  lines.forEach((line) => console.log(`coverage: ${line}`));
 }
 
 /** Whether a process is alive; one this user may not signal (EPERM) is alive too. */
