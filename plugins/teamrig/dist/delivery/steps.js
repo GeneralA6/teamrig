@@ -46,6 +46,37 @@ function ownPriorityOf(priorities) {
     }
 }
 /**
+ * Calls `onLimit` once a step started now has run `timeoutMs`, the time `awayMs` reports it spent without its host
+ * share not counted: when the limit falls due it reads that time and waits on by whatever is left, so a merge that gave
+ * its share away while its checks ran is never killed for the time it waited (T4218). An `awayMs` that fails counts
+ * nothing, so the step is killed at its plain limit, as before.
+ */
+export function startLimit(timeoutMs, awayMs, onLimit, now = Date.now) {
+    const startedAt = now();
+    let stopped = false;
+    let timer;
+    const check = async () => {
+        const away = awayMs === undefined ? 0 : await awayMs().catch(() => 0);
+        if (stopped) {
+            return;
+        }
+        const left = startedAt + timeoutMs + away - now();
+        if (left > 0) {
+            timer = setTimeout(() => void check(), left);
+        }
+        else {
+            onLimit();
+        }
+    };
+    timer = setTimeout(() => void check(), timeoutMs);
+    return {
+        stop: () => {
+            stopped = true;
+            clearTimeout(timer);
+        },
+    };
+}
+/**
  * The real runner: Node's `spawn` in the platform's shell, with inherited stdio, at below-normal priority
  * (`stepLaunchOf`); its time limit or its `stop` kills the tree. A killed step is reported once the kill is done, so
  * the next holder never shares the host with it.
@@ -82,10 +113,10 @@ export function nodeStepRunner(platform, kill = nodeTreeKill(platform), prioriti
                 }
                 killed = { why, done: kill(child) };
             };
-            const timer = setTimeout(() => killAs('timedOut'), request.timeoutMs);
+            const limit = startLimit(request.timeoutMs, request.awayMs, () => killAs('timedOut'));
             const onStop = () => killAs('stopped');
             const settled = () => {
-                clearTimeout(timer);
+                limit.stop();
                 request.stop?.removeEventListener('abort', onStop);
             };
             if (request.stop?.aborted === true) {
