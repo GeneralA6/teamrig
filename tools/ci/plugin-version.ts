@@ -44,10 +44,32 @@ export function readCatalog(text: string): Catalog {
   return { plugins, problems };
 }
 
+/**
+ * Which version a change's raise must beat. `base`: the base's own, for a run on GitHub, whose pull request lands on
+ * that base. `fork-point`: the merge base's, the version the branch started from, for a local run: main may have
+ * raised its version since, and the pull request's own run of this gate holds the raise above main's (stopgap T3346).
+ */
+export type RaiseFrom = 'base' | 'fork-point';
+
 /** The ends of the change to check: `base` is main (or the commit before a push), `head` the change. */
 export interface Comparison {
   readonly base: string;
   readonly head: string;
+  readonly raiseFrom: RaiseFrom;
+}
+
+/** Where the version to beat is read: the revision, and how a line names it. */
+interface RaiseOver {
+  readonly revision: string;
+  readonly label: string;
+}
+
+type Version = NonNullable<ReturnType<typeof parseVersion>>;
+
+/** The version a plugin.json gives at a revision: as written, and parsed (`undefined` when it gives no usable one). */
+interface VersionAt {
+  readonly raw: string | undefined;
+  readonly parsed: Version | undefined;
 }
 
 export interface PluginVersionDeps {
@@ -72,7 +94,28 @@ function versionField(manifest: string): string | undefined {
   return isRecord(parsed) ? stringField(parsed, 'version') : undefined;
 }
 
-async function checkPlugin(plugin: ShippedPlugin, ends: Comparison, changed: readonly string[], git: Git): Promise<Verdict> {
+async function versionAt(git: Git, revision: string, manifest: string): Promise<VersionAt> {
+  const text = await readAt(git, revision, manifest);
+  const raw = text === undefined ? undefined : versionField(text);
+  return { raw, parsed: raw === undefined ? undefined : parseVersion(raw) };
+}
+
+/**
+ * A fork-point run's note when the base has moved past the head's version: the raise passes here, and the pull
+ * request's run, which compares with the base, is the one that holds it above the base's.
+ */
+async function overtakenNote(git: Git, ends: Comparison, manifest: string, head: Version): Promise<string> {
+  if (ends.raiseFrom !== 'fork-point') {
+    return '';
+  }
+  const tip = await versionAt(git, ends.base, manifest);
+  if (tip.raw === undefined || tip.parsed === undefined || compareVersions(head, tip.parsed) > 0) {
+    return '';
+  }
+  return ` (${ends.base} gives ${tip.raw} now; the pull request's run of this gate holds the raise above it)`;
+}
+
+async function checkPlugin(plugin: ShippedPlugin, ends: Comparison, over: RaiseOver, changed: readonly string[], git: Git): Promise<Verdict> {
   const prefix = plugin.folder === '' ? '' : `${plugin.folder}/`;
   const manifest = `${prefix}.claude-plugin/plugin.json`;
   const headText = await readAt(git, ends.head, manifest);
@@ -89,19 +132,18 @@ async function checkPlugin(plugin: ShippedPlugin, ends: Comparison, changed: rea
   if (touched === 0) {
     return { ok: true, line: `${plugin.name} ${headRaw}: nothing under ${where} changed` };
   }
-  const baseText = await readAt(git, ends.base, manifest);
-  const baseRaw = baseText === undefined ? undefined : versionField(baseText);
-  const baseVersion = baseRaw === undefined ? undefined : parseVersion(baseRaw);
-  if (baseRaw === undefined || baseVersion === undefined) {
-    return { ok: true, line: `${plugin.name} ${headRaw}: the base gives no version to raise` };
+  const from = await versionAt(git, over.revision, manifest);
+  if (from.raw === undefined || from.parsed === undefined) {
+    return { ok: true, line: `${plugin.name} ${headRaw}: ${over.label} gives no version to raise` };
   }
-  if (compareVersions(headVersion, baseVersion) > 0) {
-    return { ok: true, line: `${plugin.name} ${baseRaw} -> ${headRaw}: ${touched} file(s) under ${where} changed` };
+  if (compareVersions(headVersion, from.parsed) > 0) {
+    const note = await overtakenNote(git, ends, manifest, headVersion);
+    return { ok: true, line: `${plugin.name} ${from.raw} -> ${headRaw}: ${touched} file(s) under ${where} changed${note}` };
   }
   return {
     ok: false,
     line:
-      `${plugin.name}: ${touched} file(s) under ${where} changed, but ${manifest} still gives ${headRaw} (the base: ${baseRaw}); ` +
+      `${plugin.name}: ${touched} file(s) under ${where} changed, but ${manifest} still gives ${headRaw} (${over.label}: ${from.raw}); ` +
       'raise it, or installed copies never receive the change',
   };
 }
@@ -109,7 +151,8 @@ async function checkPlugin(plugin: ShippedPlugin, ends: Comparison, changed: rea
 /**
  * The release check: a change to anything under a plugin's folder must raise that plugin's
  * plugin.json version above the base's, because `claude plugin update` moves an install only when
- * the version rises; and no marketplace entry may give a version of its own.
+ * the version rises; and no marketplace entry may give a version of its own. `ends.raiseFrom` says whether the raise
+ * must beat the base's version or the fork point's.
  */
 export async function checkPluginVersions(ends: Comparison, deps: PluginVersionDeps): Promise<number> {
   const catalogText = await readAt(deps.git, ends.head, MARKETPLACE);
@@ -127,8 +170,9 @@ export async function checkPluginVersions(ends: Comparison, deps: PluginVersionD
   for (const problem of catalog.problems) {
     deps.out(`plugin-version: ${problem}`);
   }
+  const over: RaiseOver = ends.raiseFrom === 'fork-point' ? { revision: mergeBase, label: 'the fork point' } : { revision: ends.base, label: 'the base' };
   for (const plugin of catalog.plugins) {
-    const verdict = await checkPlugin(plugin, ends, changed, deps.git);
+    const verdict = await checkPlugin(plugin, ends, over, changed, deps.git);
     deps.out(`plugin-version: ${verdict.line}`);
     failures += verdict.ok ? 0 : 1;
   }

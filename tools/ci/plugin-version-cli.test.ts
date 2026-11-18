@@ -7,7 +7,10 @@ import { TempRepo } from '../lib/temp-repo.ts';
 
 const CLI = fileURLToPath(new URL('./plugin-version-cli.ts', import.meta.url));
 const MANIFEST = 'plugins/demo/.claude-plugin/plugin.json';
-const UNRAISED = `plugin-version: demo: 1 file(s) under plugins/demo/ changed, but ${MANIFEST} still gives 0.1.0 (the base: 0.1.0); raise it, or installed copies never receive the change\n`;
+/** The failure line for a change that kept 0.1.0: a local run names the fork point, a --github run the base. */
+function unraised(over: 'the fork point' | 'the base'): string {
+  return `plugin-version: demo: 1 file(s) under plugins/demo/ changed, but ${MANIFEST} still gives 0.1.0 (${over}: 0.1.0); raise it, or installed copies never receive the change\n`;
+}
 
 describe('plugin-version cli', () => {
   let repo: TempRepo;
@@ -34,12 +37,30 @@ describe('plugin-version cli', () => {
   it('fails a change to the plugin that keeps the version, and passes it once the version rises', () => {
     repo.write('plugins/demo/hooks/a.ts', 'export const a = 2;\n');
     commit('change a');
-    assert.deepEqual(repo.run(CLI, ['--base', 'main']), { status: 1, stdout: UNRAISED, stderr: '' });
+    assert.deepEqual(repo.run(CLI, ['--base', 'main']), { status: 1, stdout: unraised('the fork point'), stderr: '' });
     repo.write(MANIFEST, JSON.stringify({ name: 'demo', version: '0.1.1' }));
     commit('release 0.1.1');
     const raised = repo.run(CLI, ['--base', 'main']);
     assert.equal(raised.status, 0, raised.stderr);
     assert.equal(raised.stdout, 'plugin-version: demo 0.1.0 -> 0.1.1: 2 file(s) under plugins/demo/ changed\n');
+  });
+
+  it('passes a local run whose raise main overtook since the branch was cut, which --github still fails (T4254)', () => {
+    repo.write('plugins/demo/hooks/a.ts', 'export const a = 5;\n');
+    repo.write(MANIFEST, JSON.stringify({ name: 'demo', version: '0.1.1' }));
+    const head = commit('change a, release 0.1.1');
+    repo.git('checkout', '-q', 'main');
+    repo.write(MANIFEST, JSON.stringify({ name: 'demo', version: '0.2.0' }));
+    const raisedMain = commit('release 0.2.0');
+    repo.git('checkout', '-q', 'change');
+    const local = repo.run(CLI, ['--base', 'main']);
+    assert.equal(local.status, 0, local.stderr);
+    assert.equal(local.stdout, "plugin-version: demo 0.1.0 -> 0.1.1: 2 file(s) under plugins/demo/ changed (main gives 0.2.0 now; the pull request's run of this gate holds the raise above it)\n");
+    const event = join(repo.outside, 'event.json');
+    writeFileSync(event, JSON.stringify({ pull_request: { base: { sha: raisedMain, repo: { full_name: 'owner/demo' } }, head: { sha: head, repo: { full_name: 'owner/demo' } } } }));
+    const github = repo.run(CLI, ['--github'], { GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: event, GITHUB_SHA: head });
+    assert.equal(github.status, 1, github.stderr);
+    assert.match(github.stdout, /still gives 0\.1\.1 \(the base: 0\.2\.0\)/);
   });
 
   it('compares with origin/main by default', () => {
@@ -57,7 +78,7 @@ describe('plugin-version cli', () => {
     const event = join(repo.outside, 'event.json');
     writeFileSync(event, JSON.stringify({ pull_request: { base: { sha: mainSha, repo: { full_name: 'owner/demo' } }, head: { sha: head, repo: { full_name: 'owner/demo' } } } }));
     const env = { GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: event, GITHUB_SHA: head };
-    assert.deepEqual(repo.run(CLI, ['--github'], env), { status: 1, stdout: UNRAISED, stderr: '' });
+    assert.deepEqual(repo.run(CLI, ['--github'], env), { status: 1, stdout: unraised('the base'), stderr: '' });
   });
 
   it("passes a fork's pull request that keeps the version: the release pull request after its merge raises it (T3029)", () => {

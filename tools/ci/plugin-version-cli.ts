@@ -30,7 +30,9 @@ async function main(): Promise<number> {
     console.log('plugin-version: no base commit to compare with (a new branch), nothing to check');
     return EXIT_CLEAN;
   }
-  return checkPluginVersions({ base: ends.base, head: ends.head }, { git: createGit(process.cwd()), out: (line) => console.log(line) });
+  // A local run judges the raise against the fork point: main may have raised since, and the pull request's run holds it.
+  const raiseFrom = event === null ? 'fork-point' : 'base';
+  return checkPluginVersions({ base: ends.base, head: ends.head, raiseFrom }, { git: createGit(process.cwd()), out: (line) => console.log(line) });
 }
 
 process.exitCode = await runMain('plugin-version', main, (line) => console.error(line));
