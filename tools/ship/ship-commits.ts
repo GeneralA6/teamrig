@@ -1,7 +1,7 @@
 import { DEFAULT_COMMITS } from '../../src/config/defaults.ts';
 import { stampTrailer } from '../../src/core/stamp.ts';
 import { pathMatcher, weighCommit, type CommitWeight, type FileChange } from '../../src/push-guard/commit-size.ts';
-import { workChanges, type ClearMerge, type WorkCommit } from './approval.ts';
+import { workChanges, type ClearMerge, type StrayStamp, type WorkCommit } from './approval.ts';
 import { freeBranch } from './branch-names.ts';
 import type { BuildStep } from './build-steps.ts';
 import type { CheckScope } from '../ci/check-scope.ts';
@@ -55,6 +55,8 @@ export interface ShipDeps {
   patchOf: (rev: string) => string;
   /** The work commits `rev` carries over origin's main, with their patch ids (approval.ts `workCommitsOf`). */
   workOf: (rev: string) => readonly WorkCommit[];
+  /** The release stamps `rev` adds over origin's main at a version it does not ship in (approval.ts `strayStamps`). */
+  strayStampsOf: (rev: string) => readonly StrayStamp[];
 }
 
 /** The approved head a --merge run started from, and the fingerprint of its change, which the push must still carry. */
@@ -212,6 +214,24 @@ function refuseEmptyChunks(deps: ShipDeps, chunks: readonly Chunk[], versionPath
 }
 
 /**
+ * Refuses a change whose work commits add a release stamp at a version it does not ship in, or whose raise leaves one
+ * at another, before the build and the checks: the approval hash counts such a stamp as work at review and as masked
+ * once the merge's raise sets it, so the merge would refuse the approved head as changed (T4259). The work is read at
+ * the last work commit, the head its approver reviews, then with the raise; the commits stay for the rerun to take
+ * back, as after a failed gate.
+ */
+function refuseStrayStamps(deps: ShipDeps, raises: number): void {
+  const reads: readonly (readonly [string, string])[] = raises === 0 ? [['HEAD', 'the work commits add']] : [[`HEAD~${raises}`, 'the work commits add'], ['HEAD', 'the raise leaves']];
+  for (const [rev, what] of reads) {
+    const stray = deps.strayStampsOf(rev)[0];
+    if (stray === undefined) continue;
+    throw new Error(
+      `REFUSED ${what} the release stamp ${stray.version} in ${stray.path}, a version this change does not ship in (${stray.shipsIn.join(' or ')}): set it to the version the raise sets, in the commit that adds it, then ship again`,
+    );
+  }
+}
+
+/**
  * Takes back the commits of a run without --merge that its approver does not review: the raise chunks (isRaiseOnly)
  * and the dist commit, the newest commits (withRaiseLast), never pushed since this run made them. The
  * raise stays in the working tree, uncommitted, so the --merge run finds its chunk to commit; the dist goes back to
@@ -249,6 +269,7 @@ async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDep
   // on the pull request, so a second full run here would hold the ship slot for nothing (T3414).
   const scope: CheckScope = args.merge && deps.mergeChecks === 'changed' ? 'short' : 'full';
   for (const chunk of chunks) commit(deps, chunk.files, chunk.subject, chunk.body);
+  refuseStrayStamps(deps, chunks.filter((chunk) => isRaiseOnly(chunk, raisePaths)).length);
 
   for (const step of deps.buildSteps()) deps.node(step);
   deps.run('git', ['add', '--', DIST]);
