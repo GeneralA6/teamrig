@@ -2018,7 +2018,8 @@ describe('HostLock setting a share aside while its step waits on a remote servic
     const held = shareIn(files, SHARED);
     const aside = await lock.setAside('t1');
     assert.ok(aside.kind === 'aside');
-    assert.deepEqual([aside.share.id, aside.share.request?.kind, await files.list(SHARED), shareIn(files, AWAY)], ['t1', 'merge', [], held]);
+    assert.ok(isRecord(held));
+    assert.deepEqual([aside.share.id, aside.share.request?.kind, await files.list(SHARED), shareIn(files, AWAY)], ['t1', 'merge', [], { ...held, awayAt: '2030-01-08T10:00:00.000Z' }]);
     const ship = await lockOver(files, clock, OTHER, clock.sleep, PIPELINE).acquire('bravo', 'heavy: ship', 0, 30_000, () => undefined, { request: SHIP });
     assert.equal(ship.kind, 'taken');
   });
@@ -2048,7 +2049,7 @@ describe('HostLock setting a share aside while its step waits on a remote servic
       await lock.release(taking.lock);
     };
     await step('bravo');
-    assert.deepEqual(shareIn(files, AWAY), kept, 'its step still runs');
+    assert.deepEqual(shareIn(files, AWAY), { ...kept, awayAt: '2030-01-08T10:00:00.000Z' }, 'its step still runs');
     const killed = { ...kept, pid: 7777 };
     await files.write(`${AWAY}/t1.json`, JSON.stringify(killed));
     await step('charlie');
@@ -2067,9 +2068,57 @@ describe('HostLock setting a share aside while its step waits on a remote servic
     assert.equal(back.kind, 'taken');
     assert.deepEqual(
       [shareIn(files, SHARED), shareIn(files, AWAY)],
-      [{ ...aside.share, pid: ME, acquiredAt: '2030-01-08T10:20:00.000Z', expiresAt: '2030-01-08T12:50:00.000Z' }, undefined],
-      'its id, its process, what it asked and its MB; taken now',
+      [{ ...aside.share, pid: ME, acquiredAt: '2030-01-08T10:20:00.000Z', expiresAt: '2030-01-08T12:50:00.000Z', awayMs: 20 * 60_000 }, undefined],
+      'its id, its process, what it asked and its MB, and the 20 minutes it was away; taken now',
     );
+  });
+
+  it('reports the time its step spent away while away, back in line and after it took its share back, summed over each time it stepped away (T4218)', async () => {
+    const { files, clock, lock } = await merging();
+    assert.equal(await lock.awayMs('t1'), 0, 'never away');
+    await lock.setAside('t1');
+    clock.advance(10 * 60_000);
+    assert.equal(await lock.awayMs('t1'), 10 * 60_000, 'away');
+    // Its own lock, so the ship's id is not t1's.
+    const ship = await lock.acquire('bravo', 'heavy: ship', 0, 30_000, () => undefined, { request: SHIP });
+    assert.ok(ship.kind === 'taken');
+    assert.equal((await lock.takeBack('t1', 0, 30_000, () => undefined)).kind, 'busy');
+    clock.advance(10 * 60_000);
+    assert.equal(await lock.awayMs('t1'), 20 * 60_000, 'back in line behind a ship');
+    await lock.release(ship.lock);
+    assert.equal((await lock.takeBack('t1', 0, 30_000, () => undefined)).kind, 'taken');
+    clock.advance(5 * 60_000);
+    assert.equal(await lock.awayMs('t1'), 20 * 60_000, 'taken back: the time it runs since counts');
+    await lock.setAside('t1');
+    clock.advance(3 * 60_000);
+    assert.equal(await lock.awayMs('t1'), 23 * 60_000, 'away a second time');
+    assert.equal((await lock.takeBack('t1', 0, 30_000, () => undefined)).kind, 'taken');
+    assert.deepEqual([await lock.awayMs('t1'), await lock.awayMs('nope'), await lock.awayMs('../x')], [23 * 60_000, 0, 0]);
+  });
+
+  it('drops an unreadable away time, counting nothing for it and keeping its share valid (T4218)', async () => {
+    const { files, clock, lock } = await merging();
+    await lock.setAside('t1');
+    const away = shareIn(files, AWAY);
+    assert.ok(isRecord(away));
+    await files.write(`${AWAY}/t1.json`, JSON.stringify({ ...away, awayMs: -5, awayAt: 'soon' }));
+    clock.advance(60_000);
+    assert.equal(await lock.awayMs('t1'), 0);
+    assert.equal((await lock.takeBack('t1', 0, 30_000, () => undefined)).kind, 'taken');
+    const held = shareIn(files, SHARED);
+    assert.ok(isRecord(held));
+    await files.write(`${SHARED}/t1.json`, JSON.stringify({ ...held, awayMs: 'long' }));
+    assert.equal(await lock.awayMs('t1'), 0);
+    assert.equal((await lock.setAside('t1')).kind, 'aside', 'the share still reads');
+  });
+
+  it('reads the away time a lock holding the whole host carries, and 0 for a lock of another id (T4218)', async () => {
+    const whole = world({}, undefined, undefined, PIPELINE);
+    const taking = await whole.lock.acquire('alpha', 'heavy: merge', 0, 30_000, () => undefined, { request: MERGE, exclusive: true });
+    assert.ok(taking.kind === 'taken');
+    assert.equal(await whole.lock.awayMs(taking.lock.id), 0);
+    await whole.files.write(PATH, JSON.stringify({ ...taking.lock, awayMs: 5 * 60_000 }));
+    assert.deepEqual([await whole.lock.awayMs(taking.lock.id), await whole.lock.awayMs('nope')], [5 * 60_000, 0]);
   });
 
   it('waits in line for the slot when a ship took it meanwhile, keeping the share aside when its wait runs out', async () => {
