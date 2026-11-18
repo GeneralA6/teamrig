@@ -396,6 +396,20 @@ describe('wakeRestOf', () => {
     assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0, paused: false, teamDay: room }), undefined, NOW, 0), { held: false, quiet: false });
   });
 
+  it('holds a session within its own part while teamrig budget names its team held for the day, its kept work capped at p0 (#1737)', () => {
+    const lift = { session: 'alpha', group: false, partPct: 40, stopPct: 97, endsAt: NOW + 60 * MINUTE, reserve: false, quietHoursExempt: false, reason: 'p1 work', by: 'lead', at: NOW - MINUTE };
+    const teamPast = { usedPct: 5.2, partPct: 4.7 };
+    const held = wakeRestOf(facts({ usedTodayPct: 0.5, teamToday: teamPast }), undefined, NOW, 0);
+    assert.deepEqual(held, { held: true, quiet: false });
+    assert.equal(effectivePriority(1, held, undefined), 0);
+    // Room today, the team within its part, or a leader's lift for the session: kept on its own part.
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0.5, teamToday: teamPast, teamDay: { usedPct: 4.9, pacePct: 5 } }), undefined, NOW, 0), { held: false, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0.5, teamToday: { usedPct: 4.6, partPct: 4.7 } }), undefined, NOW, 0), { held: false, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0.5, teamToday: teamPast, lift }), undefined, NOW, 0), { held: false, quiet: false });
+    // The wake's own turn counts as spent for the team too.
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0.5, teamToday: { usedPct: 4.69, partPct: 4.7 } }), undefined, NOW, COLD_WAKE_W), { held: true, quiet: false });
+  });
+
   it('lets a burst hold a paused session up: its floor is the budget it goes by (T1598)', () => {
     const burst = { kind: 'surplus', sessions: ['alpha'], helpers: 1, hires: 0, dailyPct: 2, stopPct: 97, endsAt: NOW + 60 * MINUTE, tasks: [], reason: 'spare week', by: 'lead', at: NOW - MINUTE } as const;
     assert.deepEqual(wakeRestOf(facts({ budgetPct: 2, paused: true, burst }), undefined, NOW, 0), { held: false, quiet: false });
