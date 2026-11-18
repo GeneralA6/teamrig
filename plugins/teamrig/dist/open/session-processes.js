@@ -227,6 +227,20 @@ export function nodeSessionProcesses(options = {}) {
     });
     const feedTimeoutMs = options.feedTimeoutMs ?? FEED_TIMEOUT_MS;
     const sweepHost = options.sweepHost ?? windowsSweepHost;
+    const list = async () => {
+        try {
+            if (platform === 'win32') {
+                const result = await run({ program: 'powershell.exe', args: windowsListing() });
+                return result.end.kind === 'exited' && result.end.code === 0 ? parseWindowsListing(result.stdout) : undefined;
+            }
+            // A process whose starter ends is adopted (its parent id changes), so no id in this listing is an ended starter's.
+            const result = await run({ program: 'ps', args: POSIX_LISTING });
+            return result.end.kind === 'exited' && result.end.code === 0 ? parsePosixListing(result.stdout).map((info) => ({ info })) : undefined;
+        }
+        catch {
+            return undefined;
+        }
+    };
     return {
         parentPid: options.parentPid ?? process.ppid,
         alive(pid) {
@@ -278,20 +292,10 @@ export function nodeSessionProcesses(options = {}) {
             if (!isPid(pid)) {
                 return undefined;
             }
-            try {
-                if (platform === 'win32') {
-                    const result = await run({ program: 'powershell.exe', args: windowsListing() });
-                    const listed = result.end.kind === 'exited' && result.end.code === 0 ? parseWindowsListing(result.stdout) : undefined;
-                    return listed === undefined ? undefined : lineageOf(pid, listed);
-                }
-                // A process whose starter ends is adopted (its parent id changes), so no id in this listing is an ended starter's.
-                const result = await run({ program: 'ps', args: POSIX_LISTING });
-                return result.end.kind === 'exited' && result.end.code === 0 ? lineageOf(pid, parsePosixListing(result.stdout).map((info) => ({ info }))) : undefined;
-            }
-            catch {
-                return undefined;
-            }
+            const listed = await list();
+            return listed === undefined ? undefined : lineageOf(pid, listed);
         },
+        list,
         async end(pid, how) {
             if (!isPid(pid)) {
                 return { kind: 'gone' };
