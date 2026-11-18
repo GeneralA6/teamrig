@@ -9,7 +9,7 @@ export function restoreLaunchers(kitHome) {
 }
 /** The step that writes `launcher` over `there` (the text the file holds now, undefined for none), when `mode` calls for one. */
 function launcherWrite(files, launcher, there, mode) {
-    const due = there !== launcher.text && (mode === 'install' || there !== undefined);
+    const due = there !== launcher.text && (mode === 'install' || there !== undefined || launcher.create === true);
     return due ? [{ line: `WRITE ${launcher.path}`, act: () => files.write(launcher.path, launcher.text) }] : [];
 }
 /** The step that writes `launcher` when `mode` calls for one, reading the file first. */
