@@ -8,9 +8,10 @@ import { type RepoProfile, slugOf } from '../ship/repos.ts';
  * - `light`: the pre-push checks of a repo whose main merges on GitHub's required checks (the `ci` gate): the
  *   scrubs, the commit checks, the typecheck, the compile, the plugin's tests and the docs' checks, about
  *   45 s. The whole suite, the dist checks and the fresh install are left to CI, which runs them on every OS.
- * - `short`: the scrub, the DCO sign-off, the typecheck and the changed files' specs. It is for a branch of a repo
- *   whose main merges only on GitHub's required checks (repos.json `"mergeChecks": "changed"`), which run the whole
- *   suite on the pull request.
+ * - `short`: the commit checks (scrub, DCO sign-off, size rule, subjects), the typecheck and the changed files' specs;
+ *   every check when a changed file is part of the gate itself (local-checks.ts `gateChanges`, T4080). It is for a
+ *   branch of a repo whose main merges only on GitHub's required checks (repos.json `"mergeChecks": "changed"`), which
+ *   run the whole suite on the pull request.
  * A light or short proof's record lives apart, in `light/` or `short/`, so no reader of a pass record (a full proof,
  * `teamrig merge`'s self-merge gates) ever takes it for one, and neither takes the other's.
  */

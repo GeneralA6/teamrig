@@ -78,7 +78,10 @@ function signedScrubbed(base: string): readonly LocalCheck[] {
   ];
 }
 
-/** The size rule and the commit subjects of the commits since the base. */
+/**
+ * The size rule and the commit subjects of the commits since the base. Each takes under a second, and a miss found
+ * only at CI means a rewritten, re-pushed branch, so a short proof runs them too (security's condition C1, T4080).
+ */
 function commitShape(base: string): readonly LocalCheck[] {
   return [
     { name: 'size rule', argv: ['node', 'tools/ci/size-rule-cli.ts', '--base', base] },
@@ -87,13 +90,35 @@ function commitShape(base: string): readonly LocalCheck[] {
 }
 
 /**
- * The short checks (check-scope.ts, T3414): the scrub, the DCO sign-off, the typecheck and the given specs, for a
- * branch whose main merges only on GitHub's required checks, which run the whole suite on the pull request. The
- * pre-push hook runs `teamrig secrets pushed` before them. With no spec to run, the specs' check is left out.
+ * The short checks (check-scope.ts, T3414): the commit checks (scrub, DCO sign-off, size and subjects), the typecheck
+ * and the given specs, for a branch whose main merges only on GitHub's required checks, which run the whole suite on
+ * the pull request. The pre-push hook runs `teamrig secrets pushed` before them. With no spec to run, the specs' check
+ * is left out.
  */
 export function shortChecks(base: string, specs: readonly string[]): readonly LocalCheck[] {
-  const checks = [...signedScrubbed(base), TYPECHECK];
+  const checks = [...commitChecks(base), TYPECHECK];
   return specs.length === 0 ? checks : [...checks, { name: 'changed specs', argv: ['node', '--test', ...specs] }];
+}
+
+/**
+ * The paths whose change makes a short proof run every check (security's condition C2, T4080): the gate itself (its
+ * hooks, CI workflows, local and ship tools, the push guard) and what every spec depends on (the package, its lockfile
+ * and the TypeScript configs). A change there can break a spec no changed file sits beside, or the gate that would
+ * find it, so the short set proves too little.
+ */
+const GATE_PATHS: readonly RegExp[] = [
+  /^\.githooks\//,
+  /^\.github\//,
+  /^tools\/ci\//,
+  /^tools\/ship\//,
+  /^src\/push-guard\//,
+  /^package(-lock)?\.json$/,
+  /^tsconfig[^/]*\.json$/,
+];
+
+/** The changed paths that change the gate itself (GATE_PATHS), in the order given. */
+export function gateChanges(changed: readonly string[]): string[] {
+  return changed.filter((path) => GATE_PATHS.some((pattern) => pattern.test(path)));
 }
 
 const SPEC = /\.test\.ts$/;
