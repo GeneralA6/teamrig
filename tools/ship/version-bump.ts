@@ -79,6 +79,7 @@ export const TEAMRIG_VERSION_FILES: readonly VersionFile[] = [
  */
 export const TEAMRIG_RELEASE_STAMPS: readonly ReleaseStamp[] = [
   { path: 'src/config/migrate.ts', pattern: /(firstRelease: ')(\d+\.\d+\.\d+)(')/, shipsIn: TEAMRIG_KIT_VERSION },
+  // Read with `.test`: no `g` or `y` flag, which would make it remember its last match between files.
   { path: /(?:^|\/)[^/]+\.md$|^plugins\/teamrig\/config\.schema\.json$/, pattern: /(\bsince )(\d+\.\d+\.\d+)()/, shipsIn: TEAMRIG_KIT_VERSION },
 ];
 

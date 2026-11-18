@@ -7,7 +7,9 @@ import { test } from 'node:test';
 import type { MergeClearance, WorkCommit } from './approval.ts';
 import type { GateVerdict } from './local-gate.ts';
 import type { MainMove, MergeExit } from './merge.ts';
-import { DIST, leaveForReview, parseNumstat, SHIP_ATTEMPTS, shipCommits, weighDist, type ShipDeps } from './ship-commits.ts';
+import { DIST, leaveForReview, parseNumstat, raisePathsOf, SHIP_ATTEMPTS, shipCommits, weighDist, type ShipDeps } from './ship-commits.ts';
+import { isRaiseOnly } from './ship-plan.ts';
+import { TEAMRIG_RELEASE_STAMPS, TEAMRIG_VERSION_FILES } from './version-bump.ts';
 import type { MergeChecks } from './repos.ts';
 import type { Chunk, ShipArgs } from './ship-plan.ts';
 import type { SyncResult } from './sync.ts';
@@ -555,4 +557,15 @@ test('weighDist holds the dist to the default size rule: over 400 lines or over 
   const files = (count: number): string => Array.from({ length: count }, (_, index) => `1\t0\t${DIST}/f${index}.js`).join('\n');
   assert.equal(weighDist(parseNumstat(files(15))).large, false);
   assert.equal(weighDist(parseNumstat(files(16))).large, true);
+});
+
+test('raisePathsOf: only path stamps join the raise, so a raise chunk that also edits Markdown stays work (#1411)', () => {
+  const raise = raisePathsOf(TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS);
+  assert.deepEqual(raise.stamps, ['src/config/migrate.ts']);
+  const [version] = TEAMRIG_VERSION_FILES;
+  assert.ok(version !== undefined);
+  assert.equal(isRaiseOnly({ files: [version.path, 'src/config/migrate.ts'], subject: 'plugin: version', body: '' }, raise), true);
+  for (const docs of ['README.md', 'docs/commands.md', 'plugins/teamrig/config.schema.json']) {
+    assert.equal(isRaiseOnly({ files: [version.path, docs], subject: 'plugin: version', body: '' }, raise), false, docs);
+  }
 });

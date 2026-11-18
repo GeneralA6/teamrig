@@ -10,7 +10,7 @@ import type { MainMove, MergeExit } from './merge.ts';
 import { isRaiseOnly, withRaiseLast, withRaisedVersion, type Chunk, type RaisePaths, type ShipArgs } from './ship-plan.ts';
 import type { MergeChecks } from './repos.ts';
 import type { SyncResult } from './sync.ts';
-import { TEAMRIG_RELEASE_STAMPS, TEAMRIG_VERSION_FILES } from './version-bump.ts';
+import { TEAMRIG_RELEASE_STAMPS, TEAMRIG_VERSION_FILES, type ReleaseStamp, type VersionFile } from './version-bump.ts';
 
 /** The folder `npm run build` writes, committed apart from the plan's chunks. */
 export const DIST = 'plugins/teamrig/dist';
@@ -228,10 +228,19 @@ export function leaveForReview(deps: ShipDeps, raises: readonly Chunk[], distCom
 left for review: the work commits; the version raise is uncommitted and the dist is the head's, as the --merge run commits both`);
 }
 
+/**
+ * The files a raise chunk may hold: the version files and the release stamps named by path. A pattern stamp (the docs
+ * `since` stamp, any `*.md`) stays out, so a raise chunk that also edits a guide or README is work, reviewed with the
+ * rest, not taken back as the raise (#1411).
+ */
+export function raisePathsOf(versionFiles: readonly VersionFile[], stamps: readonly ReleaseStamp[]): RaisePaths {
+  return { versions: versionFiles.map((file) => file.path), stamps: stamps.flatMap((stamp) => (typeof stamp.path === 'string' ? [stamp.path] : [])) };
+}
+
 /** One run of steps 0 to 6. */
 async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDeps, approved: ApprovedChange | null): Promise<MergeExit> {
-  const versionPaths = TEAMRIG_VERSION_FILES.map((file) => file.path);
-  const raisePaths: RaisePaths = { versions: versionPaths, stamps: TEAMRIG_RELEASE_STAMPS.map((stamp) => stamp.path) };
+  const raisePaths = raisePathsOf(TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS);
+  const versionPaths = raisePaths.versions;
   deps.takeBack(withRaiseLast(written, raisePaths), args.base);
   const chunks = withRaiseLast(withRaisedVersion(written, versionPaths, deps.sync().sets), raisePaths);
   refuseEmptyChunks(deps, chunks, versionPaths);
