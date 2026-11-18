@@ -5148,7 +5148,11 @@ on still runs when the tool's own code is the same. A closure that cannot be rea
 outside the checkout, a roots file that is not that JSON or names a path outside the checkout, more than 2000 files) runs only at the queued commit or the newest main (`REFUSED the ship tool ... is not
 origin/main's current code in a checkout with no change: run git -C <checkout> fetch -q origin && git -C <checkout>
 checkout -q --detach origin/main, then queue the step again`), and the refusal of a changed tool names its changed
-files (`REFUSED the ship tool ... changed from <commit> while the step waited (tools/ship/repos.ts) and is not ...`). A git read of that checkout that got no answer (git did not start, was
+files (`REFUSED the ship tool ... changed from <commit> while the step waited (tools/ship/repos.ts) and is not ...`).
+The newest main is the remote's own head, asked with `git ls-remote` as the step starts, not the local origin/main
+alone: the code the tool runs must be the same as at that head, so a local ref that is only behind decides nothing. A
+head the checkout has not fetched, or a local origin/main that is neither that head nor behind it, is REFUSED with the
+same fetch and checkout to run. A remote that gives no head counts as a read that got no answer, below. A git read of that checkout that got no answer (git did not start, was
 stopped, or died starting, as under a burst of new processes) says nothing of the tool: as the step is queued it pins
 no commit, so only the newest main runs, and the check reads again up to 4 times, 15 s apart, before it is REFUSED
 naming the read and git's error (`REFUSED could not read the checkout of the ship tool ..., so the step did not run:
