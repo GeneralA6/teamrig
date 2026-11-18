@@ -1,5 +1,7 @@
+import type { Roster } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
 import { errorMessage } from '../core/guards.ts';
+import type { TeamPaths } from '../core/home.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { inboxLineOf, postLine } from '../inbox/inbox.ts';
 import { lineHash } from '../inbox/line-hash.ts';
@@ -47,14 +49,30 @@ export async function postUrgentLine(runtime: CliRuntime, kit: Kit, config: KitC
   } catch (error) {
     return `not posted: ${errorMessage(error)}`;
   }
+  const problem = await askWake(runtime, { paths: kit.paths, config, roster: async () => rosterOf(runtime, kit, config) }, { ...line, text }, at);
+  return problem === undefined ? undefined : `posted to the inbox, but ${problem}`;
+}
+
+/** The team a wake ask goes to: where its files are, its config, and its roster, read only for a closed receiver. */
+export interface WakePlace {
+  readonly paths: TeamPaths;
+  readonly config: KitConfig;
+  readonly roster: () => Promise<Roster>;
+}
+
+/**
+ * The wake ask that makes a line already in its receiver's inbox wake it ({@link urgentAskOf}); a session teamrig
+ * closed has no tab to take the ask, so its reopen starts now, or stderr says why not (#1581). Why the ask was not
+ * posted, or undefined once it is.
+ */
+export async function askWake(runtime: CliRuntime, place: WakePlace, line: UrgentLine, at: number): Promise<string | undefined> {
   try {
-    await new WakeAsks(runtime.files, kit.paths.wakeAsks).post(line.to, urgentAskOf(line, text, at));
+    await new WakeAsks(runtime.files, place.paths.wakeAsks).post(line.to, urgentAskOf(line, line.text, at));
   } catch (error) {
-    return `posted to the inbox, but it does not wake ${line.to}: ${errorMessage(error)}`;
+    return `it does not wake ${line.to}: ${errorMessage(error)}`;
   }
-  // A session teamrig closed has no tab to take the ask: its reopen starts now, or the caller is told why not (#1581).
-  if (await closedByTeamrig(runtime, kit, line.to)) {
-    const said = closedWakeLine(await wakeClosedSession(runtime, kit, config, await rosterOf(runtime, kit, config), line.to), line.to, line.to);
+  if (await closedByTeamrig(runtime, place, line.to)) {
+    const said = closedWakeLine(await wakeClosedSession(runtime, place, place.config, await place.roster(), line.to), line.to, line.to);
     if (said !== undefined) {
       runtime.out.stderr(said);
     }
