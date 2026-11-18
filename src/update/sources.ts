@@ -83,6 +83,12 @@ export function marketplaceSourceOf(knownText: string, name: string): Marketplac
 /**
  * The folder of `plugin` in a marketplace, relative to its root and with no `./` or trailing slash (`plugins/teamrig`;
  * `` for the root itself); undefined when the marketplace does not list it there, or names another kind of source.
+ *
+ * A `git-subdir` source (`{"source": "git-subdir", "url": ..., "path": "plugins/teamrig", "ref": "release"}`) installs
+ * the folder `path` of another branch. Its folder is read here in the marketplace's own commit all the same: each
+ * tracked plugin's release branch is a commit of its main with the build on top (tools/release/publish.ts), so main's
+ * plugin.json names the released version. A release pull request raises main's copy minutes before its branch is
+ * published; an update asked in those minutes finds the version it has, and the next check shows the band again.
  */
 export function pluginFolderOf(marketplaceText: string, plugin: string): string | undefined {
   const marketplace = parsed(marketplaceText);
@@ -93,13 +99,19 @@ export function pluginFolderOf(marketplaceText: string, plugin: string): string 
   for (const entry of plugins) {
     if (isRecord(entry) && entry['name'] === plugin) {
       const source = entry['source'];
-      if (typeof source !== 'string' || !source.startsWith('./') || source.includes('..')) {
-        return undefined;
+      if (typeof source === 'string') {
+        return source.startsWith('./') ? folderIn(source.slice(2)) : undefined;
       }
-      return source.slice(2).replace(/\/+$/, '');
+      const path = isRecord(source) && source['source'] === 'git-subdir' ? source['path'] : undefined;
+      return typeof path === 'string' && path !== '' ? folderIn(path.replace(/^\.\//, '')) : undefined;
     }
   }
   return undefined;
+}
+
+/** A relative folder without its trailing slash; undefined for one that starts at the root, climbs out or uses `\`. */
+function folderIn(path: string): string | undefined {
+  return path.startsWith('/') || path.includes('\\') || path.split('/').includes('..') ? undefined : path.replace(/\/+$/, '');
 }
 
 /** The path of a plugin's plugin.json in its marketplace, given its folder there. */
