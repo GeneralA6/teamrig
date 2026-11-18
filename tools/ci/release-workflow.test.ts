@@ -53,7 +53,14 @@ describe('release.yml', () => {
   });
 
   it('runs ci.yml on the release pull request, which the job token cannot start by opening it', () => {
-    assert.match(job('release-please'), /run: gh workflow run ci\.yml --repo "\$GITHUB_REPOSITORY" --ref "\$BRANCH"\n/);
+    assert.match(job('release-please'), /run: gh workflow run ci\.yml --repo "\$GITHUB_REPOSITORY" --ref "\$\(node -p 'JSON\.parse\(process\.env\.PR\)\.headBranchName'\)"\n/);
+  });
+
+  it('takes the release pull request in as a plain value, so a run that opens none still passes', () => {
+    // A step's env is read even when its `if` skips it, and fromJSON of an empty output fails the job (run 44371173015).
+    const text = job('release-please');
+    assert.match(text, /^ {10}PR: \$\{\{ steps\.release\.outputs\.pr \}\}$/m);
+    assert.doesNotMatch(workflow, /fromJSON\(/);
   });
 
   it('builds with the read-only token, and no package script runs at install', () => {

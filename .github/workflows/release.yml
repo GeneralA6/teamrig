@@ -48,13 +48,15 @@ jobs:
           manifest-file: .release-please-manifest.json
       # A pull request the workflow's own token opens or updates starts no workflow, so the required check would
       # never report on it. A run by hand is the one event that token may start: ci.yml runs on the release branch's
-      # head, where the pull request reads its checks.
+      # head, where the pull request reads its checks. The pull request goes in as a plain value and the script reads
+      # its branch: GitHub reads a step's env even when its `if` skips it, and fromJSON of a run's empty pr output
+      # fails the whole job.
       - name: run ci on the release pull request
         if: ${{ steps.release.outputs.pr != '' }}
-        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$(node -p 'JSON.parse(process.env.PR).headBranchName')"
         env:
           GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          PR: ${{ steps.release.outputs.pr }}
 
   build:
     name: build the plugin
