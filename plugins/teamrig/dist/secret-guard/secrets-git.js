@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { QUERY_TIMEOUT_MS } from "../core/git-run.js";
 import { COMMIT_FORMAT, PATCH_FLAGS, commitsOf, patchAdds, tagOf } from "./git-adds.js";
 import { rangeArgs } from "./push-range.js";
+import { STAGED } from "./commit-scan.js";
+import { PUBLIC_KEY_MAX_BYTES } from "./public-key.js";
 /** A patch or a log of a whole push takes longer than a query, within what a hook waits. */
 const PATCH_TIMEOUT_MS = 60_000;
 /** The most a patch or a log may print; a longer one fails the scan rather than cut it. */
@@ -37,8 +39,8 @@ function tagChain(run, dir, sha) {
  * commit is made from (`git commit -a` stages into a temporary index), which `runGit` (core/git-run.ts) drops.
  */
 export function gitSecrets(env) {
-    const run = (dir, args, timeout) => {
-        const result = spawnSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: dir, windowsHide: true, env, encoding: 'utf8', timeout, maxBuffer: MAX_OUTPUT });
+    const run = (dir, args, timeout, maxBuffer = MAX_OUTPUT) => {
+        const result = spawnSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: dir, windowsHide: true, env, encoding: 'utf8', timeout, maxBuffer });
         return result.status === 0 ? result.stdout : undefined;
     };
     return {
@@ -60,6 +62,12 @@ export function gitSecrets(env) {
         hooksDir: (dir) => {
             const path = run(dir, ['rev-parse', '--git-path', 'hooks'], QUERY_TIMEOUT_MS)?.trim();
             return path === undefined || path === '' ? undefined : resolve(dir, path);
+        },
+        // `<rev>:<path>` reads from the top folder, `:<path>` from the index. A blob past the cap overflows the buffer, which
+        // cuts the output without failing the run, so the size is checked here too: the file stays refused.
+        blob: (dir, revision, path) => {
+            const text = revision === STAGED || HEX.test(revision) ? run(dir, ['cat-file', 'blob', `${revision}:${path}`], QUERY_TIMEOUT_MS, PUBLIC_KEY_MAX_BYTES + 1) : undefined;
+            return text === undefined || Buffer.byteLength(text) > PUBLIC_KEY_MAX_BYTES ? undefined : text;
         },
     };
 }

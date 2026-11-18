@@ -1,5 +1,5 @@
 import { fileOperands } from "./operands.js";
-import { wordPath } from "./paths.js";
+import { BY_NAME, FROM_DISK, wordPath } from "./paths.js";
 /** Programs that print the content of the files they name, or of what they read on stdin. */
 const PRINTERS = new Set([
     'cat',
@@ -91,7 +91,9 @@ export function fileFindings(run, rules) {
         if (ENVIRON.test(text)) {
             return [{ kind: 'environment' }];
         }
-        return rules.paths.mayName(path, { dotfiles: run.dialect !== 'bash', sets: 'bash' }) ? [{ kind: 'file', path: text }] : [];
+        // A git call prints a revision, or a diff against one, not only the working file the content check would read.
+        const source = run.name === 'git' ? BY_NAME : FROM_DISK;
+        return rules.paths.mayName(path, { dotfiles: run.dialect !== 'bash', sets: 'bash' }, source) ? [{ kind: 'file', path: text }] : [];
     });
 }
 /** The texts a word may name a file by: the word, a `--file=x` option's value, `dd if=x`; never a bare option. */
