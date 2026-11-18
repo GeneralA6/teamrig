@@ -139,7 +139,7 @@ describe('runCli: hook meeting-panel', () => {
 
     ok(await kit.run(['meeting', 'start', '--session', 'lead'], AS_WEB));
     const card = { id: 'ui/T1', title: 'Pick the icon set', summary: SUMMARY, settled: false, decision: null };
-    const watch = [WEB_MEETING_PATH, teamEventsOf('web'), teamEventsOf('ui')];
+    const watch = [WEB_MEETING_PATH, WEB_MEETINGS_PATH, teamEventsOf('web'), teamEventsOf('ui')];
     assert.deepEqual(answerOf(await webLeadPanel(kit)), { kind: 'open', startedAt: STARTED, items: [card], current: 'ui/T1', left: 1, watch });
   });
 });
