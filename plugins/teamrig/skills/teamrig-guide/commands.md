@@ -5059,7 +5059,9 @@ Then it runs the command in the shell at below-normal CPU priority (nice 10 on P
 inherits, so the owner's terminal and apps win the CPU and the step takes what they leave; a step started at a lower
 priority keeps it. A merge's or deploy's commands and checks run at that priority too. Its output streams as it
 comes, and it kills the command with every process it started
-after `delivery.queue.maxRunMinutes` (45), a `--small` step after `delivery.queue.smallMaxRunMinutes` (10): a
+after `delivery.queue.maxRunMinutes` (45), a `--small` step after `delivery.queue.smallMaxRunMinutes` (10). The
+time its share is set aside (`teamrig step-away` until `teamrig step-back` takes it back, a merge waiting on its
+pull request's checks) does not count, as the step holds nothing on the host meanwhile. A
 step that shares the host holds back every step waiting for the lock, so a hung one is cut short. The step ends, and frees the lock, only once that kill is done; on
 Windows the kill lists the host's processes again after each round and ends any process the step started while it was
 being killed. The step's start and end go to the delivery ledger,
@@ -5271,7 +5273,8 @@ WITHDRAWN heavy: build api, waiting since 2030-01-08 11:58 IST: it stops at its 
 Run inside a queued step (`teamrig queue`) while the step only waits on a remote service, such as a merge waiting
 on its pull request's checks: it sets the step's host share aside, so the ship slot, its heavy place and the MB it
 held go to the next step in line, and the step goes on running. `teamrig step-back` takes the share back before the
-step does local work again. A share set aside is dropped when the step ends, or at the next step's look once the
+step does local work again. The time from stepping away until the share is taken back, its wait in line included, does
+not count against the step's `delivery.queue.maxRunMinutes`. A share set aside is dropped when the step ends, or at the next step's look once the
 step's process is gone. `KEPT` when the step holds the whole host (an exclusive step), or when a teamrig older than
 0.448.0 runs the queue (it would not drop the share), which it keeps; `NONE` when it holds nothing. Refused outside a queued step, which
 `$TEAMRIG_HOST_LOCK` names. Exit 0 set aside, 1 `KEPT` or `NONE`.
