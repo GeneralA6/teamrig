@@ -1,5 +1,6 @@
 import { fallbackOpen, holdApproved, holdClassOf, needsCheck, REVIEW_FALLBACK_MS, reviewRoute } from "../push-guard/review-gate.js";
 import { GENERIC_REVIEW_PATHS, reviewHits } from "../push-guard/review-paths.js";
+import { branchTaskOf } from "../worktree/owner.js";
 import { holdBinds, holdId } from "./review-holds.js";
 /**
  * How the gate let a change go: the repo has no review gate (`off`), its paths hit no review entry (`untouched`), the
@@ -15,14 +16,15 @@ function clear(review) {
 function held(reason) {
     return { kind: 'held', reason };
 }
-/** A branch names its task as `t<n>-…`, after any folder part. */
-const TASK_BRANCH = /\bt([1-9]\d*)-/;
 /** A refusal names this many paths it held, then a count of the rest. */
 const HITS_SHOWN = 5;
-/** The task a branch is named after (`t828-gate` is T828); undefined when it names none. */
+/**
+ * The task a branch is named after (`t828-gate` and `feat/T828-gate` are T828); undefined when it names none. Read as
+ * the worktree owner check reads it (`branchTaskOf`), so the gates and the owner check tie a branch to the same task:
+ * only a part of the name that starts with the id counts, so `fix-t12-thing` names none (GeneralA6/teamrig#1315).
+ */
 export function taskOfBranch(branch) {
-    const number = TASK_BRANCH.exec(branch)?.[1];
-    return number === undefined ? undefined : `T${number}`;
+    return branchTaskOf(branch);
 }
 function short(sha) {
     return sha.slice(0, 8);
