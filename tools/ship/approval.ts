@@ -372,3 +372,32 @@ export function workChanges(approved: readonly WorkCommit[], head: readonly Work
   }
   return changes;
 }
+
+/**
+ * Whether a head is a rebase of the approved one (`approvedRebase`): `rebased`, with the approved head's full sha and
+ * its count of work commits; `unknown`, when the approved sha names no commit here; `differs`, naming each change.
+ */
+export type ApprovedRebase =
+  | { readonly kind: 'rebased'; readonly approved: string; readonly work: number }
+  | { readonly kind: 'unknown'; readonly reason: string }
+  | { readonly kind: 'differs'; readonly reason: string };
+
+/**
+ * Whether `head` is a rebase of the head `approved` names: the same work commits, patch for patch, in the same order
+ * (T2913), read by `workOf` (`workCommitsOf`). Main moving under an approved branch then needs no new approval, as the
+ * ship sets the version files and the dist again; a changed, dropped, added or reordered work commit differs.
+ */
+export function approvedRebase(git: GitText, workOf: (rev: string) => readonly WorkCommit[], approved: string, head: string): ApprovedRebase {
+  let full: string;
+  try {
+    full = git(['rev-parse', '--verify', '--quiet', `${approved}^{commit}`]).trim();
+  } catch {
+    return { kind: 'unknown', reason: `--approved ${approved} is not the branch head ${head.slice(0, 9)}, nor a commit here to compare its work with` };
+  }
+  const work = workOf(full);
+  const changes = workChanges(work, workOf(head));
+  if (changes.length > 0) {
+    return { kind: 'differs', reason: `the head ${head.slice(0, 9)} is not the approved ${full.slice(0, 9)} rebased: ${changes.join('; ')}` };
+  }
+  return { kind: 'rebased', approved: full, work: work.length };
+}

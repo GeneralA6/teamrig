@@ -1,7 +1,7 @@
 import { DEFAULT_COMMITS } from '../../src/config/defaults.ts';
 import { stampTrailer } from '../../src/core/stamp.ts';
 import { pathMatcher, weighCommit, type CommitWeight, type FileChange } from '../../src/push-guard/commit-size.ts';
-import { workChanges, type ClearMerge, type WorkCommit } from './approval.ts';
+import { approvedRebase, type ClearMerge, type WorkCommit } from './approval.ts';
 import { freeBranch } from './branch-names.ts';
 import type { BuildStep } from './build-steps.ts';
 import type { CheckScope } from '../ci/check-scope.ts';
@@ -165,24 +165,20 @@ async function clearedChange(args: ShipArgs, branch: string, deps: ShipDeps): Pr
 }
 
 /**
- * The full sha of `approved` when `head` is a rebase of it: the same work commits, patch for patch, in the same order
- * (T2913). Main moving under an approved branch then needs no new approval, as the ship sets the version files and the
- * dist again; a changed, dropped, added or reordered work commit throws `REFUSED`, naming each.
+ * The full sha of `approved` when `head` is a rebase of it (approval.ts `approvedRebase`, T2913); throws `REFUSED`
+ * otherwise, naming each changed, dropped, added or reordered work commit.
  */
 function rebasedFrom(approved: string, head: string, deps: ShipDeps): string {
-  let full: string;
-  try {
-    full = deps.git(['rev-parse', '--verify', '--quiet', `${approved}^{commit}`]).trim();
-  } catch {
-    throw new Error(`REFUSED --approved ${approved} is not the branch head ${head.slice(0, 9)}, nor a commit here to compare its work with`);
+  const rebase = approvedRebase(deps.git, deps.workOf, approved, head);
+  switch (rebase.kind) {
+    case 'unknown':
+      throw new Error(`REFUSED ${rebase.reason}`);
+    case 'differs':
+      throw new Error(`REFUSED ${rebase.reason}. Ship it without --merge and ask for approval of the new head`);
+    case 'rebased':
+      deps.log(`head ${head.slice(0, 9)} carries the approved ${rebase.approved.slice(0, 9)}'s ${rebase.work} work commit(s), patch for patch`);
+      return rebase.approved;
   }
-  const work = deps.workOf(full);
-  const changes = workChanges(work, deps.workOf(head));
-  if (changes.length > 0) {
-    throw new Error(`REFUSED the head ${head.slice(0, 9)} is not the approved ${full.slice(0, 9)} rebased: ${changes.join('; ')}. Ship it without --merge and ask for approval of the new head`);
-  }
-  deps.log(`head ${head.slice(0, 9)} carries the approved ${full.slice(0, 9)}'s ${work.length} work commit(s), patch for patch`);
-  return full;
 }
 
 const pathsOf = (text: string): string[] => text.split('\n').map((line) => line.trim()).filter((line) => line !== '');
