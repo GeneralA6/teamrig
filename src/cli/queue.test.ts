@@ -186,6 +186,21 @@ describe('teamrig queue', () => {
     assert.equal(request?.timeoutMs, 45 * MINUTE);
   });
 
+  it('lets the run read the time its step spent with its share set aside, which its time limit does not count (T4218)', async () => {
+    const { kit, steps } = harness();
+    let away: number | undefined;
+    steps.ends(0, 5 * MINUTE).whileRunning(async (request) => {
+      const [name] = await kit.files.list(SHARED);
+      const path = `${SHARED}/${name}`;
+      const held: unknown = JSON.parse(kit.files.get(path) ?? '{}');
+      assert.ok(isRecord(held), 'the build shares the host');
+      await kit.files.write(path, JSON.stringify({ ...held, awayMs: 7 * MINUTE }));
+      away = await request.awayMs?.();
+    });
+    await kit.run(BUILD, { steps });
+    assert.equal(away, 7 * MINUTE);
+  });
+
   it('starts the command without the credential variables delivery.passEnv does not name', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { passEnv: ['NPM_TOKEN'] } });
     const env = { PROBE: 'yes', GH_TOKEN: 'not-a-real-credential', NPM_TOKEN: 'not-a-real-credential' };
