@@ -13,7 +13,7 @@ function change(number: number, writes: Partial<Pick<IssueChange, 'add' | 'remov
 }
 
 function plan(...changes: IssueChange[]): PushPlan {
-  return { repo: REPO, changes, deferred: [], heldCloses: [], unchanged: 0, closedActive: [], keptOpen: [], unlisted: [] };
+  return { repo: REPO, changes, deferred: [], heldCloses: [], unchanged: 0, closedActive: [], keptOpen: [], unlisted: [], shared: [] };
 }
 
 /** Runs the push and gives its outcome with the lines it said. */
