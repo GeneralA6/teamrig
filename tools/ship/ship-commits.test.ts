@@ -27,6 +27,8 @@ interface FakeOptions {
   readonly sync?: SyncResult;
   readonly numstat?: string;
   readonly verdict?: GateVerdict;
+  /** What each gate run finds, in turn; the last one repeats; over `verdict` when given. */
+  readonly verdicts?: readonly GateVerdict[];
   /** The first step whose event starts with this throws, like a failed command. */
   readonly failOn?: string;
   /** What each merge returns, in turn; the last one repeats. */
@@ -66,6 +68,7 @@ function fake(options: FakeOptions = {}): Fake {
   const takenBack: string[][] = [];
   let merges = 0;
   let looks = 0;
+  let proofs = 0;
   let patches = 0;
   const step = (event: string): void => {
     events.push(event);
@@ -94,7 +97,8 @@ function fake(options: FakeOptions = {}): Fake {
     buildSteps: () => [['tools/build/bundle.ts']],
     proveTree: (scope) => {
       events.push(scope === 'full' ? 'prove' : 'prove short');
-      return options.verdict ?? PASS;
+      const verdicts = options.verdicts ?? [];
+      return verdicts[proofs++] ?? verdicts.at(-1) ?? options.verdict ?? PASS;
     },
     mergeChecks: options.mergeChecks ?? 'full',
     push: () => {
@@ -257,7 +261,9 @@ test('with --merge, the raise and the dist are committed once after the work and
 test('without --merge, a tree the gate does not pass keeps its raise and dist commits, for the rerun to take back', async () => {
   const { deps, events } = fake({ numstat: DIST_STAT, verdict: { passed: false, reason: 'tools/ci/local.ts failed on tree tree000' } });
   await assert.rejects(shipCommits(ARGS, RAISING, deps), /^Error: REFUSED tools\/ci\/local\.ts failed on tree tree000$/);
-  assert.ok(!events.some((event) => event.startsWith('git reset') || event.startsWith('look at main')));
+  assert.ok(!events.some((event) => event.startsWith('git reset')));
+  // It looked at main first (T4270): main had not moved, so the failure is the change's own.
+  assert.deepEqual(events.slice(-1), ['look at main']);
 });
 
 test("leaveForReview in a real repo: the work commit stays, the raise is left uncommitted and the dist is the head's", () => {
@@ -533,13 +539,27 @@ test('with --merge, local checks that fail on a branch main moved past ship agai
   assert.ok(!events.includes('push'));
 });
 
-test('local checks that fail on a branch main has not moved past, or without --merge, are refused at once', async () => {
-  const unmoved = fake({ verdict: FAILED_GATE });
-  await assert.rejects(shipCommits({ ...ARGS, merge: true }, CHUNKS, unmoved.deps), /^Error: REFUSED plugin version gate failed/);
-  assert.equal(unmoved.events.filter((event) => event === 'sync').length, 1);
-  const unmerged = fake({ verdict: FAILED_GATE, moves: [{ tip: TIP, reason: 'moved' }] });
-  await assert.rejects(shipCommits(ARGS, CHUNKS, unmerged.deps), /^Error: REFUSED plugin version gate failed/);
-  assert.ok(!unmerged.events.includes('look at main'));
+test('local checks that fail on a branch main has not moved past are refused at once, with or without --merge', async () => {
+  for (const args of [{ ...ARGS, merge: true }, ARGS]) {
+    const unmoved = fake({ verdict: FAILED_GATE });
+    await assert.rejects(shipCommits(args, CHUNKS, unmoved.deps), /^Error: REFUSED plugin version gate failed/);
+    assert.equal(unmoved.events.filter((event) => event === 'sync').length, 1);
+    assert.equal(unmoved.events.filter((event) => event === 'look at main').length, 1);
+  }
+});
+
+test('a run for review whose local checks fail on a branch main moved past runs again on the moved main, then leaves it for review (T4270)', async () => {
+  const { deps, events, logs } = fake({
+    verdicts: [FAILED_GATE, PASS],
+    moves: [{ tip: TIP, reason: 'origin/main moved to fedcba9, which the branch does not contain' }],
+    answers: moveAnswers(`src/a.ts\n${VERSION_AND_DIST}`, `src/other.ts\n${VERSION_AND_DIST}`),
+  });
+  assert.equal(await shipCommits(ARGS, CHUNKS, deps), 0);
+  assert.ok(logs.includes('\nlocal checks: plugin version gate failed on tree tree000, and origin/main moved to fedcba9, which the branch does not contain'));
+  assert.ok(events.indexOf('git branch -m t827-ship-tool-2') > events.indexOf('look at main'));
+  assert.equal(events.filter((event) => event === 'sync').length, 2);
+  assert.equal(events.filter((event) => event === 'prove').length, 2);
+  assert.ok(!events.includes('push'));
 });
 
 test('parseNumstat reads counts, keeps a binary file uncounted and a path with a tab whole', () => {
