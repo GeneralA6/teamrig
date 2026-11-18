@@ -11,7 +11,7 @@ import { answeredKeys, carriedKeys } from "../../meeting/carried.js";
 import { mergeDigestLines } from "../../meeting/merges.js";
 import { decisionsByOwner, endNotice } from "../../meeting/notices.js";
 import { MeetingSchedule } from "../../meeting/schedule.js";
-import { SPOTLIGHT_LOG, spotlightLine, startSpotlight } from "../../meeting/spotlight.js";
+import { SPOTLIGHT_LOG, spotlightHolderPath, spotlightLine, startSpotlight } from "../../meeting/spotlight.js";
 import { MEETING_LAPSE_MS, MeetingStore, phaseOf, startingKindOf, stoppedAt } from "../../meeting/state.js";
 import { MergeLog } from "../../merge/merge-log.js";
 import { goalScores } from "../../register/goal-board.js";
@@ -225,6 +225,7 @@ export async function meetingStart(args, runtime) {
         until: Date.parse(meeting.startedAt) + MEETING_LAPSE_MS,
         breakthroughFile: mk.kit.paths.meetingBreakthrough,
         log: join(mk.kit.paths.logs, SPOTLIGHT_LOG),
+        holderFile: spotlightHolderPath(mk.kit.paths.kitHome),
     };
     const { spotlight } = mk.config.meeting;
     const line = spotlightLine(await startSpotlight(runtime, spotlight, mk.config.open.terminal, spotlit, runtime.cwd), spotlit, spotlight.dim);

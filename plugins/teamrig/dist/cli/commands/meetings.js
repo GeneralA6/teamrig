@@ -6,7 +6,7 @@ import { SecretScanner } from "../../core/secrets.js";
 import { inboxLineOf, postLines } from "../../inbox/inbox.js";
 import { lineHash } from "../../inbox/line-hash.js";
 import { ABOUT_MAX, byTime, DEFAULT_MEETING_MINUTES, isMeetingId, isMissed, isOpenMeeting, meetingInTabOf, MeetingSchedule, nextMeetingId, } from "../../meeting/schedule.js";
-import { SPOTLIGHT_LOG, spotlightLine, startSpotlight } from "../../meeting/spotlight.js";
+import { SPOTLIGHT_LOG, spotlightHolderPath, spotlightLine, startSpotlight } from "../../meeting/spotlight.js";
 import { SpotlitStore, spotlitUntil } from "../../meeting/spotlit.js";
 import { MeetingStore, phaseOf } from "../../meeting/state.js";
 import { WAKE_TICK_MS } from "../../mod/wake-hand.js";
@@ -317,6 +317,7 @@ async function spotlightMeeting(runtime, mk, meeting) {
         // A break-through lifts only the daily meeting's spotlight: the file names that meeting's start, never this one.
         breakthroughFile: mk.kit.paths.meetingBreakthrough,
         log: join(mk.kit.paths.logs, SPOTLIGHT_LOG),
+        holderFile: spotlightHolderPath(mk.kit.paths.kitHome),
     };
     const { spotlight } = mk.config.meeting;
     return spotlightLine(await startSpotlight(runtime, spotlight, mk.config.open.terminal, place, runtime.cwd), place, spotlight.dim);
