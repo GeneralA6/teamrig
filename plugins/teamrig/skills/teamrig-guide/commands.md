@@ -5160,7 +5160,9 @@ git rev-parse ... did not answer: ...`), never as a changed tool. Such a step is
 kind does not fit it: a run without `--merge` moves no main branch, so it is `--kind test` and runs beside other
 steps while a merge holds the ship slot (`REFUSED a ship tool run without --merge moves no main branch, so it takes
 no ship slot: queue it with --kind test, not --kind ship`), and a run that merges (`--merge`, or the `merge` form)
-is `--kind ship` or `merge`, never a kind that takes no slot.
+is `--kind ship` or `merge`, never a kind that takes no slot. The slot is held per repository (the shared git folder
+of the folder the step queued in, so every worktree of one repository shares it): a ship of another repository runs
+beside it, and a ship queued outside any repository, or by an older teamrig, holds the slot of every repository.
 
 The lock is `host.lock` in the kit home, one for every team on the host, unless `delivery.queue.lockPath` names
 another. It lasts `delivery.queue.lockTtlMinutes` (150); a lock past that, or one whose process is gone, is
