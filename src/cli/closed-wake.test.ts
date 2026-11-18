@@ -207,6 +207,28 @@ describe('a task due today handed to a session teamrig closed (#1581)', () => {
   });
 });
 
+describe('right-now work handed to a session teamrig closed (T4414)', () => {
+  const add = ['add', '--title', 'Fix the outage', '--description', 'what and why', '--priority', 'p0', '--owner', 'alpha', '--session', 'lead'];
+
+  it('posts a wake ask and starts its reopen at once, with no due day and open.idle.reopenForDueToday off', async () => {
+    const kit = await teamWithClosedAlpha();
+    const { result, processes } = await run(kit, add);
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    const stderr = result.stderr.join('\n');
+    assert.match(stderr, /^REOPENS alpha: it was closed, and its reopen started now for this line;.* \(T1 is a p0\)$/m);
+    assert.doesNotMatch(stderr, /woken at its idle prompt/, 'a closed session has no idle prompt');
+    assert.deepEqual(reopensStarted(processes), [['alpha', 'app', APP]]);
+    assert.equal(await asksOf(kit), 1);
+  });
+
+  it('for an open session, says the wake check wakes it at its idle prompt and starts nothing', async () => {
+    const kit = await teamWithClosedAlpha(false);
+    const { result, processes } = await run(kit, add);
+    assert.match(result.stderr.join('\n'), /^NOTE alpha is woken at its idle prompt for T1, a p0, so no --wake now is needed$/m);
+    assert.deepEqual([reopensStarted(processes), await asksOf(kit)], [[], 0]);
+  });
+});
+
 describe('one reopen per closed session at a time (#1584)', () => {
   it('two wakes close together start one reopen; the second says the first is under way', async () => {
     const kit = await teamWithClosedAlpha();
