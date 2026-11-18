@@ -1,6 +1,6 @@
 import { formatPct, formatW } from '../budget/format.ts';
 import { MEASURED_DAYS, type MeasuredTurns } from '../budget/turn-average.ts';
-import { isHeld, quietSpanOf, sessionQuietSpan, type BudgetFacts } from '../budget/warn.ts';
+import { isHeld, isTeamHeld, quietSpanOf, sessionQuietSpan, type BudgetFacts } from '../budget/warn.ts';
 import { DEFAULT_MESSAGES } from '../config/defaults.ts';
 import { NOW_PRIORITY } from '../config/priorities.ts';
 import type { QuietHours } from '../config/types.ts';
@@ -304,7 +304,8 @@ function isPausedNow(facts: BudgetFacts): boolean {
 
 /**
  * Where the session stands against its budget at `now`: held (past its daily budget, its lift's while lifted, while
- * the team has no room today or a leader's cut holds it, or paused: {@link isPausedNow}), and in quiet hours unless
+ * the team has no room today or a leader's cut holds it; its team held for the day: `isTeamHeld`; or paused:
+ * {@link isPausedNow}), and in quiet hours unless
  * its lift exempts it. The turn a wake would start counts as spent (`turnW`, in W), so a session with less left than
  * that turn is held before it, not after (T1322). With no facts (the week's use is not known yet) it is never held,
  * and quiet hours go by the clock alone.
@@ -314,7 +315,7 @@ export function wakeRestOf(facts: BudgetFacts | undefined, quietHours: QuietHour
     return { held: false, quiet: quietSpanOf(quietHours, now) !== undefined };
   }
   const turnPct = facts.todayWPerPct > 0 ? turnW / facts.todayWPerPct : 0;
-  return { held: isPausedNow(facts) || isHeld(facts, turnPct), quiet: sessionQuietSpan(facts, quietHours) !== undefined };
+  return { held: isPausedNow(facts) || isHeld(facts, turnPct) || isTeamHeld(facts, turnPct), quiet: sessionQuietSpan(facts, quietHours) !== undefined };
 }
 
 /**

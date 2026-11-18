@@ -11,7 +11,7 @@ import type { FiveHourFold } from './five-hour-summary.ts';
 import { formatCount, formatPct, formatUsd, formatW, isBudgetDayEnd, noRoomText } from './format.ts';
 import { liftedLine, type Lift, type LiftNames } from './lift.ts';
 import { TURN_TRIGGERS } from './line.ts';
-import { holdsPastPart, type TeamDay } from './pace.ts';
+import { holdsPastPart, holdsTeamPast, isPastPart, type TeamDay } from './pace.ts';
 import { emptyPatterns, PATTERN_FIELDS, type PatternField } from './patterns.ts';
 import { DAYS_KEPT, type DayUsage, type UsageState } from './store.ts';
 import type { TaskUse } from './task-use.ts';
@@ -55,12 +55,6 @@ export interface SessionToday extends LiftNames {
   readonly cut: boolean;
   /** That cut is a stop: it is held whatever its use, past its part or not (T3455). */
   readonly stopped: boolean;
-}
-
-/** One name in the past-budget lines: the team, never cut, or a session. */
-interface PastOne {
-  readonly name: string;
-  readonly cut: boolean;
 }
 
 /** A sub-lead's group today (src/budget/parts.ts `groupPartsOf`): its sessions' use against its part of the day, and its group lift. */
@@ -211,8 +205,7 @@ function useLine(who: string, w: number, calls: number, budgetPct: number | unde
 }
 
 function isPast(w: number, budgetPct: number | undefined, week: WeekReading): boolean {
-  const used = todayPctOf(w, week);
-  return used !== undefined && budgetPct !== undefined && used > budgetPct;
+  return isPastPart(todayPctOf(w, week), budgetPct);
 }
 
 /** The rows of the sessions shown, and the lines that name the ones left out. */
@@ -366,14 +359,16 @@ function outsideLine(outside: OutsideToday, peers: readonly PeerToday[], all: bo
  * force. While the team has room, the team past its part of the account's day and the uncut sessions past theirs are
  * named apart, not held, and the cut ones on a held line of their own. A hold for want of room gives the team's use
  * today against its in-day pace, so it never reads as a fixed cap next to the team's daily budget. A session a leader
- * stopped and still within its part is named on a line of its own: the hooks hold it all the same.
+ * stopped and still within its part is named on a line of its own: the hooks hold it all the same. The team is named
+ * held by `holdsTeamPast`, as the wake and idle pass hold its sessions (#1737).
  */
-function pastLines(report: TodayReport, teamPast: boolean): string[] {
+function pastLines(report: TodayReport, teamUsedPct: number | undefined): string[] {
   const { week, sessions } = report;
   const teamDay = week.teamDay;
-  const past: readonly PastOne[] = [...(teamPast ? [{ name: 'the team', cut: false }] : []), ...sessions.filter((session) => isPast(session.w, session.budgetPct, week))];
-  const held = past.filter((one) => holdsPastPart(teamDay, one.cut)).map((one) => one.name);
-  const notHeld = past.filter((one) => !holdsPastPart(teamDay, one.cut)).map((one) => one.name);
+  const team = isPastPart(teamUsedPct, report.teamPct) ? [{ name: 'the team', held: holdsTeamPast(teamDay, teamUsedPct, report.teamPct) }] : [];
+  const past = [...team, ...sessions.filter((session) => isPast(session.w, session.budgetPct, week)).map((one) => ({ name: one.name, held: holdsPastPart(teamDay, one.cut) }))];
+  const held = past.filter((one) => one.held).map((one) => one.name);
+  const notHeld = past.filter((one) => !one.held).map((one) => one.name);
   const lines: string[] = [];
   if (teamDay !== undefined && notHeld.length > 0) {
     lines.push(
@@ -431,7 +426,7 @@ export function todayLines(report: TodayReport): string[] {
   if (report.behind.length > 0) {
     lines.push(`Still reading: ${report.behind.join(', ')}; run teamrig budget again for the rest.`);
   }
-  lines.push(...pastLines(report, isPast(teamW, report.teamPct, week)));
+  lines.push(...pastLines(report, todayPctOf(teamW, week)));
   if (week.usedPct !== undefined && week.wPerPct === undefined) {
     lines.push('Daily budgets need the week in W: set budget.weeklyLimitW, or let teamrig meter a whole week to estimate it.');
   }
