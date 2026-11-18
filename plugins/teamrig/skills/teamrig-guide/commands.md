@@ -4346,7 +4346,7 @@ Output:
 
 ```text
 ARCHIVE events.jsonl (3 event(s), 548 B) as archive/events-000001.jsonl
-SNAPSHOT snapshot.jsonl: 3 event(s), 733 B, covering segments 1-1; folded from the history (3 event(s))
+SNAPSHOT snapshot.jsonl: 0 task line(s), 3 event(s), 791 B, covering segments 1-1; folded from the history (3 event(s))
 TASKS 2 kept (2 unchanged, 0 changed), 0 retired now, 0 before
 HISTORY 2 task(s) from 3 event(s): the working set holds every active one as the history does
 TAIL events.jsonl starts again with the rotation marker (67 B)
