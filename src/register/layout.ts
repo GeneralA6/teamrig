@@ -1,9 +1,11 @@
 import { isNonNegativeInteger, type JsonRecord } from '../core/guards.ts';
 import { parseJsonl, type JsonlRecord } from '../core/jsonl.ts';
 import { foldEvents } from './fold.ts';
-import { LAYOUT_VERSION, NEWEST_LAYOUT_VERSION, readsLayout } from './marker.ts';
+import type { Task } from './fold.ts';
+import { NEWEST_LAYOUT_VERSION, readsLayout, TASK_LINES_LAYOUT_VERSION } from './marker.ts';
 import { TASK_ID } from './model.ts';
-import { readEvents, type EventLogRead, type RegisterSnapshot } from './snapshot.ts';
+import { readEventRecords, readEvents, type EventLogRead, type EventWindow, type RegisterSnapshot } from './snapshot.ts';
+import { isTaskLine, parseTaskLine } from './task-line.ts';
 
 /**
  * The register's files in its state folder, and how a reader puts them together. Pure: the reader
@@ -13,9 +15,12 @@ import { readEvents, type EventLogRead, type RegisterSnapshot } from './snapshot
  * - `archive/events-000001.jsonl` and on, the segments. A rotation turns the tail into the next segment
  *   whole and starts a new tail whose first line names it (marker.ts). A segment is never rewritten or
  *   deleted: the archive and the tail hold every line ever written, in order.
- * - `snapshot.jsonl`, the working set as of a segment: a header, then, in write order, every event but
- *   those of the tasks a compaction retired (finished long ago), each the line as written. A task's state depends on its own events
- *   only, so these fold to exactly the tasks it kept; retired tasks stay in the segments.
+ * - `snapshot.jsonl`, the working set as of a segment: a header, then one task line (task-line.ts) for each task
+ *   it kept as that task stood at the header's `windowFrom`, then, in write order, the events written from then on
+ *   of the tasks it kept, each the line as written. A task's state depends on its own events only, so the events
+ *   folded on top of the task lines give exactly the tasks it kept; retired tasks (finished long ago) stay in the
+ *   segments, as do the events before `windowFrom`. A snapshot before layout 5 holds no task lines and every
+ *   event of the tasks it kept.
  * A working-set read folds the snapshot, the segments it does not cover and the tail, so its cost follows
  * the recent events. A history read folds every segment and the tail.
  */
@@ -53,6 +58,10 @@ export interface SnapshotHeader {
   readonly covered: number;
   /** How many event lines follow the header, so a cut-short file is never mistaken for a whole one. */
   readonly events: number;
+  /** How many task lines follow the header, for the same reason; 0 before layout 5. */
+  readonly tasks: number;
+  /** The time the task lines stand at and the events start from; null before layout 5, which holds every event. */
+  readonly windowFrom: string | null;
   /** The history's next id: retired tasks and unreadable lines reserve theirs too. */
   readonly nextId: string;
   /**
@@ -72,11 +81,13 @@ export interface SnapshotHeader {
 
 /** The header as a record, the way a compaction writes it. */
 export function snapshotHeaderRecord(header: SnapshotHeader): JsonRecord {
-  return { v: LAYOUT_VERSION, type: SNAPSHOT_TYPE, ...header };
+  return { v: TASK_LINES_LAYOUT_VERSION, type: SNAPSHOT_TYPE, ...header };
 }
 
 export interface UsableSnapshot {
   readonly header: SnapshotHeader;
+  /** Each task of the task lines, by id, as it stood at `header.windowFrom`; empty before layout 5. */
+  readonly tasks: ReadonlyMap<string, Task>;
   readonly read: EventLogRead;
 }
 
@@ -105,11 +116,30 @@ function countsOf(record: JsonRecord): HeaderCounts | string {
   return counts;
 }
 
+/** A layout 5 header's task count and window start; before it, none and null. */
+function windowOf(line: JsonlRecord): { tasks: number; windowFrom: string | null } | string {
+  if (line.version < TASK_LINES_LAYOUT_VERSION) {
+    return { tasks: 0, windowFrom: null };
+  }
+  const { tasks, windowFrom } = line.record;
+  if (!isNonNegativeInteger(tasks)) {
+    return 'tasks is not a count';
+  }
+  if (typeof windowFrom !== 'string' || Number.isNaN(Date.parse(windowFrom))) {
+    return `windowFrom ${JSON.stringify(windowFrom)} is not a time`;
+  }
+  return { tasks, windowFrom };
+}
+
 function headerOf(line: JsonlRecord): SnapshotHeader | string {
   const { record } = line;
   const counts = countsOf(record);
   if (typeof counts === 'string') {
     return counts;
+  }
+  const window = windowOf(line);
+  if (typeof window === 'string') {
+    return window;
   }
   const { nextId, retiredLastWeek, at } = record;
   if (typeof nextId !== 'string' || !TASK_ID.test(nextId)) {
@@ -121,7 +151,29 @@ function headerOf(line: JsonlRecord): SnapshotHeader | string {
   if (typeof at !== 'string' || Number.isNaN(Date.parse(at))) {
     return `at ${JSON.stringify(at)} is not a time`;
   }
-  return { ...counts, nextId, retiredLastWeek, at };
+  return { ...counts, ...window, nextId, retiredLastWeek, at };
+}
+
+/** The body of a layout 5 snapshot: its task lines by id, and its events. A damaged or repeated task line makes it unusable. */
+function readTaskLines(text: string): { tasks: Map<string, Task>; read: EventLogRead } | string {
+  const parse = parseJsonl(text);
+  const tasks = new Map<string, Task>();
+  const events: JsonlRecord[] = [];
+  for (const line of parse.records) {
+    if (!isTaskLine(line.record)) {
+      events.push(line);
+      continue;
+    }
+    const task = parseTaskLine(line.record);
+    if (typeof task === 'string') {
+      return `a task line is damaged (${task})`;
+    }
+    if (tasks.has(task.id)) {
+      return `it holds ${task.id}'s task line twice`;
+    }
+    tasks.set(task.id, task);
+  }
+  return { tasks, read: readEventRecords({ records: events, unreadable: parse.unreadable }) };
 }
 
 function unusable(reason: string, newerVersion = 0): SnapshotRead {
@@ -145,14 +197,22 @@ export function readSnapshotText(text: string | undefined): SnapshotRead {
   if (typeof header === 'string') {
     return unusable(header);
   }
-  const read = readEvents(newline < 0 ? '' : text.slice(newline + 1));
+  const body = newline < 0 ? '' : text.slice(newline + 1);
+  const content = header.windowFrom === null ? { tasks: new Map<string, Task>(), read: readEvents(body) } : readTaskLines(body);
+  if (typeof content === 'string') {
+    return unusable(content);
+  }
+  const { tasks, read } = content;
+  if (tasks.size !== header.tasks) {
+    return unusable(`it holds ${tasks.size} task line(s) where its header says ${header.tasks}`);
+  }
   if (read.unreadable > 0) {
     return unusable(`${read.unreadable} damaged line(s)`);
   }
   if (read.events.length + read.newer !== header.events) {
     return unusable(`it holds ${read.events.length + read.newer} event(s) where its header says ${header.events}`);
   }
-  return { kind: 'usable', header, read };
+  return { kind: 'usable', header, tasks, read };
 }
 
 /** What a read folds besides the tail: a snapshot to start from (none: the whole history), then segments. */
@@ -185,12 +245,12 @@ export function workingSetPlan(snapshot: SnapshotRead, tail: EventLogRead): Read
   if (snapshot.kind === 'unusable') {
     return { ...historyPlan(tail), skipped: snapshot };
   }
-  const { header, read } = snapshot;
+  const { header, tasks, read } = snapshot;
   if (header.covered > tail.rotatedAfter) {
     const reason = `it covers segment ${header.covered}, past the segment ${tail.rotatedAfter} the log goes on from`;
     return { ...historyPlan(tail), skipped: { kind: 'unusable', reason, newerVersion: 0 } };
   }
-  return { base: { header, read }, segments: range(header.covered + 1, tail.rotatedAfter), skipped: undefined };
+  return { base: { header, tasks, read }, segments: range(header.covered + 1, tail.rotatedAfter), skipped: undefined };
 }
 
 /** The register a plan describes, from the segments it names (in its order) and the tail. */
@@ -198,8 +258,9 @@ export function assemble(plan: ReadPlan, segments: readonly EventLogRead[], tail
   if (segments.length !== plan.segments.length) {
     throw new Error(`the read plan names ${plan.segments.length} segment(s) and ${segments.length} were read`);
   }
-  const header = plan.base?.header;
-  const parts = [...(plan.base === undefined ? [] : [plan.base.read]), ...segments, tail];
+  const { base } = plan;
+  const header = base?.header;
+  const parts = [...(base === undefined ? [] : [base.read]), ...segments, tail];
   const skippedNewer = plan.skipped !== undefined && plan.skipped.newerVersion > 0 ? 1 : 0;
   const skippedDamaged = plan.skipped !== undefined && skippedNewer === 0 ? 1 : 0;
   const read: EventLogRead = {
@@ -211,9 +272,10 @@ export function assemble(plan: ReadPlan, segments: readonly EventLogRead[], tail
     newestVersion: Math.max(header?.newestVersion ?? 0, plan.skipped?.newerVersion ?? 0, ...parts.map((part) => part.newestVersion)),
     rotatedAfter: tail.rotatedAfter,
   };
-  const from = header === undefined ? undefined : { tasks: new Map(), orphans: header.orphans, nextId: header.nextId, moved: new Map() };
+  const from = base === undefined ? undefined : { tasks: new Map(base.tasks), orphans: base.header.orphans, nextId: base.header.nextId, moved: new Map<string, string>() };
   const retired = header === undefined || header.retired === 0 ? null : { count: header.retired, lastWeek: header.retiredLastWeek };
-  return { state: foldEvents(read.events, read.seenIds, from), read, retired };
+  const window: EventWindow | null = base === undefined || base.header.windowFrom === null ? null : { from: base.header.windowFrom, tasks: base.tasks };
+  return { state: foldEvents(read.events, read.seenIds, from), read, retired, window };
 }
 
 /** Reads one file of the layout; undefined when it does not exist. */
