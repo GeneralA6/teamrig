@@ -91,9 +91,11 @@ describe('planRotation and applyRotation', () => {
     await rotate(files, 4);
     await files.append(LOG, LATER);
     const plan = await rotate(files, 20);
+    // The day-4 snapshot keeps the events from day 2 on (T2's two) and the T1 lines before as task lines; the
+    // tail adds two more.
     assert.deepEqual(
       [plan.segment, plan.tailEvents, plan.source, plan.sourceEvents, plan.compaction.retiredNow, plan.unchanged, plan.history, plan.problems],
-      [2, 2, 'working set', 6, ['T1', 'T2'], 1, { tasks: 3, events: 6 }, []],
+      [2, 2, 'working set', 4, ['T1', 'T2'], 1, { tasks: 3, events: 6 }, []],
     );
     assert.deepEqual([...(await readWorkingSet(files, PATHS)).state.tasks.keys()], ['T3']);
     await assertReadsAs(files, TEXT + LATER);
@@ -113,15 +115,20 @@ describe('planRotation and applyRotation', () => {
     }
   });
 
-  it('keep a field this code does not parse in the snapshot, rotation after rotation', async () => {
+  it('keep a field this code does not parse in the snapshot while its event is in the window, then in the archive', async () => {
     const waits = [{ kind: 'approval', who: 'lead' }];
     const verifying = toJsonlLine({ v: EVENT_VERSION, type: 'status', id: 'T2', at: at(3), by: 'alpha', status: 'verifying', note: 'n', evidence: null, skill: null, proof: 'p', waits, kind: 'x' });
     const files = new MemoryFiles({ [LOG]: TEXT + verifying });
     await rotate(files, 4);
     await files.append(LOG, create('T3', 5));
-    await rotate(files, 6);
-    const snapshot = files.get(PATHS.snapshot) ?? '';
-    assert.ok(snapshot.includes(verifying), snapshot);
+    await rotate(files, 5);
+    assert.ok((files.get(PATHS.snapshot) ?? '').includes(verifying), 'day 5: the day-3 line is in the window');
+    await files.append(LOG, create('T4', 6));
+    await rotate(files, 7);
+    // The window starts on day 5 now: T2 is a task line as this code folds it, and the line as written stays in
+    // the archive, which `teamrig compact --from-history` folds again from.
+    assert.equal((files.get(PATHS.snapshot) ?? '').includes(verifying), false);
+    assert.ok((files.get(PATHS.segment(1)) ?? '').includes(verifying));
     const working = await readWorkingSet(files, PATHS);
     assert.deepEqual(working.state.tasks.get('T2')?.waits, waits);
   });
@@ -241,7 +248,7 @@ describe('planRotation and applyRotation', () => {
   });
 
   it('name each way a working set differs from the whole history', async () => {
-    const header = { covered: 1, events: 1, nextId: 'T2', orphans: 0, unreadable: 0, newer: 0, newestVersion: EVENT_VERSION, retired: 0, retiredLastWeek: null, at: at(4) };
+    const header = { covered: 1, events: 1, tasks: 0, windowFrom: at(3), nextId: 'T2', orphans: 0, unreadable: 0, newer: 0, newestVersion: EVENT_VERSION, retired: 0, retiredLastWeek: null, at: at(4) };
     const files = new MemoryFiles({
       [PATHS.segment(1)]: TEXT,
       [PATHS.snapshot]: toJsonlLine(snapshotHeaderRecord(header)) + create('T1', 0),

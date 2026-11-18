@@ -175,9 +175,7 @@ function historyProblems(working: RegisterSnapshot, history: RegisterSnapshot): 
 /** What a snapshot folded from the history changes against the working set it replaces. */
 function rebuildOf(replaced: RegisterSnapshot, history: RegisterSnapshot, compaction: Compaction): Rebuild {
   const held = new Set(replaced.read.lines);
-  // The new snapshot's lines after its header, each as the archive holds it.
-  const lines = compaction.text.split('\n').slice(1).filter((line) => line !== '');
-  return { differences: historyProblems(replaced, history), restoredLines: lines.filter((line) => !held.has(line)).length };
+  return { differences: historyProblems(replaced, history), restoredLines: compaction.eventLines.filter((line) => !held.has(line)).length };
 }
 
 /**

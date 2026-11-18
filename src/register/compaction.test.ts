@@ -9,7 +9,7 @@ import { testTask } from '../testing/task.ts';
 import { currentWeekOf } from './week.ts';
 import { compactRegister, isRetirable, RETAIN_DAYS } from './compaction.ts';
 import { EVENT_VERSION } from './events.ts';
-import { layoutPaths, readHistory, readSnapshotText, readWorkingSet } from './layout.ts';
+import { assemble, layoutPaths, readHistory, readSnapshotText, readWorkingSet } from './layout.ts';
 import { TASK_STATUSES } from './model.ts';
 import { readEvents, readRegister, type RegisterSnapshot } from './snapshot.ts';
 import { TimeZone } from '../core/zone.ts';
@@ -86,10 +86,16 @@ function assertParity(working: RegisterSnapshot, history: RegisterSnapshot, whol
   assert.deepEqual(history.state, whole.state, 'history state');
   assert.deepEqual(history.read.events, whole.read.events, 'history events');
   assert.deepEqual([history.read.unreadable, history.read.newer, history.read.newestVersion], [whole.read.unreadable, whole.read.newer, whole.read.newestVersion]);
+  const windowFrom = working.window === null ? null : Date.parse(working.window.from);
   for (const [id, task] of working.state.tasks) {
     assert.deepEqual(task, whole.state.tasks.get(id), `task ${id}`);
-    const events = (snapshot: RegisterSnapshot) => snapshot.read.events.filter((event) => event.id === id);
-    assert.deepEqual(events(working), events(whole), `events of ${id}`);
+    const all = whole.read.events.filter((event) => event.id === id);
+    const mine = working.read.events.filter((event) => event.id === id);
+    // A snapshot of task lines keeps only a task's latest events: the tail of its whole history, holding at
+    // least every event from its window on.
+    assert.deepEqual(mine, all.slice(all.length - mine.length), `events of ${id} are the tail of its history`);
+    const from = windowFrom === null ? 0 : all.findIndex((event) => Date.parse(event.at) >= windowFrom);
+    assert.ok(mine.length >= (from < 0 ? 0 : all.length - from), `events of ${id} from the window on`);
   }
   const retired = [...whole.state.tasks.values()].filter((task) => !working.state.tasks.has(task.id));
   const movedAway = [...whole.state.moved.keys()].filter((id) => !working.state.moved.has(id));
@@ -180,16 +186,19 @@ describe('compactRegister', () => {
   const now = new Date(day(28));
 
   it('keeps the active, the recent and the current week, and carries the counts in its header', () => {
-    // T1, T2 and T4 are finished and older than the retention; T3 is in the current week's plan. The
-    // orphan T40 stays with the kept events, so only the second create of the retired T2 is counted.
+    // T1, T2 and T4 are finished and older than the retention; T3 is in the current week's plan. No event is
+    // within the window's two days, so T3 is kept as its task line alone, and the orphan T40 is counted with
+    // the second create of the retired T2.
     const compaction = compactRegister(source, { covered: 4, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() });
     assert.deepEqual(compaction.retiredNow, ['T1', 'T2', 'T4']);
     assert.equal(compaction.kept, 1);
     assert.deepEqual(compaction.header, {
       covered: 4,
-      events: 2,
+      events: 0,
+      tasks: 1,
+      windowFrom: day(26),
       nextId: 'T41',
-      orphans: 1,
+      orphans: 2,
       unreadable: 1,
       newer: 0,
       newestVersion: EVENT_VERSION,
@@ -200,7 +209,9 @@ describe('compactRegister', () => {
     const read = readSnapshotText(compaction.text);
     assert.ok(read.kind === 'usable');
     assert.deepEqual(read.header, compaction.header);
-    assert.deepEqual(read.read.events.map((event) => event.id), ['T40', 'T3']);
+    assert.deepEqual(read.read.events.map((event) => event.id), []);
+    assert.deepEqual([...read.tasks.keys()], ['T3']);
+    assert.deepEqual(read.tasks.get('T3'), source.state.tasks.get('T3'));
   });
 
   it('keeps the ids it is asked to keep, and adds to the tasks retired before', () => {
@@ -215,10 +226,10 @@ describe('compactRegister', () => {
 
   it('copies each kept line as written, so a field this code does not parse is kept', () => {
     const task = { title: 'T5', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, colour: 'blue' };
-    const created = toJsonlLine({ v: EVENT_VERSION, type: 'create', id: 'T5', at: day(20), by: 'lead', kind: 'x', task });
-    const waits = [{ kind: 'task', id: 'T3' }, { kind: 'approval', who: 'lead', since: day(21) }];
-    const verifying = toJsonlLine({ v: EVENT_VERSION, type: 'status', id: 'T5', at: day(21), by: 'alpha', status: 'verifying', note: 'n', evidence: null, skill: null, proof: 'p', waits, later: { any: [1] } });
-    const plain = create('T6', 22, null);
+    const created = toJsonlLine({ v: EVENT_VERSION, type: 'create', id: 'T5', at: day(26), by: 'lead', kind: 'x', task });
+    const waits = [{ kind: 'task', id: 'T3' }, { kind: 'approval', who: 'lead', since: day(27) }];
+    const verifying = toJsonlLine({ v: EVENT_VERSION, type: 'status', id: 'T5', at: day(27), by: 'alpha', status: 'verifying', note: 'n', evidence: null, skill: null, proof: 'p', waits, later: { any: [1] } });
+    const plain = create('T6', 27, null);
     const crlf = `${plain.slice(0, -1)}\r\n`;
     const compaction = compactRegister(readRegister(log.join('') + created + verifying + crlf), { covered: 4, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() });
     assert.ok(compaction.text.endsWith(created + verifying + plain), compaction.text);
@@ -228,9 +239,11 @@ describe('compactRegister', () => {
   });
 
   it('refuses a read that holds no line for an event it keeps', () => {
-    // The first kept event is the orphan T40, the sixth of the nine events (the torn line is none).
+    // On day 16 the window starts on day 14, so the first kept event is T3's create, the seventh of the nine
+    // events (the torn line is none).
     const lineless: RegisterSnapshot = { ...source, read: { ...source.read, lines: source.read.lines.slice(0, 1) } };
-    assert.throws(() => compactRegister(lineless, { covered: 4, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() }), /^Error: event 6 of 9 has no line: the read holds 1$/);
+    const early = new Date(day(16));
+    assert.throws(() => compactRegister(lineless, { covered: 4, now: early, zone: TimeZone.UTC, retainDays: 8, keep: new Set() }), /^Error: event 7 of 9 has no line: the read holds 1$/);
   });
 
   it('retires a task that moved to another team at once, with its moved line and any later line on it (T1144)', () => {
@@ -239,9 +252,36 @@ describe('compactRegister', () => {
     const later = toJsonlLine({ v: EVENT_VERSION, type: 'status', id: 'T5', at: day(27), by: 'alpha', status: 'done', note: 'n', evidence: 'e', skill: 'none' });
     const compaction = compactRegister(readRegister(log.join('') + create('T5', 26, null) + movedLine + later), { covered: 4, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() });
     assert.deepEqual(compaction.retiredNow, ['T1', 'T2', 'T4', 'T5']);
-    assert.deepEqual([compaction.kept, compaction.header.retired, compaction.header.events, compaction.header.orphans], [1, 4, 2, 2]);
+    assert.deepEqual([compaction.kept, compaction.header.retired, compaction.header.events, compaction.header.orphans], [1, 4, 0, 3]);
     const read = readSnapshotText(compaction.text);
     assert.ok(read.kind === 'usable');
-    assert.deepEqual(read.read.events.map((event) => event.id), ['T40', 'T3']);
+    assert.deepEqual(read.read.events.map((event) => event.id), []);
+  });
+
+  it('writes each task line as the task stood when the window starts, and keeps the events after (T4076)', () => {
+    const update = (n: number, priority: number): string => toJsonlLine({ v: EVENT_VERSION, type: 'update', id: 'T3', at: day(n), by: 'lead', changes: { priority }, note: null });
+    const recent = readRegister(create('T3', 14, null) + update(20, 1) + update(27, 3));
+    const compaction = compactRegister(recent, { covered: 1, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() });
+    assert.deepEqual([compaction.header.tasks, compaction.header.events, compaction.header.windowFrom], [1, 1, day(26)]);
+    const read = readSnapshotText(compaction.text);
+    assert.ok(read.kind === 'usable');
+    assert.equal(read.tasks.get('T3')?.priority, 1, 'the task line stands before the day-27 update');
+    assert.deepEqual(read.read.lines, [update(27, 3).slice(0, -1)]);
+    const assembled = assemble({ base: read, segments: [], skipped: undefined }, [], readEvents(''));
+    assert.deepEqual(assembled.state.tasks, recent.state.tasks, 'read back, it folds as the whole log does');
+    assert.deepEqual(assembled.window, { from: day(26), tasks: read.tasks });
+  });
+
+  it('never moves the window back past where the source read starts', () => {
+    // A working set whose window starts on day 27 holds no event from before it, so a compaction a day later
+    // keeps that start rather than reaching back two days.
+    const update = toJsonlLine({ v: EVENT_VERSION, type: 'update', id: 'T3', at: day(27), by: 'lead', changes: { priority: 1 }, note: null });
+    const window = { from: day(27), tasks: readRegister(create('T3', 14, null)).state.tasks };
+    const working: RegisterSnapshot = { ...readRegister(update), state: readRegister(create('T3', 14, null) + update).state, window };
+    const compaction = compactRegister(working, { covered: 2, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() });
+    assert.deepEqual([compaction.header.windowFrom, compaction.header.tasks, compaction.header.events], [day(27), 1, 1]);
+    const read = readSnapshotText(compaction.text);
+    assert.ok(read.kind === 'usable');
+    assert.equal(read.tasks.get('T3')?.priority, 2, 'the task line stands at day 27, before the update');
   });
 });
