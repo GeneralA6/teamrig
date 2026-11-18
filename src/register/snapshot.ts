@@ -106,6 +106,14 @@ export function isWritable(read: EventLogRead): boolean {
   return read.newestVersion <= EVENT_VERSION;
 }
 
+/**
+ * True when the read lacks events from `at` on: its event window (a snapshot of task lines, layout.ts) opens after
+ * `at`, so a reader of the events since then reads the history.
+ */
+export function windowOpensAfter({ window }: RegisterSnapshot, at: number): boolean {
+  return window !== null && at < Date.parse(window.from);
+}
+
 /** Replays a read log: every task as its events leave it, plus the counts `teamrig list` warns about. */
 export function snapshotOf(read: EventLogRead): RegisterSnapshot {
   return { state: foldEvents(read.events, read.seenIds), read, retired: null, window: null };
