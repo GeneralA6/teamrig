@@ -6,8 +6,9 @@ import type { CatchUp } from './catch-up.ts';
 import type { Gh, RequiredChecks } from './github.ts';
 import type { Credential } from './keychain.ts';
 import type { GateDeps } from './local-gate.ts';
-import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, MERGE_ATTEMPTS, ciProof,mainBranchOf, mergeBranch, mergeCommand, mergeRun, mergeThroughPull, parseArgs, pullBody, runMerge, stepShareOf, waitForChecks } from './merge.ts';
+import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, MERGE_ATTEMPTS, ciProof,mainBranchOf, mergeBranch, mergeCommand, mergeRun, mergeThroughPull, parseArgs, pullBody, realMergeDeps, runMerge, stepShareOf, waitForChecks } from './merge.ts';
 import { parseProfiles } from './repos.ts';
+import { TempRepo } from '../lib/temp-repo.ts';
 
 const REPO = 'Owner/repo';
 const GH_SECRET = ['github', '_pat_', 'x'].join('');
@@ -1087,4 +1088,22 @@ test('a check read GitHub gives no answer to is read once more at the next poll;
   const apart = failingReads(['HTTP 503', undefined, 'HTTP 503'], [[['gates', 'queued', null]], green]);
   assert.equal((await waitForChecks(apart.gh, REPO, SHA, HEAD, CHECKS, fakeWaiter(), POLLING)).verdict, 'passed');
   assert.equal(apart.reads(), 4);
+});
+
+test("realMergeDeps reads a head's work by the shipped repos.json, whose release manifest the ship sets again (T4298)", () => {
+  // A merge given the version files without the manifest threw on the profile's regenerated paths for every head.
+  const repo = new TempRepo('merge-deps').init();
+  try {
+    repo.write('a.txt', 'a\n');
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '-m', 'a');
+    repo.git('update-ref', 'refs/remotes/origin/main', repo.git('rev-parse', 'HEAD').trim());
+    repo.git('remote', 'add', 'origin', 'https://github.com/GeneralA6/teamrig.git');
+    repo.write('b.txt', 'b\n');
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '-m', 'core: b');
+    assert.deepEqual(realMergeDeps(repo.dir).workOf('HEAD').map(commit => [commit.subject, commit.merge]), [['core: b', false]]);
+  } finally {
+    repo.remove();
+  }
 });

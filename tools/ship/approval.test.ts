@@ -5,7 +5,7 @@ import { EXIT, RefusedError } from '../../src/cli/runtime.ts';
 import { mergeStandingOf, type MergeStanding } from '../../src/cli/ship-approval.ts';
 import { CLAUDE_SESSION, CliHarness, TEAM_HOME } from '../../src/testing/cli-harness.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
-import { changePatch, clearMerge, clearMergeFrom, mergeClearance, type MergeReads, shipWritesOf, type StandingOf, type TabCallerOf, taskOfBranch, type WorkCommit, workChanges, workCommitsOf } from './approval.ts';
+import { changePatch, clearMerge, clearMergeFrom, mergeClearance, type MergeReads, shipWritesOf, type StandingOf, teamrigShipWritesOf, type TabCallerOf, taskOfBranch, type WorkCommit, workChanges, workCommitsOf } from './approval.ts';
 import { profileFor, readProfiles } from './repos.ts';
 import { TEAMRIG_RELEASE_MANIFEST, TEAMRIG_RELEASE_STAMPS, TEAMRIG_SHIP_VERSION_FILES, TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
@@ -199,6 +199,11 @@ describe('shipWritesOf: how an approval reads the paths a ship writes again (T29
       [...TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_MANIFEST].map((file) => file.path),
     );
     assert.throws(() => shipWritesOf(regenerated, TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS), /regenerated path \.release-please-manifest\.json is no folder/);
+  });
+
+  it("teamrigShipWritesOf, which the ship and the merge both read work by, knows the shipped repos.json's every path (T4298)", () => {
+    const { regenerated } = profileFor(readProfiles(), 'GeneralA6/teamrig');
+    assert.deepEqual(teamrigShipWritesOf(regenerated), shipWritesOf(regenerated, TEAMRIG_SHIP_VERSION_FILES, TEAMRIG_RELEASE_STAMPS));
   });
 });
 
