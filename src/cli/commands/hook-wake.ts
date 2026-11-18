@@ -49,6 +49,7 @@ import { teamRegister } from '../team-register.ts';
 import { budgetFactsOf } from './hook-budget.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { runIdlePass } from './hook-idle-pass.ts';
+import { sessionFoldersOf } from './setup.ts';
 import { parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
 import { armParkedRestart, parkedHere, rearmDeadRestart, type RearmScope } from './hook-restart.ts';
 import { fileLockOf } from '../file-locks.ts';
@@ -490,7 +491,7 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
   }
   const { kit, config, id, tab } = scope;
   // The pass is the team's, not this tab's wake: before the holds that keep only this session from waking.
-  await runIdlePass(runtime, kit, config, scope.roster, scope.from);
+  await runIdlePass(runtime, kit, config, scope.roster, sessionFoldersOf(runtime, config, undefined, scope.from));
   if (await meetingHoldsWake(runtime, scope)) {
     return answer(runtime, waitAnswer(scope, null));
   }
