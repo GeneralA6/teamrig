@@ -103,6 +103,8 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
+      # Specs load the built plugin (its hooks, launcher and integrity list), which main does not carry.
+      - run: npm run build
       - run: node tools/ci/coverage-cli.ts
 
   test:
@@ -128,10 +130,11 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
+      # Before the tests: specs load the built plugin (its hooks, launcher and integrity list).
+      - run: npm run build
       - run: npm test
       # The plugin ships its compiled dist; it must match the source on every OS. A fork's pull request that leaves
       # the dist alone passes: the release pull request after its merge rebuilds it.
-      - run: npm run build
       - run: node tools/ci/dist-fresh-cli.ts --github
       # Runs the launcher and every hook from the dist, as an installed plugin runs them.
       - run: node tools/ci/dist-smoke-cli.ts
