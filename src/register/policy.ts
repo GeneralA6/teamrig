@@ -3,8 +3,9 @@ import { LeadTree } from '../config/lead-tree.ts';
 import { priorityLevels } from '../config/priorities.ts';
 import type { KitConfig } from '../config/types.ts';
 import { ADDRESS_PATTERN, type SessionAddress } from '../core/address.ts';
+import { clipEnd } from '../core/clip.ts';
 import { SecretScanner } from '../core/secrets.ts';
-import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from '../core/time.ts';
+import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored, storedText } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { waitAnswerersOf } from './approval.ts';
 import type { SlicedGoal } from './focus.ts';
@@ -226,6 +227,9 @@ export interface DecideChange extends DeferChange {
 export interface OwnerChange extends UpdateChange {
   readonly by: string;
 }
+
+/** The owner's answer to a card from the pane (T4078): one of its options by its number (from 1), or yes or no to an approval. */
+export type OwnerAnswer = { readonly kind: 'option'; readonly option: number } | { readonly kind: 'approve' } | { readonly kind: 'decline' };
 
 /**
  * An audit: an update that changes no field and pins either a hand step file for the task at its sha256 (T2312) or
@@ -970,6 +974,55 @@ export class RegisterPolicy {
       return task.status !== 'waiting' || reason.kind !== 'time';
     });
     return ok({ changes: {}, note: text, waits, decided: true });
+  }
+
+  /**
+   * The owner's answer to a card from the pane (T4078), written as the owner (register.ownerSource): a Decided whose
+   * note says which option of the card the owner chose, or that the owner approved or declined, judged as
+   * {@link decideFrom} judges one. An option answers a wait on the owner's decision whose card has that option; yes
+   * or no answers a wait on the owner's approval.
+   */
+  ownerDecide(task: Task, answer: OwnerAnswer): Verdict<OwnerChange & DecideChange> {
+    const by = this.config.register.ownerSource;
+    const note = this.ownerAnswerNote(task, answer);
+    if (!note.ok) {
+      return note;
+    }
+    const decided = this.decideFrom(task, note.value);
+    return decided.ok ? ok({ ...decided.value, by }) : decided;
+  }
+
+  /** What the history keeps of the owner's answer: the option chosen by its number and words, or yes or no. */
+  private ownerAnswerNote(task: Task, answer: OwnerAnswer): Verdict<string> {
+    const by = this.config.register.ownerSource;
+    if (!waitsOnOwner(task, by)) {
+      return refuse(`${task.id} waits on no decision or approval of ${by}: only such a card is answered`);
+    }
+    const waitsOn = (kind: PersonWaitKind): boolean => task.waits.some((reason) => reason.kind === kind && reason.who === by);
+    if (answer.kind !== 'option') {
+      if (!waitsOn('approval')) {
+        return refuse(`${task.id} waits on ${by}'s decision, not an approval: answer it with --option <n>`);
+      }
+      return ok(answer.kind === 'approve' ? 'approved' : 'declined');
+    }
+    if (!waitsOn('decision')) {
+      return refuse(`${task.id} waits on ${by}'s approval, not a decision: answer it with --approve or --decline`);
+    }
+    const options = task.card?.options ?? [];
+    const chosen = options[answer.option - 1];
+    if (chosen === undefined) {
+      return refuse(options.length === 0 ? `${task.id}'s card has no options to choose from` : `${task.id}'s card has options 1 to ${options.length}, not ${answer.option}`);
+    }
+    return ok(clipEnd(`chose option ${answer.option} of ${options.length}: ${chosen}`, this.config.register.maxText));
+  }
+
+  /**
+   * The owner's Later from the pane (T4078), written as the owner: the card put off to `until` (stored form), with a
+   * note naming the time on the team's clock, judged as {@link deferFrom} judges one.
+   */
+  ownerLater(task: Task, until: string, context: Pick<StatusContext, 'now' | 'zone'>): Verdict<OwnerChange & DeferChange> {
+    const deferred = this.deferFrom(task, until, `put off until ${storedText(until, context.zone)}`, context);
+    return deferred.ok ? ok({ ...deferred.value, by: this.config.register.ownerSource }) : deferred;
   }
 
   /**

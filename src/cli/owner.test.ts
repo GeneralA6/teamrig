@@ -6,7 +6,8 @@ import { APP, CLAUDE_SESSION, CliHarness, EVENTS_PATH, TEAM_HOME, type CliResult
 import { ok } from '../testing/hired-team.ts';
 import { teamEventsOf, teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import { WakeAsks } from '../wake/asks.ts';
-import { ownerNextLeadLine, ownerNextLine, ownerNoteLine } from './commands/owner.ts';
+import { TEST_CARD, TEST_CARD_FLAGS, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
+import { ownerDecideLine, ownerLaterLine, ownerNextLeadLine, ownerNextLine, ownerNoteLine } from './commands/owner.ts';
 import { EXIT } from './runtime.ts';
 
 const ASKS = join(TEAM_HOME, 'state', 'wake-asks');
@@ -133,6 +134,104 @@ describe('teamrig owner next (T1298)', () => {
   });
 });
 
+/** `team()` with T1 waiting on the owner's decision (TEST_OWNER_CARD's two options) and T3 on the owner's approval. */
+async function cards(): Promise<CliHarness> {
+  const kit = await team();
+  ok(await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']));
+  ok(await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'pricing', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha']));
+  ok(await kit.run(['set', 'T3', '--status', 'in-progress', '--session', 'lead']));
+  ok(await kit.run(['set', 'T3', '--status', 'waiting', '--waits', 'approval:owner', '--note', 'the plan', ...TEST_CARD_FLAGS, '--session', 'lead']));
+  return kit;
+}
+
+/** The task as `show` prints its first line. */
+async function showOf(kit: CliHarness, id: string): Promise<string> {
+  return ok(await kit.run(['show', id])).stdout[0] ?? '';
+}
+
+describe('teamrig owner decide (T4078)', () => {
+  it("records the option chosen as the owner's Decided, ends the wait on the owner and wakes the session", async () => {
+    const kit = await cards();
+    const result = ok(await kit.run(['owner', 'decide', 'T1', '--option', '2']));
+    assert.deepEqual(result.stdout, [
+      'DECIDED T1 waiting, p2, owner alpha, from alpha | Ship the CLI (waiting: owner decided, by owner; pricing)',
+    ]);
+    const answer = `chose option 2 of 2: ${TEST_CARD.options[1]}`;
+    assert.deepEqual(lastEventOf(kit), ['owner', 'update', answer]);
+    const line = ownerDecideLine('owner', 'T1', answer);
+    assert.deepEqual(result.stderr, [`NOTE alpha has an inbox line that wakes its idle tab: ${line}`]);
+    assert.deepEqual(await asksOf(kit, 'alpha'), [['owner', line]]);
+    assert.doesNotMatch(await showOf(kit, 'T1'), /decision:owner/);
+    assertRefused(await kit.run(['owner', 'decide', 'T1', '--option', '1']), /^REFUSED T1 waits on no decision or approval of owner: only such a card is answered/);
+  });
+
+  it('records yes or no to an approval', async () => {
+    const kit = await cards();
+    ok(await kit.run(['owner', 'decide', 'T3', '--approve']));
+    assert.deepEqual(lastEventOf(kit), ['owner', 'update', 'approved']);
+    assert.deepEqual(await asksOf(kit, 'lead'), [['owner', ownerDecideLine('owner', 'T3', 'approved')]]);
+    const other = await cards();
+    ok(await other.run(['owner', 'decide', 'T3', '--decline']));
+    assert.deepEqual(lastEventOf(other), ['owner', 'update', 'declined']);
+  });
+
+  it('refuses an option the card lacks, yes or no to a decision, an option to an approval and a task on no owner wait, writing nothing', async () => {
+    const kit = await cards();
+    const before = kit.files.get(EVENTS_PATH);
+    assertRefused(await kit.run(['owner', 'decide', 'T1', '--option', '3']), /^REFUSED T1's card has options 1 to 2, not 3$/);
+    assertRefused(await kit.run(['owner', 'decide', 'T1', '--option', '0']), /^REFUSED T1's card has options 1 to 2, not 0$/);
+    assertRefused(await kit.run(['owner', 'decide', 'T1', '--approve']), /^REFUSED T1 waits on owner's decision, not an approval: answer it with --option <n>$/);
+    assertRefused(await kit.run(['owner', 'decide', 'T3', '--option', '1']), /^REFUSED T3 waits on owner's approval, not a decision: answer it with --approve or --decline$/);
+    assertRefused(await kit.run(['owner', 'decide', 'T2', '--approve']), /^REFUSED T2 waits on no decision or approval of owner/);
+    assert.equal(kit.files.get(EVENTS_PATH), before);
+    assert.deepEqual(await asksOf(kit, 'alpha'), []);
+  });
+
+  it('takes exactly one answer, an option by its number', async () => {
+    const kit = await cards();
+    for (const answer of [[], ['--approve', '--decline'], ['--option', '1', '--approve'], ['--option', 'two'], ['--option', '-1']]) {
+      assert.equal((await kit.run(['owner', 'decide', 'T1', ...answer])).code, EXIT.usage, answer.join(' '));
+    }
+  });
+});
+
+describe('teamrig owner later (T4078)', () => {
+  it("puts the card off as the owner's Later to 09:00 tomorrow on the team's clock and tells the session with no wake", async () => {
+    const kit = await cards();
+    const result = ok(await kit.run(['owner', 'later', 'T1', '--until', 'tomorrow']));
+    assert.deepEqual(result.stdout, [
+      'LATER T1 waiting, p2, owner alpha, from alpha | Ship the CLI (waiting: decision owner · until Wed 01-09 09:00 UTC; pricing)',
+    ]);
+    assert.deepEqual(lastEventOf(kit), ['owner', 'update', 'put off until 2030-01-09 09:00 UTC']);
+    const line = ownerLaterLine('owner', 'T1', '2030-01-09 09:00 UTC');
+    assert.deepEqual(result.stderr, [`NOTE alpha has an inbox line: ${line}`]);
+    assert.deepEqual(await inboxOf(kit, 'alpha'), [`- 2030-01-08 10:00 UTC owner: ${line}`]);
+    assert.deepEqual(await asksOf(kit, 'alpha'), []);
+  });
+
+  it('reads n hours from now, next Monday and a typed time', async () => {
+    const kit = await cards();
+    ok(await kit.run(['owner', 'later', 'T1', '--until', 'in-1h']));
+    assert.deepEqual(lastEventOf(kit), ['owner', 'update', 'put off until 2030-01-08 11:00 UTC']);
+    ok(await kit.run(['owner', 'later', 'T1', '--until', 'monday']));
+    assert.deepEqual(lastEventOf(kit), ['owner', 'update', 'put off until 2030-01-14 09:00 UTC']);
+    ok(await kit.run(['owner', 'later', 'T3', '--until', '2030-01-08 15:30']));
+    assert.deepEqual(lastEventOf(kit), ['owner', 'update', 'put off until 2030-01-08 15:30 UTC']);
+  });
+
+  it('refuses a time gone by, a task on no owner wait and an --until it cannot read, writing nothing', async () => {
+    const kit = await cards();
+    const before = kit.files.get(EVENTS_PATH);
+    assertRefused(await kit.run(['owner', 'later', 'T1', '--until', '09:00']), /^REFUSED /);
+    assertRefused(await kit.run(['owner', 'later', 'T2', '--until', 'tomorrow']), /^REFUSED T2 waits on no decision or approval of owner: only such a card is put off/);
+    for (const until of [['--until', 'someday'], ['--until', 'in-0h'], []]) {
+      assert.equal((await kit.run(['owner', 'later', 'T1', ...until])).code, EXIT.usage, until.join(' '));
+    }
+    assert.equal(kit.files.get(EVENTS_PATH), before);
+    assert.deepEqual(await inboxOf(kit, 'alpha'), []);
+  });
+});
+
 /** What Claude Code sets for an agent's tool call, a script that call runs and a hook command. */
 const UNDER_CLAUDE_CODE: RunOptions = { env: { CLAUDECODE: '1' } };
 
@@ -150,6 +249,11 @@ describe('teamrig owner where Claude Code runs it (T1780)', () => {
       /^REFUSED teamrig owner note acts as the owner, so it is refused where Claude Code runs it \(CLAUDECODE is set: an agent's tool call, a script it runs or a hook\); the owner presses Note in the pane or types \/teamrig owner note in a tab$/,
     );
     assertRefused(await kit.run(['owner', 'next', 'T1'], UNDER_CLAUDE_CODE), /^REFUSED teamrig owner next acts as the owner, .*; the owner presses Next in the pane or types \/teamrig owner next in a tab$/);
+    assertRefused(
+      await kit.run(['owner', 'decide', 'T1', '--option', '1'], UNDER_CLAUDE_CODE),
+      /^REFUSED teamrig owner decide acts as the owner, .*; the owner presses an option, Approve or Decline in the pane or types \/teamrig owner decide in a tab$/,
+    );
+    assertRefused(await kit.run(['owner', 'later', 'T1', '--until', 'tomorrow'], UNDER_CLAUDE_CODE), /^REFUSED teamrig owner later acts as the owner, .*; the owner presses Later in the pane/);
     assert.equal(kit.files.get(EVENTS_PATH), before);
     assert.deepEqual([...(await inboxOf(kit, 'alpha')), ...(await inboxOf(kit, 'lead'))], []);
     assert.deepEqual([...(await asksOf(kit, 'alpha')), ...(await asksOf(kit, 'lead'))], []);

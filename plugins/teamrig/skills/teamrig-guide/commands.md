@@ -3657,6 +3657,62 @@ PREVIEW owner next T14: goes to the top of web's list (the earlier pin on T9 mov
 NEXT T14 open, p2, pinned, owner web, from lead | Saved carts survive a logout
 ```
 
+### teamrig owner decide
+
+The owner answers a card from the pane's Decisions tab (`teamrig owner decide <[team/]T<id>> --option <n>`, or
+`--approve` or `--decline`): a task waiting on the owner's decision takes one of its card's options by number, a
+task waiting on the owner's approval takes yes or no. The answer is kept in the task's history as the owner's
+decision, naming the option chosen in full, so the meeting asks it no more; the task's waits on the owner end, and
+its session is woken to go on from the answer. It refuses a task that waits on no decision or approval of the owner,
+an option the card does not have, yes or no to a decision and an option to an approval. It writes as the owner, so
+the exec guard refuses it from an agent's tool call, and it refuses itself under `$CLAUDECODE`, as `owner note` does.
+
+Flags:
+
+- `--option <n>`: the number of the card's option the owner chose, from 1.
+- `--approve`: yes to an approval.
+- `--decline`: no to an approval.
+
+Example:
+
+```sh
+teamrig owner decide T21 --option 2
+```
+
+Output:
+
+```text
+DECIDED T21 waiting, p1, owner web, from lead | Pick the launch pricing tier (waiting: owner decided, by owner; launch pricing)
+NOTE web has an inbox line that wakes its idle tab: owner answered your card on T21: chose option 2 of 2: Pro at 29 dollars a month; it waits on owner no more, so go on from the answer
+```
+
+### teamrig owner later
+
+The owner puts a card off from the pane's Decisions tab (`teamrig owner later <[team/]T<id>> --until <when>`): the
+card leaves the owner's list until then and comes back by itself. `--until` takes `in-<n>h` (n hours from now, up to
+168), `tomorrow` or `monday` (09:00 on the team's clock the next day, or next Monday), or a time as `--due` takes
+it. The Later is kept in the task's history as the owner's, and the task's session is told with no wake, as nothing
+waits on it to act. It refuses a task that waits on no decision or approval of the owner, and a time gone by. It
+writes as the owner, so the exec guard refuses it from an agent's tool call, and it refuses itself under
+`$CLAUDECODE`, as `owner note` does.
+
+Flags:
+
+- `--until <in-<n>h|tomorrow|monday|time>`: required; when the card comes back.
+
+Example:
+
+```sh
+teamrig owner later T21 --until tomorrow
+```
+
+Output:
+
+```text
+LATER T21 waiting, p1, owner web, from lead | Pick the launch pricing tier (waiting: decision owner · until Wed 01-09 09:00 IST; launch pricing)
+NOTE web has an inbox line: owner put off your card on T21 until 2030-01-09 09:00 IST: it comes back to owner then, and waits on owner until answered
+```
+
 ### teamrig owner wake
 
 The owner wakes one session by hand (`teamrig owner wake <[team/]id|name>`), the pane's Wake on a session row. A

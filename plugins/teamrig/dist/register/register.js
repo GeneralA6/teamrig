@@ -229,6 +229,18 @@ export class Register {
             return change.ok ? { ok: true, value: { task, moves: otherPins(task, task.owner, snapshot.state) } } : change;
         });
     }
+    /**
+     * The owner's answer to a card from the pane (T4078): a Decided naming the option chosen, or yes or no, written as in
+     * ownerNote.
+     */
+    ownerDecide(id, answer) {
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.ownerEvent(task, this.deps.policy.ownerDecide(task, answer)))));
+    }
+    /** The owner's Later from the pane (T4078): the card put off to `until` (stored form), written as in ownerNote. */
+    ownerLater(id, until) {
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.ownerEvent(task, this.deps.policy.ownerLater(task, until, this.timeContext())))));
+    }
+    /** An owner's action as its event: a Later or a Decided carries the waits it leaves, and a Decided its mark. */
     ownerEvent(task, change) {
         if (!change.ok) {
             return change;

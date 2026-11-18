@@ -6,7 +6,7 @@ import { EVENT_VERSION, TASK_LINE_VERSION, type ApprovalVerdict, type CreateEven
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { NO_SLICED_GOALS, type SlicedGoal } from './focus.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
-import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type AuditChange, type AuditSubject, type DeferChange, type ImportChanges, type ImportInput, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type TriageChanges, type UpdateChange, type Verdict } from './policy.ts';
+import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type AuditChange, type AuditSubject, type DecideChange, type DeferChange, type ImportChanges, type ImportInput, type OwnerAnswer, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type TriageChanges, type UpdateChange, type Verdict } from './policy.ts';
 import { ACTIVE_STATUSES } from './model.ts';
 import type { TaskNumbering } from './numbering.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
@@ -373,7 +373,21 @@ export class Register {
     });
   }
 
-  private ownerEvent(task: Task, change: Verdict<OwnerChange>): Verdict<UpdateEvent> {
+  /**
+   * The owner's answer to a card from the pane (T4078): a Decided naming the option chosen, or yes or no, written as in
+   * ownerNote.
+   */
+  ownerDecide(id: string, answer: OwnerAnswer): Promise<Verdict<WriteResult>> {
+    return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.ownerEvent(task, this.deps.policy.ownerDecide(task, answer)))));
+  }
+
+  /** The owner's Later from the pane (T4078): the card put off to `until` (stored form), written as in ownerNote. */
+  ownerLater(id: string, until: string): Promise<Verdict<WriteResult>> {
+    return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.ownerEvent(task, this.deps.policy.ownerLater(task, until, this.timeContext())))));
+  }
+
+  /** An owner's action as its event: a Later or a Decided carries the waits it leaves, and a Decided its mark. */
+  private ownerEvent(task: Task, change: Verdict<OwnerChange & Partial<Pick<DecideChange, 'waits' | 'decided'>>>): Verdict<UpdateEvent> {
     if (!change.ok) {
       return change;
     }

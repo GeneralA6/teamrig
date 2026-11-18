@@ -335,6 +335,8 @@ describe('execGuardOutput', () => {
       [bash('C:/kit/bin/teamrig owner next T1'), 'teamrig owner next'],
       [powershell('teamrig owner next web/T1'), 'teamrig owner next'],
       [bash('teamrig owner wake web/front'), 'teamrig owner wake'],
+      [bash('teamrig owner decide T1 --option 2'), 'teamrig owner decide'],
+      [powershell('teamrig owner later web/T1 --until tomorrow'), 'teamrig owner later'],
       [bash('teamrig owner "$ACTION" T1'), 'teamrig owner'],
       [bash('teamrig owner'), 'teamrig owner'],
     ] as const) {
