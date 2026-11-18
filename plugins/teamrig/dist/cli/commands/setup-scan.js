@@ -5,7 +5,6 @@ import { claudeConfigDir, KIT_NAME } from "../../core/home.js";
 import { expandHome } from "../../core/paths.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { KeepList } from "../../permissions/allow-rules.js";
-import { settingsScope } from "../../permissions/settings-scope.js";
 import { coreRuleTexts } from "../../rules/pack.js";
 import { isCleared, RULE_HASH_CLOCK, ruleHashesOf, verdictsByText, VerdictStore } from "../../rules/verdicts.js";
 import { teamSkillsOf } from "../../setup/backup-places.js";
@@ -14,7 +13,7 @@ import { scanReport } from "../../setup/scan-report.js";
 import { BYTES_PER_MB } from "../../setup/scan-unused.js";
 import { scanSetup } from "../../setup/scan.js";
 import { claudeSkillDoctor } from "../../setup/skill-doctor.js";
-import { teamSettingsScope } from "../allow-scope.js";
+import { projectsSettingsScope, teamSettingsScope } from "../allow-scope.js";
 import { noPositionals, UsageError } from "../args.js";
 import { teamFolders, teamProjectOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
@@ -58,7 +57,7 @@ async function clearedOf(runtime, team) {
 }
 async function settingsOf(runtime, team, claudeDir, project) {
     return team === undefined
-        ? settingsScope(runtime.files, claudeDir, [project], runtime.platform)
+        ? projectsSettingsScope(runtime, claudeDir, [project])
         : teamSettingsScope(runtime, { paths: team.kit.paths, config: team.config, project });
 }
 export async function scan(args, runtime) {

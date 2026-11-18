@@ -23,3 +23,11 @@ export async function settingsScope(files, claudeDir, projects, platform) {
     }
     return scope.filter((file, index) => scope.findIndex((other) => samePath(other.path, file.path, platform)) === index);
 }
+/**
+ * The scope with each existing `shared` file that git does not track read as the person's own (`local`): a repository
+ * that ignores `.claude/` commits no `settings.json`, so no commit can change it, and only a trim can (#837). One git
+ * can not tell about stays `shared`, as does one not there (nothing to trim, and no git run spent on it).
+ */
+export async function ownUntracked(files, scope, inGit) {
+    return Promise.all(scope.map(async (file) => file.kind === 'shared' && (await files.modifiedAt(file.path)) !== undefined && inGit(file.path) === 'untracked' ? { ...file, kind: 'local' } : file));
+}

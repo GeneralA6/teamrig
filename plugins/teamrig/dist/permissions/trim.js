@@ -29,10 +29,14 @@ export function planFile(file, text, keep, mode, secrets) {
 export async function planScope(files, scope, keep, mode, secrets) {
     return Promise.all(scope.map(async (file) => planFile(file, await files.read(file.path), keep, mode, secrets)));
 }
-/** What a `wide` plan of the scope would remove, shared files too: the flag doctor and the lead's start show. */
+/** What a `wide` plan of the scope would remove, shared files apart: the flag doctor and the lead's start show. */
 export function wideAllowOf(plans) {
     const holding = plans.filter((plan) => plan.kind === 'read' && countOf(plan.trim.removed) > 0);
-    return { files: holding.length, counts: mergeCounts(holding.map((plan) => plan.trim.removed)) };
+    const of = (shared) => {
+        const these = holding.filter((plan) => (plan.file.kind === 'shared') === shared);
+        return { files: these.length, counts: mergeCounts(these.map((plan) => plan.trim.removed)) };
+    };
+    return { local: of(false), committed: of(true) };
 }
 /** Settings as Claude Code writes them: two-space JSON and a final line break. */
 function settingsText(json) {

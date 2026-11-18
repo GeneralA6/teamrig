@@ -50,12 +50,15 @@ export function writeLine(write) {
             return `  ${plan.file.path}: FAILED the read-back check after the write; its old text is at ${write.backup}`;
     }
 }
-/** The flag, or undefined when no rule off the keep-list approves a whole tool or program or holds a credential. */
-export function wideAllowText(wide) {
-    const count = countOf(wide.counts);
-    if (count === 0) {
-        return undefined;
+/** The flag, or undefined when no rule off the keep-list approves a whole tool or program or holds a credential; `--yes` is advised only for the person's own files, which a trim rewrites (#837). */
+export function wideAllowText({ local, committed }) {
+    const own = countOf(local.counts);
+    const shared = countOf(committed.counts);
+    const what = "approve a whole tool or program, so auto mode's classifier never sees those calls, or hold a credential saved with an approved command";
+    const byCommit = 'change only by a commit in their repository';
+    if (own === 0) {
+        return shared === 0 ? undefined : `${shared} allow rule(s) in ${committed.files} committed settings file(s) ${what} (${formatCounts(committed.counts)}); they ${byCommit}`;
     }
-    return (`${count} local allow rule(s) in ${wide.files} settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls, ` +
-        `or hold a credential saved with an approved command (${formatCounts(wide.counts)}); \`teamrig permissions trim\` previews their removal, and the owner runs it with --yes`);
+    return (`${own} local allow rule(s) in ${local.files} settings file(s) ${what} (${formatCounts(local.counts)}); \`teamrig permissions trim\` previews their removal, and the owner runs it with --yes` +
+        (shared === 0 ? '' : `; ${shared} more in ${committed.files} committed settings file(s) (${formatCounts(committed.counts)}) ${byCommit}`));
 }
