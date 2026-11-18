@@ -1533,6 +1533,11 @@ and records the meeting in `<team>/state/meeting-spotlit.json`. It lifts at `mee
 another scheduled meeting starts, or 15 minutes past its booked length. Ending or dropping a meeting the file no longer names
 lifts nothing.
 
+One spotlight dims the host at a time, whichever team or meeting started it. Each start names itself in
+`~/.teamrig/meeting-spotlight.json` (the meeting file it watches and that meeting's start), and a spotlight on already
+lifts at its next 2 s check once that file names another: a scheduled meeting started during the daily one, or two
+teams' meetings, never stack two dimming layers. A missing or unreadable file lifts nothing.
+
 A message that breaks through the meeting hold (one starting CRITICAL, sent to the lead by another session) also
 lifts the dimming, so the owner sees it at once. The cold-send hook records the last such break-through in
 `<team>/state/meeting-breakthrough.json` (the meeting's start, when it went through and who sent it); at its next
