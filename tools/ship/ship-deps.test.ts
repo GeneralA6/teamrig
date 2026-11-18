@@ -88,4 +88,18 @@ describe('realShipDeps', () => {
     assert.match(deps.patchOf('HEAD'), /^[0-9a-f]+$/);
     assert.equal(deps.patchOf('HEAD'), deps.patchOf(repo.git('rev-parse', 'HEAD').trim()));
   });
+
+  it("reads a head's stray release stamps against origin's main (T4259)", () => {
+    repo.write('plugins/teamrig/.claude-plugin/plugin.json', '{\n  "name": "teamrig",\n  "version": "0.1.0"\n}\n');
+    repo.write('src/core/version.ts', "export const KIT_VERSION = '0.1.0';\n");
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '-m', 'version');
+    repo.git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+    const deps = realShipDeps(repo.dir, null);
+    assert.deepEqual(deps.strayStampsOf('HEAD'), []);
+    repo.write('src/config/migrate.ts', "export const STEP_1 = {\n  from: 1,\n  firstRelease: '0.0.9',\n};\n");
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '-m', 'config: migration 1');
+    assert.deepEqual(deps.strayStampsOf('HEAD'), [{ path: 'src/config/migrate.ts', version: '0.0.9', shipsIn: ['0.1.1', '0.2.0', '1.0.0'] }]);
+  });
 });
