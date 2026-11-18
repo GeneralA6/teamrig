@@ -65,6 +65,8 @@ export class FakeMergeGit implements MergeGit {
   readonly fileReads: number[] = [];
   /** Commits whose blobs and files git cannot read, such as one it collected. */
   readonly unreadable = new Set<string>();
+  /** Commits the repository does not hold, such as one a remote has that was not fetched yet: no ref names them. */
+  readonly absent = new Set<string>();
   defaultName = 'main';
   mergeBaseIs: string | undefined = 'base';
   paths: readonly string[] | undefined = ['src/app.ts'];
@@ -116,7 +118,7 @@ export class FakeMergeGit implements MergeGit {
     if (ref.startsWith(BRANCH_REF)) {
       return this.branches.get(ref.slice(BRANCH_REF.length));
     }
-    return ref;
+    return this.absent.has(ref) ? undefined : ref;
   }
 
   checkoutOf(dir: string): Checkout | undefined {

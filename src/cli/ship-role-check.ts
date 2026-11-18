@@ -280,24 +280,28 @@ export function toolCodeAt(git: MergeGit, top: string, ref: string, tool: string
 }
 
 /**
- * The files of the code a pinned tool runs that differ between its pin and `head`, a later commit of main's history its
- * clean checkout moved to while the step waited (T3419): none when the tool runs the same code, so a main that moved on
- * without touching it refuses no waiting ship. The code is what the tool runs at either commit, so a file it stopped
- * loading counts too. Undefined when that cannot be told (`head` off main's history or not after the pin, a read git
- * did not answer), so the step is refused as a changed tool.
+ * The files of the code a tool runs that differ between `from` and `to`, a later commit of the same history (T3419):
+ * none when the tool runs the same code at both, so a main that moved on without touching it refuses no waiting ship.
+ * The code is what the tool runs at either commit, so a file it stopped loading counts too. Undefined when that cannot
+ * be told (`to` not after `from`, a read git did not answer), so the step is refused as a changed tool.
  */
-function toolCodeChangeOf(git: MergeGit, state: ToolState, tool: string, pinned: string, head: string): readonly string[] | undefined {
+function toolCodeChangeOf(git: MergeGit, state: ToolState, tool: string, from: string, to: string): readonly string[] | undefined {
   const path = pathInCheckout(state.top, tool);
-  if (path === undefined || !git.isAncestor(state.top, head, state.mainRef) || !git.isAncestor(state.top, pinned, head)) {
+  if (path === undefined || !git.isAncestor(state.top, from, to)) {
     return undefined;
   }
-  const before = toolCodeAt(git, state.top, pinned, path);
-  const after = toolCodeAt(git, state.top, head, path);
-  const changed = git.changedPaths(state.top, pinned, head);
+  const before = toolCodeAt(git, state.top, from, path);
+  const after = toolCodeAt(git, state.top, to, path);
+  const changed = git.changedPaths(state.top, from, to);
   if (before === undefined || after === undefined || changed === undefined) {
     return undefined;
   }
   return [...new Set([...before, ...after])].sort().filter((file) => changed.includes(file));
+}
+
+/** How the refusals tell a person to move the tool's checkout to the newest main. */
+function moveHint(state: ToolState): string {
+  return `run git -C ${state.top} fetch -q ${ORIGIN} && git -C ${state.top} checkout -q --detach ${state.mainRef}, then queue the step again`;
 }
 
 /** A stale or changed ship tool's refusal: what it is not, and how to move its checkout to the newest main. */
@@ -305,7 +309,29 @@ function staleToolReason(tool: string, state: ToolState, since: string): string 
   if (state.oldGit !== undefined) {
     return `the ship tool check reads ${tool}'s checkout with git rev-parse --path-format=absolute, which needs git ${PATH_FORMAT_GIT.major}.${PATH_FORMAT_GIT.minor} or newer, and this host runs git ${state.oldGit}: upgrade git, then queue the step again`;
   }
-  return `the ship tool ${tool}${since} is not ${state.mainRef}'s current code in a checkout with no change: run git -C ${state.top} fetch -q ${ORIGIN} && git -C ${state.top} checkout -q --detach ${state.mainRef}, then queue the step again`;
+  return `the ship tool ${tool}${since} is not ${state.mainRef}'s current code in a checkout with no change: ${moveHint(state)}`;
+}
+
+/**
+ * The remote's own head of the default branch, asked at a step's start (#1466), so the start check never rests on the
+ * local ref alone: a refusal when that head is not in the checkout's repository (fetch first) or the local ref is
+ * neither it nor an ancestor of it; undefined in `value` when they agree. Not answered when the remote gives no head.
+ */
+function remoteHeadOf(git: MergeGit, state: ToolState): GitRead<{ readonly head: string; readonly local: string | undefined; readonly refused?: string }> {
+  const branch = state.mainRef.startsWith(`${ORIGIN}/`) ? state.mainRef.slice(ORIGIN.length + 1) : FALLBACK_BRANCH;
+  const head = git.remoteHead(state.top, ORIGIN, branch);
+  if (head === undefined) {
+    return { ok: false, reason: `git ls-remote ${ORIGIN} ${branch} in ${state.top} gave no head` };
+  }
+  const local = git.sha(state.top, state.mainRef);
+  if (git.treeOf(state.top, head) === undefined) {
+    return { ok: true, value: { head, local, refused: `${ORIGIN}'s ${branch} is at ${head.slice(0, 9)}, which the checkout of the ship tool has not fetched: ${moveHint(state)}` } };
+  }
+  if (local === undefined || (local !== head && !git.isAncestor(state.top, local, head))) {
+    const at = local === undefined ? 'names no commit' : `(${local.slice(0, 9)}) is not on its history`;
+    return { ok: true, value: { head, local, refused: `${ORIGIN}'s ${branch} is at ${head.slice(0, 9)}, and ${state.mainRef} in ${state.top} ${at}: ${moveHint(state)}` } };
+  }
+  return { ok: true, value: { head, local } };
 }
 
 /**
@@ -325,30 +351,52 @@ export function shipToolPinOf(git: MergeGit, kit: Kit, config: KitConfig, tool: 
  * Why a pinned ship tool may not run when its step starts, after waiting in the host lock's line; undefined when it
  * may. Its checkout must still be clean and at the pinned commit, or at main's current code if it moved on, or at a
  * later commit of main's history where none of the code the tool runs changed (T3419), so a checkout moved to another
- * commit while the step waited never runs other code than the one it was queued with or main's current one. A read git does not answer is
- * read again, {@link SHIP_TOOL_READS} times in all, then refused naming that read, never as a changed tool (T3368).
+ * commit while the step waited never runs other code than the one it was queued with or main's current one. Main's
+ * current code is the remote's own head, asked at the start (#1466): the tool's code at the checkout must be the code
+ * at that head, so a local ref that is only behind decides nothing. A read git or the remote does not answer is read
+ * again, {@link SHIP_TOOL_READS} times in all, then refused naming that read, never as a changed tool (T3368).
  */
 export async function shipToolStartRefusal(git: MergeGit, kit: Kit, config: KitConfig, pin: ShipToolPin, sleep: Sleep): Promise<string | undefined> {
   for (let reads = 1; ; reads += 1) {
-    const state = shipToolStateOf(git, kit, config, pin.tool);
-    if (state.ok) {
-      const { head, landed } = state.value;
-      if (head !== undefined && (head === pin.head || landed)) {
-        return undefined;
-      }
-      const changed = head === undefined || pin.head === undefined ? undefined : toolCodeChangeOf(git, state.value, pin.tool, pin.head, head);
-      if (changed !== undefined && changed.length === 0) {
-        return undefined;
-      }
-      const files = changed === undefined ? '' : ` (${changed.slice(0, 5).join(', ')}${changed.length > 5 ? `, and ${changed.length - 5} more` : ''})`;
-      const since = pin.head === undefined ? '' : ` changed from ${pin.head.slice(0, 9)} while the step waited${files} and`;
-      return staleToolReason(pin.tool, state.value, since);
+    const read = startReadOf(git, kit, config, pin);
+    if (read.ok) {
+      return read.value;
     }
     if (reads >= SHIP_TOOL_READS) {
-      return `could not read the checkout of the ship tool ${pin.tool}, so the step did not run: ${state.reason}, at each of ${reads} reads ${SHIP_TOOL_REREAD_MS / 1000} s apart; git gave no answer, which says nothing of the tool, so queue the step again once git answers on this host`;
+      return `could not read the checkout of the ship tool ${pin.tool}, so the step did not run: ${read.reason}, at each of ${reads} reads ${SHIP_TOOL_REREAD_MS / 1000} s apart; git gave no answer, which says nothing of the tool, so queue the step again once git answers on this host`;
     }
     await sleep(SHIP_TOOL_REREAD_MS);
   }
+}
+
+/** One read of {@link shipToolStartRefusal}: why the step may not run (undefined: it may), or which read did not answer. */
+function startReadOf(git: MergeGit, kit: Kit, config: KitConfig, pin: ShipToolPin): GitRead<string | undefined> {
+  const state = shipToolStateOf(git, kit, config, pin.tool);
+  if (!state.ok) {
+    return state;
+  }
+  const { head, landed } = state.value;
+  if (head === undefined) {
+    return { ok: true, value: staleToolReason(pin.tool, state.value, pin.head === undefined ? '' : ` changed from ${pin.head.slice(0, 9)} while the step waited and`) };
+  }
+  const remote = remoteHeadOf(git, state.value);
+  if (!remote.ok || remote.value.refused !== undefined) {
+    return remote.ok ? { ok: true, value: remote.value.refused } : remote;
+  }
+  // The checkout makes the local ref's tree, and that ref is the remote's head: main's current code.
+  if (landed && remote.value.local === remote.value.head) {
+    return { ok: true, value: undefined };
+  }
+  // Moved while it waited: only forward from its pin, the code it runs the same as at its pin (T3419).
+  const sincePin = pin.head === undefined ? undefined : head === pin.head ? [] : toolCodeChangeOf(git, state.value, pin.tool, pin.head, head);
+  const sinceRemote = toolCodeChangeOf(git, state.value, pin.tool, head, remote.value.head);
+  if (sincePin !== undefined && sinceRemote !== undefined && sincePin.length === 0 && sinceRemote.length === 0) {
+    return { ok: true, value: undefined };
+  }
+  const changed = sincePin === undefined || sinceRemote === undefined ? undefined : [...new Set([...sincePin, ...sinceRemote])].sort();
+  const files = changed === undefined ? '' : ` (${changed.slice(0, 5).join(', ')}${changed.length > 5 ? `, and ${changed.length - 5} more` : ''})`;
+  const since = pin.head === undefined ? '' : head === pin.head ? ` at ${pin.head.slice(0, 9)}${files}` : ` changed from ${pin.head.slice(0, 9)} while the step waited${files} and`;
+  return { ok: true, value: staleToolReason(pin.tool, state.value, since) };
 }
 
 /**

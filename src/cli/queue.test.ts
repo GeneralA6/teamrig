@@ -1380,6 +1380,7 @@ describe("teamrig queue runs a configured ship tool only from main's current cod
     const sleep = async (ms: number): Promise<void> => {
       git.heads.set('/repo/ship', 'next');
       git.tracking.set('origin/main', 'next');
+      git.origin.set('main', 'next');
       await kit.clock.sleep(ms);
     };
     const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
@@ -1426,7 +1427,7 @@ describe("teamrig queue refuses a waiting ship only when the code its tool runs 
    */
   function movedTwice(kit: CliHarness, changed: readonly string[], to = 'b1'): { git: FakeMergeGit; sleep: (ms: number) => Promise<void> } {
     const git = shipGit();
-    for (const commit of ['base', to]) {
+    for (const commit of ['base', to, 'b2']) {
       git.files.set(`${commit}:tools/ship/ship.ts`, "import { profiles } from './repos.ts';\nimport { teamHome } from '../../src/core/home.ts';\n");
       git.files.set(`${commit}:tools/ship/ship.roots.json`, '{"roots": ["src/cli/main.ts"]}');
       git.files.set(`${commit}:tools/ship/repos.ts`, "import { join } from 'node:path';\nexport const PROFILES_PATH = new URL('./repos.json', import.meta.url);\n");
@@ -1440,6 +1441,7 @@ describe("teamrig queue refuses a waiting ship only when the code its tool runs 
     const sleep = async (ms: number): Promise<void> => {
       git.heads.set('/repo/ship', to);
       git.tracking.set('origin/main', 'b2');
+      git.origin.set('main', 'b2');
       await kit.clock.sleep(ms);
     };
     return { git, sleep };
@@ -1500,6 +1502,73 @@ describe("teamrig queue refuses a waiting ship only when the code its tool runs 
     };
     const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
     assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [EXIT.refused, `REFUSED ${movedFrom('')}`, []]);
+  });
+});
+
+describe("teamrig queue checks a waiting ship's tool against the remote's own head at its start, not the local ref alone (#1466)", () => {
+  /**
+   * The ship tool's checkout pinned and still at `base`, the local origin/main at `base`, and origin itself gone on to
+   * `b2` with `base..b2` differing in `changed`; the tool imports repos.ts at both.
+   */
+  function remoteAhead(kit: CliHarness, changed: readonly string[]): { git: FakeMergeGit; sleep: (ms: number) => Promise<void> } {
+    const git = shipGit();
+    for (const commit of ['base', 'b2']) {
+      git.files.set(`${commit}:tools/ship/ship.ts`, "import { profiles } from './repos.ts';\n");
+      git.files.set(`${commit}:tools/ship/repos.ts`, 'export const profiles = {};\n');
+    }
+    git.ancestry.add('base>b2');
+    git.diffs.set('base..b2', changed);
+    const sleep = async (ms: number): Promise<void> => {
+      git.origin.set('main', 'b2');
+      await kit.clock.sleep(ms);
+    };
+    return { git, sleep };
+  }
+
+  async function started(git: FakeMergeGit, sleep: (ms: number) => Promise<void>, kit: CliHarness, steps: FakeSteps): Promise<readonly unknown[]> {
+    await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
+    const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
+    return [result.code, result.stdout.at(-1)];
+  }
+
+  it('runs it when the local ref is behind the remote head and none of the code the tool runs changed between them', async () => {
+    const { kit, steps } = harness(SHIPPING);
+    const { git, sleep } = remoteAhead(kit, ['src/app.ts']);
+    assert.deepEqual([...(await started(git, sleep, kit, steps)).slice(0, 1), steps.ran.length], [EXIT.ok, 1]);
+  });
+
+  it('refuses it when the local ref is behind the remote head and a file the tool runs changed between them', async () => {
+    const { kit, steps } = harness(SHIPPING);
+    const { git, sleep } = remoteAhead(kit, ['tools/ship/repos.ts', 'src/app.ts']);
+    const refusal = `the ship tool ${SHIP_TOOL} at base (tools/ship/repos.ts) is not origin/main's current code in a checkout with no change: ${MOVE}`;
+    assert.deepEqual([...(await started(git, sleep, kit, steps)), steps.ran], [EXIT.refused, `REFUSED ${refusal}`, []]);
+  });
+
+  it('refuses it when the remote head is not in the repository yet, naming the fetch', async () => {
+    const { kit, steps } = harness(SHIPPING);
+    const { git, sleep } = remoteAhead(kit, ['src/app.ts']);
+    git.absent.add('b2');
+    const refusal = `origin's main is at b2, which the checkout of the ship tool has not fetched: ${MOVE}`;
+    assert.deepEqual([...(await started(git, sleep, kit, steps)), steps.ran], [EXIT.refused, `REFUSED ${refusal}`, []]);
+  });
+
+  it('refuses it when the local ref is neither the remote head nor an ancestor of it', async () => {
+    const { kit, steps } = harness(SHIPPING);
+    const { git, sleep } = remoteAhead(kit, ['src/app.ts']);
+    git.ancestry.delete('base>b2');
+    const refusal = `origin's main is at b2, and origin/main in /repo/ship (base) is not on its history: ${MOVE}`;
+    assert.deepEqual([...(await started(git, sleep, kit, steps)), steps.ran], [EXIT.refused, `REFUSED ${refusal}`, []]);
+  });
+
+  it('refuses it, naming the read, when the remote keeps giving no head, and reads it again first', async () => {
+    const { kit, steps } = harness(SHIPPING);
+    const git = shipGit();
+    const sleep = async (ms: number): Promise<void> => {
+      git.origin.delete('main');
+      await kit.clock.sleep(ms);
+    };
+    const unread = `could not read the checkout of the ship tool ${SHIP_TOOL}, so the step did not run: git ls-remote origin main in /repo/ship gave no head, at each of ${SHIP_TOOL_READS} reads 15 s apart; git gave no answer, which says nothing of the tool, so queue the step again once git answers on this host`;
+    assert.deepEqual([...(await started(git, sleep, kit, steps)), steps.ran], [EXIT.refused, `REFUSED ${unread}`, []]);
   });
 });
 
