@@ -35,6 +35,8 @@ import { teamRegister } from "../team-register.js";
 import { budgetFactsOf } from "./hook-budget.js";
 import { inboxDepsOf } from "./inbox.js";
 import { runIdlePass } from "./hook-idle-pass.js";
+import { runTreeIdlePasses } from "./hook-tree-idle-pass.js";
+import { sessionFoldersOf } from "./setup.js";
 import { parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
 import { armParkedRestart, parkedHere, rearmDeadRestart } from "./hook-restart.js";
 import { fileLockOf } from "../file-locks.js";
@@ -374,8 +376,11 @@ export async function wakeCheck(args, runtime) {
         return answer(runtime, scope);
     }
     const { kit, config, id, tab } = scope;
-    // The pass is the team's, not this tab's wake: before the holds that keep only this session from waking.
-    await runIdlePass(runtime, kit, config, scope.roster, scope.from);
+    // The pass is the team's, not this tab's wake: before the holds that keep only this session from waking. A pass
+    // this check ran also runs the stale passes of the tree's other teams, which may have no tab left to run their own.
+    if (await runIdlePass(runtime, kit, config, scope.roster, sessionFoldersOf(runtime, config, undefined, scope.from))) {
+        await runTreeIdlePasses(runtime, kit.paths.team);
+    }
     if (await meetingHoldsWake(runtime, scope)) {
         return answer(runtime, waitAnswer(scope, null));
     }
