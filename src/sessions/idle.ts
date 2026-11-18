@@ -4,7 +4,8 @@ import { MS_PER_MINUTE, parseDeadline } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import type { ParkRules } from '../register/park.ts';
-import type { TasksElsewhere } from '../register/tree.ts';
+import { TaskTree, type TasksElsewhere, type WaitingOnYou } from '../register/tree.ts';
+import { isRightNow } from '../config/priorities.ts';
 import { asksDecision, messageTextOf } from '../tabs/status.ts';
 import { replyOf } from '../turn-log/reply.ts';
 import type { WakeAsk } from '../wake/asks.ts';
@@ -15,7 +16,9 @@ import { isNews, type WakeRest } from '../wake/decide.ts';
  * Whether an idle session closes and a closed one reopens, pure (T1100). One rule serves both: a session closes when
  * the wake check would not wake it (src/wake/decide.ts, src/wake/day-start.ts) and reopens when it would, so a closed
  * session comes back exactly when its open tab would get a prompt. A tab still in a turn, at a tool call or putting a
- * decision to the person stays open, and so does one whose own time wait ends soon.
+ * decision to the person stays open, and so does one whose own time wait ends soon. Right-now work of another session
+ * that waits on a closed one reopens it too (T4414): its own tab would see it at its next start, and a closed one has
+ * none, so the work sat unseen.
  */
 
 /** A session whose own time wait ends within this many minutes stays open: closing it would only reopen it. */
@@ -159,20 +162,40 @@ export interface ReopenInput {
 }
 
 /**
- * Whether a closed session reopens now, and for which urgent lines (`at`: the oldest one's post), tasks, most urgent
- * first, or pile of unseen inbox lines (`lines`, past `threshold`).
+ * Whether a closed session reopens now, and for which urgent lines (`at`: the oldest one's post), right-now tasks of
+ * others that wait on it (`waiting`, plan order), tasks, most urgent first, or pile of unseen inbox lines (`lines`,
+ * past `threshold`).
  */
 export type ReopenVerdict =
   | { readonly kind: 'asked'; readonly asks: readonly WakeAsk[]; readonly at: number }
+  | { readonly kind: 'needed'; readonly waiting: readonly WaitingOnYou[] }
   | { readonly kind: 'handed'; readonly tasks: readonly Task[] }
   | { readonly kind: 'piled'; readonly lines: number; readonly threshold: number }
   | { readonly kind: 'day-start'; readonly at: number; readonly tasks: readonly Task[] }
   | { readonly kind: 'stay' };
 
 /**
+ * When a waiting task came to need its session, epoch ms: its creation, its owner, priority or waits changing. A
+ * note or another event on it is no new need, so a session reopened for it and closed again stays closed for it.
+ */
+function needAt(task: Task): number {
+  return Math.max(...[task.createdAt, task.assignedAt, task.priorityAt, task.waitsAt].map((at) => Date.parse(at)));
+}
+
+/**
+ * The right-now tasks of other sessions waiting on the session (`TaskTree.waitingOn`: on its unfinished tasks, or its
+ * decision or approval not yet answered) that came to need it after its close; one it saw before the close does not
+ * reopen it.
+ */
+function neededSince({ tasks, elsewhere, session, closedAt, now, zone }: ReopenInput): readonly WaitingOnYou[] {
+  return new TaskTree(tasks, new Date(now), zone, null, elsewhere).waitingOn(session).filter(({ task }) => isRightNow(task.priority) && needAt(task) > closedAt);
+}
+
+/**
  * Whether a session teamrig closed reopens now, as the wake check would wake its open tab: for urgent lines posted to
  * it, whatever its rest and at once (each is urgent by its sender's choice, and a pass's closes post theirs together),
- * else for work it can start within `maxPriority` that someone else or the clock changed since it last touched it
+ * else for right-now work of another session that waits on it and came to after its close, whatever its rest too
+ * (right-now work wakes past every rest), else for work it can start within `maxPriority` that someone else or the clock changed since it last touched it
  * (`isNews`, so work it saw before the close does not reopen it). While it does not rest (quiet hours, held by its
  * budget), else for `reopenUnreadLines` inbox lines or more it has not seen, none urgent, which a lead's or a busy
  * peer's inbox gathers while it sleeps (T3387), else for a day start after its close when it has any work it can
@@ -182,6 +205,10 @@ export function reopenVerdict(input: ReopenInput): ReopenVerdict {
   const { tasks, elsewhere, session, now, zone, parking } = input;
   if (input.asks.length > 0) {
     return { kind: 'asked', asks: input.asks, at: Math.min(...input.asks.map((ask) => ask.at)) };
+  }
+  const waiting = neededSince(input);
+  if (waiting.length > 0) {
+    return { kind: 'needed', waiting };
   }
   const handed = startableTasks(tasks, elsewhere, session, now, zone, parking, input.maxPriority).filter((task) => isNews(task, session, tasks, elsewhere, zone));
   if (handed.length > 0) {

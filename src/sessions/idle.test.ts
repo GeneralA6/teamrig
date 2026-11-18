@@ -170,6 +170,39 @@ describe('reopenVerdict', () => {
     assert.deepEqual(reopen({ asks, rest: { held: true, quiet: true }, maxPriority: 1 }), expected);
   });
 
+  describe('for right-now work of another session that waits on it (T4414)', () => {
+    /** After its close (NOW - 2 h). */
+    const AFTER_CLOSE = '2030-01-08T09:00:00.000Z';
+    const approval = (overrides: Partial<Task> = {}): Task =>
+      testTask({ id: 'T12', owner: 'bravo', priority: 0, status: 'waiting', waits: [{ kind: 'approval', who: 'alpha' }], waitsAt: AFTER_CLOSE, ...overrides });
+    const waitingIds = (verdict: ReopenVerdict): readonly string[] => (verdict.kind === 'needed' ? verdict.waiting.map(({ task }) => task.id) : []);
+
+    it('reopens for a p0 waiting on its approval since its close, whatever its rest and before its own news', () => {
+      const tasks = tasksOf(approval(), testTask({ id: 'T4', priority: 1 }));
+      const verdict = reopen({ tasks, rest: { held: true, quiet: true }, maxPriority: 0 });
+      assert.equal(verdict.kind, 'needed');
+      assert.deepEqual(waitingIds(verdict), ['T12']);
+      assert.deepEqual(verdict.kind === 'needed' ? verdict.waiting[0]?.asks : [], [{ kind: 'approval', who: 'alpha' }]);
+      assert.equal(reopen({ tasks }).kind, 'needed', 'its own p1 news comes after');
+    });
+
+    it('reopens for a p0 that waits on or is planned after its unfinished task, raised to p0 after its close', () => {
+      const mine = testTask({ id: 'T7', ownerSeenAt: SEEN });
+      const waits = testTask({ id: 'T12', owner: 'bravo', status: 'in-progress', startedAt: SEEN, waits: [{ kind: 'task', id: 'T7' }], priority: 0, priorityAt: AFTER_CLOSE });
+      const after = testTask({ id: 'T13', owner: 'charlie', after: ['T7'], priority: 0, createdAt: AFTER_CLOSE });
+      const verdict = reopen({ tasks: tasksOf(mine, waits, after) });
+      assert.deepEqual(waitingIds(verdict), ['T12', 'T13']);
+    });
+
+    it('stays closed for a need it had before its close, a p1, an approval it answered, or a finished task', () => {
+      assert.deepEqual(reopen({ tasks: tasksOf(approval({ waitsAt: SEEN })) }), { kind: 'stay' });
+      assert.deepEqual(reopen({ tasks: tasksOf(approval({ priority: 1 })) }), { kind: 'stay' });
+      const answered = approval({ answer: { by: 'alpha', at: AFTER_CLOSE, verdict: 'approved', note: 'go' } });
+      assert.deepEqual(reopen({ tasks: tasksOf(answered) }), { kind: 'stay' });
+      assert.deepEqual(reopen({ tasks: tasksOf(approval({ status: 'done', waits: [] })) }), { kind: 'stay' });
+    });
+  });
+
   it('reopens for news it can start within maxPriority, most urgent first', () => {
     const tasks = tasksOf(testTask({ id: 'T7' }), testTask({ id: 'T4', priority: 1 }), testTask({ id: 'T3', priority: 1 }));
     const verdict = reopen({ tasks });

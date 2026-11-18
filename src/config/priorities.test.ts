@@ -1,7 +1,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_REGISTER } from './defaults.ts';
-import { NOW_PRIORITY, priorityLevels, priorityName, topPriority } from './priorities.ts';
+import { isRightNow, NOW_PRIORITY, priorityLevels, priorityName, topPriority } from './priorities.ts';
+
+describe('isRightNow', () => {
+  it('holds p0 and any level above it, and no configured level (T4414)', () => {
+    assert.equal(isRightNow(NOW_PRIORITY.id), true);
+    assert.equal(isRightNow(NOW_PRIORITY.id - 1), true);
+    assert.equal(isRightNow(1), false);
+  });
+});
 
 describe('priorityLevels', () => {
   it('puts p0 ahead of the configured levels, a team with its own levels included', () => {
