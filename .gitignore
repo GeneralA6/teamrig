@@ -2,3 +2,6 @@ node_modules/
 *.log
 .tmp/
 coverage/
+# The plugin's compiled code: `npm run build` writes it, and the release workflow publishes it to the release branch
+# that installs read (T4355).
+plugins/teamrig/dist/
