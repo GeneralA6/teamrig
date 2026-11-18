@@ -38,7 +38,7 @@ import { overSizeFlags } from '../../register/over-size.ts';
 import type { AddInput, AskInput, StatusInput, Verdict } from '../../register/policy.ts';
 import type { GoalTagsReader, Register, RotationOutcome, WriteResult } from '../../register/register.ts';
 import { ACTIVE_STATUSES, type TaskStatus } from '../../register/model.ts';
-import type { RegisterSnapshot } from '../../register/snapshot.ts';
+import { windowOpensAfter, type RegisterSnapshot } from '../../register/snapshot.ts';
 import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopgap.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, watchQueue, type DueVerify } from '../../register/verify.ts';
 import { readAs, TaskTree, type TaskElsewhere } from '../../register/tree.ts';
@@ -881,9 +881,9 @@ function weekMayBeRetired(week: string): HistoryNeed {
  * lacks (retired) or one created before the snapshot's event window, whose older events only the history holds.
  */
 function showNeedsHistory(id: string): HistoryNeed {
-  return ({ state, retired, window }) => {
-    const task = state.tasks.get(id);
-    return task === undefined ? retired !== null : window !== null && Date.parse(task.createdAt) < Date.parse(window.from);
+  return (snapshot) => {
+    const task = snapshot.state.tasks.get(id);
+    return task === undefined ? snapshot.retired !== null : windowOpensAfter(snapshot, Date.parse(task.createdAt));
   };
 }
 
