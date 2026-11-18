@@ -581,7 +581,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       delivery.queue.maxRunMinutes (--max-minutes; the time its share is set aside by teamrig step-away does
       not count) and records its start and end in the delivery
       ledger, with its --kind (build, test, lint, push, merge, deploy, other or ship; default read from the
-      command; a ship, merge or deploy holds the host's one ship slot: a second one waits as shipSlot while other steps
+      command; a ship, merge or deploy holds its repository's ship slot: a second one there waits as shipSlot while other steps
       pass it) and --task (default the first task id in --what, else for a ship tool's step the task its worktree's branch
       names); once the shell that started it ends, it kills a running step (exit 129); a
       waiting one goes on as a detached run that keeps its place in line while the tab's Claude Code runs (not a git hook's

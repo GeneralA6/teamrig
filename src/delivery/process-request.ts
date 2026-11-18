@@ -21,14 +21,23 @@ export function isStepKind(value: unknown): value is StepKind {
 }
 
 /**
- * The kinds that move a main branch, which hold the host's one ship slot (T2727): two of them beside each other race to
- * main, and the later one's rebase or merge fails after its whole run. A `push` is not one, as most push a branch.
+ * The kinds that move a main branch, which hold their repository's ship slot (T2727): two of them beside each other
+ * race to main, and the later one's rebase or merge fails after its whole run. A `push` is not one, as most push a branch.
  */
 const SHIP_SLOT_KINDS: ReadonlySet<StepKind> = new Set<StepKind>(['ship', 'merge', 'deploy']);
 
 /** Whether a step of `kind` holds the ship slot; false for a step that names no kind (an older kit's). */
 export function takesShipSlot(kind: StepKind | undefined): boolean {
   return kind !== undefined && SHIP_SLOT_KINDS.has(kind);
+}
+
+/**
+ * Whether two ships, by the repositories they move (`LineRequest.repo`), hold the same slot (#1711): the race to main
+ * is per repository, so ships of two repositories run beside each other. One that names no repository (its folder is
+ * none, or an older kit queued it) shares the slot of every one, as the host's one slot did.
+ */
+export function sharesShipSlot(a: string | undefined, b: string | undefined): boolean {
+  return a === undefined || b === undefined || a === b;
 }
 
 /** What a queued step asks for besides its label and session, recorded on its start and refusal records. */
@@ -71,6 +80,11 @@ export interface LineRequest extends ProcessRequest {
    * step goes ahead of every other, p0 too. Left out for every other step, and once its task is done or dropped.
    */
   readonly frontAt?: string;
+  /**
+   * The repository a step that holds the ship slot moves (#1711): the shared git folder of the folder it queued in, so
+   * the worktrees of one repository name the same one. Left out when that folder is no repository, and by an older kit.
+   */
+  readonly repo?: string;
 }
 
 /** Whether a task the register lacks (undefined) or names counts for a front: only while it is still active. */
@@ -112,7 +126,7 @@ export function isLineRequest(value: unknown): value is LineRequest {
   if (!isRecord(value)) {
     return false;
   }
-  const { kind, task, priority, class: workClass, classPct, frontAt } = value;
+  const { kind, task, priority, class: workClass, classPct, frontAt, repo } = value;
   return (
     isStepKind(kind) &&
     (task === undefined || typeof task === 'string') &&
@@ -121,7 +135,8 @@ export function isLineRequest(value: unknown): value is LineRequest {
     typeof classPct === 'number' &&
     Number.isFinite(classPct) &&
     classPct >= 0 &&
-    (frontAt === undefined || (typeof frontAt === 'string' && !Number.isNaN(Date.parse(frontAt))))
+    (frontAt === undefined || (typeof frontAt === 'string' && !Number.isNaN(Date.parse(frontAt)))) &&
+    (repo === undefined || (typeof repo === 'string' && repo !== ''))
   );
 }
 
