@@ -5,7 +5,7 @@
 ```sh
 npm ci                # also points git at .githooks (scrub + DCO sign-off checks, the local gate before each push, no push to main)
 npm run setup         # the same hook setup, for a clone installed with --ignore-scripts (npm run check fails until it runs)
-npm run check         # that git runs the repo hooks, then CI's gates on your tree: typecheck, tests with the coverage gate, build, dist checks, pictures, config reference, doc links, scrub
+npm run check         # that git runs the repo hooks, then CI's gates on your tree: typecheck, build, tests with the coverage gate, dist smoke, fresh install, pictures, config reference, doc links, scrub
 npm run docs:images   # redraws the pictures in docs/images
 npm run docs:config   # redraws docs/configuration.md from the config schema
 npm run docs:check    # checks relative links, anchors and Mermaid diagram types in the top-level and docs/ Markdown
@@ -27,7 +27,7 @@ the rules that apply on every turn, and the project skills in `.claude/skills/` 
 | [`dev-add-command`](.claude/skills/dev-add-command/SKILL.md) | a new CLI command, or a flag on one |
 | [`dev-add-config-key`](.claude/skills/dev-add-config-key/SKILL.md) | a new key in the team config |
 | [`dev-update-docs`](.claude/skills/dev-update-docs/SKILL.md) | the docs a change must update, and the checks that hold them to the code |
-| [`dev-ship-change`](.claude/skills/dev-ship-change/SKILL.md) | from the last commit to the merge: dist, checks, push, pull request |
+| [`dev-ship-change`](.claude/skills/dev-ship-change/SKILL.md) | from the last commit to the merge: checks, push, pull request |
 | [`dev-design-issue`](.claude/skills/dev-design-issue/SKILL.md) | joining a design issue: a reasoned comment, nothing taken until it is agreed, no sensitive data |
 | [`dev-github-intake`](.claude/skills/dev-github-intake/SKILL.md) | a maintainer taking in issues and pull requests: labels, best fix first, landing with credit, design issues |
 
@@ -204,7 +204,9 @@ matrix.
   through release-please (`release-please-config.json`): it raises the version in the plugin's `plugin.json` and
   `src/core/version.ts` and writes the notes, and a person reviews and merges it. Once it merged, the next run tags
   main `teamrig-v<version>` with the notes, builds the dist with a read-only token, and pushes main's commit with
-  the dist on top to the `release` branch, tagged `v<version>` (`tools/release/publish.ts`).
+  the dist on top to the `release` branch, tagged `v<version>` (`tools/release/publish.ts`). The marketplace entry
+  installs from that branch (a `git-subdir` source on ref `release`), so main ignores `plugins/teamrig/dist` and no
+  pull request carries one.
 - Installs take the version in `plugins/teamrig/.claude-plugin/plugin.json`, not the newest commit:
   `claude plugin update` moves an install only when that version rises. A pull request never raises it: the release
   pull request does, from the commit subjects since the last release. While it is 0.x, a `feat` or a breaking

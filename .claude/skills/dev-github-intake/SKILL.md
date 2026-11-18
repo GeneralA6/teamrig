@@ -30,10 +30,9 @@ this is the other side of it.
    flow, through whatever resets its count (a compaction, a `/clear`, a restart); ask for that spec when they do
    not (CONTRIBUTING.md, Tests).
 4. Land it with credit: cherry-pick its source commits (`git cherry-pick -s <sha>` keeps the author), leave out its
-   version and dist commits, then raise the version and rebuild the dist ourselves (`dev-ship-change`). A change
-   that needs neither (tests, tools) ships with the plan `{ "chunks": [] }`, which lands the picked commits as they
-   are; a chunk naming them would commit them again under our name. Comment on the pull request naming the landed
-   commit, and close it.
+   version and dist commits, which the release workflow makes, and land the rest with `dev-ship-change` and the plan
+   `{ "chunks": [] }`, which lands the picked commits as they are; a chunk naming them would commit them again under
+   our name. Comment on the pull request naming the landed commit, and close it.
 5. Reply as yourself, in plain words, with the next step and its date, and keep each promise in a task.
 
 ## A design issue
