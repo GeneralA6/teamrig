@@ -1392,7 +1392,8 @@ Flags:
   line, so a new repository needs no hand step; the push makes no other label. The first failed write
   stops that repository, and the next run plans it again from GitHub as it is. It refuses `--auto`: the hooks' sync
   sends the push itself when `github.statusPush` is on. When a team task
-  and an imported one hold the same issue, the team task speaks for it.
+  and an imported one hold the same issue, the team task speaks for it; when two or more team tasks hold it, the push
+  writes nothing to it and a `SHARED` line names them.
 
 Example:
 
