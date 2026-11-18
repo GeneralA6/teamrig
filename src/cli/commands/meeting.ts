@@ -18,6 +18,7 @@ import { SPOTLIGHT_LOG, spotlightHolderPath, spotlightLine, startSpotlight, type
 import { MEETING_LAPSE_MS, MeetingStore, phaseOf, startingKindOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
 import { MergeLog } from '../../merge/merge-log.ts';
 import { goalScores, type BoardTeam, type GoalScore } from '../../register/goal-board.ts';
+import { windowOpensAfter } from '../../register/snapshot.ts';
 import type { Goal } from '../../register/goals.ts';
 import type { StatsRange } from '../../register/stats.ts';
 import { currentWeekOf } from '../../register/week.ts';
@@ -306,6 +307,14 @@ export async function meetingAgenda(args: ParsedArgs, runtime: CliRuntime): Prom
 }
 
 /**
+ * The team's register holding every event since `since`: its working set, or its whole history when the snapshot's
+ * event window opens later (T4076), as a meeting that lapsed unended may hold decisions only the history keeps.
+ */
+async function withEventsSince(rolled: RolledTeam, since: number): Promise<RolledTeam> {
+  return windowOpensAfter(rolled.snapshot, since) ? { ...rolled, snapshot: await rolled.history() } : rolled;
+}
+
+/**
  * `meeting end`: closes the open meeting, or one that lapsed unended, and tells each session whose tasks the lead
  * updated during the meeting those updates (the decisions recorded) by one inbox line, in a team under the lead's
  * too (T1018); a session with none gets no line. Every card the agenda asked that got no answer (a Decided or a Later)
@@ -331,8 +340,9 @@ export async function meetingEnd(args: ParsedArgs, runtime: CliRuntime): Promise
   }
   const { meeting } = phase;
   const rollUp = await meetingRegisters(runtime, mk);
-  const { own, teams } = rollUp;
   const startedAt = Date.parse(meeting.startedAt);
+  const own = await withEventsSince(rollUp.own, startedAt);
+  const teams = await Promise.all(rollUp.teams.map((rolled) => (rolled === rollUp.own ? own : withEventsSince(rolled, startedAt))));
   const asked = askedDecisions(decisionAgendaOf(rollUp, runtime, mk.now, meeting.carried));
   const answered = answeredKeys(
     teams.map((rolled) => ({ events: rolled.snapshot.read.events, decidedBy: decidedByOf(rolled, own, mk.lead), team: rolled.team === own.team ? undefined : rolled.team })),

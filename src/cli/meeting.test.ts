@@ -6,8 +6,9 @@ import { SPOTLIGHT_VARS } from '../meeting/spotlight.ts';
 import { MEETING_LAPSE_MS, MeetingStore } from '../meeting/state.ts';
 import { MergeLog, type SelfMerge } from '../merge/merge-log.ts';
 import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
-import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { APP, CliHarness, EVENTS_PATH, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
+import { rotateRegister } from '../testing/rotation.ts';
 import { SUB_TEAMS, teamConfigOf, teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { formatConfig } from '../config/load.ts';
 import { EXIT } from './runtime.ts';
@@ -241,6 +242,22 @@ describe('runCli: the daily meeting', () => {
     assert.ok(alpha.some((line) => line.endsWith(`lead: the owner's daily meeting with app-lead ended Tue 01-08 10:25 UTC. Decided on your tasks: T1: ${cleared}.`)), alpha.join('\n'));
     const bravo = await inboxOf(kit, 'bravo');
     assert.ok(!bravo.some((line) => line.includes('daily meeting')), bravo.join('\n'));
+  });
+
+  it("ends a lapsed meeting with the decisions recorded before the snapshot's event window, read from the history (T4076)", async () => {
+    const kit = await teamBeforeTheMeeting();
+    await kit.run(['meeting', 'start', '--session', 'lead']);
+    kit.clock.advance(25 * MINUTE);
+    await kit.run(['update', 'T1', '--decided', '--note', 'owner decided: the middle tier', '--session', 'lead']);
+    // The meeting lapses unended; a compaction three days on keeps two days of events, so the decision is archived.
+    kit.clock.advance(3 * 24 * 60 * MINUTE);
+    await rotateRegister(kit.files, EVENTS_PATH, { now: new Date(kit.clock.now()) });
+    const ended = await kit.run(['meeting', 'end', '--session', 'lead']);
+    assert.equal(ended.code, EXIT.ok, ended.stderr.join('\n'));
+    assert.deepEqual(ended.stdout.slice(1), [
+      "RECORDED 1 decision(s), each told to its task's owner",
+      '  alpha T1: owner decided: the middle tier (its wait on the owner cleared: act on it, set its next status)',
+    ]);
   });
 
   it('carries every card with no answer to the next meeting, which asks it first; a Decided or a Later is done (T2775)', async () => {
