@@ -5072,7 +5072,7 @@ holds the MB it was counted at for `open.headroom.loadMinutes` (5), as free memo
 loads; the wait line names them (`..., 1500 MB held for 1 tab still loading, ...`). Free memory is read 3 times 1 s apart and the least read counts, since a step
 that just ended or started gives back or takes its memory in a burst. On a host with less than twice that RAM, half
 the host's RAM is enough. Until then it waits first in line (`...; host memory: 7000 MB free, 4096 MB held for them,
-6144 MB needed (4096 floor + 2048 for this step)`), and when its wait runs out it is refused with `host memory still
+6144 MB needed (4096 kept free for the host + 2048 for this step)`), and when its wait runs out it is refused with `host memory still
 short: ...`.
 
 The MB held for a step is its need, learned from its latest 20 ended runs under the same session and `--what` in the
@@ -5084,7 +5084,7 @@ the same `--kind` and size (`--small` or not), never for kind `other`, which spa
 that measured nothing teaches nothing. `--memory-mb <MB>` declares a need, held when it is at least the learned one. A
 step without `--small` holds at least `delivery.queue.heavyReserveMb` (2048); a small step with neither a learned nor
 a declared need holds `delivery.queue.smallReserveMb` (2048). The wait line says where a need came from:
-`(4096 floor + 7500 for this step, learned from 2 runs)`, `learned from 1 build run` when its kind's runs taught it,
+`(4096 kept free for the host + 7500 for this step, learned from 2 runs)`, `learned from 1 build run` when its kind's runs taught it,
 `declared with --memory-mb`.
 
 With `--small` (a spec run, a lint) the step shares the host with other small steps instead of taking the lock.

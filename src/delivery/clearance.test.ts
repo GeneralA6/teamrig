@@ -143,7 +143,7 @@ describe('takeWhenClear', () => {
   it('gives up naming the host memory when it stays short past the wait, holding no lock (T2192)', async () => {
     const { files, clock, lock, waits, causes, request } = world({}, 60_000, new FakeHostMemory(5000));
     const clearance = await takeWhenClear(answers(GO), { lock, clock, sleep: clock.sleep }, request);
-    const short = 'host memory: 5000 MB free, 8192 MB needed (4096 floor + 4096 for this step)';
+    const short = 'host memory: 5000 MB free, 8192 MB needed (4096 kept free for the host + 4096 for this step)';
     assert.deepEqual([clearance, waits, causes, files.get(LOCK_PATH)], [{ kind: 'gaveUp', reason: `host memory still short: ${short}` }, [`the host lock: ${short}`], ['memory'], undefined]);
   });
 

@@ -121,14 +121,14 @@ describe('shortText', () => {
   it('names the free memory, the need and how it is counted', () => {
     assert.equal(
       shortText({ kind: 'memory', freeMb: 6000, heldMb: 0, needMb: 8192, floorMb: 4096, reserveMb: 4096 }, 0),
-      'host memory: 6000 MB free, 8192 MB needed (4096 floor + 4096 for this step)',
+      'host memory: 6000 MB free, 8192 MB needed (4096 kept free for the host + 4096 for this step)',
     );
   });
 
   it('names the MB held for the small steps sharing the host', () => {
     const short = { kind: 'memory', freeMb: 7000, heldMb: 2048, needMb: 6144, floorMb: 4096, reserveMb: 2048 } as const;
-    assert.equal(shortText(short, 1), 'host memory: 7000 MB free, 2048 MB held for it, 6144 MB needed (4096 floor + 2048 for this step)');
-    assert.equal(shortText(short, 2), 'host memory: 7000 MB free, 2048 MB held for them, 6144 MB needed (4096 floor + 2048 for this step)');
+    assert.equal(shortText(short, 1), 'host memory: 7000 MB free, 2048 MB held for it, 6144 MB needed (4096 kept free for the host + 2048 for this step)');
+    assert.equal(shortText(short, 2), 'host memory: 7000 MB free, 2048 MB held for them, 6144 MB needed (4096 kept free for the host + 2048 for this step)');
   });
 
   it('names a need capped at half the host', () => {
@@ -149,11 +149,11 @@ describe('shortText', () => {
     const loading = { tabs: 2, mb: 2500 };
     assert.equal(
       shortText({ kind: 'memory', freeMb: 7000, heldMb: 0, needMb: 6144, floorMb: 4096, reserveMb: 2048, loading }, 0),
-      'host memory: 7000 MB free, 2500 MB held for 2 tabs still loading, 6144 MB needed (4096 floor + 2048 for this step)',
+      'host memory: 7000 MB free, 2500 MB held for 2 tabs still loading, 6144 MB needed (4096 kept free for the host + 2048 for this step)',
     );
     assert.equal(
       shortText({ kind: 'memory', freeMb: 9000, heldMb: 2048, needMb: 6144, floorMb: 4096, reserveMb: 2048, loading }, 1),
-      'host memory: 9000 MB free, 2048 MB held for it, 2500 MB held for 2 tabs still loading, 6144 MB needed (4096 floor + 2048 for this step)',
+      'host memory: 9000 MB free, 2048 MB held for it, 2500 MB held for 2 tabs still loading, 6144 MB needed (4096 kept free for the host + 2048 for this step)',
     );
     assert.equal(
       shortText({ kind: 'commit', usedMb: 22_000, limitMb: 32_000, maxPct: 92, reserveMb: 4096, loading: { tabs: 1, mb: 3000 } }, 0),
@@ -170,7 +170,7 @@ describe('shortText', () => {
     const basis = 'learned from 2 runs';
     assert.equal(
       shortText({ kind: 'memory', freeMb: 10_000, heldMb: 0, needMb: 11_596, floorMb: 4096, reserveMb: 7500, basis }, 0),
-      'host memory: 10000 MB free, 11596 MB needed (4096 floor + 7500 for this step, learned from 2 runs)',
+      'host memory: 10000 MB free, 11596 MB needed (4096 kept free for the host + 7500 for this step, learned from 2 runs)',
     );
     assert.equal(
       shortText({ kind: 'commit', usedMb: 30000, limitMb: 32000, maxPct: 92, reserveMb: 2048, basis }, 0),

@@ -757,7 +757,7 @@ describe('teamrig queue --small', () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.append(`${SHARED}/other.json`, sharedBy());
     const result = await kit.run(SPECS, { steps, memory: new FakeHostMemory(6000), sessionProcesses: otherRuns() });
-    const held = '1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC; host memory: 6000 MB free, 2048 MB held for it, 6144 MB needed (4096 floor + 2048 for this step)';
+    const held = '1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC; host memory: 6000 MB free, 2048 MB held for it, 6144 MB needed (4096 kept free for the host + 2048 for this step)';
     assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting to share the host: ${held}`, `REFUSED host memory still short: ${held}`], stderr: [] });
     assert.deepEqual([ledgerOf(kit), kit.files.get(`${SHARED}/id-1.json`)], [[memoryRefused(SPECS_STEP, 6000, 'waiting to share the host', held)], undefined]);
   });
@@ -765,7 +765,7 @@ describe('teamrig queue --small', () => {
   it('keeps a lone small step waiting while free memory is under the floor plus its own MB, then refuses (T2192)', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     const result = await kit.run(SPECS, { steps, memory: new FakeHostMemory(6000) });
-    const short = 'host memory: 6000 MB free, 6144 MB needed (4096 floor + 2048 for this step)';
+    const short = 'host memory: 6000 MB free, 6144 MB needed (4096 kept free for the host + 2048 for this step)';
     assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting to share the host: ${short}`, `REFUSED host memory still short: ${short}`], stderr: [] });
     assert.deepEqual([steps.ran, ledgerOf(kit), await kit.files.list(SHARED)], [[], [memoryRefused(SPECS_STEP, 6000, 'waiting to share the host', short)], []]);
   });
@@ -773,7 +773,7 @@ describe('teamrig queue --small', () => {
   it('keeps a heavy step waiting while free memory is under the floor plus delivery.queue.heavyReserveMb, then refuses (T2192)', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     const result = await kit.run(BUILD, { steps, memory: new FakeHostMemory(5000) });
-    const short = 'host memory: 5000 MB free, 6144 MB needed (4096 floor + 2048 for this step)';
+    const short = 'host memory: 5000 MB free, 6144 MB needed (4096 kept free for the host + 2048 for this step)';
     assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED host memory still short: ${short}`], stderr: [] });
     assert.deepEqual([steps.ran, ledgerOf(kit), kit.files.get(LOCK)], [[], [memoryRefused(BUILD_STEP, 5000, 'waiting for the host lock', short)], undefined]);
   });
@@ -781,7 +781,7 @@ describe('teamrig queue --small', () => {
   it('names the programs holding the most memory when it refuses after its wait on host memory, printed and recorded (T2209)', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     const result = await kit.run(BUILD, { steps, memory: new FakeHostMemory(5000).holds(BUSY_HOLDERS) });
-    const short = 'host memory: 5000 MB free, 6144 MB needed (4096 floor + 2048 for this step)';
+    const short = 'host memory: 5000 MB free, 6144 MB needed (4096 kept free for the host + 2048 for this step)';
     const reason = `host memory still short: ${short}; ${BUSY_HOLDERS_TEXT}`;
     assert.deepEqual(result.stdout, [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED ${reason}`]);
     assert.deepEqual(ledgerOf(kit), [{ ...memoryRefused(BUILD_STEP, 5000, 'waiting for the host lock', short), reason }]);
@@ -801,7 +801,7 @@ describe('teamrig queue --small', () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.append(LEDGER, `${[ranBefore('alpha', 'build api', 2000), ranBefore('alpha', 'build api', 6000), ranBefore('bravo', 'build api', 9000)].join('\n')}\n`);
     const result = await kit.run(BUILD, { steps, memory: new FakeHostMemory(10_000) });
-    const short = 'host memory: 10000 MB free, 11596 MB needed (4096 floor + 7500 for this step, learned from 2 runs)';
+    const short = 'host memory: 10000 MB free, 11596 MB needed (4096 kept free for the host + 7500 for this step, learned from 2 runs)';
     assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED host memory still short: ${short}`], stderr: [] });
   });
 
@@ -809,7 +809,7 @@ describe('teamrig queue --small', () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.append(LEDGER, `${[ranBefore('alpha', 'build api', 1000, { startFreeMb: 12_000, lowFreeMb: 4000 }), ranBefore('alpha', 'build api', 1200, { startFreeMb: 12_000, lowFreeMb: 6000 })].join('\n')}\n`);
     const result = await kit.run(BUILD, { steps, memory: new FakeHostMemory(10_000) });
-    const short = 'host memory: 10000 MB free, 11096 MB needed (4096 floor + 7000 for this step, learned from 2 runs)';
+    const short = 'host memory: 10000 MB free, 11096 MB needed (4096 kept free for the host + 7000 for this step, learned from 2 runs)';
     assert.deepEqual(result.stdout, [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED host memory still short: ${short}`]);
   });
 
@@ -817,7 +817,7 @@ describe('teamrig queue --small', () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.append(LEDGER, `${ranBefore('alpha', 'T8 build', 6000, { kind: 'build' })}\n`);
     const result = await kit.run(BUILD, { steps, memory: new FakeHostMemory(10_000) });
-    const short = 'host memory: 10000 MB free, 11596 MB needed (4096 floor + 7500 for this step, learned from 1 build run)';
+    const short = 'host memory: 10000 MB free, 11596 MB needed (4096 kept free for the host + 7500 for this step, learned from 1 build run)';
     assert.deepEqual(result.stdout, [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED host memory still short: ${short}`]);
   });
 
@@ -825,7 +825,7 @@ describe('teamrig queue --small', () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     const declared = ['queue', '--session', 'alpha', '--what', 'build api', '--memory-mb', '9000', '--', 'npm', 'run', 'build'];
     const result = await kit.run(declared, { steps, memory: new FakeHostMemory(10_000) });
-    const short = 'host memory: 10000 MB free, 13096 MB needed (4096 floor + 9000 for this step, declared with --memory-mb)';
+    const short = 'host memory: 10000 MB free, 13096 MB needed (4096 kept free for the host + 9000 for this step, declared with --memory-mb)';
     assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED host memory still short: ${short}`], stderr: [] });
     assert.deepEqual(steps.ran, []);
   });
@@ -834,7 +834,7 @@ describe('teamrig queue --small', () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.append(LEDGER, `${ranBefore('alpha', 'build api', 1200)}\n`);
     const result = await kit.run(BUILD, { steps, memory: new FakeHostMemory(5000) });
-    const short = 'host memory: 5000 MB free, 6144 MB needed (4096 floor + 2048 for this step)';
+    const short = 'host memory: 5000 MB free, 6144 MB needed (4096 kept free for the host + 2048 for this step)';
     assert.deepEqual(result.stdout, [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED host memory still short: ${short}`]);
   });
 

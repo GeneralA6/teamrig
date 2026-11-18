@@ -825,7 +825,7 @@ describe('HostLock shares', () => {
     );
     const told: string[] = [];
     const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead, TimeZone.UTC)), { need: SMALL });
-    assert.deepEqual(told, ['1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC; host memory: 8191 MB free, 2048 MB held for it, 6144 MB needed (4096 floor + 2048 for this step)']);
+    assert.deepEqual(told, ['1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC; host memory: 8191 MB free, 2048 MB held for it, 6144 MB needed (4096 kept free for the host + 2048 for this step)']);
     assert.deepEqual(clock.sleeps, [FIRST_IN_LINE_POLL_MS, FIRST_IN_LINE_POLL_MS]);
     assert.deepEqual(taking.kind === 'taken' ? taking.sharing : undefined, { freeMb: 8191, others: [], heavy: false });
   });
@@ -935,7 +935,7 @@ describe('HostLock shares', () => {
     const steps = '2 small steps: po (heavy: specs) since 2030-01-08 09:50 UTC, web (heavy: lint) since 2030-01-08 09:55 UTC';
     assert.equal(holderText({ kind: 'draining', shares }, TimeZone.UTC), steps);
     const memory: LockWait = { kind: 'memory', freeMb: 7000, heldMb: 4096, needMb: 6144, floorMb: 4096, reserveMb: 2048, shares };
-    const memoryText = `${steps}; host memory: 7000 MB free, 4096 MB held for them, 6144 MB needed (4096 floor + 2048 for this step)`;
+    const memoryText = `${steps}; host memory: 7000 MB free, 4096 MB held for them, 6144 MB needed (4096 kept free for the host + 2048 for this step)`;
     assert.equal(holderText(memory, TimeZone.UTC), memoryText);
     const commit: LockWait = { kind: 'commit', usedMb: 30_000, limitMb: 32_000, maxPct: 92, reserveMb: 4096, shares: [] };
     const commitText = 'host commit charge: 30000 of 32000 MB, 4096 MB more for this step would pass 92% (open.headroom.commitMaxPct)';
@@ -991,7 +991,7 @@ describe('HostLock memory gate (T2192)', () => {
     );
     const told: string[] = [];
     const taking = await lock.acquire('alpha', 'heavy: build', 60_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead, TimeZone.UTC)));
-    assert.deepEqual(told, ['host memory: 5000 MB free, 8192 MB needed (4096 floor + 4096 for this step)']);
+    assert.deepEqual(told, ['host memory: 5000 MB free, 8192 MB needed (4096 kept free for the host + 4096 for this step)']);
     const laterKinds = later.map((step) => (step.kind === 'busy' ? step.holder.kind : step.kind));
     assert.deepEqual([clock.sleeps, taking.kind, laterKinds], [[FIRST_IN_LINE_POLL_MS], 'taken', ['queued']]);
     assert.deepEqual(await files.list(SHARED), [], 'the later small step wrote no share');
@@ -1158,7 +1158,7 @@ describe('HostLock waitingOn: what a waiter says it waits on (T2209)', () => {
     assert.deepEqual(seen, [
       HELD_BY_PO,
       { ...HELD_BY_PO, text: 'bravo (heavy: build) since 2030-01-08 11:50 IST' },
-      { reason: 'memory', text: 'host memory: 5000 MB free, 8192 MB needed (4096 floor + 4096 for this step)', since: '2030-01-08T10:00:04.000Z' },
+      { reason: 'memory', text: 'host memory: 5000 MB free, 8192 MB needed (4096 kept free for the host + 4096 for this step)', since: '2030-01-08T10:00:04.000Z' },
     ]);
   });
 
@@ -1782,7 +1782,7 @@ describe('HostLock heavy shares (T2210)', () => {
       results.push(taking.kind === 'busy' ? taking.holder : taking.kind);
     }
     assert.deepEqual(results, [{ kind: 'memory', freeMb: 12_287, heldMb: 4096, needMb: 8192, floorMb: 4096, reserveMb: 4096, shares: [running] }, 'taken']);
-    assert.deepEqual(told, ['1 heavy step: po (heavy: build) since 2030-01-08 09:50 UTC; host memory: 12287 MB free, 4096 MB held for it, 8192 MB needed (4096 floor + 4096 for this step)']);
+    assert.deepEqual(told, ['1 heavy step: po (heavy: build) since 2030-01-08 09:50 UTC; host memory: 12287 MB free, 4096 MB held for it, 8192 MB needed (4096 kept free for the host + 4096 for this step)']);
   });
 
   it('takes the lock file for an exclusive step and with serial rules, sharing nothing, and says on its ticket that it takes the whole host', async () => {
