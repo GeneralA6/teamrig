@@ -648,7 +648,8 @@ export interface WakeConfig {
   readonly enabled: boolean;
   /**
    * The least urgent priority that wakes a session: 1 wakes for p0 and p1 only. A session its budget holds (past
-   * its daily budget while the team has no room today, the wake's own turn counted for both) or a short day pauses
+   * its daily budget while the team has no room today, or its team past its own part with no room and no lift or
+   * burst for the session; the wake's own turn counted for both) or a short day pauses
    * (`budget.pauseByPriority`) wakes for p0 only, and one in the budget's quiet hours for p0 and p1 only (p0 alone
    * when their action is block), whatever this says.
    */

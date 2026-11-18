@@ -6155,7 +6155,8 @@ default: the busiest 7 sessions, then who is past the daily budget. A session pa
 team has no room today: everyone's use today, the outside's included, at or past the in-day pace (today's use in
 quiet hours, plus today's budget times the share of today's active time gone by). The team past its part of the
 account's day holds nobody by itself: the teams on one account share one pool, so no team waits while the account
-has room. While the team has room, they are named apart as not held: `Past their part, not held while the team has
+has room. Past its part with no room, the team is held for the day: named on the held line, its sessions wake and
+stay open for p0 work alone, but for one a leader lifted or a burst holds up. While the team has room, they are named apart as not held: `Past their part, not held while the team has
 room today (3.0% of the week used, below its in-day pace of 4.7%): the team, api.` A session a leader cut ([teamrig
 budget cut](#teamrig-budget-cut)) is held past its part whatever room the team has, named on a line of its own:
 `Past the daily budget, held by a leader's cut whatever room the team has: web.` Under `budget.overAction` warn the
