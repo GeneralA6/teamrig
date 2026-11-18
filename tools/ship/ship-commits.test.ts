@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
-import type { MergeClearance, WorkCommit } from './approval.ts';
+import type { MergeClearance, StrayStamp, WorkCommit } from './approval.ts';
 import type { GateVerdict } from './local-gate.ts';
 import type { MainMove, MergeExit } from './merge.ts';
 import { DIST, leaveForReview, parseNumstat, raisePathsOf, SHIP_ATTEMPTS, shipCommits, weighDist, type ShipDeps } from './ship-commits.ts';
@@ -45,6 +45,8 @@ interface FakeOptions {
   readonly gitFails?: string;
   /** What a --merge run checks locally (repos.json `mergeChecks`); the whole suite by default. */
   readonly mergeChecks?: MergeChecks;
+  /** The stray release stamps each rev adds, by rev; none by default. */
+  readonly strays?: Readonly<Record<string, readonly StrayStamp[]>>;
 }
 
 interface Fake {
@@ -123,6 +125,11 @@ function fake(options: FakeOptions = {}): Fake {
     workOf: (rev) => {
       events.push(`work ${rev}`);
       return options.work?.[rev] ?? [];
+    },
+    strayStampsOf: (rev) => {
+      if (options.strays === undefined) return [];
+      events.push(`strays ${rev}`);
+      return options.strays[rev] ?? [];
     },
   };
   return { deps, events, logs, takenBack };
@@ -231,6 +238,29 @@ test('without --merge, a raise that also stamps a migration\'s firstRelease is c
     events.filter((event) => event.startsWith('git reset') || event.startsWith('git restore')),
     ['git reset -q --soft HEAD~2', `git restore --staged -- ${VERSION_FILES} src/config/migrate.ts`, `git restore --source=HEAD --staged --worktree -- ${DIST}`],
   );
+});
+
+const STRAY: StrayStamp = { path: 'src/config/migrate.ts', version: '0.120.0', shipsIn: ['0.133.1', '0.134.0', '1.0.0'] };
+
+test('a release stamp the work commits add at a version the change does not ship in is refused before the build, naming the fix (T4259)', async () => {
+  const { deps, events } = fake({ strays: { 'HEAD~1': [STRAY] } });
+  await assert.rejects(
+    shipCommits(ARGS, RAISING, deps),
+    /^Error: REFUSED the work commits add the release stamp 0\.120\.0 in src\/config\/migrate\.ts, a version this change does not ship in \(0\.133\.1 or 0\.134\.0 or 1\.0\.0\): set it to the version the raise sets, in the commit that adds it, then ship again$/,
+  );
+  assert.deepEqual(events.filter((event) => event.startsWith('strays')), ['strays HEAD~1'], 'read at the head its approver reviews, before the raise');
+  assert.ok(events.includes(committed('plugin: version 0.134.0, a', 'raises 0.134.0')), 'after every commit, for the rerun to take back');
+  assert.ok(!events.includes('node tools/build/bundle.ts'));
+});
+
+test('a raise that leaves a stamp at another release is refused; a change with no raise is read at its head alone (T4259)', async () => {
+  const raised = fake({ strays: { HEAD: [{ ...STRAY, version: '0.133.1', shipsIn: ['0.134.0'] }] } });
+  await assert.rejects(shipCommits(ARGS, RAISING, raised.deps), /^Error: REFUSED the raise leaves the release stamp 0\.133\.1 in src\/config\/migrate\.ts, a version this change does not ship in \(0\.134\.0\)/);
+  assert.deepEqual(raised.events.filter((event) => event.startsWith('strays')), ['strays HEAD~1', 'strays HEAD']);
+
+  const unraised = fake({ strays: {} });
+  assert.equal(await shipCommits(ARGS, [WORK], unraised.deps), 0);
+  assert.deepEqual(unraised.events.filter((event) => event.startsWith('strays')), ['strays HEAD']);
 });
 
 test('without --merge and with no rebuilt dist, only the raise is taken back', async () => {
