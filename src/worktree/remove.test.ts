@@ -6,7 +6,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlink
 import { join, resolve } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
 import { FakeWorktreeFiles, FakeWorktreeGit, type FakeGitAnswers, type FakeNode } from '../testing/fake-worktrees.ts';
-import { NODE_WORKTREE_FILES, parseLsofFolders, renameProbe, type WorktreeFiles } from './files.ts';
+import { FakeProgramSystem } from '../testing/fake-program-system.ts';
+import { NODE_PROGRAM_SYSTEM, NODE_WORKTREE_FILES, parseLsofFolders, probeMove, readWorkingFolders, renameProbe, type WorktreeFiles } from './files.ts';
 import { GIT_WORKTREES, type GitOutcome, type WorktreeEntry } from './git.ts';
 import {
   carryOut,
@@ -845,6 +846,116 @@ describe('NODE_WORKTREE_FILES reads the working folder of other programs (#797)'
       await stopped(child);
       repo.remove();
     }
+  });
+});
+
+describe('readWorkingFolders reads each system its own way, on any system (#797)', () => {
+  const LSOF = ['p1', 'claunchd', 'fcwd', 'n/', 'p4242', 'cclaude', 'fcwd', 'n/srv/wt/t5', ''].join('\n');
+
+  it('Linux: each /proc/<pid>/cwd it may read, the name trimmed, itself and an unreadable program skipped', async () => {
+    const system = new FakeProgramSystem({
+      platform: 'linux',
+      pid: 1000,
+      folders: { '/proc': ['1', '42', '77', '1000', 'self', 'meminfo'] },
+      links: { '/proc/1/cwd': '/', '/proc/42/cwd': '/srv/wt/t5', '/proc/1000/cwd': '/srv/wt/t5' },
+      texts: { '/proc/1/comm': 'systemd\n', '/proc/42/comm': 'claude\n', '/proc/1000/comm': 'node\n' },
+    });
+    assert.deepEqual(await readWorkingFolders(system), {
+      kind: 'read',
+      programs: [
+        { pid: 1, name: 'systemd', folder: '/' },
+        { pid: 42, name: 'claude', folder: '/srv/wt/t5' },
+      ],
+    });
+    assert.deepEqual(system.runs, [], 'Linux runs no program');
+  });
+
+  it('Linux: an unreadable /proc is unknown, naming why', async () => {
+    assert.deepEqual(await readWorkingFolders(new FakeProgramSystem({ platform: 'linux' })), {
+      kind: 'unknown',
+      reason: "/proc cannot be read (ENOENT: no such file or directory, '/proc')",
+    });
+  });
+
+  it('macOS: runs lsof for every working folder and reads its listing, leaving itself out', async () => {
+    const system = new FakeProgramSystem({ platform: 'darwin', pid: 1, output: { error: null, stdout: LSOF } });
+    assert.deepEqual(await readWorkingFolders(system), { kind: 'read', programs: [{ pid: 4242, name: 'claude', folder: '/srv/wt/t5' }] });
+    assert.deepEqual(system.runs, [{ program: 'lsof', args: ['-n', '-P', '-d', 'cwd', '-F', 'pcn'], timeoutMs: 10_000 }]);
+  });
+
+  it('macOS: a failed lsof that still listed programs is read; one that listed none is unknown, naming why', async () => {
+    const listed = new FakeProgramSystem({ platform: 'darwin', output: { error: new Error('Command failed: lsof (exit 1)'), stdout: LSOF } });
+    assert.equal((await readWorkingFolders(listed)).kind, 'read');
+    const none = new FakeProgramSystem({ platform: 'darwin', output: { error: new Error('spawn lsof ENOENT'), stdout: '' } });
+    assert.deepEqual(await readWorkingFolders(none), { kind: 'unknown', reason: 'lsof did not list them (spawn lsof ENOENT)' });
+  });
+
+  it('Windows and any other system say they cannot tell, reading nothing', async () => {
+    const windows = new FakeProgramSystem({ platform: 'win32' });
+    assert.deepEqual(await readWorkingFolders(windows), { kind: 'unknown', reason: "Windows gives no plain way to read another program's working folder" });
+    const freebsd = new FakeProgramSystem({ platform: 'freebsd' });
+    assert.deepEqual(await readWorkingFolders(freebsd), { kind: 'unknown', reason: "freebsd gives no plain way to read another program's working folder" });
+    assert.deepEqual([windows.runs, freebsd.runs], [[], []]);
+  });
+});
+
+describe('probeMove renames a folder aside and back on Windows only (#797)', () => {
+  it('is not needed off Windows, moving nothing', async () => {
+    for (const platform of ['linux', 'darwin'] as const) {
+      const system = new FakeProgramSystem({ platform });
+      assert.deepEqual(await probeMove('/w/t4', system), { kind: 'not-needed' });
+      assert.deepEqual(system.moves, []);
+    }
+  });
+
+  it('on Windows, moves the folder to a suffixed sibling and straight back', async () => {
+    const system = new FakeProgramSystem({ platform: 'win32', suffix: 'abcd1234' });
+    assert.deepEqual(await probeMove('C:\\w\\t4', system), { kind: 'movable' });
+    assert.deepEqual(system.moves, [
+      ['C:\\w\\t4', 'C:\\w\\t4.teamrig-check-abcd1234'],
+      ['C:\\w\\t4.teamrig-check-abcd1234', 'C:\\w\\t4'],
+    ]);
+  });
+
+  it('on Windows, a refused move is held, and nothing more moves', async () => {
+    const system = new FakeProgramSystem({ platform: 'win32', moveCodes: ['EBUSY'] });
+    assert.deepEqual(await probeMove('C:\\w\\t4', system), { kind: 'held', code: 'EBUSY' });
+    assert.equal(system.moves.length, 1);
+  });
+});
+
+describe('NODE_PROGRAM_SYSTEM is the real system (#797)', () => {
+  it('names this system and program', () => {
+    assert.deepEqual([NODE_PROGRAM_SYSTEM.platform, NODE_PROGRAM_SYSTEM.pid], [process.platform, process.pid]);
+  });
+
+  it('lists a folder, reads a file and a link, and moves a file', async () => {
+    const repo = new TempRepo('program-system');
+    try {
+      const target = join(repo.dir, 'target');
+      mkdirSync(target);
+      writeFileSync(join(repo.dir, 'a.txt'), 'a\n');
+      symlinkSync(target, join(repo.dir, 'link'), 'junction');
+      assert.deepEqual([...(await NODE_PROGRAM_SYSTEM.listFolder(repo.dir))].sort(), ['a.txt', 'link', 'target']);
+      assert.equal(await NODE_PROGRAM_SYSTEM.readText(join(repo.dir, 'a.txt')), 'a\n');
+      assert.equal(realpathSync(await NODE_PROGRAM_SYSTEM.readLink(join(repo.dir, 'link'))), realpathSync(target));
+      await NODE_PROGRAM_SYSTEM.move(join(repo.dir, 'a.txt'), join(repo.dir, 'b.txt'));
+      assert.deepEqual([existsSync(join(repo.dir, 'a.txt')), readFileSync(join(repo.dir, 'b.txt'), 'utf8')], [false, 'a\n']);
+    } finally {
+      repo.remove();
+    }
+  });
+
+  it('runs a program, keeping what it printed, and settles with its error on a failed exit', async () => {
+    assert.deepEqual(await NODE_PROGRAM_SYSTEM.run(process.execPath, ['-e', 'process.stdout.write("ok")'], 10_000), { error: null, stdout: 'ok' });
+    const failed = await NODE_PROGRAM_SYSTEM.run(process.execPath, ['-e', 'process.stdout.write("partial"); process.exit(3)'], 10_000);
+    assert.deepEqual([failed.error instanceof Error, failed.stdout], [true, 'partial']);
+  });
+
+  it('gives a new 8-character suffix each time', () => {
+    const [first, second] = [NODE_PROGRAM_SYSTEM.uniqueSuffix(), NODE_PROGRAM_SYSTEM.uniqueSuffix()];
+    assert.deepEqual([first.length, second.length], [8, 8]);
+    assert.notEqual(first, second);
   });
 });
 
