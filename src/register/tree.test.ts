@@ -705,6 +705,38 @@ describe('TaskTree waitingOn', () => {
   });
 });
 
+describe('TaskTree waitsOn', () => {
+  const started = '2030-01-07T09:00:00.000Z';
+
+  it('names each other session the task waits on, with its unfinished needs and unanswered asks, never the owner', () => {
+    const waiter = testTask({ id: 'T5', owner: 'bravo', status: 'waiting', startedAt: started, after: ['T1', 'T3', 'T4'], waits: [{ kind: 'approval', who: 'lead' }, { kind: 'task', id: 'T2' }] });
+    const tree = treeOf(
+      testTask({ id: 'T1', owner: 'alpha' }),
+      testTask({ id: 'T2', owner: 'alpha', status: 'in-progress' }),
+      testTask({ id: 'T3', owner: 'charlie', status: 'done' }),
+      testTask({ id: 'T4', owner: 'bravo' }),
+      waiter,
+    );
+    const on = tree.waitsOn(waiter);
+    assert.deepEqual(
+      on.map((entry) => [entry.session, ids(entry.needs), entry.asks.map((ask) => ask.kind)]),
+      [
+        ['alpha', ['T2', 'T1'], []],
+        ['lead', [], ['approval']],
+      ],
+    );
+    assert.ok(on.every((entry) => entry.task === waiter));
+  });
+
+  it('names none for a finished task or an answered approval', () => {
+    const need = testTask({ id: 'T1', owner: 'alpha' });
+    const answered = testTask({ id: 'T2', owner: 'bravo', status: 'waiting', startedAt: started, waits: [{ kind: 'approval', who: 'lead' }], answer: { by: 'lead', verdict: 'approved', at: NOW.toISOString(), note: null } });
+    const done = testTask({ id: 'T3', owner: 'bravo', status: 'done', after: ['T1'] });
+    const tree = treeOf(need, answered, done);
+    assert.deepEqual([tree.waitsOn(answered), tree.waitsOn(done)], [[], []]);
+  });
+});
+
 describe('TaskTree loops', () => {
   it('names each loop among active tasks once, from its lowest task, by the shortest chain back', () => {
     const tree = treeOf(
