@@ -436,8 +436,10 @@ PREVIEW nothing was written; a push would send 7 write(s) now, at most 40 a run,
   changed by hand is set back, and a run that stopped half way is planned again whole.
 - **A person's close stands.** An issue closed while its task is active is never reopened: a `KEPT` line names it.
 - **One team task speaks for an issue.** When a team task and an imported one hold the same issue, the team task
-  speaks for it. When two or more team tasks hold it, none does: the push writes nothing to it and a `SHARED` line
-  names them, so a person gives the ref to one of them.
+  speaks for it. When two or more active team tasks (open, in progress, waiting, verifying) hold it, none does: the
+  push writes nothing to it and a `SHARED` line names them, so a person gives the ref to one of them. A finished task
+  often keeps its ref, so one active team task speaks over finished ones; with none active, the newest finished one
+  speaks.
 - **A taker's issue stays theirs.** A done or dropped task closes its issue only when the issue is unassigned or
   assigned to the team: the logins `github.owners` maps and the account that owns the repository. An issue assigned
   only to people outside the team is their work, and a task that only took part in it (a comment, an answer) ends
