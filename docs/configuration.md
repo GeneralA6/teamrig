@@ -399,7 +399,7 @@ The host lock and the limits of one queued step.
 | --- | --- | --- | --- |
 | `lockPath` | string (at least 1 character) |  | The host lock file every queued step takes; a relative path is in the team's folder. Unset: host.lock in the kit home, one lock for every team on the host. |
 | `lockTtlMinutes` | integer (11 to 1440) | `150` | A taken host lock lasts this many minutes; past it, or once its process is gone, another step takes it over. |
-| `maxRunMinutes` | integer (1 to 1430) | `45` | A queued step still running after this many minutes is killed with every process it started. At most lockTtlMinutes less 10. |
+| `maxRunMinutes` | integer (1 to 1430) | `45` | A queued step still running after this many minutes is killed with every process it started; the time its share is set aside by teamrig step-away, until teamrig step-back takes it back, does not count. At most lockTtlMinutes less 10. |
 | `smallMaxRunMinutes` | integer (1 to 1430) | `10` | A small step (queue --small) still running after this many minutes is killed the same way, so a hung one does not hold back the steps waiting for the lock; a longer step runs without --small. At most maxRunMinutes. |
 | `waitMinutes` | integer (0 to 1440) | `60` | A queued step is refused once its line for the host lock has not moved for this many minutes: no step ahead of it, holding the lock or sharing the host ended meanwhile. |
 | `memorySampleSeconds` | integer (0 to 600) | `15` | While a queued step runs, its process tree's memory and the host's free memory are sampled this often, for its ledger record's peakTreeMb and lowFreeMb; 0 samples nothing. |

@@ -981,7 +981,10 @@ export interface QueueConfig {
   readonly lockPath?: string;
   /** A taken host lock lasts this many minutes; past it, another step takes it over. */
   readonly lockTtlMinutes: number;
-  /** A queued step still running after this many minutes is killed with every process it started. */
+  /**
+   * A queued step still running after this many minutes is killed with every process it started; the time its share is
+   * set aside (`teamrig step-away` until `teamrig step-back` takes it back) does not count (T4218).
+   */
   readonly maxRunMinutes: number;
   /**
    * A small step (`queue --small`) still running after this many minutes is killed the same way; at most

@@ -567,7 +567,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (a build, a test run, a database script) in its turn under the host lock, so the host runs only what its memory allows, and at
       below-normal CPU priority (nice 10 on POSIX), which every process it starts inherits, so your
       terminal and apps win the CPU: waits in line for the lock, kills the step and every process it started after
-      delivery.queue.maxRunMinutes (--max-minutes) and records its start and end in the delivery
+      delivery.queue.maxRunMinutes (--max-minutes; the time its share is set aside by teamrig step-away does
+      not count) and records its start and end in the delivery
       ledger, with its --kind (build, test, lint, push, merge, deploy, other or ship; default read from the
       command; a ship, merge or deploy holds the host's one ship slot: a second one waits as shipSlot while other steps
       pass it) and --task (default the first task id in --what, else for a ship tool's step the task its worktree's branch
