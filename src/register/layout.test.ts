@@ -18,8 +18,10 @@ import {
   type SnapshotHeader,
   type SnapshotRead,
 } from './layout.ts';
-import { FIRST_LAYOUT_VERSION, markerRecord, NEWEST_LAYOUT_VERSION } from './marker.ts';
+import type { Task } from './fold.ts';
+import { FIRST_LAYOUT_VERSION, markerRecord, NEWEST_LAYOUT_VERSION, TASK_LINES_LAYOUT_VERSION } from './marker.ts';
 import { readEvents, readRegister } from './snapshot.ts';
+import { TASK_LINE_TYPE, taskLineRecord } from './task-line.ts';
 
 const LOG = 'team/state/events.jsonl';
 const PATHS = layoutPaths(LOG);
@@ -37,6 +39,8 @@ function status(id: string, day: number, value: string): string {
 const HEADER: SnapshotHeader = {
   covered: 1,
   events: 1,
+  tasks: 0,
+  windowFrom: at(18),
   nextId: 'T3',
   orphans: 1,
   unreadable: 2,
@@ -46,6 +50,17 @@ const HEADER: SnapshotHeader = {
   retiredLastWeek: '2030-01-07',
   at: at(20),
 };
+
+/** T<id> as created on `day` by `create` and folded, which a task line holds. */
+function lined(id: string, day: number): Task {
+  const task = readRegister(create(id, day)).state.tasks.get(id);
+  assert.ok(task !== undefined);
+  return task;
+}
+
+function taskLine(id: string, day: number): string {
+  return toJsonlLine(taskLineRecord(TASK_LINES_LAYOUT_VERSION, lined(id, day)));
+}
 
 function snapshotText(header: Readonly<Record<string, unknown>>, ...events: string[]): string {
   return [JSON.stringify({ ...snapshotHeaderRecord(HEADER), ...header }), '\n', ...events].join('');
@@ -107,9 +122,38 @@ describe('readSnapshotText', () => {
   });
 
   it('reads a header of every layout from the first to the newest, so a snapshot a later teamrig wrote still reads', () => {
-    for (const v of [FIRST_LAYOUT_VERSION, NEWEST_LAYOUT_VERSION]) {
-      assert.deepEqual(usable(readSnapshotText(snapshotText({ v, events: 0 }))).header, { ...HEADER, events: 0 }, `v${v}`);
+    for (let v = FIRST_LAYOUT_VERSION; v < TASK_LINES_LAYOUT_VERSION; v += 1) {
+      const read = usable(readSnapshotText(snapshotText({ v, events: 0, tasks: undefined, windowFrom: undefined })));
+      assert.deepEqual([read.header, read.tasks.size], [{ ...HEADER, events: 0, tasks: 0, windowFrom: null }, 0], `v${v}`);
     }
+    assert.deepEqual(usable(readSnapshotText(snapshotText({ v: NEWEST_LAYOUT_VERSION, events: 0 }))).header, { ...HEADER, events: 0 });
+  });
+
+  it('reads an older layout whole, a task line in it being a newer line and no task (T4076)', () => {
+    const read = readSnapshotText(snapshotText({ v: FIRST_LAYOUT_VERSION, events: 1 }, taskLine('T1', 7), create('T2', 8)));
+    assert.match(reason(read), /holds 2 event\(s\) where its header says 1/);
+  });
+
+  it('reads the task lines of a layout 5 snapshot apart from its events (T4076)', () => {
+    const read = usable(readSnapshotText(snapshotText({ tasks: 2 }, taskLine('T1', 7), create('T2', 19), taskLine('T3', 7))));
+    assert.deepEqual([...read.tasks.keys()], ['T1', 'T3']);
+    assert.deepEqual(read.tasks.get('T1'), lined('T1', 7));
+    assert.deepEqual(read.read.events.map((event) => event.id), ['T2']);
+    assert.equal(read.read.lines.length, 1, 'a task line is no event line');
+  });
+
+  it('refuses a layout 5 snapshot with a damaged or repeated task line, or more or fewer than its header names (T4076)', () => {
+    const torn = toJsonlLine({ v: TASK_LINES_LAYOUT_VERSION, type: TASK_LINE_TYPE, task: { ...lined('T1', 7), reparks: -1 } });
+    assert.match(reason(readSnapshotText(snapshotText({ tasks: 1, events: 0 }, torn))), /a task line is damaged \(T1: reparks is not a count\)/);
+    assert.match(reason(readSnapshotText(snapshotText({ tasks: 2, events: 0 }, taskLine('T1', 7), taskLine('T1', 8)))), /holds T1's task line twice/);
+    assert.match(reason(readSnapshotText(snapshotText({ tasks: 2, events: 0 }, taskLine('T1', 7)))), /holds 1 task line\(s\) where its header says 2/);
+    assert.match(reason(readSnapshotText(snapshotText({ tasks: 0, events: 0 }, taskLine('T1', 7)))), /holds 1 task line\(s\) where its header says 0/);
+  });
+
+  it('refuses a layout 5 header with no window or task count (T4076)', () => {
+    assert.match(reason(readSnapshotText(snapshotText({ windowFrom: undefined }))), /windowFrom undefined is not a time/);
+    assert.match(reason(readSnapshotText(snapshotText({ windowFrom: 'then' }))), /windowFrom "then" is not a time/);
+    assert.match(reason(readSnapshotText(snapshotText({ tasks: undefined }))), /tasks is not a count/);
   });
 
   it('refuses a header from a newer teamrig, naming its version', () => {
@@ -181,6 +225,18 @@ describe('assemble', () => {
     assert.deepEqual(snapshot.retired, { count: 1, lastWeek: '2030-01-07' });
     const none = usable(readSnapshotText(snapshotText({ retired: 0, retiredLastWeek: null }, create('T2', 8))));
     assert.equal(assemble({ base: none, segments: [], skipped: undefined }, [], readEvents('')).retired, null);
+  });
+
+  it('folds the events on top of the task lines, and names where its events start (T4076)', () => {
+    const base = usable(readSnapshotText(snapshotText({ tasks: 1 }, taskLine('T1', 7), create('T2', 19))));
+    const snapshot = assemble({ base, segments: [], skipped: undefined }, [], readEvents(status('T1', 20, 'done')));
+    assert.deepEqual([...snapshot.state.tasks.keys()], ['T1', 'T2']);
+    assert.deepEqual([snapshot.state.tasks.get('T1')?.status, snapshot.state.tasks.get('T1')?.title], ['done', 'Task T1']);
+    assert.deepEqual(snapshot.window, { from: at(18), tasks: base.tasks });
+    assert.equal(base.tasks.get('T1')?.status, 'open', 'the fold never changes the task lines it starts from');
+    const older = usable(readSnapshotText(snapshotText({ v: FIRST_LAYOUT_VERSION }, create('T2', 8))));
+    assert.equal(assemble({ base: older, segments: [], skipped: undefined }, [], readEvents('')).window, null);
+    assert.equal(assemble(historyPlan(readEvents('')), [], readEvents(create('T1', 7))).window, null);
   });
 });
 
