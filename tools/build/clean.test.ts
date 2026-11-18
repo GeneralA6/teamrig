@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { DIST_DIR } from '../ci/dist-fresh.ts';
+import { DIST_DIR } from './dist-dir.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
 
 const CLI = fileURLToPath(new URL('./clean.ts', import.meta.url));

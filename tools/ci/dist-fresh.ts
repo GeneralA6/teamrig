@@ -1,7 +1,5 @@
 import type { Git } from '../lib/git.ts';
-
-/** The compiled plugin code, committed so an installed plugin runs without a build step. */
-export const DIST_DIR = 'plugins/teamrig/dist';
+import { DIST_DIR } from '../build/dist-dir.ts';
 
 /**
  * After `npm run build`, any added, changed or deleted file under the dist folder means the
