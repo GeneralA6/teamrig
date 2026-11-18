@@ -2,6 +2,7 @@ import * as nodePath from 'node:path';
 import { bashDrivePath, resolveDir } from "../push-guard/location.js";
 import { characterClasses, GlobAutomaton, telltaleCharacters } from "./glob-automaton.js";
 import { globNodes, globRegExp, hasWildcard } from "./glob.js";
+import { holdsPublicKeysOnly, PEM_GLOB, PUBLIC_PEM_SUFFIX } from "./public-key.js";
 import { fitsSecret } from "./secret-walk.js";
 /**
  * The files whose content is a secret, and how a word on a command line names one. A team's own globs come after
@@ -49,19 +50,28 @@ const UNKNOWN = '\u0000';
  * the safe side. A word of a few wildcards next to the default globs walks a few hundred.
  */
 const MAX_WALK_STATES = 20_000;
+/** The content check reads the file on disk. */
+export const FROM_DISK = { from: 'disk' };
+/** No content check: the file is judged by its name. */
+export const BY_NAME = { from: 'name' };
 /** The secret files of a team: the defaults, then its own globs. */
 export class SecretPaths {
     globs;
     ignoreCase;
-    /** `home` anchors `~/`; `ignoreCase` is true on hosts whose file names ignore case. */
-    constructor(globs, home, ignoreCase) {
+    readKey;
+    /**
+     * `home` anchors `~/`; `ignoreCase` is true on hosts whose file names ignore case. `readKey` reads a `.pub.pem`
+     * file's text for the public key check (#875); without it every `.pem` stays a secret, whatever it holds.
+     */
+    constructor(globs, home, ignoreCase, readKey) {
         this.ignoreCase = ignoreCase;
+        this.readKey = readKey;
         const anchor = normalisePath(home);
         this.globs = globs.map((glob) => compileGlob(glob, anchor, ignoreCase));
     }
-    /** True when the file at `path`, an absolute path, holds a secret. */
-    listed(path) {
-        return this.decide(normalisePath(path));
+    /** True when the file at `path`, an absolute path, holds a secret; a `.pub.pem` file's text is read from `source`. */
+    listed(path, source = FROM_DISK) {
+        return this.decideFile(path, normalisePath(path), source);
     }
     /**
      * True when a word naming `path` may name a secret file: the path itself is one, or, when it holds wildcards, some
@@ -70,10 +80,10 @@ export class SecretPaths {
      * of wildcards alone (`dir/*`) is tried only against the globs that let it (see `CompiledGlob.wildcardAlone`), else
      * every `grep x *` would name a `*.pem` it cannot see.
      */
-    mayName(path, reading) {
+    mayName(path, reading, source = FROM_DISK) {
         const normal = normalisePath(path);
         if (!hasWildcard(normal, reading.sets)) {
-            return this.decide(normal);
+            return this.decideFile(path, normal, source);
         }
         const word = new GlobAutomaton(globNodes(normal, { ...reading, ignoreCase: this.ignoreCase }), this.ignoreCase);
         const onlyWildcards = /^(?:[*?]|\[[^\]/]+\])+$/.test(normal.slice(normal.lastIndexOf('/') + 1));
@@ -81,14 +91,33 @@ export class SecretPaths {
         const chars = telltaleCharacters([normal, ...this.globs.map(({ anchored }) => anchored)]);
         return fitsSecret(word, walked, characterClasses(chars, [word, ...this.globs.map(({ automaton }) => automaton)]), MAX_WALK_STATES);
     }
-    decide(path) {
-        let secret = false;
+    /**
+     * The globs' decision on one file, except that a `.pub.pem` file listed by `**\/*.pem` alone, no later glob of the
+     * team's naming it, is no secret while its text holds public keys and nothing else (#875). The text is read here,
+     * from `source`, so a private key saved under that name, a file that cannot be read and a word with wildcards stay
+     * refused; a call that prints another revision than the one read is judged by name.
+     */
+    decideFile(path, normal, source) {
+        const deciding = this.decidingGlob(normal);
+        if (deciding === undefined || deciding.keep) {
+            return false;
+        }
+        const name = this.ignoreCase ? normal.toLowerCase() : normal;
+        if (source.from === 'name' || this.readKey === undefined || deciding.source !== PEM_GLOB || !name.endsWith(PUBLIC_PEM_SUFFIX)) {
+            return true;
+        }
+        const text = source.from === 'blob' ? source.text() : this.readKey(path);
+        return text === undefined || !holdsPublicKeysOnly(text);
+    }
+    /** The last glob that matches `path`, which decides it, as in a `.gitignore`; undefined when none does. */
+    decidingGlob(path) {
+        let deciding;
         for (const glob of this.globs) {
             if (glob.pattern.test(path)) {
-                secret = !glob.keep;
+                deciding = glob;
             }
         }
-        return secret;
+        return deciding;
     }
 }
 /** `glob` anchored as the guard reads it: `~/` at home, an absolute glob where it says, any other at any depth. */
@@ -103,6 +132,7 @@ function compileGlob(glob, home, ignoreCase) {
         .split('/')
         .some((part) => part !== '' && !hasWildcard(part, 'bash'));
     return {
+        source: glob,
         keep,
         anchored,
         pattern: globRegExp(anchored, options),
