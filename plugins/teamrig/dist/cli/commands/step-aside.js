@@ -57,7 +57,7 @@ export async function stepBack(_args, runtime) {
     const id = heldIdOf(runtime, 'step-back');
     const { lock, zone, waitMs, pollMs } = await openLock(runtime);
     const say = logLineOf(runtime, zone);
-    const back = await lock.takeBack(id, waitMs, pollMs, (holder, ahead) => say(`waiting to take back its host share: ${waitText(holder, ahead, zone)}`));
+    const back = await lock.takeBack(id, waitMs, pollMs, (holder, ahead, arrivedAfter) => say(`waiting to take back its host share: ${waitText(holder, ahead, zone, arrivedAfter)}`));
     switch (back.kind) {
         case 'taken':
             runtime.out.stdout(`BACK ${back.lock.purpose}: its host share is taken back`);
