@@ -47,6 +47,8 @@ description: Land a finished teamrig change through small signed commits, a dist
 - A line the change adds that names the version it ships in (a migration's `firstRelease`, a docs `since x.y.z` in a
   Markdown file or the config schema) may move to main's next version after main moves, and the approval holds. If
   you change any other word on that line, or a version on a line the change did not add, you need a new approval.
+  A new migration's `firstRelease` must name a release the change ships in (main's next, or the raise's): a ship
+  refuses one copied from an older main before the build, as its merge would lose the approval.
 - The local gate proves a committed tree, so it refuses uncommitted changes: commit or stash them first.
 - With `"mergeChecks": "changed"` on the repository in `tools/ship/repos.json`, the pre-push hook and the `--merge`
   run take the short checks (scrub, DCO, typecheck, the changed files' specs) and leave the whole suite to required
@@ -55,4 +57,4 @@ description: Land a finished teamrig change through small signed commits, a dist
 - A missing sign-off: `git commit --amend -s` for the last commit; the `commit-msg` hook from `npm run setup` catches
   it before the push.
 
-Last verified: 2026-11-17
+Last verified: 2026-11-18
