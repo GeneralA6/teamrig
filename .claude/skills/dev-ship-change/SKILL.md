@@ -22,8 +22,9 @@ description: Land a finished teamrig change through small signed commits with Co
    pull request does, from the subjects. While the version is 0.x, a `feat` or a breaking change (`!`) raises the
    minor, a `fix` or `perf` the patch, so pick the type for what the change does for users.
 6. `npm run check`: every gate CI runs, on your tree.
-7. `git push -u origin <branch>`: the pre-push hook runs the local gate (`tools/ci/local.ts`, its checks listed in
-   `tools/ci/local-checks.ts`) on the committed tree. Never `--no-verify`.
+7. `git push -u origin <branch>`: the pre-push hook runs the local gate's light checks (`tools/ci/local.ts`, its
+   lists in `tools/ci/local-checks.ts`) on the committed tree, about 45 s; GitHub CI runs the rest on the pull request.
+   Never `--no-verify`.
 8. Open the pull request and fill in the template (`.github/pull_request_template.md`): its `## Reach` always, its
    `## Alternatives` when the change settles a design question. A pull request `tools/ship` opens takes its text from
    `--note-file`: start that file with a `Reach:` line. The repository is public: a security fix's branch name, commits,
@@ -41,6 +42,8 @@ description: Land a finished teamrig change through small signed commits with Co
   run the checks, then takes it back. The `--merge` run commits the dist once, on the base it lands on, and the
   approval still holds, as it reads the change apart from the dist.
 - The local gate proves a committed tree, so it refuses uncommitted changes: commit or stash them first.
+- The pre-push hook's light checks leave the suite to CI: a failing spec shows on the pull request, not at the push.
+  Run `npm run check` yourself first when the change reaches far.
 - With `"mergeChecks": "changed"` on the repository in `tools/ship/repos.json`, the pre-push hook and the `--merge`
   run take the short checks (scrub, DCO, typecheck, the changed files' specs) and leave the whole suite to required
   CI; a spec only a changed file's neighbour misses fails there, not here. Run `npm run check` yourself first when
