@@ -1,4 +1,5 @@
-import { spawn } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -739,6 +740,16 @@ describe('other programs running inside the worktree (#797)', () => {
   });
 });
 
+/** Stops `child` and waits until it is gone: on Windows its working folder stays held, and cannot be removed, until then. */
+async function stopped(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  const exit = once(child, 'exit');
+  child.kill();
+  await exit;
+}
+
 describe('renameProbe, the Windows check for a program inside a folder (#797)', () => {
   /** A rename that fails with `codes` in turn (undefined: it renames), recording each call. */
   function moves(codes: readonly (string | undefined)[], calls: string[][]): (from: string, to: string) => Promise<void> {
@@ -786,14 +797,15 @@ describe('renameProbe, the Windows check for a program inside a folder (#797)', 
         return;
       }
       assert.deepEqual(await NODE_WORKTREE_FILES.moveProbe(folder), { kind: 'movable' });
-      const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { cwd: folder, stdio: 'ignore' });
+      const child = spawn(process.execPath, ['-e', 'process.stdout.write("ready\\n"); setTimeout(() => {}, 30000)'], { cwd: folder, stdio: ['ignore', 'pipe', 'ignore'] });
       try {
-        await new Promise((settle) => child.once('spawn', settle));
+        // 'spawn' fires once CreateProcess returns, before the child opens its working folder: wait for its own line.
+        await new Promise((settle) => child.stdout.once('data', settle));
         const probe = await NODE_WORKTREE_FILES.moveProbe(folder);
         assert.equal(probe.kind, 'held');
         assert.ok(existsSync(folder));
       } finally {
-        child.kill();
+        await stopped(child);
       }
     } finally {
       repo.remove();
@@ -812,9 +824,6 @@ describe('NODE_WORKTREE_FILES reads the working folder of other programs (#797)'
   });
 
   it('lists a child program running in a folder, by its process id, on Linux and macOS; says why it cannot elsewhere', async () => {
-    if (process.platform === 'darwin' && !existsSync('/usr/sbin/lsof')) {
-      return;
-    }
     const repo = new TempRepo('worktree-holders');
     const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { cwd: repo.dir, stdio: 'ignore' });
     try {
@@ -824,12 +833,16 @@ describe('NODE_WORKTREE_FILES reads the working folder of other programs (#797)'
         assert.equal(read.kind, 'unknown');
         return;
       }
+      if (process.platform === 'darwin' && !existsSync('/usr/sbin/lsof')) {
+        assert.match(read.kind === 'unknown' ? read.reason : read.kind, /^lsof did not list them/);
+        return;
+      }
       assert.equal(read.kind, 'read');
       const mine = read.kind === 'read' ? read.programs.find((program) => program.pid === child.pid) : undefined;
       assert.equal(mine?.folder, realpathSync(repo.dir));
       assert.ok(read.kind === 'read' && !read.programs.some((program) => program.pid === process.pid), 'never this program itself');
     } finally {
-      child.kill();
+      await stopped(child);
       repo.remove();
     }
   });
