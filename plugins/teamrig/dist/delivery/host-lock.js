@@ -856,7 +856,7 @@ export class HostLock {
         const running = await this.running();
         const turns = await this.turnsLook(new Set(running.map(({ info }) => info.id)));
         const waiting = new Set(line.map(({ waiter }) => classOf(waiter, rules)));
-        const steps = running.map(({ info, small }) => ({ session: info.session, small }));
+        const steps = running.map(({ info, small, shipSlot }) => ({ session: info.session, small, shipSlot }));
         const now = this.ports.clock.now();
         const place = placeInLine(admissionOrder(line, now, rules, turnsFor(turns.state, waiting)), ticket.name, steps, rules, now);
         if (place === undefined) {
@@ -928,8 +928,8 @@ export class HostLock {
     /** The steps running on the host: the lock's live holder, then the live shares, oldest first (a stale share is removed). */
     async running() {
         const seen = await this.read();
-        const holder = seen.kind === 'held' && !this.isStale(seen.info) ? [{ info: seen.info, small: false }] : [];
-        const shares = (await this.liveShares()).map((share) => ({ info: share, small: !isHeavyShare(share) }));
+        const holder = seen.kind === 'held' && !this.isStale(seen.info) ? [{ info: seen.info, small: false, shipSlot: false }] : [];
+        const shares = (await this.liveShares()).map((share) => ({ info: share, small: !isHeavyShare(share), shipSlot: takesShipSlot(share.request?.kind) }));
         return [...holder, ...shares];
     }
     /**

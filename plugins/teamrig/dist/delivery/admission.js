@@ -113,13 +113,16 @@ function passesOnRoom(waiter, idle, now, memoryPassMinutes) {
  * the first waiter its last look found waiting on the slot, for as long as the ship ahead runs, as the slot keeps the
  * waiter out whatever ends, and every slot-taking waiter after it, which waits behind that one whatever its own reason
  * (T3336: a second ship waits on the line, not the slot, yet starts no sooner, and held every build and test back).
+ * While a running share holds the slot (`slotHeld`), every slot-taking waiter is passed, whatever its last look
+ * recorded (T4333): the first one, finding the admit file held by a step passing it, recorded a wait in line, so the
+ * steps behind it stopped passing it and the whole line flapped behind one ship.
  */
-function passedOnShipSlot(before, mine) {
+function passedOnShipSlot(before, mine, slotHeld) {
     const passed = new Set();
     if (mine) {
         return passed;
     }
-    let shut = false;
+    let shut = slotHeld;
     before.forEach(({ waiter }, at) => {
         const onSlot = waiter.waitingOn?.reason === 'shipSlot';
         shut ||= onSlot;
@@ -156,7 +159,7 @@ export function placeInLine(order, name, running, rules, now) {
     const capped = (session) => cap > 0 && runs(session) >= cap;
     // Idle means no queued step at all runs: a small step's end frees room too, so it counts here.
     const idle = running.length === 0;
-    const onSlot = passedOnShipSlot(before, takesShipSlot(mine.waiter.request?.kind));
+    const onSlot = passedOnShipSlot(before, takesShipSlot(mine.waiter.request?.kind), running.some((step) => step.shipSlot));
     const ahead = before.filter(({ waiter }, at) => !capped(waiter.session) && !passesOnRoom(waiter, idle, now, rules.memoryPassMinutes) && !onSlot.has(at));
     const own = runs(mine.waiter.session);
     return capped(mine.waiter.session) ? { kind: 'sessionCap', ahead, running: own, cap } : { kind: 'inLine', ahead };
