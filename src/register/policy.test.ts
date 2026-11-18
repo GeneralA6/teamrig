@@ -15,6 +15,7 @@ import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from './tree.ts';
 import type { WaitReason } from './waits.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { WATCH_USAGE } from './verify.ts';
+import { BLOCKER_PRIORITY_ID } from './model.ts';
 
 const EMPTY: RegisterState = foldEvents([]);
 const INPUT: AddInput = { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', priority: 2 };
@@ -84,7 +85,10 @@ describe('RegisterPolicy.add', () => {
     assert.equal(verdict.ok ? verdict.value.priority : undefined, 0);
     const own = new RegisterPolicy(testConfig({ register: { priorities: [{ id: 2, name: 'soon' }] } }));
     assert.equal(error(own.add({ ...INPUT, priority: 0 }, EMPTY)), 'allowed');
-    assert.equal(error(own.add({ ...INPUT, priority: 1 }, EMPTY)), 'priority p1 is not one of p0, p2');
+    assert.equal(error(own.add({ ...INPUT, priority: 1 }, EMPTY)), 'priority p1 is not one of blocker, p0, p2');
+    const blocker = policy.add({ ...INPUT, priority: BLOCKER_PRIORITY_ID }, EMPTY);
+    assert.equal(blocker.ok ? blocker.value.priority : undefined, BLOCKER_PRIORITY_ID, 'the blocker level above p0 (T4329)');
+    assert.equal(error(own.add({ ...INPUT, priority: BLOCKER_PRIORITY_ID }, EMPTY)), 'allowed');
   });
 
   it('keeps the type and critical mark it is given', () => {
@@ -105,7 +109,7 @@ describe('RegisterPolicy.add', () => {
       [{ title: 'x'.repeat(141) }, /141 characters; the limit is 140/],
       [{ owner: 'charlie' }, /owner charlie is not a session/],
       [{ source: 'The Owner' }, /neither a session id nor owner/],
-      [{ priority: 9 }, /^priority p9 is not one of p0, p1, p2, p3, p4, p5$/],
+      [{ priority: 9 }, /^priority p9 is not one of blocker, p0, p1, p2, p3, p4, p5$/],
       [{ due: 'friday' }, /due friday is not/],
       [{ week: '2030-1-7' }, /week 2030-1-7 is not/],
       [{ ref: 'r'.repeat(301) }, /ref has 301 characters/],
@@ -1383,7 +1387,7 @@ describe('RegisterPolicy, the GitHub import', () => {
       value: { changes: { title: 'Fix the login' }, note: 'title changed on GitHub' },
     });
     assert.equal(error(policy.importUpdate(IMPORTED, { title: 'Fix login', priority: 1 }, 'again')), 'nothing to change');
-    assert.equal(error(policy.importUpdate(IMPORTED, { priority: 9 }, 'p9')), 'priority p9 is not one of p0, p1, p2, p3, p4, p5');
+    assert.equal(error(policy.importUpdate(IMPORTED, { priority: 9 }, 'p9')), 'priority p9 is not one of blocker, p0, p1, p2, p3, p4, p5');
     assert.equal(error(policy.importUpdate(TASK, { title: 'Other' }, 'x')), 'T1 is not a GitHub task (source lead): the import changes only its own');
   });
 

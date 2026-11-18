@@ -2,7 +2,7 @@ import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 import type { JsonlRecord } from '../core/jsonl.ts';
 import { parseIsoStamp, parseUtcDeadline } from '../core/time.ts';
-import { isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID, WAIT_STATUSES, WORK_CLASS_NAME, type TaskStatus } from './model.ts';
+import { BLOCKER_PRIORITY_ID, isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID, WAIT_STATUSES, WORK_CLASS_NAME, type TaskStatus } from './model.ts';
 import { parseCard, type DecisionCard } from './card.ts';
 import { GOAL_TAG, isSlice } from './goals.ts';
 import { parseAuditPin, type AuditPin } from './hand-step.ts';
@@ -23,14 +23,14 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * `review` (T916), a task's `type` and `critical` mark (T1252), which replaced `kind`, and a `done` status's `watch`
  * (T1306), an update's `waits` (T1295), a task's `noGoal` mark (T1730), an update's `decided` mark (T1366) and its
  * `sizeBase` (T649), a task's `workClass` (T2076), a start's `oneCommit` mark (T2110), an update's hand step `audit`
- * (T2312), a card's `affects` (T2623), a task's `prepares` marker (T2453) and an update's `securityVerdict` (T2761),
+ * (T2312), a card's `affects` (T2623), a task's `prepares` marker (T2453), an update's `securityVerdict` (T2761) and a task's `blocker` mark on p0 (T4329),
  * which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
  * Version 3 adds the `moved` record (T1144), and only a moved line carries it: an older teamrig reads that line as a
  * newer format and writes to the register no more, so no session of it changes a task that moved to another team.
- * Parsing checks the FORMAT only (any priority from 0, any goal string): team policy is applied
+ * Parsing checks the FORMAT only (any priority from 0, and p0 marked blocker, any goal string): team policy is applied
  * on write, so changing the config never erases history.
  */
 export const EVENT_VERSION = 3;
@@ -40,6 +40,18 @@ export const TASK_LINE_VERSION = 2;
 
 /** The name lines before version 2 gave the `priority` field; still read, never written. */
 export const LEGACY_PRIORITY_FIELD = 'tier';
+
+/**
+ * The mark beside `priority: 0` that makes it the blocker level (T4329). An older teamrig refuses a negative priority
+ * and ignores a field it does not know, so it reads a blocker as p0. Written only as true; an update that names a
+ * priority without it moves the task off the blocker.
+ */
+export const BLOCKER_FIELD = 'blocker';
+
+/** Fields as a line holds them: a blocker priority as p0 with BLOCKER_FIELD, every other field as it is. */
+function diskPriority<T extends Partial<TaskFields>>(fields: T): Omit<T, 'priority'> & { readonly priority?: number; readonly [BLOCKER_FIELD]?: true } {
+  return fields.priority === BLOCKER_PRIORITY_ID ? { ...fields, priority: 0, [BLOCKER_FIELD]: true } : fields;
+}
 
 export interface TaskFields {
   readonly title: string;
@@ -265,13 +277,17 @@ const STATUS_NAME = /^[a-z]+(?:-[a-z]+)*$/;
 /**
  * The record an event is written as. A create line leaves out an empty `after`, a null `description`, `size`, `type`,
  * `pin`, `workClass` or `prepares` and a false `critical` or `noGoal`, which read back as none, so a task without them costs
- * no bytes and its line is the one an older teamrig wrote.
+ * no bytes and its line is the one an older teamrig wrote. A blocker priority, a create's or an update's, is written as
+ * p0 with BLOCKER_FIELD (diskPriority).
  */
 export function eventRecord(event: RegisterEvent): JsonRecord {
+  if (event.type === 'update') {
+    return { ...event, changes: diskPriority(event.changes) };
+  }
   if (event.type !== 'create') {
     return { ...event };
   }
-  const { task } = event;
+  const task = diskPriority(event.task);
   const left = (name: string): boolean =>
     (name === 'after' && task.after.length === 0) ||
     (name === 'description' && task.description === null) ||
@@ -471,7 +487,7 @@ function parseTaskFields(record: JsonRecord, complete: boolean): Partial<TaskFie
     if (value === undefined && !complete) {
       continue;
     }
-    const problem = readField(fields, name, value);
+    const problem = readField(fields, name, value, record[BLOCKER_FIELD]);
     if (problem !== undefined) {
       return problem;
     }
@@ -507,7 +523,7 @@ function legacyMarkOf(record: JsonRecord): Pick<TaskFields, 'type' | 'critical'>
   return kind === null ? { type: null, critical: false } : (LEGACY_KINDS.get(kind) ?? `bad kind ${JSON.stringify(kind)}`);
 }
 
-function readField(fields: { -readonly [K in TaskFieldName]?: TaskFields[K] }, name: TaskFieldName, value: unknown): string | undefined {
+function readField(fields: { -readonly [K in TaskFieldName]?: TaskFields[K] }, name: TaskFieldName, value: unknown, blocker: unknown): string | undefined {
   switch (name) {
     case 'title':
     case 'owner':
@@ -528,7 +544,13 @@ function readField(fields: { -readonly [K in TaskFieldName]?: TaskFields[K] }, n
       if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
         return `bad priority ${JSON.stringify(value)}`;
       }
-      fields.priority = value;
+      if (blocker !== undefined && typeof blocker !== 'boolean') {
+        return `bad blocker ${JSON.stringify(blocker)}`;
+      }
+      if (blocker === true && value !== 0) {
+        return `blocker on priority ${value}, not 0`;
+      }
+      fields.priority = blocker === true ? BLOCKER_PRIORITY_ID : value;
       return undefined;
     case 'due':
       if (value !== undefined && value !== null && (typeof value !== 'string' || parseUtcDeadline(value) === undefined)) {
