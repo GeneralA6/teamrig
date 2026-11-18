@@ -5,7 +5,7 @@ import { EXIT, RefusedError } from '../../src/cli/runtime.ts';
 import { mergeStandingOf, type MergeStanding } from '../../src/cli/ship-approval.ts';
 import { CLAUDE_SESSION, CliHarness, TEAM_HOME } from '../../src/testing/cli-harness.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
-import { changePatch, clearMerge, clearMergeFrom, mergeClearance, type MergeReads, shipWritesOf, type StandingOf, type TabCallerOf, taskOfBranch, type WorkCommit, workChanges, workCommitsOf } from './approval.ts';
+import { changePatch, clearMerge, clearMergeFrom, mergeClearance, type MergeReads, shipWritesOf, type StandingOf, strayStamps, type TabCallerOf, taskOfBranch, type WorkCommit, workChanges, workCommitsOf } from './approval.ts';
 import { TEAMRIG_RELEASE_STAMPS, TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 const HEAD = '0123456789abcdef0123456789abcdef01234567';
@@ -274,6 +274,26 @@ describe('changePatch: the fingerprint of what a branch changes over main', () =
     repo.git('checkout', '-q', '-b', 't1-blob', base);
     commitFiles('docs: notes', { 'notes.txt': 'one\n', 'src/blob.bin': 'a\u0000c\n' });
     assert.notEqual(patch(), approved, 'a binary file');
+  });
+
+  it('strayStamps names a new migration stamped at a version the change does not ship in, before and after its raise (T4259)', () => {
+    const strays = (): readonly unknown[] => strayStamps(git, 'HEAD', 'main', WRITES);
+    assert.deepEqual(strays(), [], 'no stamp added');
+    commitFiles('config: migration 2', { [MIGRATE_TS]: `${migration(1, '0.1.0')}${migration(2, '0.0.9')}` });
+    assert.deepEqual(strays(), [{ path: MIGRATE_TS, version: '0.0.9', shipsIn: ['0.1.1', '0.2.0', '1.0.0'] }], 'a stamp copied from an older main');
+    const stamped = commitFiles('config: migration 2 at its release', { [MIGRATE_TS]: `${migration(1, '0.1.0')}${migration(2, '0.2.0')}` });
+    assert.deepEqual(strays(), [], 'a next release, before the raise');
+    raise('0.2.0');
+    assert.deepEqual(strays(), [], 'the release the raise sets');
+    repo.git('checkout', '-q', '-b', 't1-patch', stamped);
+    raise('0.1.1');
+    assert.deepEqual(strays(), [{ path: MIGRATE_TS, version: '0.2.0', shipsIn: ['0.1.1'] }], 'a raise to another release than the stamp');
+  });
+
+  it('strayStamps passes an existing stamp moved or edited, and a docs line naming an older release (T4259)', () => {
+    commitFiles('config: migration 1 reworded', { [MIGRATE_TS]: `// the first step\n${migration(1, '0.1.0').replace("firstRelease: '0.1.0',", "firstRelease: '0.1.0', // the base's")}` });
+    commitFiles('docs: an older setting', { [GUIDE]: `${GUIDE_BASE}- \`open.idle.y\` (since 0.0.5) keeps it.\n` });
+    assert.deepEqual(strayStamps(git, 'HEAD', 'main', WRITES), []);
   });
 
   /**
