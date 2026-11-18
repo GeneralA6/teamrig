@@ -2,8 +2,8 @@ import { isRecord } from "./guards.js";
 export const systemClock = { now: () => Date.now() };
 export const realSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export class LockBusyError extends Error {
-    constructor(path, waitMs) {
-        super(`${path} is held by another process (waited ${waitMs} ms); retry`);
+    constructor(path, waitMs, cutByDeadline = false) {
+        super(`${path} is held by another process (waited ${waitMs} ms${cutByDeadline ? ", all the hook's time limit leaves" : ''}); retry`);
         this.name = 'LockBusyError';
     }
 }
@@ -40,7 +40,10 @@ export class FileLock {
     async acquire() {
         const { files, clock, sleep } = this.deps;
         const id = this.deps.newId();
-        const deadline = clock.now() + this.timings.waitMs;
+        const startedAt = clock.now();
+        const own = startedAt + this.timings.waitMs;
+        const cut = this.deps.deadline !== undefined && this.deps.deadline < own;
+        const deadline = cut && this.deps.deadline !== undefined ? this.deps.deadline : own;
         for (;;) {
             if (await this.create(this.path, id)) {
                 return id;
@@ -49,10 +52,11 @@ export class FileLock {
             if (seen !== undefined && this.isStale(seen) && (await this.takeOver(seen, id))) {
                 continue;
             }
-            if (clock.now() >= deadline) {
-                throw new LockBusyError(this.path, this.timings.waitMs);
+            const now = clock.now();
+            if (now >= deadline) {
+                throw new LockBusyError(this.path, cut ? now - startedAt : this.timings.waitMs, cut);
             }
-            await sleep(this.timings.pollMs);
+            await sleep(Math.min(this.timings.pollMs, deadline - now));
         }
     }
     /**
