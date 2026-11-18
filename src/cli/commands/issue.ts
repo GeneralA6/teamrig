@@ -167,7 +167,7 @@ function duplicateOfFlag(text: string | undefined, target: IssueTarget, reason: 
 /**
  * `issue similar <owner/name#n>` (T2695): the issues the register mirrors that may be duplicates of the one named, best
  * first (issues/similar.ts): TF-IDF over the mirrored titles and bodies, at most SIMILAR_TOP at or above
- * `github.similarThreshold`. It reads the register only, never the host, so the issue must be in it (`gh sync` adds
+ * `github.similarThreshold`. It reads the register only, never the host, so the issue must be in it (`issue sync` adds
  * it). Exit 0, with or without candidates.
  */
 export async function issueSimilar(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
@@ -177,7 +177,7 @@ export async function issueSimilar(args: ParsedArgs, runtime: CliRuntime): Promi
   const ref = issueRef(target.repo, target.number);
   const own = tasks.find((task) => task.ref?.toLowerCase() === ref);
   if (own === undefined || own.ref === null) {
-    throw new RefusedError(`${targetText(target)} is not in the task list: teamrig gh sync adds a task for each open issue of github.repos`);
+    throw new RefusedError(`${targetText(target)} is not in the task list: teamrig issue sync adds a task for each open issue of github.repos`);
   }
   const corpus = mirroredIssues(tasks, new Date(runtime.clock.now()), config.github.closedDays).filter((doc) => doc.ref !== own.ref);
   const threshold = config.github.similarThreshold;

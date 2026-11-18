@@ -344,7 +344,7 @@ describe('teamrig issue similar', () => {
     const kit = await seeded();
     const missing = await kit.run(['issue', 'similar', 'acme/web#99'], AS_LEAD);
     assert.equal(missing.code, EXIT.refused);
-    assert.match([...missing.stdout, ...missing.stderr].join('\n'), /^REFUSED acme\/web#99 is not in the task list: teamrig gh sync adds a task for each open issue of github\.repos/u);
+    assert.match([...missing.stdout, ...missing.stderr].join('\n'), /^REFUSED acme\/web#99 is not in the task list: teamrig issue sync adds a task for each open issue of github\.repos/u);
     const bad = await kit.run(['issue', 'similar', 'web#7'], AS_LEAD);
     assert.equal(bad.code, EXIT.refused);
     assert.match([...bad.stdout, ...bad.stderr].join('\n'), /^REFUSED web#7 names no issue or pull request/u);
