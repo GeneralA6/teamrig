@@ -9,7 +9,7 @@ import { foldEvents, type RegisterState, type Task } from './fold.ts';
 import type { DecisionCard } from './card.ts';
 import { cutTask } from './description-cut.ts';
 import { NO_SLICED_GOALS } from './focus.ts';
-import { CARD_USAGE, DESCRIPTION_NEEDED, GITHUB_ACTOR, normaliseTitle, PROOF_WAITS_USAGE, RegisterPolicy, type AddInput, type AskInput, type AuditSubject, type ImportInput, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
+import { BLOCKER_WHY, CARD_USAGE, DESCRIPTION_NEEDED, GITHUB_ACTOR, normaliseTitle, PROOF_WAITS_USAGE, RegisterPolicy, type AddInput, type AskInput, type AuditSubject, type ImportInput, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
 import type { ProblemReview } from './review.ts';
 import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from './tree.ts';
 import type { WaitReason } from './waits.ts';
@@ -2113,5 +2113,35 @@ describe('RegisterPolicy.setStatus: a set that would drop an approval (T3207)', 
     assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'dropped', note: 'superseded', dropApproval: true }, CTX)), refusal);
     const declined: Task = { ...approved, answer: { verdict: 'declined', by: 'lead', at: '2030-01-08T11:00:00.000Z', note: 'no tests' } };
     assert.equal(error(policy.setStatus(declined, 'alpha', { status: 'in-progress', note: 'adding tests' }, CTX)), 'allowed');
+  });
+});
+
+describe('RegisterPolicy: a blocker (T4329)', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const WHY: Task = { ...TASK, description: 'the night flow cannot write' };
+  const BLOCKER: Task = { ...WHY, priority: BLOCKER_PRIORITY_ID };
+
+  it('takes a blocker with its why and refuses one without, whatever register.requireDescription says', () => {
+    assert.equal(error(policy.add({ ...INPUT, priority: BLOCKER_PRIORITY_ID }, EMPTY)), 'allowed');
+    const { description, ...undescribed } = INPUT;
+    assert.equal(description, 'what and why');
+    const lax = new RegisterPolicy(testConfig({ register: { requireDescription: false } }));
+    assert.equal(error(lax.add({ ...undescribed, priority: BLOCKER_PRIORITY_ID }, EMPTY)), BLOCKER_WHY);
+    assert.equal(error(lax.add({ ...undescribed, priority: 0 }, EMPTY)), 'allowed', 'p0 keeps the team rule');
+  });
+
+  it('refuses a blocker planned after another task: that is a plain wait', () => {
+    const state = stateOf(testTask({ id: 'T4', status: 'open' }));
+    assert.match(error(policy.add({ ...INPUT, priority: BLOCKER_PRIORITY_ID, after: ['T4'] }, state)), /^a blocker is fixed now, never after another task: the task waiting on T4 is a plain wait/);
+    assert.match(error(policy.update({ ...WHY, status: 'open', startedAt: null, after: ['T4'] }, 'alpha', { priority: BLOCKER_PRIORITY_ID }, undefined, state)), /T1 waiting on T4 is a plain wait/);
+  });
+
+  it('refuses a blocker that waits on a task, set waiting or raised while waiting, and takes other edits of one', () => {
+    const state = stateOf(TASK, testTask({ id: 'T4', status: 'in-progress' }));
+    const context: StatusContext = { ...CTX, state };
+    assert.match(error(policy.setStatus(BLOCKER, 'alpha', { status: 'waiting', note: 'needs T4', waits: [{ kind: 'task', id: 'T4' }] }, context)), /^a blocker is fixed now, never after another task: T1 waiting on T4/);
+    const waiting: Task = { ...WHY, status: 'waiting', waits: [{ kind: 'task', id: 'T4' }] };
+    assert.match(error(policy.update(waiting, 'alpha', { priority: BLOCKER_PRIORITY_ID }, undefined, state)), /T1 waiting on T4 is a plain wait/);
+    assert.equal(error(policy.update({ ...waiting, priority: BLOCKER_PRIORITY_ID }, 'alpha', { title: 'Renamed' }, undefined, state)), 'allowed');
   });
 });
