@@ -173,7 +173,7 @@
     "dist/cli/commands/refresh.js": "9aba96ba02297c8b4d949a01f8b77e8b2d9f330adeebf1a06b063bff3fd6dd41",
     "dist/cli/commands/refs.js": "485ccb1e8e56b29d01e38b8321f45c9d254dda0b4731125b6fa3f14c7558fa51",
     "dist/cli/commands/register-team.js": "c078b882826afe6dd4e2b1836de072126308f22bdfec9fae0f054f214776e323",
-    "dist/cli/commands/register.js": "6d02c4f03a3d2d16a0b09662ad7e24de2d443b276fcec662915734022a24e61a",
+    "dist/cli/commands/register.js": "ec17f5704f40e7ee89fc51eebf47fe64a19baa079fcc942807eca6c77c617f11",
     "dist/cli/commands/rehire.js": "c4fba1e973a2fca146979ac6fd277d8459d9c5638592be409102f7ce469c8398",
     "dist/cli/commands/report.js": "6443306d66fbe766daaec949098fdae55ee8c702f2cec854867d0626820773bd",
     "dist/cli/commands/restart.js": "1f8b8a8e5f4f375125c8fafbe5773a4db7d8da834073a4ea513d1f234bf99afa",
