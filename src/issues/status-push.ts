@@ -1,5 +1,5 @@
 import type { Task } from '../register/fold.ts';
-import { GITHUB_SOURCE, ISSUE_REF_PREFIX, type TaskStatus } from '../register/model.ts';
+import { ACTIVE_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, type TaskStatus } from '../register/model.ts';
 import { DESIGN_LABEL } from './design-label.ts';
 import { parseIssueTarget, targetText, type CloseReason, type IssueTarget, type LabelSpec } from './host.ts';
 import type { HostIssue } from './issue.ts';
@@ -254,7 +254,8 @@ export const SESSION_PUSH: PushLimits = { writesPerRun: PUSH_WRITES_PER_RUN, clo
  * The push of `repo`: for each issue of it a task holds, by `ref: gh:<repo>#<n>`, the writes that make the issue
  * show the task's status, planned against `issues` as the host listed them now (open ones and those closed lately).
  * When a team task and an imported one hold the same issue, the team task speaks for it: the issue is its work. When
- * two or more team tasks hold it, none does: the plan writes nothing to it and names them (SharedIssue). The run sends at most `limits.writesPerRun` writes; the rest is deferred. Without `limits.closes` a closing change
+ * two or more active team tasks hold it, none does: the plan writes nothing to it and names them (SharedIssue); one
+ * active team task speaks over finished ones (holders). The run sends at most `limits.writesPerRun` writes; the rest is deferred. Without `limits.closes` a closing change
  * is held instead, taking none of the run's writes. With `logins` an open issue of a scheduled task with no assignee
  * is assigned (assigneeOf); without, the plan assigns nobody.
  */
@@ -317,8 +318,11 @@ function closeLeft(repo: string, issue: HostIssue, logins: SessionLogins | undef
 }
 
 /**
- * The tasks holding each issue number of `repo`: in `speakers`, the one task speaking for it, its one team task, else
- * the first one the import added; in `shared`, the ids of an issue two or more team tasks hold, which none speaks for.
+ * The tasks holding each issue number of `repo`: in `speakers`, the one task speaking for it, else the first one the
+ * import added; in `shared`, the ids of an issue two or more active team tasks hold, which none speaks for.
+ * A team task speaks when it is the only active one holding the issue: a finished task often keeps its ref, so a done
+ * task beside its open follow-up never freezes the issue. With none active, the newest finished one speaks (the last
+ * word on the issue), so old finished tasks never name an issue SHARED on every push.
  */
 function holders(repo: string, tasks: Iterable<Task>): { speakers: Map<number, Task>; shared: Map<number, string[]> } {
   const team = new Map<number, Task[]>();
@@ -338,11 +342,16 @@ function holders(repo: string, tasks: Iterable<Task>): { speakers: Map<number, T
   const shared = new Map<number, string[]>();
   for (const [number, held] of team) {
     speakers.delete(number);
-    const [only, ...others] = held;
-    if (only !== undefined && others.length === 0) {
-      speakers.set(number, only);
+    const byId = [...held].sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }));
+    const active = byId.filter((task) => ACTIVE_STATUSES.includes(task.status));
+    const speaker = active.length === 0 ? byId.at(-1) : active.length === 1 ? active[0] : undefined;
+    if (speaker !== undefined) {
+      speakers.set(number, speaker);
     } else {
-      shared.set(number, held.map((task) => task.id).sort((a, b) => a.localeCompare(b, 'en', { numeric: true })));
+      shared.set(
+        number,
+        active.map((task) => task.id),
+      );
     }
   }
   return { speakers, shared };
