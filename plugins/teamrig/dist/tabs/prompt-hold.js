@@ -12,8 +12,12 @@ import { isAsking } from "./needs-you.js";
  * unanswered means nobody is watching that tab, and an hour lost costs every session waiting on it.
  */
 export const PROMPT_HOLD_MS = 10 * 60 * 1000;
-/** The most words of the prompt's detail a page carries: enough to know the call, too few to hold an argument. */
-export const PROMPT_HOLD_WORDS = 3;
+/**
+ * The most words of the prompt's detail a page carries: the program, which names the call. The words after it are
+ * where an argument sits, and a short lowercase password or hex key there passes both `PLAIN_WORD` and the secret
+ * scanner, so a page never carries them (T2963).
+ */
+export const PROMPT_HOLD_WORDS = 1;
 /**
  * A plain word of a command (a program, a subcommand): lowercase and at most 20 characters, so no path, address,
  * assignment or quoted text, and no bare token either: GitHub, Anthropic, Slack and npm tokens and hex keys are
@@ -28,8 +32,7 @@ export function heldPrompts(tabs, now, alive) {
         .filter((need) => need.pid === null || alive(need.pid));
 }
 /**
- * The prompt as a page may name it: the tool, then the first plain words of its detail, stopping at the first word
- * that is not one. The full text may hold a path or a secret, and a page goes to a chat outside the machine, so words
+ * The prompt as a page may name it: the tool, then the first word of its detail when that is a plain word. The full text may hold a path or a secret, and a page goes to a chat outside the machine, so words
  * any secret shape of `scanner` matches are dropped too, leaving the tool alone.
  */
 export function promptWords(text, scanner) {
