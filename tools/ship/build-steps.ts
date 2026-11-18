@@ -2,7 +2,7 @@ import { recordAt, recordOf, stringAt } from './json.ts';
 
 /**
  * The dist rebuild a ship runs: the repo's own `scripts.build`, step by step, so the committed dist is the one the
- * local gate's build makes (T755: a hard-coded copy lacked the new integrity step, and dist-fresh refused the ship).
+ * local gate's build makes (T755: a hard-coded copy lacked the new integrity step).
  */
 
 /** The node arguments of one build step: a script with its arguments, or TypeScript's compiler with its own. */

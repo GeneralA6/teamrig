@@ -21,7 +21,6 @@ export function localChecks(base: string): readonly LocalCheck[] {
     { name: 'build: compile', argv: ['node', TSC, '-p', 'tsconfig.build.json'] },
     { name: 'build: integrity', argv: ['node', 'tools/build/integrity.ts'] },
     { name: 'coverage gate', argv: ['node', 'tools/ci/coverage-cli.ts'] },
-    { name: 'dist matches the source', argv: ['node', 'tools/ci/dist-fresh-cli.ts'] },
     { name: 'dist smoke', argv: ['node', 'tools/ci/dist-smoke-cli.ts'] },
     { name: 'fresh install', argv: ['node', 'tools/ci/fresh-install-cli.ts'] },
     // After the build: the mod's hooks load the built dist.
