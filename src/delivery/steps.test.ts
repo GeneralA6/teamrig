@@ -1,4 +1,4 @@
-import { after, before, describe, it } from 'node:test';
+import { after, before, describe, it, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
@@ -6,7 +6,7 @@ import { constants, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { STEP_PRIORITY } from './priority.ts';
-import { exitCodeOf, nodeStepRunner, stepLaunchOf, STOPPED_EXIT, TIMED_OUT_EXIT } from './steps.ts';
+import { exitCodeOf, nodeStepRunner, startLimit, stepLaunchOf, STOPPED_EXIT, TIMED_OUT_EXIT } from './steps.ts';
 import { nodeTreeKill, type TreeKill } from './tree-kill.ts';
 import { endingOf, livenessOf, parseWrittenProcess, WRITE_PROCESS_SCRIPT, type WrittenProcess } from '../testing/process-liveness.ts';
 
@@ -65,6 +65,58 @@ describe('stepLaunchOf', () => {
   it('adds only what brings the step to below normal, and nothing to a process already running lower', () => {
     assert.deepEqual(stepLaunchOf('linux', 'x', 4).args.slice(0, 2), ['-n', String(STEP_PRIORITY - 4)]);
     assert.deepEqual(stepLaunchOf('linux', 'x', STEP_PRIORITY + 5).args.slice(0, 2), ['-n', '0']);
+  });
+});
+
+describe('startLimit', () => {
+  const MINUTE = 60_000;
+  /** Lets the limit's read of the away time settle: setImmediate is not one of the mocked timers. */
+  const settle = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+  /** Ticks the mocked clock by `ms`, then lets the limit's check run. */
+  async function tick(t: TestContext, ms: number): Promise<void> {
+    t.mock.timers.tick(ms);
+    await settle();
+  }
+
+  it('moves the limit on by the time the step spent away, read again each time the moved limit falls due (T4218)', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    let away = 10 * MINUTE;
+    let fired = 0;
+    startLimit(45 * MINUTE, async () => away, () => (fired += 1));
+    await tick(t, 45 * MINUTE);
+    assert.equal(fired, 0, '10 minutes away: 10 more');
+    away = 15 * MINUTE;
+    await tick(t, 10 * MINUTE);
+    assert.equal(fired, 0, 'still away: 15 minutes now, 5 more');
+    await tick(t, 5 * MINUTE - 1);
+    assert.equal(fired, 0);
+    await tick(t, 1);
+    assert.equal(fired, 1);
+  });
+
+  it('ends the step at its plain limit with no away time, or one that cannot be read', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    const fired: string[] = [];
+    startLimit(45 * MINUTE, undefined, () => fired.push('none'));
+    startLimit(45 * MINUTE, () => Promise.reject(new Error('unreadable')), () => fired.push('unreadable'));
+    await tick(t, 45 * MINUTE - 1);
+    assert.deepEqual(fired, []);
+    await tick(t, 1);
+    assert.deepEqual(fired, ['none', 'unreadable']);
+  });
+
+  it('never ends a step that ended first, even while it reads the away time', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    let fired = 0;
+    startLimit(45 * MINUTE, async () => 0, () => (fired += 1)).stop();
+    let read: (ms: number) => void = () => undefined;
+    const reading = startLimit(45 * MINUTE, () => new Promise<number>((resolve) => (read = resolve)), () => (fired += 1));
+    await tick(t, 45 * MINUTE);
+    reading.stop();
+    read(0);
+    await tick(t, 60 * MINUTE);
+    assert.equal(fired, 0);
   });
 });
 

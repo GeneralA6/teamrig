@@ -11,8 +11,14 @@ export interface StepRequest {
   readonly command: string;
   readonly cwd: string;
   readonly env: Env;
-  /** Past this, the step is killed with every process it started. */
+  /** Past this, the step is killed with every process it started; the time {@link awayMs} reports does not count. */
   readonly timeoutMs: number;
+  /**
+   * The ms the step has spent without its host share so far (`teamrig step-away` until `teamrig step-back` took it back:
+   * a merge waiting on its pull request's checks, then back in line), read once its limit falls due: that time runs
+   * nothing on the host, so its limit moves on by it (T4218). None counts nothing.
+   */
+  readonly awayMs?: () => Promise<number>;
   /** Once this aborts, the step is killed with every process it started, as at its time limit. */
   readonly stop?: AbortSignal;
   /**
@@ -87,6 +93,42 @@ function ownPriorityOf(priorities: Priorities): number {
   }
 }
 
+/** A step's running time limit, started by {@link startLimit}; `stop` ends it once the step has ended. */
+export interface Limit {
+  stop(): void;
+}
+
+/**
+ * Calls `onLimit` once a step started now has run `timeoutMs`, the time `awayMs` reports it spent without its host
+ * share not counted: when the limit falls due it reads that time and waits on by whatever is left, so a merge that gave
+ * its share away while its checks ran is never killed for the time it waited (T4218). An `awayMs` that fails counts
+ * nothing, so the step is killed at its plain limit, as before.
+ */
+export function startLimit(timeoutMs: number, awayMs: (() => Promise<number>) | undefined, onLimit: () => void, now: () => number = Date.now): Limit {
+  const startedAt = now();
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const check = async (): Promise<void> => {
+    const away = awayMs === undefined ? 0 : await awayMs().catch(() => 0);
+    if (stopped) {
+      return;
+    }
+    const left = startedAt + timeoutMs + away - now();
+    if (left > 0) {
+      timer = setTimeout(() => void check(), left);
+    } else {
+      onLimit();
+    }
+  };
+  timer = setTimeout(() => void check(), timeoutMs);
+  return {
+    stop: () => {
+      stopped = true;
+      clearTimeout(timer);
+    },
+  };
+}
+
 /**
  * The real runner: Node's `spawn` in the platform's shell, with inherited stdio, at below-normal priority
  * (`stepLaunchOf`); its time limit or its `stop` kills the tree. A killed step is reported once the kill is done, so
@@ -124,10 +166,10 @@ export function nodeStepRunner(platform: NodeJS.Platform, kill: TreeKill = nodeT
           }
           killed = { why, done: kill(child) };
         };
-        const timer = setTimeout(() => killAs('timedOut'), request.timeoutMs);
+        const limit = startLimit(request.timeoutMs, request.awayMs, () => killAs('timedOut'));
         const onStop = (): void => killAs('stopped');
         const settled = (): void => {
-          clearTimeout(timer);
+          limit.stop();
           request.stop?.removeEventListener('abort', onStop);
         };
         if (request.stop?.aborted === true) {
