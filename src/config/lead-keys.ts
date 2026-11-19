@@ -16,7 +16,7 @@ export const LEAD_KEYS: ReadonlySet<string> = new Set([
   'register.requireEvidenceOnDone', 'register.requireSkillOnDone', 'register.requireNoteOn', 'register.requireFollowupsOn',
   'register.autoArchive', 'register.requireDecisionCard', 'register.requireProofOnVerifying', 'register.verifyGate',
   'register.maxVerifying', 'register.maxReparks', 'register.check.staleAfterHours', 'register.check.notPickedUpAfterHours',
-  'register.check.prioritySkipAfterHours', 'register.check.maxSelfMadePerDay', 'register.check.goalProgressDays',
+  'register.check.blockerOpenAfterHours', 'register.check.prioritySkipAfterHours', 'register.check.maxSelfMadePerDay', 'register.check.goalProgressDays',
   'register.check.overSizeMultiple', 'register.check.weekLengthDays', 'register.check.stopgapFiles',
   'register.review.mode', 'register.review.requireOn', 'register.review.hintPattern',
   'skills.sharedPrefix', 'skills.maxDescriptionWords', 'skills.maxPerArea', 'skills.maxVerifiedAgeDays', 'skills.otherAreas',
