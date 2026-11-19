@@ -288,8 +288,14 @@ export type HostWatch =
   | { readonly kind: 'unchanged' }
   | { readonly kind: 'failed'; readonly reason: string };
 
-/** The hosts teamrig has an adapter for, by the team config list that names their repositories. */
+/**
+ * The hosts teamrig has an adapter for, by the team config list that names their repositories. A kind is the id of
+ * the host's connector adapter (src/adapters/connectors), which is what it is loaded by.
+ */
 export type HostKind = 'github';
+
+/** The host whose list is `github.repos`: the one a command that works through that list reaches. */
+export const GITHUB_REPOS_HOST: HostKind = 'github';
 
 /** The config lists that name each host's repositories. */
 export interface HostLists {
@@ -298,5 +304,5 @@ export interface HostLists {
 
 /** The host whose config list names `repo`, or undefined when none does. */
 export function hostKindOf(repo: string, lists: HostLists): HostKind | undefined {
-  return lists.github.repos.includes(repo) ? 'github' : undefined;
+  return lists.github.repos.includes(repo) ? GITHUB_REPOS_HOST : undefined;
 }
