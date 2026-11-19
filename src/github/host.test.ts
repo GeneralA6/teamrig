@@ -438,6 +438,18 @@ describe('GitHubIssueHost', () => {
     assert.deepEqual(gh.ran.map((request) => request.args), [userReadArgs('octocat'), assigneeReadArgs('acme/web', 'OctoCat')]);
   });
 
+  it('reads the login the token belongs to through gh api user, and fails a read that gives none (T4581)', async () => {
+    const gh = new FakeGh().answersViewerRead({ end: { kind: 'exited', code: 0 }, stdout: '{"login":"GeneralA6","type":"User"}', stderr: '' });
+    assert.deepEqual(await hostWith(gh).viewer('acme/web'), { kind: 'found', login: 'GeneralA6' });
+    assert.deepEqual(gh.ran.map((request) => request.args), [['api', 'user']]);
+    const app = new FakeGh().answersViewerRead({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by integration (HTTP 403)\n' });
+    assert.equal((await hostWith(app).viewer('acme/web')).kind, 'failed');
+    const blank = new FakeGh().answersViewerRead({ end: { kind: 'exited', code: 0 }, stdout: '{}', stderr: '' });
+    assert.deepEqual(await hostWith(blank).viewer('acme/web'), { kind: 'failed', reason: 'gh printed no login for the GitHub user the token belongs to' });
+    const absent = new FakeGh().answersViewerRead({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' });
+    assert.deepEqual(await hostWith(absent).viewer('acme/web'), { kind: 'failed', reason: 'GitHub shows no user the token belongs to' });
+  });
+
   it('gives missing for no such user and failed for a user read naming another login, reading no assignee', async () => {
     const absent = new FakeGh().answersUserRead({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' });
     assert.deepEqual(await hostWith(absent).assigneeExists('acme/web', 'ghost'), { kind: 'missing' });

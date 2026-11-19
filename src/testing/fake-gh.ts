@@ -5,6 +5,7 @@ import {
   isCommentsRead,
   COMMENTS_PAGE,
   isUserRead,
+  isViewerRead,
   isIssueAssign,
   isIssueUnassign,
   isIssueBodyEdit,
@@ -36,6 +37,7 @@ import {
   type WatchPath,
 } from '../github/gh.ts';
 import { nodesOf } from '../github/issues.ts';
+import { FAKE_VIEWER } from './fake-issue-host.ts';
 import { CLOSED_ISSUES_QUERY, ISSUE_FIELDS_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, OPEN_PULLS_QUERY, PULL_PAGE_SIZE, PULL_REQUESTS_QUERY, RAW_FIELD } from '../github/queries.ts';
 
 /** What a test sets on an issue; the rest takes a plain default. */
@@ -330,6 +332,7 @@ export class FakeGh implements GhRunner {
   private readonly participants = new Map<string, readonly string[]>();
   private readonly spellings = new Map<string, string>();
   private userAnswer: GhResult | undefined;
+  private viewerAnswer: GhResult | undefined;
   private commentsAnswer: GhResult | undefined;
   private readonly jobLogs = new Map<number, string>();
   /** REST posts by `<repo> <list>`, and reviews by `<repo>#<number>`. */
@@ -479,6 +482,12 @@ export class FakeGh implements GhRunner {
     return this;
   }
 
+  /** From now on, every read of the user the token belongs to (`gh api user`) ends as given; until then, it is FAKE_VIEWER. */
+  answersViewerRead(result: GhResult): this {
+    this.viewerAnswer = result;
+    return this;
+  }
+
   /** From now on, a comment on, a body edit or the close of, a label added to or taken off, an assignee or a link added to an issue, and a label made, end as given. */
   failsWrite(result: GhResult): this {
     this.writeFailure = result;
@@ -538,6 +547,9 @@ export class FakeGh implements GhRunner {
     }
     if (isUserRead(request.args)) {
       return this.userRead(request.args[1] ?? '');
+    }
+    if (isViewerRead(request.args)) {
+      return this.viewerAnswer ?? { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ login: FAKE_VIEWER, type: 'User' }), stderr: '' };
     }
     if (isCommentsRead(request.args)) {
       return this.commentsAnswer ?? this.commentsRead(request.args);
