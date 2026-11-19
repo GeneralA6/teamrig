@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.494.0](https://github.com/teamrig/teamrig/compare/teamrig-v0.493.0...teamrig-v0.494.0) (2026-11-19)
+
+
+### Features
+
+* **cli:** teamrig issue assign gives one item to its takers ([74b4908](https://github.com/teamrig/teamrig/commit/74b4908f98bebfd73b2b49f2cd9849209214ac6b))
+* **github:** the host reads whether a login may be assigned to one item, and the labels it carries ([882d113](https://github.com/teamrig/teamrig/commit/882d113cdae52a361757b3cf824551743f94a095))
+* **github:** the runner takes the read of whether a login may be assigned to one issue ([e03f0f5](https://github.com/teamrig/teamrig/commit/e03f0f5773b8a1b2f6fe12fd538c807efe28fc88))
+* **issues:** an assign gives an item to its takers, refused on a design issue or for one the host would drop ([023e47b](https://github.com/teamrig/teamrig/commit/023e47b05f78b1dbfcdc547db7a724efa98baaed))
+* **marketplace:** installs read the release branch's plugin folder (T4355) ([5d06636](https://github.com/teamrig/teamrig/commit/5d0663647ae5f1fef49ca1dd38bb0837a200ddb9))
+* **ship:** ship.ts pr opens the pull request of an approved, pushed head with the ship token (T4364) ([5c236b8](https://github.com/teamrig/teamrig/commit/5c236b8bb070af5dc91f3e49facb9bf712b64d81))
+
+
+### Bug Fixes
+
+* **config:** config get shows every key the config guard refuses as owner-gated ([#1470](https://github.com/teamrig/teamrig/issues/1470)) ([c993030](https://github.com/teamrig/teamrig/commit/c993030d56f2ab8e6bf7aa253123b709d8b3a2cb))
+* **queue:** a memory wait line says the floor is kept free for the host, not the step's need ([#1670](https://github.com/teamrig/teamrig/issues/1670)) ([53d32e7](https://github.com/teamrig/teamrig/commit/53d32e7f5704cec4b899013efb5185796065b1ab))
+* **queue:** a re-run's label matches its first run, a re-run word set aside ([#1670](https://github.com/teamrig/teamrig/issues/1670)) ([781e4b6](https://github.com/teamrig/teamrig/commit/781e4b68a9a2c307c37be0fc177e28d7e526d0be))
+* **queue:** one outlier run no longer pins a step's memory need, and re-runs match by label without commit ids ([#1670](https://github.com/teamrig/teamrig/issues/1670)) ([5f31192](https://github.com/teamrig/teamrig/commit/5f31192684c528e3aac6bf9f11a5e5160123eeb0))
+* **ship:** a ship and a catch-up commit the dist only while the tree tracks it (T4355) ([fe47ef7](https://github.com/teamrig/teamrig/commit/fe47ef7eea2c81edf760fb4334405cb6b86641c6))
+
 ## [0.493.0](https://github.com/teamrig/teamrig/compare/teamrig-v0.492.0...teamrig-v0.493.0) (2026-11-19)
 
 
