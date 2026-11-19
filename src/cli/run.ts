@@ -769,7 +769,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       other status: label taken off; done closes it as completed, dropped as not planned; never
       reopens an issue a person closed, and names it; an open issue of a scheduled task (started or
       with a due date), not a design issue, no one is assigned to is assigned to the login
-      github.owners maps to its task's session, else the repository's owner; at most 40 writes a run; without --yes it writes nothing;
+      github.owners maps to its task's session, else the login the sync runs as, never the repository's owner;
+      a login the repository may not assign takes no write; at most 40 writes a run; without --yes it writes nothing;
       --yes sends them, a repository stopping at its first failed write; a status label the repository
       lacks is made first (MADE); after the labels, each held open issue's github.fields (priority,
       start and target day, score) and type are set where they differ, on a repository that has them
