@@ -1,4 +1,4 @@
-import { CLAUDE_LOGIN_VARIABLES, CLAUDE_SESSION_VARIABLES, withoutCredentials } from "../core/child-env.js";
+import { CLAUDE_LOGIN_VARIABLES, CLAUDE_SESSION_VARIABLES, withoutListedCredentials } from "../core/child-env.js";
 import { ENV } from "../core/home.js";
 import { isPluginCacheBin } from "../core/installed-plugins.js";
 import { envKey, pathList } from "../core/path-search.js";
@@ -43,7 +43,7 @@ export function sessionEnv(env, identity, platform) {
  * A session outside any team (plainSessionEnv) keeps its environment, as no team config names what it needs.
  */
 export function sessionCredentialFree(env, pass) {
-    return withoutCredentials(env, [...CLAUDE_LOGIN_VARIABLES, ...pass]);
+    return withoutListedCredentials(env, [...CLAUDE_LOGIN_VARIABLES, ...pass]);
 }
 /**
  * The environment a session outside any team resumes in: neither the opener's Claude Code session variables nor its

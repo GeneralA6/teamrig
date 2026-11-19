@@ -14,7 +14,7 @@ import { queueCutoffReason, minutesText } from "../../delivery/schedule.js";
 import { endedText, startedByGit } from "../../delivery/starter-watch.js";
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT } from "../../delivery/steps.js";
 import { errorMessage } from "../../core/guards.js";
-import { parkedEnvOf, withoutCredentials } from "../../core/child-env.js";
+import { heldBackCredentials, parkedEnvOf, withoutCredentials } from "../../core/child-env.js";
 import { PARKED_FORMAT } from "../../delivery/parked.js";
 import { DISPATCH_SWITCH, dispatch, parkStep } from "./queue-dispatch.js";
 import { ENV } from "../../core/home.js";
@@ -525,6 +525,11 @@ export async function queue(args, runtime) {
     const watching = detachedId === undefined ? await watchStarters(runtime, say) : unwatched();
     try {
         const step = { what, words, maxRunMinutes, watching, reporting, env: withoutCredentials(runtime.env, delivery.passEnv) };
+        const heldBack = heldBackCredentials(runtime.env, delivery.passEnv);
+        if (heldBack.length > 0) {
+            // Names only: a step that fails for want of one shows which, and delivery.passEnv is how its owner hands it on.
+            say(`credentials held back from the step (delivery.passEnv passes one): ${heldBack.join(', ')}`);
+        }
         const prePush = args.switches.has('pre-push') ? { command: commandLine(words, runtime.platform), before: runtime.trees.checked(runtime.cwd) } : undefined;
         if (prePush !== undefined && (await reusedPass(runtime, say, prePush, zone))) {
             return EXIT.ok;
