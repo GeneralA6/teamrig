@@ -1,6 +1,6 @@
 import type { JsonRecord } from '../core/guards.ts';
 import { parseJsonl } from '../core/jsonl.ts';
-import { isIssueCommand } from '../permissions/service-commands.ts';
+import { isCappedCommand } from '../permissions/service-commands.ts';
 import type { RoleCall } from '../permissions/service-role-call.ts';
 import { holdBackOutput } from './permission.ts';
 
@@ -8,9 +8,9 @@ import { holdBackOutput } from './permission.ts';
  * The service-role allow (T2984, the owner's option A): a session holding a role runs the role's teamrig commands with no
  * permission check, so a job the owner gave it (closing the GitHub issue a fix landed for, shipping its own branch)
  * never stalls on a prompt. It answers only for the tab bound to the holder (C1), only once every guard passed the
- * call, and only up to `prompts.serviceRoleDailyCap` closes and comments a role in 24 hours, then it asks the owner
- * (C6); a ship is held to the holder's own task branch instead (C4). Its log line names the role, command and issue or
- * branch, never the text (C7); `prompts.routeAllow: off` takes it away.
+ * call, and only up to `prompts.serviceRoleDailyCap` closes, comments and migrate runs a role in 24 hours, then it asks
+ * the owner (C6); a ship is held to the holder's own task branch instead (C4). Its log line names the role, command
+ * and issue or branch, never the text (C7); `prompts.routeAllow: off` takes it away.
  */
 
 /** A role call's command and what it acts on, as the log and the allow name them. */
@@ -19,11 +19,11 @@ export type RoleTarget = Pick<RoleCall, 'command' | 'target'>;
 /** The rolling window the daily cap counts over. */
 export const ROLE_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-/** How many closes and comments the role's allow let run at or after `sinceMs`, by the prompt-answers log's text; a ship counts toward no cap. */
+/** How many closes, comments and migrates the role's allow let run at or after `sinceMs`, by the prompt-answers log's text; a ship counts toward no cap. */
 export function roleAllowsSince(log: string, role: string, sinceMs: number): number {
   return parseJsonl(log).records.filter(({ record }) => {
     const at = record['at'];
-    return record['answer'] === 'role' && record['role'] === role && isIssueCommand(record['command']) && typeof at === 'string' && Date.parse(at) >= sinceMs;
+    return record['answer'] === 'role' && record['role'] === role && isCappedCommand(record['command']) && typeof at === 'string' && Date.parse(at) >= sinceMs;
   }).length;
 }
 

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { isRecord, recordField, type JsonRecord } from '../core/guards.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
@@ -240,5 +240,43 @@ describe('hook route-allow: the ship role (T2984)', () => {
   it('gives no ship to a team whose repository names no ship tool', async () => {
     const { kit, git } = await shipKit({ delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT } } } });
     assert.deepEqual(await kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: git }), NOTHING);
+  });
+});
+
+describe('hook route-allow: the migrate role (T4606)', () => {
+  const ROWS = `${TASKS}/T1/rows.jsonl`;
+  const MIGRATE = `teamrig issue migrate ${ROWS} --yes --session alpha`;
+  const migrates = { serviceRoles: { github: { holders: ['alpha'], commands: ['issue close', 'issue migrate'] } } };
+
+  it("allows the holder's run on a rows file in a task folder, logging the resolved file", async () => {
+    const kit = await boundKit(migrates);
+    const result = await kit.run(HOOK, { stdin: call(MIGRATE), env: ALPHA });
+    assert.equal(decisionOf(result), 'allow');
+    assert.deepEqual(result.stderr, []);
+    assert.deepEqual(await answersOf(kit), [
+      { v: 1, at: '2030-01-08T10:00:00.000Z', session: 'alpha', claudeSession: CLAUDE_SESSION, tool: 'Bash', event: 'PreToolUse', answer: 'role', role: 'github', command: 'issue migrate', target: resolve(TEAM_HOME, 'tasks', 'T1', 'rows.jsonl') },
+    ]);
+  });
+
+  it('gives no role for a rows file outside the task folders, a preview, or a role without the command', async () => {
+    const kit = await boundKit(migrates);
+    for (const line of [
+      `teamrig issue migrate ${TASKS}/rows.jsonl --yes --session alpha`,
+      `teamrig issue migrate ${TASKS.replace('/tasks', '/state')}/rows.jsonl --yes --session alpha`,
+      `teamrig issue migrate ${TASKS}/T1/../../state/rows.jsonl --yes --session alpha`,
+      `teamrig issue migrate ${ROWS} --session alpha`,
+    ]) {
+      assert.deepEqual(await kit.run(HOOK, { stdin: call(line), env: ALPHA }), NOTHING, line);
+    }
+    assert.deepEqual(await (await boundKit()).run(HOOK, { stdin: call(MIGRATE), env: ALPHA }), NOTHING, 'a role giving close and comment only');
+    assert.deepEqual(await answersOf(kit), []);
+  });
+
+  it('counts a run toward the daily cap with the closes, once however many rows it holds (C6)', async () => {
+    const kit = await boundKit({ ...migrates, prompts: { serviceRoleDailyCap: 2 } });
+    assert.equal(decisionOf(await kit.run(HOOK, { stdin: call(CLOSE), env: ALPHA })), 'allow');
+    assert.equal(decisionOf(await kit.run(HOOK, { stdin: call(MIGRATE), env: ALPHA })), 'allow');
+    assert.equal(decisionOf(await kit.run(HOOK, { stdin: call(MIGRATE), env: ALPHA })), 'deny');
+    assert.equal((await answersOf(kit)).length, 2);
   });
 });

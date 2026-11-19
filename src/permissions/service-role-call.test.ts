@@ -110,3 +110,32 @@ describe('service-role call: a queued ship or merge (T2984)', () => {
     }
   });
 });
+
+describe('service-role call: issue migrate (T4606)', () => {
+  const ROWS = '/kit/teams/acme/tasks/T4/rows.jsonl';
+
+  it('reads a run that opens the issues from a rows file named by an absolute path, with the session the line names', async () => {
+    assert.deepEqual(await roleCallOf(`teamrig issue migrate ${ROWS} --yes --session gh`, CONTEXT), { command: 'issue migrate', target: ROWS, session: 'gh' });
+    assert.deepEqual(await roleCallOf('teamrig issue migrate C:/kit/teams/acme/tasks/T4/rows.jsonl --session gh --yes', CONTEXT), {
+      command: 'issue migrate',
+      target: 'C:/kit/teams/acme/tasks/T4/rows.jsonl',
+      session: 'gh',
+    });
+  });
+
+  it('reads no preview, relative path, --out, backslash path, second file, missing session or joined command', async () => {
+    for (const line of [
+      `teamrig issue migrate ${ROWS} --session gh`,
+      'teamrig issue migrate tasks/T4/rows.jsonl --yes --session gh',
+      `teamrig issue migrate ${ROWS} --yes --out /tmp/preview.md --session gh`,
+      'teamrig issue migrate C:\kit\teams\acme\tasks\T4\rows.jsonl --yes --session gh',
+      `teamrig issue migrate ${ROWS} ${ROWS} --yes --session gh`,
+      `teamrig issue migrate ${ROWS} --yes`,
+      `teamrig issue migrate ${ROWS} --yes --session gh; rm -rf x`,
+      `teamrig issue migrate ${ROWS} --yes --session gh --help`,
+      `node main.js issue migrate ${ROWS} --yes --session gh`,
+    ]) {
+      assert.equal(await roleCallOf(line, CONTEXT), undefined, line);
+    }
+  });
+});
