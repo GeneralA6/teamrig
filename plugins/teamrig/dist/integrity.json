@@ -574,7 +574,7 @@
     "dist/open/prompt.js": "9bcd4c54d958dcdb9e61a0ddaf7cc5db537b8ea698b8b746f6f3283b5c178869",
     "dist/open/quote.js": "8626d6c55a676fbe1aad322a61d7e52f7656a917f71f160d232903b790549794",
     "dist/open/session-env.js": "12e90de8366fceed3cd5a83eaa07832e40bc14c27c4fa259edec48d30dc0eead",
-    "dist/open/session-processes.js": "6b94b96a4a14c36ab383cc91d07808ab20dfb1a09ee033c90cd4aae814a235bc",
+    "dist/open/session-processes.js": "c8011b2ef22eedf63aa0f2df4c1392fcde66004305c87fd06a7cdfa16a73458d",
     "dist/open/terminals.js": "2afa00cb91a71fcc63d7442a894572a33b83f163c5d46532e12c62e19ecb43ac",
     "dist/package-guard/ad-hoc.js": "e38e31e84ba15b35c82ed647dcd5ac1596cdca5cf327e8358d8bb23248723c47",
     "dist/package-guard/installs.js": "a9c84a5b689d7c57b238d3dad11fbe4d029d765726724accc4617696c24e9b23",
