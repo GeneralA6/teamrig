@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { ENV } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { issueRef } from "../../github/map.js";
+import { assignIssue, loginRefusal, MAX_ASSIGN_LOGINS } from "../../issues/assign.js";
 import { CLOSE_REASONS, hostKindOf, parseIssueTarget, targetText } from "../../issues/host.js";
 import { issueDoc, mirroredIssues, similarIssues } from "../../issues/similar.js";
 import { editIssueBody, labelIssue, labelRefusal, postRefusal, writeIssue } from "../../issues/write.js";
@@ -104,6 +105,52 @@ export async function issueLabel(args, runtime) {
         return EXIT.ok;
     }
     return (await labelIssue(host, { target, add, remove }, (line) => runtime.out.stdout(line))) ? EXIT.ok : EXIT.failed;
+}
+/**
+ * `issue assign <owner/name#n> [--add <login,...>] [--remove <login,...>]` (T3228): adds assignees to and takes
+ * them off one issue or pull request of the team's repositories, through the same host and caller checks as `issue
+ * label`. Each login to add is read as one the host may assign to that item, and an add to a design issue is
+ * refused (issues/assign.ts). Refused before anything runs: neither list, a login in both or no login at all, or more
+ * than MAX_ASSIGN_LOGINS together. Exit 2 when refused, 1 when the host failed, else 0.
+ */
+export async function issueAssign(args, runtime) {
+    const target = targetOf(args);
+    const add = loginsOf(args.flags.get('add'), '--add');
+    const remove = loginsOf(args.flags.get('remove'), '--remove');
+    if (add.length === 0 && remove.length === 0) {
+        throw new RefusedError('issue assign needs --add or --remove, each a comma-separated list of logins');
+    }
+    const both = add.find((login) => remove.some((other) => other.toLowerCase() === login.toLowerCase()));
+    if (both !== undefined) {
+        throw new RefusedError(`${both} is in both --add and --remove: give the login in one`);
+    }
+    if (add.length + remove.length > MAX_ASSIGN_LOGINS) {
+        throw new RefusedError(`issue assign takes at most ${MAX_ASSIGN_LOGINS} logins in all, not ${add.length + remove.length}: an item goes to its takers`);
+    }
+    const host = await hostFor(args, runtime, target.repo, undefined);
+    if (host === undefined) {
+        return EXIT.ok;
+    }
+    const end = await assignIssue(host, { target, add, remove }, (line) => runtime.out.stdout(line));
+    return end === 'done' ? EXIT.ok : end === 'refused' ? EXIT.refused : EXIT.failed;
+}
+/** The logins of a comma-separated `flag`, each trimmed, a leading @ dropped, and named once in any case; refused when one is no login. */
+function loginsOf(text, flag) {
+    if (text === undefined) {
+        return [];
+    }
+    const logins = [];
+    for (const given of text.split(',')) {
+        const login = given.trim().replace(/^@/u, '');
+        const refused = loginRefusal(login);
+        if (refused !== undefined) {
+            throw new RefusedError(`${flag}: ${refused}`);
+        }
+        if (!logins.some((one) => one.toLowerCase() === login.toLowerCase())) {
+            logins.push(login);
+        }
+    }
+    return logins;
 }
 /** The close reason `--reason` names, or undefined when it is not given; refused when it names none. */
 function closeReasonOf(text) {
