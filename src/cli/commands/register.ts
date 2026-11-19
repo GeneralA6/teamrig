@@ -84,7 +84,7 @@ import { markBoundary } from './refresh.ts';
 import { markKeepWorkingAsk } from './keep-working.ts';
 import { markLastTaskAsk } from './last-task-ask.ts';
 import { readSpentClasses } from '../class-share.ts';
-import { openTeam, postNamed, teamOf, tellAnswer, tellAssigned, tellLine, type Team } from './register-team.ts';
+import { openTeam, postNamed, teamOf, tellAnswer, tellAssigned, tellLine, wakeWaitedOn, type Team } from './register-team.ts';
 import { askTeam, treeCallerOf } from './team-ask.ts';
 
 /** What a time the caller types is read against: this moment and the zone of the caller's own team. */
@@ -239,7 +239,7 @@ async function addHere(args: ParsedArgs, runtime: CliRuntime, caller: string): P
       runtime.out.stdout(`OPENED ${end.verdict.value.task.id} ${end.ref}`);
     }
   }
-  await tellNewOwner(runtime, team, by, end.verdict);
+  await wakeWaitedOn(runtime, team, by, end.verdict, await tellNewOwner(runtime, team, by, end.verdict));
   return code;
 }
 
@@ -559,7 +559,7 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   if (verdict.ok && input.status === 'waiting') {
     await markKeepWorkingAsk(runtime, paths, verdict.value);
   }
-  noteRegisterOnly(runtime, team, by, input.note, verdict, told);
+  noteRegisterOnly(runtime, team, by, input.note, verdict, [...told, ...(await wakeWaitedOn(runtime, team, by, verdict, told))]);
   return exit;
 }
 
@@ -577,7 +577,8 @@ async function setAsking(runtime: CliRuntime, team: Team, by: string, id: string
   const exit = report(runtime, verdict, 'SET', team);
   const assigned = verdict.ok && verdict.value.asked.owner !== by && (await tellAssigned(runtime, team, by, verdict.value.asked)) ? [verdict.value.asked.owner] : [];
   const told = await tellLeadersOfWaits(runtime, team, by, verdict);
-  noteRegisterOnly(runtime, team, by, input.note, verdict, [...assigned, ...told]);
+  const lined = [...assigned, ...told];
+  noteRegisterOnly(runtime, team, by, input.note, verdict, [...lined, ...(await wakeWaitedOn(runtime, team, by, verdict, lined))]);
   if (verdict.ok) {
     await markKeepWorkingAsk(runtime, team.paths, verdict.value);
   }
@@ -751,7 +752,8 @@ export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const sizeBase = typeof changes.size === 'number' ? await readSizeBase(runtime, team.paths, team.config.sessions, id, runtime.clock.now()) : undefined;
   const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'), sizeBase);
   const code = report(runtime, verdict, 'UPDATED', team);
-  noteRegisterOnly(runtime, team, by, args.flags.get('note'), verdict, await tellNewOwner(runtime, team, by, verdict));
+  const told = await tellNewOwner(runtime, team, by, verdict);
+  noteRegisterOnly(runtime, team, by, args.flags.get('note'), verdict, [...told, ...(await wakeWaitedOn(runtime, team, by, verdict, told))]);
   return code;
 }
 
