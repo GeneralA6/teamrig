@@ -13,6 +13,10 @@ import { FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeWebhook } from '../testing/fake-webhook.ts';
 import { WakeAsks } from '../wake/asks.ts';
 import { EXIT } from './runtime.ts';
+import type { Clock } from '../core/lock.ts';
+import { hourSent, parsePushHour, pushHourText } from '../issues/push-hour.ts';
+import { PUSH_WRITES_PER_HOUR } from '../issues/status-push.ts';
+import { MemoryFiles } from '../testing/memory-files.ts';
 
 const GITHUB_TEAM: JsonRecord = { ...TEAM, github: { repos: ['acme/web', 'acme/api'], owners: { octocat: 'bravo' } } };
 const STATE = join(TEAM_HOME, 'state', 'github-sync.json');
@@ -20,6 +24,38 @@ const MINUTE = 60_000;
 /** What the sync keeps of a repository that has no pull request. */
 const NO_PULLS = { cursor: undefined, open: [] };
 const REFUSED = { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 401: Bad credentials (https://api.github.com/graphql)\n' } as const;
+/** The status push's count of the hour's writes (T4592), and the harness clock's time. */
+const PUSH_HOUR = join(TEAM_HOME, 'state', 'github-push-hour.json');
+const NOW = Date.parse('2030-01-08T10:00:00Z');
+
+/** `count` open issues assigned to a person, so each one's change is a single label write; the first `labelled` show it already. */
+function claimedIssues(repo: string, count: number, labelled = 0): JsonRecord[] {
+  return Array.from({ length: count }, (_, index) => ghIssue(repo, index + 1, { title: `Work ${index + 1}`, assignees: ['octocat'], labels: index < labelled ? ['status:claimed'] : [] }));
+}
+
+/** The writes the hour's count holds now. */
+function sentInHour(kit: CliHarness): number {
+  const read = parsePushHour(kit.files.get(PUSH_HOUR));
+  assert.equal(read.kind, 'read');
+  return read.kind === 'read' ? hourSent(read.hour, kit.clock.now()) : 0;
+}
+
+/** The harness's files, but a write to `refused` fails, as on a full disk. */
+class RefusingFile extends MemoryFiles {
+  private readonly refused: string;
+
+  constructor(refused: string, from: MemoryFiles, clock: Clock) {
+    super(Object.fromEntries(from.paths().map((path) => [path, from.get(path) ?? ''])), clock);
+    this.refused = refused;
+  }
+
+  override async write(path: string, text: string): Promise<void> {
+    if (path.replaceAll('\\', '/') === this.refused.replaceAll('\\', '/')) {
+      throw new Error('disk full');
+    }
+    await super.write(path, text);
+  }
+}
 
 /** The lines of a session's inbox the sync posted, without their date. */
 function githubLines(kit: CliHarness, id: string): string[] {
@@ -404,7 +440,7 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
   /** The GitHub calls a run made besides its issue lists: label reads and writes. */
   const writes = (gh: FakeGh): string[] => gh.ran.filter((request) => !isIssueQuery(request.args)).map((request) => request.args.join(' '));
 
-  it('after the import, labels each issue a task holds with its status, making a missing status label, at most autoPushWrites(probeSeconds) a run', async () => {
+  it('after the import, labels each issue a task holds with its status, making a missing status label, at most PUSH_WRITES_PER_RUN a run', async () => {
     const kit = new CliHarness(pushTeam({ statusPush: true, probeSeconds: 300 }));
     const gh = new FakeGh()
       .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login', assignees: ['octocat'] }), ghIssue('acme/web', 8, { title: 'Add search' })])
@@ -421,26 +457,85 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
       'api repos/acme/web/issues/7/labels -X POST -f labels[]=status:claimed',
       'api repos/acme/web/issues/8/labels -X POST -f labels[]=status:open',
     ]);
-    assert.ok(result.stdout.includes('PUSHED 2 change(s), 3 write(s); at most 20 a run, the rest planned again on the next'), result.stdout.join('\n'));
+    assert.ok(result.stdout.includes('PUSHED 2 change(s), 3 write(s); at most 40 a run, the rest planned again on the next'), result.stdout.join('\n'));
     const wrote = result.stdout.find((line) => line.startsWith('WROTE ')) ?? '';
     assert.ok(!wrote.includes('GitHub was only read'), wrote);
   });
 
-  it('shares the run writes across the repositories, in their order, leaving the rest for the next run', async () => {
+  it('shares the run writes across the repositories, in their order, sending only what the hour has left (T4592)', async () => {
     const kit = new CliHarness(pushTeam({ statusPush: true, probeSeconds: 60 }));
-    // Assigned already, so each change is one label write.
-    const three = (repo: string): JsonRecord[] => [1, 2, 3].map((number) => ghIssue(repo, number, { title: `Work ${number}`, assignees: ['octocat'] }));
-    const gh = new FakeGh().holds('acme/web', three('acme/web')).holds('acme/api', three('acme/api')).hasLabels('acme/web', ['status:claimed']).hasLabels('acme/api', ['status:claimed']);
+    await kit.files.write(PUSH_HOUR, pushHourText([{ minute: NOW - 10 * MINUTE, writes: PUSH_WRITES_PER_HOUR - 4 }]));
+    const gh = new FakeGh().holds('acme/web', claimedIssues('acme/web', 3)).holds('acme/api', claimedIssues('acme/api', 3)).hasLabels('acme/web', ['status:claimed']).hasLabels('acme/api', ['status:claimed']);
     const result = await kit.run(['issue', 'sync', '--auto'], { gh });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
     assert.deepEqual(
-      result.stdout.filter((line) => /^(PUSH|PUSHED) /u.test(line)),
+      result.stdout.filter((line) => /^(PUSH|PUSHED|NOTE status push:) /u.test(line)),
       [
+        'NOTE status push: 246 write(s) went out in the last hour, of 250, so this run sends at most 4',
         'PUSH acme/web: 3 to change, 0 unchanged',
         'PUSH acme/api: 1 to change, 0 unchanged, 2 left for the next run',
         'PUSHED 4 change(s), 4 write(s); at most 4 a run, the rest planned again on the next',
       ],
     );
+    assert.equal(sentInHour(kit), PUSH_WRITES_PER_HOUR);
+  });
+
+  it('drains a backlog of 78 changes in 2 runs with an empty hour, 40 then 38, and counts both in the hour (T4592)', async () => {
+    const kit = new CliHarness(pushTeam({ statusPush: true, probeSeconds: 60 }));
+    const backlog = claimedIssues('acme/web', 78);
+    const first = await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', backlog).holds('acme/api', []).hasLabels('acme/web', ['status:claimed']) });
+    assert.equal(first.code, EXIT.ok, [...first.stdout, ...first.stderr].join('\n'));
+    assert.deepEqual(first.stdout.filter((line) => /^(PUSH|PUSHED|NOTE status push:) /u.test(line)), [
+      'PUSH acme/web: 40 to change, 0 unchanged, 38 left for the next run',
+      'PUSH acme/api: 0 to change, 0 unchanged',
+      'PUSHED 40 change(s), 40 write(s); at most 40 a run, the rest planned again on the next',
+    ]);
+    kit.clock.advance(MINUTE);
+    // The first run's labels are on its 40 issues now.
+    const second = await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', claimedIssues('acme/web', 78, 40)).holds('acme/api', []).hasLabels('acme/web', ['status:claimed']) });
+    assert.equal(second.code, EXIT.ok, [...second.stdout, ...second.stderr].join('\n'));
+    assert.deepEqual(second.stdout.filter((line) => /^(PUSH|PUSHED|NOTE status push:) /u.test(line)), [
+      'PUSH acme/web: 38 to change, 40 unchanged',
+      'PUSH acme/api: 0 to change, 0 unchanged',
+      'PUSHED 38 change(s), 38 write(s); at most 40 a run, the rest planned again on the next',
+    ]);
+    assert.equal(sentInHour(kit), 78);
+  });
+
+  it('sends none while the hour holds 250 writes, and says how many changes wait (T4592)', async () => {
+    const kit = new CliHarness(pushTeam({ statusPush: true, probeSeconds: 60 }));
+    await kit.files.write(PUSH_HOUR, pushHourText([{ minute: NOW - 30 * MINUTE, writes: PUSH_WRITES_PER_HOUR }]));
+    const gh = new FakeGh().holds('acme/web', claimedIssues('acme/web', 3)).holds('acme/api', []).hasLabels('acme/web', ['status:claimed']);
+    const result = await kit.run(['issue', 'sync', '--auto'], { gh });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.ok(!writes(gh).some((args) => args.includes('-X POST')), writes(gh).join('\n'));
+    assert.deepEqual(result.stdout.filter((line) => /^(PUSH|PUSHED|NOTE status push:) /u.test(line)), [
+      'NOTE status push: 250 write(s) went out in the last hour, of 250, so this run sends at most 0',
+      'PUSH acme/web: 0 to change, 0 unchanged, 3 left for the next run',
+      'PUSH acme/api: 0 to change, 0 unchanged',
+      'PUSHED 0 change(s), 0 write(s); at most 0 a run, the rest planned again on the next',
+    ]);
+  });
+
+  it("sends the even share and says NOTE when the hour's count cannot be read, and replaces it with the run's own (T4592)", async () => {
+    const kit = new CliHarness(pushTeam({ statusPush: true, probeSeconds: 60 }));
+    await kit.files.write(PUSH_HOUR, '{"v":1,"minutes":[');
+    const gh = new FakeGh().holds('acme/web', claimedIssues('acme/web', 6)).holds('acme/api', []).hasLabels('acme/web', ['status:claimed']);
+    const result = await kit.run(['issue', 'sync', '--auto'], { gh });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.ok(result.stdout.includes("NOTE status push: the hour's write count could not be read (not a JSON object), so this run sends at most the even share of 4; its own writes start a new count"), result.stdout.join('\n'));
+    assert.ok(result.stdout.includes('PUSHED 4 change(s), 4 write(s); at most 4 a run, the rest planned again on the next'), result.stdout.join('\n'));
+    assert.equal(sentInHour(kit), 4);
+  });
+
+  it("sends the even share and says NOTE when the hour's count cannot be written (T4592)", async () => {
+    const kit = new CliHarness(pushTeam({ statusPush: true, probeSeconds: 60 }));
+    const files = new RefusingFile(PUSH_HOUR, kit.files, kit.clock);
+    const gh = new FakeGh().holds('acme/web', claimedIssues('acme/web', 6)).holds('acme/api', []).hasLabels('acme/web', ['status:claimed']);
+    const result = await kit.run(['issue', 'sync', '--auto'], { gh, files });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.ok(result.stdout.includes("NOTE status push: the hour's write count could not be kept (disk full), so this run sends at most the even share of 4"), result.stdout.join('\n'));
+    assert.ok(result.stdout.includes('PUSHED 4 change(s), 4 write(s); at most 4 a run, the rest planned again on the next'), result.stdout.join('\n'));
   });
 
   it('sends no close: a dropped team task holding an open issue is held and printed, its labels left too', async () => {
@@ -463,7 +558,7 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
         "PUSH acme/web: 0 to change, 0 unchanged, 1 close(s) held for a session's push",
         "HELD acme/web#7 T1 dropped: close as not-planned, take off status:open; the automatic push never closes: a session's teamrig issue sync --push --yes sends the close",
         'PUSH acme/api: 0 to change, 0 unchanged',
-        'PUSHED 0 change(s), 0 write(s); at most 20 a run, the rest planned again on the next',
+        'PUSHED 0 change(s), 0 write(s); at most 40 a run, the rest planned again on the next',
       ],
     );
   });

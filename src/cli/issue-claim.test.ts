@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { isCommentsRead, isIssueAssign, isIssueBodyEdit, isIssueClose, isIssueComment, isIssueCreate, isIssueUnassign, isLabelAdd, isLabelCreate, isLabelRemove, isLinkAdd } from '../github/gh.ts';
 import { CLAIM_DAYS, CLAIM_READS, CLAIMS_PER_DAY, formatClaims, parseClaims } from '../issues/claim.ts';
-import { autoPushWrites } from '../issues/status-push.ts';
+import { minuteOf, pushHourText } from '../issues/push-hour.ts';
+import { PUSH_WRITES_PER_HOUR } from '../issues/status-push.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { commentNode, FakeGh, ghIssue } from '../testing/fake-gh.ts';
 import { DEFAULT_GITHUB } from '../config/defaults.ts';
@@ -14,7 +15,9 @@ import { EXIT } from './runtime.ts';
 
 const REPO = 'acme/web';
 const CLAIMS = join(TEAM_HOME, 'state', 'github-claims.json');
-const HOUR = 3_600_000;
+const PUSH_HOUR = join(TEAM_HOME, 'state', 'github-push-hour.json');
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
 function team(statusPush: boolean, probeSeconds = 300): JsonRecord {
@@ -33,6 +36,11 @@ async function autoSync(kit: CliHarness, gh: FakeGh): Promise<readonly string[]>
 }
 
 const at = (kit: CliHarness): string => new Date(kit.clock.now()).toISOString();
+
+/** Counts the hour's writes so that only `left` of them remain for the next run (T4592). */
+async function leaveInHour(kit: CliHarness, left: number): Promise<void> {
+  await kit.files.write(PUSH_HOUR, pushHourText([{ minute: minuteOf(kit.clock.now()), writes: PUSH_WRITES_PER_HOUR - left }]));
+}
 
 const WRITES = [isIssueAssign, isIssueUnassign, isIssueComment, isLabelAdd, isLabelRemove, isLabelCreate, isIssueClose, isIssueBodyEdit, isIssueCreate, isLinkAdd];
 
@@ -67,20 +75,20 @@ describe('claims in the automatic sync (T3021)', () => {
     );
   });
 
-  it('makes a claim with its status swap at the default watch, whose run budget alone is less than one claim', async () => {
-    const probeSeconds = DEFAULT_GITHUB.probeSeconds;
-    assert.ok(autoPushWrites(probeSeconds) < claimWrites(true), 'the default run budget is below one claim');
-    const kit = new CliHarness(team(true, probeSeconds));
+  it('makes a claim with its status swap when the writes left in the hour are fewer than one claim', async () => {
+    const left = claimWrites(true) - 1;
+    const kit = new CliHarness(team(true, DEFAULT_GITHUB.probeSeconds));
     const free = (comments: readonly JsonRecord[]): FakeGh =>
       new FakeGh().holds(REPO, [ghIssue(REPO, 8, { title: 'Add search', authorAssociation: 'MEMBER', labels: ['status:open'], comments })]).hasLabels(REPO, ['status:open', 'status:claimed']);
     await autoSync(kit, free([]));
 
     kit.clock.advance(HOUR);
+    await leaveInHour(kit, left);
     const gh = free([commentNode(at(kit), 'NONE', 'User', { login: 'bob', body: '/take' })]);
     const out = await autoSync(kit, gh);
     assert.deepEqual(writes(gh, isIssueAssign), [`api repos/${REPO}/issues/8/assignees -X POST -f assignees[]=bob`], out.join('\n'));
     assert.ok(out.includes(`LABELED ${REPO}#8: "status:claimed"`) && out.includes(`UNLABELED ${REPO}#8: "status:open"`), out.join('\n'));
-    assert.ok(gh.ran.filter((request) => isWrite(request.args)).length <= claimBudget(autoPushWrites(probeSeconds)), 'the run sends no more than one claim');
+    assert.ok(gh.ran.filter((request) => isWrite(request.args)).length <= claimBudget(left), 'the run sends no more than one claim');
   });
 
   it('gives the claims one whole claim when the run budget is smaller, and nothing when there is none', () => {
@@ -139,7 +147,8 @@ describe('claims in the automatic sync (T3021)', () => {
     const kit = new CliHarness(team(true));
     await autoSync(kit, new FakeGh().holds(REPO, []));
     kit.clock.advance(HOUR);
-    const budget = autoPushWrites(300);
+    const budget = 4 * claimWrites(true);
+    await leaveInHour(kit, budget);
     const fits = Math.floor(budget / claimWrites(true));
     assert.ok(fits < CLAIMS_PER_DAY, 'the run must hold fewer claims than a day allows');
     const posted = at(kit);
@@ -165,7 +174,8 @@ describe('claims in the automatic sync (T3021)', () => {
     assert.ok(out.includes(`HELD ${REPO}#${String(fits + 1)}: user${String(fits)}'s claim waits for the next run, as this run's ${String(budget)} write(s) are spent`), out.join('\n'));
     assert.ok(writes(first, isWrite).length <= budget, writes(first, isWrite).join('\n'));
 
-    kit.clock.advance(HOUR);
+    // Past the whole minute the hour's count was spent in, which counts while any part of it is within the hour.
+    kit.clock.advance(HOUR + MINUTE);
     const second = free(fits);
     await autoSync(kit, second);
     assert.deepEqual(writes(second, isIssueAssign), [`api repos/${REPO}/issues/${String(fits + 1)}/assignees -X POST -f assignees[]=user${String(fits)}`]);
