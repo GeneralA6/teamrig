@@ -14,9 +14,9 @@ export const BLOCKER_PRIORITY: PriorityConfig = { id: BLOCKER_PRIORITY_ID, name:
 export const NOW_PRIORITY: PriorityConfig = { id: 0, name: 'urgent, right now' };
 
 /**
- * True for work that must be done right now: p0, or a level teamrig puts above it. Every rule that drops what it does
- * for such work (a closed session reopened to help with it, T4414) asks this, never `=== 0`, so a level added above p0
- * passes it too.
+ * True for right-now work: p0 or the blocker above it. Every rule that drops what it does for such work (a closed
+ * session reopened to help with it, T4414) and every gate that lets p0 through (a budget hold, quiet hours, the
+ * expedite band, URGENT) asks this, never `=== NOW_PRIORITY.id`, so a blocker passes it too (T4329).
  */
 export function isRightNow(priority: number): boolean {
   return priority <= NOW_PRIORITY.id;

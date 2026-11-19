@@ -1,6 +1,6 @@
 import { MS_PER_DAY, MS_PER_HOUR, parseDayStart, showStored } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { NOW_PRIORITY, topPriority } from '../config/priorities.ts';
+import { isRightNow, topPriority } from '../config/priorities.ts';
 import type { LeadTree } from '../config/lead-tree.ts';
 import type { RegisterCheckConfig, RegisterConfig, RolesConfig } from '../config/types.ts';
 import { approvalCleared, waitAnswerersOf } from './approval.ts';
@@ -79,7 +79,7 @@ export interface Flag {
 
 /**
  * The daily flags over active tasks:
- * - URGENT: open at p0 (teamrig's own level, NOW_PRIORITY) and free to start (every task it comes after finished):
+ * - URGENT: open at p0 or the blocker above it (teamrig's own levels, isRightNow) and free to start (every task it comes after finished):
  *   its owner starts it now, ahead of the task in hand; with an effective due, the detail names the lead's deadline
  *   burst that may pay for finishing it by then;
  * - OVERDUE: past its effective deadline (its own due, or an earlier one of a task that needs it, named in the detail
@@ -418,13 +418,13 @@ function waitsForTime(task: Task, context: WaitContext): boolean {
 
 /** URGENT, with the lead's deadline burst on the effective due, typed on the team's clock, when the task has one. */
 function urgentFlags(task: Task, tree: TaskTree): Flag[] {
-  if (task.priority !== NOW_PRIORITY.id || task.status !== 'open' || unfinishedAfter(task.after, tree.context).length > 0) {
+  if (!isRightNow(task.priority) || task.status !== 'open' || unfinishedAfter(task.after, tree.context).length > 0) {
     return [];
   }
   const due = tree.effectiveDue(task.id);
   const burst =
     due === undefined ? '' : `; to finish it by its due, the lead may run burst start deadline --task ${task.id} --by "${tree.zone.minute(new Date(due.at))}" --stop-pct <n> --reason "<why>"`;
-  return [{ kind: 'URGENT', task, detail: `p0: start it now, ahead of the task in hand${burst}` }];
+  return [{ kind: 'URGENT', task, detail: `${priorityText(task.priority)}: start it now, ahead of the task in hand${burst}` }];
 }
 
 /** OVERDUE or VERIFY-OVERDUE on the effective due, then NOT-PICKED-UP or else STALE. */
