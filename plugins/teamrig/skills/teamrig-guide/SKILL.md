@@ -125,7 +125,8 @@ At the start of each work block, in one Bash call:
 teamrig start --session api
 ```
 
-Then work your list in plan order, top row first: an expedite, then the highest score, and at the same score a started
+Then work your list in plan order, top row first: a `blocker` (drop everything, fix it now: `start` refuses any
+other task while you hold one you can take up), an expedite, then the highest score, and at the same score a started
 task, then the earlier due date (a task takes the earlier due of a task that needs it: `due 10-17 (from T9)`).
 
 ```sh
