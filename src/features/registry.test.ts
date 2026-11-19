@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CONNECTOR_FEATURES, HOST_FEATURES, featuresOf, isConnectorFeatureId, isHostFeatureId, type FeatureSide } from './registry.ts';
+import { CONNECTOR_FEATURES, HOST_FEATURES, featuresOf, isConnectorFeatureId, isConnectorKind, isHostFeatureId, type FeatureSide } from './registry.ts';
 
 const SIDES: readonly FeatureSide[] = ['host', 'connector'];
 
@@ -49,6 +49,13 @@ describe('the feature registry', () => {
     assert.equal(isConnectorFeatureId('tracker.comment'), true);
     assert.equal(isConnectorFeatureId('hooks.pretool-guard'), false);
     assert.equal(isConnectorFeatureId('constructor'), false);
+  });
+
+  it('knows the two kinds of connector', () => {
+    assert.equal(isConnectorKind('tracker'), true);
+    assert.equal(isConnectorKind('codehost'), true);
+    assert.equal(isConnectorKind('host'), false);
+    assert.equal(isConnectorKind(undefined), false);
   });
 
   it('lists the rows in the order the tables hold them', () => {

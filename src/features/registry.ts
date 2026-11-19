@@ -5,7 +5,12 @@ export type Toggle = 'on' | 'off';
 export type FeatureSide = 'host' | 'connector';
 
 /** What a connector is to the team: where its issues live, or where its code and pull requests do. */
-export type ConnectorKind = 'tracker' | 'codehost';
+export const CONNECTOR_KINDS = ['tracker', 'codehost'] as const;
+export type ConnectorKind = (typeof CONNECTOR_KINDS)[number];
+
+export function isConnectorKind(value: unknown): value is ConnectorKind {
+  return CONNECTOR_KINDS.some((kind) => kind === value);
+}
 
 /** One host feature: what it does in a line, and whether it runs when an adapter supports it only in part. */
 export interface HostFeature {
@@ -123,9 +128,9 @@ export function isConnectorFeatureId(value: string): value is ConnectorFeatureId
   return Object.hasOwn(CONNECTOR_FEATURES, value);
 }
 
-/** One registry row as a reader of either side takes it. */
-export interface FeatureRow {
-  readonly id: FeatureId;
+/** One registry row as a reader takes it: of either side, or of the one side whose ids it is given. */
+export interface FeatureRow<Id extends FeatureId = FeatureId> {
+  readonly id: Id;
   /** The part of the id before its dot: the heading its rows share on the parity page. */
   readonly group: string;
   readonly doc: string;
@@ -136,15 +141,17 @@ function groupOf(id: string): string {
   return id.slice(0, id.indexOf('.'));
 }
 
-const HOST_ROWS: readonly FeatureRow[] = Object.keys(HOST_FEATURES)
+const HOST_ROWS: readonly FeatureRow<HostFeatureId>[] = Object.keys(HOST_FEATURES)
   .filter(isHostFeatureId)
   .map((id) => ({ id, group: groupOf(id), doc: HOST_FEATURES[id].doc, byDefault: HOST_FEATURES[id].byDefault }));
 
-const CONNECTOR_ROWS: readonly FeatureRow[] = Object.keys(CONNECTOR_FEATURES)
+const CONNECTOR_ROWS: readonly FeatureRow<ConnectorFeatureId>[] = Object.keys(CONNECTOR_FEATURES)
   .filter(isConnectorFeatureId)
   .map((id) => ({ id, group: CONNECTOR_FEATURES[id].kind, doc: CONNECTOR_FEATURES[id].doc, byDefault: CONNECTOR_FEATURES[id].byDefault }));
 
+const ROWS: { readonly [Side in FeatureSide]: readonly FeatureRow<FeatureIdOf<Side>>[] } = { host: HOST_ROWS, connector: CONNECTOR_ROWS };
+
 /** The rows of one side, in registry order. */
-export function featuresOf(side: FeatureSide): readonly FeatureRow[] {
-  return side === 'host' ? HOST_ROWS : CONNECTOR_ROWS;
+export function featuresOf<Side extends FeatureSide>(side: Side): readonly FeatureRow<FeatureIdOf<Side>>[] {
+  return ROWS[side];
 }
