@@ -230,7 +230,8 @@ export async function issueLabel(args: ParsedArgs, runtime: CliRuntime): Promise
     return EXIT.ok;
   }
   const areaLabels = Object.keys(checked.config.github.areaOwners);
-  return (await labelIssue(host, { target, add, remove, areaLabels }, (line) => runtime.out.stdout(line))) ? EXIT.ok : EXIT.failed;
+  // One host of both kinds: the tracker holding the labels and the code host holding the repository's label file.
+  return (await labelIssue(host, host, { target, add, remove, areaLabels }, (line) => runtime.out.stdout(line))) ? EXIT.ok : EXIT.failed;
 }
 
 /**

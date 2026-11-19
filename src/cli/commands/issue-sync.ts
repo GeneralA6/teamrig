@@ -23,7 +23,7 @@ import { securityIssues, type SecurityIssue } from '../../github/security-alert.
 import { eventsByRecipient, pullEvents, pullListeners, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from '../../github/pull-news.ts';
 import { ourLogins } from '../../github/trust.ts';
 import { applySteps, closedSince, type StepOutcome } from '../../github/sync.ts';
-import type { IssueHost } from '../../issues/host.ts';
+import type { PullRequests, ReviewPosts } from '../../issues/host.ts';
 import type { HostPull } from '../../issues/pull.ts';
 import { sessionLogins } from '../../issues/status-push.ts';
 import type { Task } from '../../register/fold.ts';
@@ -249,13 +249,14 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     hour.lines.forEach(say);
     const writesPerRun = hour.writesPerRun;
     // Before the push, so it plans against the assignees the claims set; the claims' writes share the run's budget.
-    const claimed = await recordClaims(runtime, kit, config, { host, read: claimRead, started, writes: claimBudget(writesPerRun) });
+    const claimed = await recordClaims(runtime, kit, config, { host, labelFiles: host, read: claimRead, started, writes: claimBudget(writesPerRun) });
     claimed.lines.forEach(say);
     // The import's tasks are in the register now, so the push plans against them. A repository the import could
     // not read is not pushed: it would fail the same way, and its failure is already told.
     const pushed = await pushRepos(
       {
         host,
+        pulls: host,
         repos: config.github.repos.filter((repo) => !unread.has(repo)),
         since,
         tasks: async () => (await register.snapshot()).state.tasks.values(),
@@ -300,7 +301,7 @@ type PullRead =
  * Reads `repo`'s pull requests and compares them with `before`, the watch the last `--auto` run kept (pull-news.ts).
  * The first read of a repository only marks, so the news starts with the next one.
  */
-async function readPulls(host: IssueHost, repo: string, before: PullWatch | undefined): Promise<PullRead> {
+async function readPulls(host: PullRequests, repo: string, before: PullWatch | undefined): Promise<PullRead> {
   const read = await host.pulls(repo, before?.cursor);
   if (read.kind === 'failed') {
     const reason = `pull requests: ${read.reason}`;
@@ -333,7 +334,7 @@ type MentionRead =
  * the routed session's inbox gets.
  */
 async function readMentions(
-  host: IssueHost,
+  host: ReviewPosts,
   repo: string,
   before: MentionWatch | undefined,
   at: {
