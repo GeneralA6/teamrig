@@ -76,6 +76,8 @@ interface WrapperSpec {
   readonly chdir?: readonly string[];
   /** Options after which the wrapper runs nothing, such as `command -v`. */
   readonly inspect?: readonly string[];
+  /** Options without which the wrapper runs nothing, such as `jobs -x`: with none of them it only lists. */
+  readonly runs?: readonly string[];
   /** Options whose value is a command line split into words, such as `env -S`. */
   readonly split?: readonly string[];
   /** How many operands come before the program, such as `timeout`'s duration. */
@@ -96,6 +98,8 @@ const ENV_TARGET = /^\$(?:\{env:([^}]+)\}|env:([A-Za-z0-9_]+))/i;
 const WRAPPERS: ReadonlyMap<string, WrapperSpec> = new Map<string, WrapperSpec>([
   ['command', { inspect: ['-v', '-V'] }],
   ['builtin', {}],
+  // bash's `jobs -x` runs its command in the calling shell, each job spec in it swapped for a process group id.
+  ['jobs', { runs: ['-x'] }],
   ['exec', { valued: ['-a'] }],
   ['nohup', {}],
   ['setsid', {}],
@@ -405,10 +409,13 @@ class LaunchReader {
     const has = (list: readonly string[] | undefined, option: string): boolean => list?.includes(option) === true;
     const takesValue = (option: string): boolean => has(spec.valued, option) || has(spec.chdir, option) || has(spec.split, option);
     let leading = spec.leading ?? 0;
+    // A word only known when it runs may be the option that makes it run, so it counts as one.
+    let running = spec.runs === undefined;
     let index = 0;
     for (; index < args.length; index += 1) {
       const word = args[index] ?? staticWord('');
       const text = word.text;
+      running ||= word.dynamic;
       if (text === '--') {
         index += 1;
         break;
@@ -422,6 +429,7 @@ class LaunchReader {
       if (/^--[^-]/.test(text)) {
         const equals = text.indexOf('=');
         option = equals === -1 ? text : text.slice(0, equals);
+        running ||= has(spec.runs, option);
         if (takesValue(option)) {
           value = equals === -1 ? args[(index += 1)] : { text: text.slice(equals + 1), dynamic: word.dynamic };
         }
@@ -432,6 +440,7 @@ class LaunchReader {
             return NOTHING;
           }
           this.emptied ||= has(spec.emptyEnv, short);
+          running ||= has(spec.runs, short);
           if (takesValue(short)) {
             option = short;
             value = at + 1 < text.length ? { text: text.slice(at + 1), dynamic: word.dynamic } : args[(index += 1)];
@@ -467,6 +476,9 @@ class LaunchReader {
         // GNU env puts the split words in place of -S and reads its options on from there, so they may hold more.
         return this.wrapper(spec, [...split.words, ...args.slice(index + 1)]);
       }
+    }
+    if (!running) {
+      return NOTHING;
     }
     return { kind: 'next', words: args.slice(index + leading) };
   }

@@ -334,6 +334,8 @@ describe('evaluatePushes: where a push hides', () => {
       ['nice -n 5 git push origin main', 'ask'],
       ['exec git push -f origin main', 'deny'],
       ['coproc git push origin main', 'ask'],
+      ['jobs -x git push -f origin main', 'deny'],
+      ['jobs -l git push origin main', 'allow'],
       ['echo main | xargs git push origin', 'ask', 'doubt'],
     ]);
   });

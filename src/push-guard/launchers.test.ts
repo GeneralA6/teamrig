@@ -119,6 +119,21 @@ describe('launch: programs and wrappers', () => {
     ]);
   });
 
+  it('runs the command of jobs -x and nothing under jobs without it', () => {
+    expectLaunches([
+      ['jobs -x git push', 'program git push'],
+      ['jobs -x -- git push', 'program git push'],
+      ['jobs -x env -C /x git push', 'program git push cd=/x'],
+      ['jobs', 'nothing'],
+      ['jobs -l', 'nothing'],
+      ['jobs -lp git push', 'nothing'],
+      ['jobs -- git push', 'nothing'],
+      ['jobs %1 git push', 'nothing'],
+    ]);
+    assert.equal(of('jobs $O git push'), UNKNOWN_PROGRAM);
+    assert.equal(of('jobs -x $GIT push'), UNKNOWN_PROGRAM);
+  });
+
   it('reads the options of sudo, timeout, nice, xargs, wsl, exec, nohup and time', () => {
     expectLaunches([
       ['sudo -u me -D /srv git push', 'program git push cd=/srv'],
