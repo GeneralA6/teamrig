@@ -16,6 +16,7 @@ import { type MergedHead, pullsOfHead, sweepAfterMerge } from './leftovers.ts';
 import { type GateDeps, proveTree, realGateDeps } from './local-gate.ts';
 import { type LandingTurn, processLandingTurn } from './landing-turn.ts';
 import { releaseRefusal } from './release-pull.ts';
+import { queueLanding } from './merge-queue.ts';
 import { realRenamedCallersDeps, renamedCallersRefusal } from './renamed-callers.ts';
 import { type LocalChecks, type ReleasePull, type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
 import { APPROVED_SHA } from './ship-plan.ts';
@@ -764,16 +765,23 @@ export async function mergeRun(args: MergeArgs, deps: MergeDeps, gate: MergeGate
     return done(1);
   }
   const gh = deps.ghFor(credential.secret);
-  const proof =
-    profile.gate === 'ci'
-      ? awayDuring(inTurn(ciProof(gh, repo, head, { names: profile.checks, summary: profile.summary, flaky: profile.flaky, conditional: profile.conditional }, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 }), deps.turn), deps.share)
+  const polling = { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 };
+  const main = mainBranchOf(git, profile.main);
+  const checks = (): Proof => ciProof(gh, repo, head, { names: profile.checks, summary: profile.summary, flaky: profile.flaky, conditional: profile.conditional }, deps.waiter, polling);
+  // Under the merge queue the queue orders the landings, so the head takes no landing turn: one would hold every
+  // queued head of the repo behind the oldest for nothing (T3386).
+  const proof = profile.queue
+    ? awayDuring(checks(), deps.share)
+    : profile.gate === 'ci'
+      ? awayDuring(inTurn(checks(), deps.turn), deps.share)
       : { proof: localProof(args.dir, profile.local, deps.gate), away: () => false };
   const result = await mergeThroughPull(
     { repo, head, base: profile.main, sha, title: pullTitle(head, profile.main, subjects.length), body: pullBody(subjects, note), lacks: missingSections(note, profile.pullSections), opens },
     gh,
-    mainBranchOf(git, profile.main),
+    main,
     proof.proof,
     deps.out,
+    profile.queue ? queueLanding(gh, main, deps.waiter, polling) : directLanding(gh, main),
   );
   if (result.kind === 'moved') {
     // A move is caught up or shipped again: local work (rebase, build, specs) that takes the share back first.
