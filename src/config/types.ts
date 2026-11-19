@@ -49,6 +49,8 @@ export interface RegisterCheckConfig {
   readonly staleAfterHours: number;
   /** An open task its owner has not touched this long after assignment is NOT-PICKED-UP. */
   readonly notPickedUpAfterHours: number;
+  /** A blocker still unfixed (open, in progress or waiting) this long after it became one is BLOCKER-OPEN (T4329). */
+  readonly blockerOpenAfterHours: number;
   /** A session's in-progress task outranked this long by its own open task, on band and score, is a PRIORITY-SKIP. */
   readonly prioritySkipAfterHours: number;
   /**
