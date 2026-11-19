@@ -7,6 +7,7 @@ import { SecretScanner } from '../core/secrets.ts';
 import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { waitAnswerersOf } from './approval.ts';
+import { blockerHold } from './blocker-hold.ts';
 import type { SlicedGoal } from './focus.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
 import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, SECURITY_FLAG, typedHandStep, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
@@ -464,9 +465,15 @@ export class RegisterPolicy {
     }
     // Ranked work goes first and work in progress stays few (T2076); `warn` lets the start through and the CLI warns.
     const { focus } = this.config;
-    const wip = wipHold({ ...input, task, goals: context.goals }, context.state.tasks.values(), waitContext(context.state.tasks, context.now, context.zone, context.elsewhere), focus, register.ownerSource);
+    const moves = waitContext(context.state.tasks, context.now, context.zone, context.elsewhere);
+    const wip = wipHold({ ...input, task, goals: context.goals }, context.state.tasks.values(), moves, focus, register.ownerSource);
     if (wip !== undefined && focus.wip.mode === 'refuse') {
       return refuse(wip);
+    }
+    // A blocker is fixed before anything else its owner starts (T4329): no mode and no --one-commit way past.
+    const blocker = blockerHold(task, input.status, context.state.tasks.values(), moves);
+    if (blocker !== undefined) {
+      return refuse(blocker);
     }
     const note = blankToNull(input.note);
     const evidence = blankToNull(input.evidence);
