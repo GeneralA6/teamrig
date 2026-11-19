@@ -1,6 +1,6 @@
 name: codeql
 
-# Scans the TypeScript and JavaScript for security flaws (CodeQL's security-extended queries) on each pull request,
+# Scans the TypeScript and JavaScript for security flaws (CodeQL's security-extended queries) on each code pull request,
 # each push to main, and weekly, since a new query can find a flaw in code that has not changed. Findings show in the
 # repository's Security tab and on the pull request. It is not one of the checks main requires: a finding is read
 # and fixed by a person, not by a red merge button. The plugin's dist is skipped: it is compiled from the source
@@ -8,7 +8,13 @@ name: codeql
 on:
   push:
     branches: [main]
+  # A pull request that changes only Markdown or docs/ has no code to scan, so it skips the scan. The filter is safe
+  # because this is not a required check (a skipped required check would hold the merge); a push to main stays
+  # unfiltered, so every main commit is still scanned.
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   schedule:
     - cron: '23 4 * * 1'
   workflow_dispatch:

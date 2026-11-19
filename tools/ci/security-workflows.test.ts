@@ -46,8 +46,15 @@ describe('every workflow', () => {
 describe('codeql.yml', () => {
   const codeql = workflows.get('codeql.yml') ?? '';
 
-  it('scans each pull request, each push to main, weekly and by hand', () => {
-    assert.match(codeql, /^on:\n {2}push:\n {4}branches: \[main\]\n {2}pull_request:\n {2}schedule:\n {4}- cron: '[\d* ]+'\n {2}workflow_dispatch:\n/m);
+  it('scans each pull request that changes code, each push to main, weekly and by hand', () => {
+    const trigger = /^on:\n {2}push:\n {4}branches: \[main\]\n(?: {2}#.*\n)* {2}pull_request:\n {4}paths-ignore:\n {6}- '\*\*\/\*\.md'\n {6}- 'docs\/\*\*'\n {2}schedule:\n {4}- cron: '[\d* ]+'\n {2}workflow_dispatch:\n/m;
+    assert.match(codeql, trigger);
+  });
+
+  it('filters only the pull request trigger, so every push to main is still scanned', () => {
+    const push = /^ {2}push:\n((?: {4}.*\n)+)/m.exec(codeql)?.[1] ?? '';
+    assert.doesNotMatch(push, /paths/);
+    assert.equal(codeql.match(/paths-ignore:/g)?.length, 2, 'one for the pull request trigger, one for the dist');
   });
 
   it('scans the TypeScript with the security-extended queries and uploads with a job-scoped write token', () => {
