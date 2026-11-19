@@ -37,12 +37,12 @@ import { sliceLateFlags } from '../../register/slice-late.ts';
 import { overSizeFlags } from '../../register/over-size.ts';
 import type { AddInput, AskInput, StatusInput, Verdict } from '../../register/policy.ts';
 import type { GoalTagsReader, Register, RotationOutcome, WriteResult } from '../../register/register.ts';
-import { ACTIVE_STATUSES, type TaskStatus } from '../../register/model.ts';
+import { ACTIVE_STATUSES, BLOCKER_PRIORITY_ID, type TaskStatus } from '../../register/model.ts';
 import { lacksEventsOf, type RegisterSnapshot } from '../../register/snapshot.ts';
 import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopgap.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, watchQueue, type DueVerify } from '../../register/verify.ts';
 import { readAs, TaskTree, type TaskElsewhere } from '../../register/tree.ts';
-import { approvalNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, formatWatchRow, personWaitNotice, selectTasks, type ListFilter } from '../../register/views.ts';
+import { approvalNotice, blockerNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, formatWatchRow, personWaitNotice, selectTasks, type ListFilter } from '../../register/views.ts';
 import { isPeerWait, sameWait, waitContext, type PersonWait } from '../../register/waits.ts';
 import { wipHold } from '../../register/wip.ts';
 import { lintSkills } from '../../skills/lint.ts';
@@ -241,7 +241,8 @@ async function addHere(args: ParsedArgs, runtime: CliRuntime, caller: string): P
       runtime.out.stdout(`OPENED ${end.verdict.value.task.id} ${end.ref}`);
     }
   }
-  await wakeWaitedOn(runtime, team, by, end.verdict, await tellNewOwner(runtime, team, by, end.verdict));
+  const told = [...(await tellNewOwner(runtime, team, by, end.verdict)), ...(await tellLeadersOfBlocker(runtime, team, by, end.verdict))];
+  await wakeWaitedOn(runtime, team, by, end.verdict, told);
   return code;
 }
 
@@ -279,6 +280,30 @@ async function tellNewOwner(runtime: CliRuntime, team: Team, by: string, verdict
     return [];
   }
   return (await tellAssigned(runtime, team, by, task)) ? [task.owner] : [];
+}
+
+/**
+ * A task this write made a blocker (T4329), by `add` or `update --priority blocker`: an inbox line with a wake ask to
+ * the owner's leader and to the lead, so the sessions that set work order hear it at once, not at their next prompt;
+ * never to the writer or the owner, and nothing for a task that already was one. Returns the sessions told.
+ */
+async function tellLeadersOfBlocker(runtime: CliRuntime, team: Team, by: string, verdict: Verdict<WriteResult>): Promise<readonly string[]> {
+  if (!verdict.ok) {
+    return [];
+  }
+  const { task, before } = verdict.value;
+  if (task.priority !== BLOCKER_PRIORITY_ID || before?.priority === BLOCKER_PRIORITY_ID) {
+    return [];
+  }
+  const { lead } = team.config.roles;
+  const receivers = new Set([new LeadTree(team.config, team.above).leaderOf(task.owner) ?? lead, lead]);
+  const told: string[] = [];
+  for (const receiver of receivers) {
+    if (receiver !== by && receiver !== task.owner && (await tellAnswer(runtime, team, by, receiver, blockerNotice(task), `${receiver} was not told that ${task.id} is a blocker`))) {
+      told.push(receiver);
+    }
+  }
+  return told;
 }
 
 /** What a write that told none of its writer's leaders prints: the change is in the register, and the lead's prompt digest shows it. */
@@ -758,7 +783,7 @@ export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const sizeBase = typeof changes.size === 'number' ? await readSizeBase(runtime, team.paths, team.config.sessions, id, runtime.clock.now()) : undefined;
   const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'), sizeBase);
   const code = report(runtime, verdict, 'UPDATED', team);
-  const told = await tellNewOwner(runtime, team, by, verdict);
+  const told = [...(await tellNewOwner(runtime, team, by, verdict)), ...(await tellLeadersOfBlocker(runtime, team, by, verdict))];
   noteRegisterOnly(runtime, team, by, args.flags.get('note'), verdict, [...told, ...(await wakeWaitedOn(runtime, team, by, verdict, told))]);
   return code;
 }
