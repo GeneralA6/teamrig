@@ -9,7 +9,7 @@ import { activeCut, CutLog } from "../../budget/cut.js";
 import { activeLift, LiftLog } from "../../budget/lift.js";
 import { OUTSIDE_ID, outsideUsageDir } from "../../budget/measure.js";
 import { runMeter } from "../../budget/meter.js";
-import { budgetSplitOf, dailyBudgetOf } from "../../budget/parts.js";
+import { budgetSplitOf, dailyBudgetOf, teamPartOf } from "../../budget/parts.js";
 import { fundForDay, isPaused, pausableOf } from "../../budget/pause.js";
 import { keepSessionsWeek, sessionsWeekOf } from "../../budget/session-week-file.js";
 import { UsageStore } from "../../budget/store.js";
@@ -144,6 +144,9 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     }
     const own = byId.get(id);
     const todayW = own === undefined ? 0 : wSince([own], week.todayFrom, now);
+    const teamPartPct = teamPartOf(week.allowancePct, funded.split, funded.others);
+    // The team's own use, as `teamrig budget` sums its rows: the roster's tabs, not the use outside it.
+    const teamToday = teamPartPct === undefined ? undefined : { usedPct: wSince([...byId.values()], week.todayFrom, now) / todayWPerPct, partPct: teamPartPct };
     const isLead = id === config.roles.lead;
     const surplus = isLead && inForce === undefined
         ? surplusHintOf({
@@ -174,6 +177,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
         weekUsedPct: week.usedPct,
         pace: week.pace,
         teamDay,
+        ...(teamToday === undefined ? {} : { teamToday }),
         isLead,
         urgent: work.urgent.get(id) ?? [],
         awaited: work.awaited.get(id) ?? [],
