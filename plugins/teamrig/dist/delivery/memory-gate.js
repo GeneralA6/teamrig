@@ -52,9 +52,9 @@ export class MemoryGate {
 }
 /**
  * Why a step waits on the host's memory, as a session reads it, `sharing` the number of small steps the held MB is
- * for: `host memory: 6000 MB free, 2048 MB held for it, 6144 MB needed (4096 floor + 2048 for this step)`, or
+ * for: `host memory: 6000 MB free, 2048 MB held for it, 6144 MB needed (4096 kept free for the host + 2048 for this step)`, or
  * `host commit charge: 30000 of 32000 MB, 2048 MB more for this step would pass 92% (open.headroom.commitMaxPct)`.
- * A step's MB is followed by its basis, when it has one: `(4096 floor + 7500 for this step, learned from 12 runs)`.
+ * A step's MB is followed by its basis, when it has one: `(4096 kept free for the host + 7500 for this step, learned from 12 runs)`.
  * The tabs still loading are named after the steps: `…, 1500 MB held for 1 tab still loading, …`.
  */
 export function shortText(short, sharing) {
@@ -67,7 +67,7 @@ export function shortText(short, sharing) {
     const steps = sharing === 0 ? '' : `, ${short.heldMb} MB held for ${sharing === 1 ? 'it' : 'them'}`;
     const held = tabs === '' ? steps : `${steps}, ${tabs}`;
     const basis = short.basis === undefined ? '' : `, ${short.basis}`;
-    const need = short.hostMb === undefined ? `${short.floorMb} floor + ${short.reserveMb} for this step${basis}` : `half the host's ${short.hostMb} MB`;
+    const need = short.hostMb === undefined ? `${short.floorMb} kept free for the host + ${short.reserveMb} for this step${basis}` : `half the host's ${short.hostMb} MB`;
     return `host memory: ${short.freeMb} MB free${held}, ${short.needMb} MB needed (${need})`;
 }
 /** `1 tab`, `2 tabs`. */
