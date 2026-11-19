@@ -4835,7 +4835,8 @@ reads each change source that applies to the project, or those `[changes.sources
   `area:` prefix is the area. Release, build, test and tooling commits are left out.
 
 One change two sources name (the same task or commit) is shown once, from the earlier source. A release is a
-version tag (`v1.2.3`) or a commit naming its version (`plugin: version 0.447.0, ...`, `chore(release): 1.2.3`).
+version tag (`v1.2.3`, or a component's `teamrig-v1.2.3` as release-please tags it) or a commit naming its version
+(`plugin: version 0.447.0, ...`, `chore(release): 1.2.3`, `chore(main): release teamrig 1.2.3`).
 
 Flags:
 

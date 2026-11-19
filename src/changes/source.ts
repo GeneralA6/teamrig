@@ -129,9 +129,10 @@ export interface ChangeGit {
   /** Commits in the range (a version as its tag, else a time), newest first; `paths` narrows to commits touching them. */
   log(project: string, range: { readonly since: ResolvedPoint; readonly until: ResolvedPoint | undefined; readonly paths: readonly string[] }): Promise<readonly GitCommit[]>;
   /**
-   * The project's releases, newest first: its version tags ('v1.2.3', '1.2.3'), and the commits on HEAD whose subject
-   * names a release ('plugin: version 0.447.0', 'chore(release): 1.2.3', 'Release v1.2.3') for a project that tags
-   * none; a tag wins over a commit naming the same version. The index that resolves a version to a commit and a time.
+   * The project's releases, newest first: its version tags ('v1.2.3', '1.2.3', release-please's 'teamrig-v1.2.3'), and
+   * the commits on HEAD whose subject names a release ('plugin: version 0.447.0', 'chore(release): 1.2.3',
+   * 'chore(main): release teamrig 1.2.3', 'Release v1.2.3') for a project that tags none; a tag wins over a commit
+   * naming the same version. The index that resolves a version to a commit and a time.
    */
   releases(project: string): Promise<readonly Release[]>;
 }
