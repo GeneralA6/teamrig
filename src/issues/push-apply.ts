@@ -1,4 +1,4 @@
-import { targetText, type IssueHost } from './host.ts';
+import { targetText, type Assignees, type IssueStore, type Labels } from './host.ts';
 import { changeLine, changeWrites, STATUS_LABEL_SPECS, type IssueChange, type PushPlan } from './status-push.ts';
 import type { LabelSpec } from './host.ts';
 
@@ -22,7 +22,7 @@ export interface PushOutcome {
  * plan is drawn again from the issues as they are on the next run, so nothing is kept to resend and a half-sent change
  * is finished then.
  */
-export async function applyPush(host: IssueHost, plan: PushPlan, say: (line: string) => void): Promise<PushOutcome> {
+export async function applyPush(host: Labels & Assignees & IssueStore, plan: PushPlan, say: (line: string) => void): Promise<PushOutcome> {
   const missing = new Set<string>();
   const toMake: LabelSpec[] = [];
   for (const label of new Set(plan.changes.flatMap((change) => change.add))) {
@@ -68,7 +68,7 @@ export async function applyPush(host: IssueHost, plan: PushPlan, say: (line: str
 }
 
 /** Sends one change: its labels added, then each taken off, then the assign, then the close; the reason of the first failure, if any. */
-async function sendChange(host: IssueHost, change: IssueChange): Promise<string | undefined> {
+async function sendChange(host: Labels & Assignees & IssueStore, change: IssueChange): Promise<string | undefined> {
   if (change.add.length > 0) {
     const added = await host.addLabels(change.target, change.add);
     if (added.kind === 'failed') {

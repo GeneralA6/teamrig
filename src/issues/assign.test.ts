@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeIssueHost } from '../testing/fake-issue-host.ts';
+import { trackerOnly } from '../testing/split-hosts.ts';
 import { assignIssue, loginRefusal, type AssignEnd, type AssignWrite } from './assign.ts';
 
 const TARGET = { repo: 'acme/web', number: 7 };
@@ -79,6 +80,17 @@ describe('assignIssue', () => {
     const later = await assign(new FakeIssueHost().failsUnassign('HTTP 500'), { add: ['octocat'], remove: ['mallory'] });
     assert.equal(later.end, 'failed');
     assert.equal(later.lines.at(-1), `FAILED ${SHOWN}: HTTP 500; it already assigned octocat`);
+  });
+
+  it('assigns and takes off with a tracker that is no code host (T4619)', async () => {
+    const host = new FakeIssueHost();
+    const lines: string[] = [];
+    assert.equal(await assignIssue(trackerOnly(host), { target: TARGET, add: ['octocat'], remove: ['mallory'] }, (line) => lines.push(line)), 'done');
+    assert.deepEqual(lines, ['ACCESS acme: writes as the test', `ASSIGNED ${SHOWN}: octocat`, `UNASSIGNED ${SHOWN}: mallory`]);
+    assert.deepEqual(
+      host.calls.map((call) => call.kind),
+      ['assign', 'unassign'],
+    );
   });
 });
 
