@@ -15,7 +15,7 @@ import { verdictIsCurrent, verdictReadOf, type SecurityVerdictPin } from './secu
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields, type TaskPrep } from './events.ts';
 import { droppedApproval, isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { commitsNamed } from './head-sha.ts';
-import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, hasIssueOrReason, ISSUE_REF_PREFIX, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
+import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, hasIssueOrReason, isIssueRef, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
 import { ITEM_TYPE_TRAITS, traitsOf } from './item-types.ts';
 import { waitsOnOwner } from './owner-waits.ts';
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts, type ProblemReview } from './review.ts';
@@ -1657,8 +1657,7 @@ function timeProblem(at: string, { now, zone }: Pick<StatusContext, 'now' | 'zon
 
 /** True when `changes` point a task holding no issue ref at an issue: what issue migrate writes for each task it opens one for. */
 function linksAnIssue(task: Task, changes: Partial<TaskFields>): boolean {
-  const ref = changes.ref;
-  return task.ref?.startsWith(ISSUE_REF_PREFIX) !== true && ref !== undefined && ref !== null && ref.startsWith(ISSUE_REF_PREFIX);
+  return !isIssueRef(task.ref) && isIssueRef(changes.ref);
 }
 
 function blankToNull(text: string | undefined): string | null {

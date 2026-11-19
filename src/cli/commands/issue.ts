@@ -5,12 +5,12 @@ import type { KitConfig } from '../../config/types.ts';
 import { issueRef } from '../../github/map.ts';
 import { assignIssue, loginRefusal, MAX_ASSIGN_LOGINS } from '../../issues/assign.ts';
 import { CLOSE_REASONS, hostKindOf, parseIssueTarget, targetText, type CloseReason, type HostKind, type IssueHost, type IssueTarget } from '../../issues/host.ts';
+import { bareRef, refOf } from '../../issues/ref.ts';
 import { checkReply, sendReply, type FollowUp, type ReplyWrite } from '../../issues/reply.ts';
 import { issueDoc, mirroredIssues, similarIssues } from '../../issues/similar.ts';
 import { holderOf, sessionLogins } from '../../issues/status-push.ts';
 import { editIssueBody, labelIssue, labelRefusal, postRefusal, writeIssue, type IssueWrite } from '../../issues/write.ts';
 import type { Task } from '../../register/fold.ts';
-import { ISSUE_REF_PREFIX } from '../../register/model.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
@@ -137,7 +137,7 @@ async function holdingTask(runtime: CliRuntime, target: IssueTarget): Promise<Ta
   const team = await openTeam(runtime, 'read');
   const holder = holderOf(target, (await team.register.snapshot()).state.tasks.values());
   if (holder === undefined) {
-    throw new RefusedError(`no task holds ${targetText(target)}, so the reply has no status to show: run teamrig issue sync, or add the task with --ref gh:${targetText(target)}; nothing was written`);
+    throw new RefusedError(`no task holds ${targetText(target)}, so the reply has no status to show: run teamrig issue sync, or add the task with --ref ${refOf(target)}; nothing was written`);
   }
   if (holder.kind === 'shared') {
     throw new RefusedError(`${holder.tasks.join(', ')} all hold ${targetText(target)}, so no one task's status speaks for it: finish or drop all but one, or move the others' --ref; nothing was written`);
@@ -355,7 +355,7 @@ export async function issueSimilar(args: ParsedArgs, runtime: CliRuntime): Promi
   const found = matches.length === 0 ? 'none' : String(matches.length);
   runtime.out.stdout(`SIMILAR ${targetText(target)} (${own.id}): ${found} of ${corpus.length} mirrored issues at or above ${threshold} (github.similarThreshold)`);
   for (const match of matches) {
-    runtime.out.stdout(`${match.score.toFixed(2)} ${match.ref.slice(ISSUE_REF_PREFIX.length)} ${ids.get(match.ref) ?? '-'} ${match.title}`);
+    runtime.out.stdout(`${match.score.toFixed(2)} ${bareRef(match.ref)} ${ids.get(match.ref) ?? '-'} ${match.title}`);
   }
   return EXIT.ok;
 }

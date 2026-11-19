@@ -1,8 +1,9 @@
 import type { Task } from '../register/fold.ts';
-import { ACTIVE_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, type TaskStatus } from '../register/model.ts';
+import { ACTIVE_STATUSES, GITHUB_SOURCE, type TaskStatus } from '../register/model.ts';
 import { DESIGN_LABEL } from './design-label.ts';
-import { parseIssueTarget, targetText, type CloseReason, type IssueTarget, type LabelSpec } from './host.ts';
+import { targetText, type CloseReason, type IssueTarget, type LabelSpec } from './host.ts';
 import type { HostIssue } from './issue.ts';
+import { parseRef } from './ref.ts';
 
 /**
  * The status push (T2682): each issue a task holds shows that task's status, so a reader of the issue list sees
@@ -496,9 +497,9 @@ function holders(repo: string, tasks: Iterable<Task>): { speakers: Map<number, T
   return { speakers, shared };
 }
 
-/** The issue a task holds by its `gh:` ref, or undefined when its ref names none. */
+/** The issue a task holds by its ref, or undefined when its ref names none. */
 export function heldIssue(task: Task): IssueTarget | undefined {
-  return task.ref?.startsWith(ISSUE_REF_PREFIX) === true ? parseIssueTarget(task.ref.slice(ISSUE_REF_PREFIX.length)) : undefined;
+  return parseRef(task.ref);
 }
 
 /**

@@ -10,9 +10,9 @@
  */
 
 import type { Task } from '../register/fold.ts';
-import { ISSUE_REF_PREFIX } from '../register/model.ts';
-import { parseIssueTarget, type IssueTarget } from './host.ts';
+import type { IssueTarget } from './host.ts';
 import type { LinkedIssue } from './issue.ts';
+import { parseRef } from './ref.ts';
 
 /** One link to add: a sub-issue under its parent, or a blocker on the issue it blocks. */
 export type LinkWrite =
@@ -36,7 +36,7 @@ export interface LinkPlan {
 
 /** The issue a task's ref names, or undefined when it names none. */
 export function refTarget(task: Pick<Task, 'ref'>): IssueTarget | undefined {
-  return task.ref !== null && task.ref.startsWith(ISSUE_REF_PREFIX) ? parseIssueTarget(task.ref.slice(ISSUE_REF_PREFIX.length)) : undefined;
+  return parseRef(task.ref);
 }
 
 /**
