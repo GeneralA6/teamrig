@@ -1,5 +1,5 @@
 import { SecretScanner } from "../../core/secrets.js";
-import { formatClocks, issueThread, parseClocks, pullThread, reminderText, stepClocks } from "../../github/clock.js";
+import { formatClocks, issueThread, parseClocks, pullThread, remindersText, stepClocks } from "../../github/clock.js";
 import { issueOwner, issueRef } from "../../github/map.js";
 import { postLine } from "../../inbox/inbox.js";
 import { GITHUB_ACTOR } from "../../register/policy.js";
@@ -45,8 +45,9 @@ export function pullThreads(pulls, recipientOf, ours) {
     });
 }
 /**
- * Steps the clocks over the repositories in `read` and posts each reminder due now, unwoken. Gives one line per
- * reminder posted and per one the inbox refused.
+ * Steps the clocks over the repositories in `read` and posts the reminders due now, unwoken: one line per owner,
+ * naming its count and first few when several fall due at once (#1475). Gives one line per owner reminded and per
+ * one the inbox refused.
  */
 export async function recordClocks(runtime, kit, config, read, threads) {
     const now = runtime.clock.now();
@@ -59,9 +60,14 @@ export async function recordClocks(runtime, kit, config, read, threads) {
     const secrets = new SecretScanner(config.register.secretPatterns);
     const zone = teamZone(config, runtime);
     const lines = [];
+    const byOwner = new Map();
     for (const clock of remind) {
-        const problem = await postLine(inboxes, secrets, { to: clock.owner, from: GITHUB_ACTOR, text: reminderText(clock, now, zone), now: new Date(now) });
-        lines.push(problem === undefined ? `REMINDED ${clock.owner}: ${clock.ref} waits on an answer` : `INBOX ${clock.owner}: not posted: ${problem}`);
+        byOwner.set(clock.owner, [...(byOwner.get(clock.owner) ?? []), clock]);
+    }
+    for (const [owner, clocks] of byOwner) {
+        const problem = await postLine(inboxes, secrets, { to: owner, from: GITHUB_ACTOR, text: remindersText(clocks, now, zone), now: new Date(now) });
+        const what = clocks.length === 1 ? `${clocks[0]?.ref} waits` : `${clocks.length} GitHub threads wait`;
+        lines.push(problem === undefined ? `REMINDED ${owner}: ${what} on an answer` : `INBOX ${owner}: not posted: ${problem}`);
     }
     return lines;
 }
