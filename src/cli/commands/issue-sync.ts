@@ -25,7 +25,7 @@ import { ourLogins } from '../../github/trust.ts';
 import { applySteps, closedSince, type StepOutcome } from '../../github/sync.ts';
 import type { IssueHost } from '../../issues/host.ts';
 import type { HostPull } from '../../issues/pull.ts';
-import { autoPushWrites, sessionLogins } from '../../issues/status-push.ts';
+import { sessionLogins } from '../../issues/status-push.ts';
 import type { Task } from '../../register/fold.ts';
 import { priorityText } from '../../register/model.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
@@ -39,6 +39,7 @@ import type { HostIssue } from '../../issues/issue.ts';
 import { claimBudget, recordClaims } from './issue-claim.ts';
 import { pullThreads, recordClocks, repoThreads } from './issue-clock.ts';
 import { fieldRunOf } from './issue-field-push.ts';
+import { reserveHour, settleHour } from './issue-push-hour.ts';
 import { issuePush, pushEndLine, pushRepos } from './issue-push.ts';
 import { GITHUB_OFF, githubOff, readSyncState, reportAutoSync } from './issue-sync-auto.ts';
 import { githubWatcher } from '../../github/watcher.ts';
@@ -244,7 +245,9 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     (await recordClocks(runtime, kit, config, clocked, threads)).forEach(say);
   }
   if (pushing) {
-    const writesPerRun = autoPushWrites(config.github.probeSeconds);
+    const hour = await reserveHour(runtime, kit, config);
+    hour.lines.forEach(say);
+    const writesPerRun = hour.writesPerRun;
     // Before the push, so it plans against the assignees the claims set; the claims' writes share the run's budget.
     const claimed = await recordClaims(runtime, kit, config, { host, read: claimRead, started, writes: claimBudget(writesPerRun) });
     claimed.lines.forEach(say);
@@ -266,6 +269,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
       say,
     );
     say(pushEndLine(true, pushed, writesPerRun));
+    (await settleHour(runtime, kit, config, hour, claimed.writes + pushed.writes)).forEach(say);
     for (const failure of pushed.failures) {
       ends.push('failed');
       // One failure per repository, so the lead is told a repository fails once; the first reason stands.
