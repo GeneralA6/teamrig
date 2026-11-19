@@ -810,7 +810,7 @@
     "dist/turn-log/store.js": "b624e186930dff2b9543de87ccb41cd788d07f63abc54cbb0196cda437778020",
     "dist/update/check.js": "0c9cc04e7cd607d0de3a39ce06c988803f324ccdcda207e78fa9a390bdf0bea3",
     "dist/update/runner.js": "202ec98150543b9ba20a4fe665c5678a485d4cc5e5df10ab0d9b2b57d93d580e",
-    "dist/update/sources.js": "6fa84b0e27fe7e34fd57a780de6fb781e5abae7214a51684acec3116a3bdbb75",
+    "dist/update/sources.js": "20e30c10e673e863b59cb9575c1d7580947f7ff05c3b5748de6cc3d0ef8336eb",
     "dist/wake/api-retry.js": "d53050117153baafe9e01bd10f5ea3a2e47b0c1f0e89d3a9bca70049f4a85ace",
     "dist/wake/asks.js": "ddd9d8231f3898f922202a2ea0f6ab57333aa2f6e942cc16b8b568cda8f0c5ae",
     "dist/wake/day-start.js": "656490d77e5724ba4090e452919c322514d7defc7822e1372b3f96a84e43953b",
