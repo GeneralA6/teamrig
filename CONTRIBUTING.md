@@ -158,7 +158,8 @@ repository were made private again, where GitHub Actions minutes bill). Its `eve
 every other job did: the one check `main` requires (see [Pull requests](#pull-requests)). Its first job, `change
 kind` (`tools/ci/change-kind.ts`), names what the change touches: `docs` when every changed file is a top-level
 Markdown file or under `docs/`, `design` when every one is in the design notes folder, docs/design, else `code` (and `code` when there
-is no base to compare with). A `docs` change runs the commit checks (scrub, DCO, size rule, subjects, dependency
+is no base to compare with). It runs the base commit's copy of that tool, never the change's own, so a pull request
+that edits `tools/ci` cannot name itself docs; a base from before the tool is `code`. A `docs` change runs the commit checks (scrub, DCO, size rule, subjects, dependency
 review) and, on ubuntu alone, the build, the docs' specs, the pictures, the config reference and the doc links; a
 `design` change runs the commit checks and the doc links; a `code` change runs everything on every OS (the test
 matrix's systems come from `change kind`, `TEST_SYSTEMS` in that file). Each job still runs and skips only its steps,

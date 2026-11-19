@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { TEST_SYSTEMS } from './change-kind.ts';
 
 const workflow = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
 
@@ -140,7 +141,17 @@ describe('ci.yml', () => {
     assert.match(changes, /^ {4}name: change kind$/m);
     assert.match(changes, /^ {4}outputs:\n {6}kind: \$\{\{ steps\.kind\.outputs\.kind \}\}\n {6}systems: \$\{\{ steps\.kind\.outputs\.systems \}\}$/m);
     assert.match(changes, /^ {10}fetch-depth: 0$/m, "a pull request's base must be in the checkout to compare with");
-    assert.match(changes, /^ {6}- id: kind\n {8}run: node tools\/ci\/change-kind-cli\.ts --github$/m);
+  });
+
+  it("runs the base commit's classifier, never the change's own, and names a run with none code on every system (T4617)", () => {
+    const changes = jobs.get(CHANGES) ?? '';
+    assert.match(changes, /^ {10}BASE_SHA: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.event\.before \}\}$/m);
+    assert.match(changes, /git worktree add --detach "\$RUNNER_TEMP\/base" "\$BASE_SHA"/);
+    assert.match(changes, /^ {12}node "\$RUNNER_TEMP\/base\/tools\/ci\/change-kind-cli\.ts" --github$/m);
+    assert.doesNotMatch(changes, /node tools\/ci\//, "the change's own tools/ci never runs here");
+    const fallback = /printf 'kind=code\\nsystems=%s\\n' '(\[[^']*\])' >> "\$GITHUB_OUTPUT"/.exec(changes)?.[1];
+    assert.ok(fallback !== undefined, 'a run with no base classifier is code');
+    assert.equal(fallback, JSON.stringify(TEST_SYSTEMS));
   });
 
   it('skips steps, never a job, for a docs or design change, so the summary still fails any job that skipped', () => {

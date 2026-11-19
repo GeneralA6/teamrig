@@ -45,8 +45,19 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
+      # The classifier runs from the base commit, never from the change: a pull request's own tools/ci could name
+      # itself docs and skip the tests. With no base to check out (a new branch, a run by hand, a rewritten push) or
+      # a base from before the classifier, the run is code, on every system (TEST_SYSTEMS in tools/ci/change-kind.ts).
       - id: kind
-        run: node tools/ci/change-kind-cli.ts --github
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          if [ -n "$BASE_SHA" ] && git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA" && [ -f "$RUNNER_TEMP/base/tools/ci/change-kind-cli.ts" ]; then
+            node "$RUNNER_TEMP/base/tools/ci/change-kind-cli.ts" --github
+          else
+            echo "change-kind: code: no base classifier to run, every check runs"
+            printf 'kind=code\nsystems=%s\n' '["ubuntu-latest","windows-latest","macos-latest"]' >> "$GITHUB_OUTPUT"
+          fi
 
   gates:
     name: scrub and DCO gates
