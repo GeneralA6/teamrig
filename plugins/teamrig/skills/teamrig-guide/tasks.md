@@ -234,10 +234,19 @@ Three shapes, split by the list:
   owner decisions, `p5` if budget allows. `p1` is the most urgent the config names. Above them every team has
   teamrig's own `p0`, for urgent work done right now: `check` flags an open one `URGENT`, so its owner parks the task
   in hand and starts it; a session held by its budget still wakes for it, and it goes on past the daily stop, helpers
-  too. A priority does not place a task by itself: a `p0` goes ahead of every score, and the priority of a task the
-  owner asked for adds to its score.
-- **Plan order**: by the first of these on which two tasks differ: pinned (the one task per owner that a leader above
-  it pinned with `update --pin`, above every other key); band; can move (a task with a wait not cleared, on a person,
+  too. Above `p0` sits `blocker` (`--priority blocker`): something blocks the team, or does damage that cannot be
+  undone, so its owner drops everything and fixes it now. It goes wherever a `p0` goes, and more: `add` and `update`
+  refuse one with no description (what leaving it unfixed costs) or one that waits on, or comes after, another task
+  (that is a plain wait at `p0` or lower); making a task a blocker posts its owner's leader and the lead a line with
+  a wake ask; while its owner holds one it can take up (open or in progress, nothing it waits on), `start` and `set
+  --status in-progress` refuse any other task, `--one-commit` too; its host-line step goes ahead of every `p0` step;
+  `check` flags it `BLOCKER-OPEN` once it is unfixed past [register.check.blockerOpenAfterHours] (4 h), so its leader
+  takes it over or lowers it to `p0` when it blocks no one. On disk it is `p0` marked blocker, so an older teamrig
+  reads a `p0`. A priority does not place a task by itself: a `p0` goes ahead of every score, and the priority of a
+  task the owner asked for adds to its score.
+- **Plan order**: by the first of these on which two tasks differ: a blocker its owner can take up (ahead of every
+  other key, a pin too, as `start` refuses all else); pinned (the one task per owner that a leader above it pinned
+  with `update --pin`, above every later key); band; can move (a task with a wait not cleared, on a person,
   a time or a task, or an `after` not finished goes after every task of its band that can move, whatever its score;
   an answered approval counts as cleared, and a `waiting` task with no reason and no decision as held);
   score (the highest first); in progress (a started
@@ -249,9 +258,9 @@ Three shapes, split by the list:
   `· ahead: expedite`, `· ahead: can move`, `· ahead: score 21.3 (A1 #1)` (with the ranked goal it serves),
   `· ahead: in progress`,
   `· ahead: due`, `· ahead: unblocks T9 p1 +2` (the best task that needs it, its priority, how many more),
-  `· ahead: in week 10-19` or `· ahead: size 0.5%`; no reason means the pin, a band the row's class shows, or the id
-  decided.
-- **Band**: three, ahead of any score. Expedite first: a `p0`, a Maintenance task marked critical and a `p1` the
+  `· ahead: in week 10-19` or `· ahead: size 0.5%`; no reason means a blocker, the pin, a band the row's class
+  shows, or the id decided.
+- **Band**: three, ahead of any score. Expedite first: a `blocker` or a `p0`, a Maintenance task marked critical and a `p1` the
   owner asked for (the last two by [focus.expedite]). Then Roadmap and Maintenance. Then the rest: Improvements, a
   task with no class and any other class.
 - **Score**: what a delay costs over the share of the week the task takes, so the most value per unit of work comes

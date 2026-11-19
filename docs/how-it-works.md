@@ -271,7 +271,7 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   allowance times the share of today's active time gone by (the quiet-hour use already lowered the allowance, so a
   night a lift worked through does not read as a morning past the pace). So no session waits while the week has
   room. The hooks warn a session as it passes its daily budget, tell the lead, and can hold its helper launches (`budget.overAction`,
-  `budget.quietHours`), never while it has p0 work or an answer another session waits on: urgent work and a blocker go on past the daily stop. The lead sets that policy with `teamrig budget setup`, which shows the change before it
+  `budget.quietHours`), never while it has `blocker` or p0 work or an answer another session waits on: urgent work and a blocker go on past the daily stop. The lead sets that policy with `teamrig budget setup`, which shows the change before it
   writes it.
   On the way, each team's budget hooks keep its week in `usage/team.week.json` in its state folder (`state/` under
   the team's folder, unless `paths.state` moves it): the team's use of the
