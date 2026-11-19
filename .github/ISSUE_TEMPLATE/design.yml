@@ -34,3 +34,10 @@ body:
       description: The option you would pick, and why.
     validations:
       required: false
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks
+      description: What could go wrong (a break for someone relying on today's behaviour, a security or data risk, a cost, a migration) and how each is softened, or "none foreseen" and why.
+    validations:
+      required: true

@@ -27,3 +27,10 @@ body:
       description: How anyone can tell it is finished, such as a command's output or a test that passes.
     validations:
       required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks
+      description: What could go wrong (a break for someone relying on today's behaviour, a security or data risk, a cost, a migration) and how each is softened, or "none foreseen" and why.
+    validations:
+      required: true

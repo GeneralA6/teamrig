@@ -22,9 +22,9 @@ const required = (name: string): FormSection => ({ name, required: true });
 /** The forms by file name (without `.yml`); each sets one type label. */
 export const ISSUE_FORMS: Readonly<Record<string, IssueForm>> = {
   bug: { label: 'bug', sections: [required('What happened'), required('What was expected'), required('Steps'), required('Version'), required('OS')] },
-  task: { label: 'task', sections: [required('What'), required('Why'), required('Done when')] },
-  feature: { label: 'feature', sections: [required('Problem'), required('Proposal'), { name: 'Alternatives', required: false }] },
-  design: { label: 'design', sections: [required('Question'), required('Context'), required('Options'), { name: 'Proposal', required: false }] },
+  task: { label: 'task', sections: [required('What'), required('Why'), required('Done when'), required('Risks')] },
+  feature: { label: 'feature', sections: [required('Problem'), required('Proposal'), { name: 'Alternatives', required: false }, required('Risks')] },
+  design: { label: 'design', sections: [required('Question'), required('Context'), required('Options'), { name: 'Proposal', required: false }, required('Risks')] },
 };
 
 /** The pull request template's `## ` sections, in order. */
