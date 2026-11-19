@@ -1,6 +1,6 @@
 import { win32 } from 'node:path';
 import { powerShellRequest } from '../core/powershell.ts';
-import type { ProgramRunner } from '../github/credentials.ts';
+import type { ProgramRunner } from '../core/program-runner.ts';
 import { powerShellOutput } from './powershell-output.ts';
 
 /** The entry that has the system run one command at each logon of this user: the restore's check. */
