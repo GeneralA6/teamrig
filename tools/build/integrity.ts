@@ -4,7 +4,7 @@ import { CLIENT_FOLDERS, CLIENT_MANIFEST, clientFileHash, clientManifestText } f
 import { DIST_DIR } from './dist-dir.ts';
 
 // Runs after tsc: lists a hash of every client file, so the exec guard can tell an installed client edited by hand
-// (src/exec/client-integrity.ts). The freshness check then catches a launcher or hook edited without a rebuild.
+// (src/exec/client-integrity.ts).
 const pluginRoot = dirname(DIST_DIR);
 const manifestPath = join(pluginRoot, CLIENT_MANIFEST);
 const manifest = new Map<string, string>();
