@@ -63,6 +63,8 @@ import {
   WATCH_PATHS,
   watchProbeArgs,
   userReadArgs,
+  isViewerRead,
+  viewerReadArgs,
   type IssueNumber,
 } from './gh.ts';
 import type { IssueDraft, LabelSpec } from '../issues/host.ts';
@@ -481,10 +483,30 @@ describe('the assignee calls (T2999)', () => {
       ['api', 'users/octo--cat'],
       ['api', 'users/../user'],
       ['api', 'users/octocat?per_page=1'],
-      ['api', 'user'],
       ['api', '/users/octocat'],
     ]) {
       assert.equal(isUserRead(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+    assert.equal(isUserRead(['api', 'user']), false);
+  });
+
+  it('takes the read of the user the token belongs to, and refuses one with a method, a field or a path past it (T4581)', () => {
+    assert.deepEqual(viewerReadArgs(), ['api', 'user']);
+    assert.ok(isViewerRead(viewerReadArgs()) && isAllowedGh(viewerReadArgs()));
+    for (const args of [
+      ['api', 'user', '-X', 'GET'],
+      ['api', 'user', '-X', 'PATCH', '-f', 'name=x'],
+      ['api', 'user', '--jq', '.email'],
+      ['api', 'user/emails'],
+      ['api', 'user/keys'],
+      ['api', 'user/repos'],
+      ['api', '/user'],
+      ['api', 'user?per_page=1'],
+      ['api', 'users'],
+      ['api'],
+    ]) {
+      assert.equal(isViewerRead(args), false, args.slice(1).join(' '));
       assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
     }
   });

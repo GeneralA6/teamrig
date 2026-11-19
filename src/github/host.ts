@@ -5,6 +5,7 @@ import {
   type CloseReason,
   type HostEnd,
   type HostAssignee,
+  type HostViewer,
   type HostComments,
   type HostIssueId,
   type HostIssueLabels,
@@ -56,6 +57,7 @@ import {
   WATCH_PATHS,
   watchProbeArgs,
   userReadArgs,
+  viewerReadArgs,
   type GhResult,
   type GhRunner,
   type WatchPath,
@@ -325,6 +327,23 @@ export class GitHubIssueHost implements IssueHost {
     }
     const read = await this.read(repo, assigneeReadArgs(repo, user.login), `whether ${user.login} may be assigned in ${repo}`);
     return read.kind === 'found' ? user : read;
+  }
+
+  /**
+   * Reads the user the token for `repo` belongs to (`gh api user`), for its login as GitHub spells it; failed with
+   * gh's own line, as for a token that is no user's (an app's), or when the answer holds no login. Only the login is kept.
+   */
+  async viewer(repo: string): Promise<HostViewer> {
+    const what = 'the GitHub user the token belongs to';
+    const read = await this.read(repo, viewerReadArgs(), what);
+    if (read.kind === 'missing') {
+      return { kind: 'failed', reason: 'GitHub shows no user the token belongs to' };
+    }
+    if (read.kind === 'failed') {
+      return read;
+    }
+    const login = loginIn(read.stdout);
+    return login === undefined ? { kind: 'failed', reason: `gh printed no login for ${what}` } : { kind: 'found', login };
   }
 
   /**

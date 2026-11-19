@@ -1,8 +1,11 @@
-import { targetText, type CloseReason, type HostAssignee, type HostComments, type HostEnd, type HostIssueId, type HostIssueLabels, type HostJobLog, type HostLabel, type HostLabelFile, type HostLinks, type HostList, type HostOpen, type HostPulls, type HostReach, type HostUse, type HostWatch, type IssueDraft, type IssueHost, type IssueTarget, type LabelSpec, type WatchMarks } from '../issues/host.ts';
+import { targetText, type CloseReason, type HostAssignee, type HostComments, type HostEnd, type HostIssueId, type HostIssueLabels, type HostJobLog, type HostLabel, type HostLabelFile, type HostLinks, type HostList, type HostOpen, type HostPulls, type HostReach, type HostUse, type HostViewer, type HostWatch, type IssueDraft, type IssueHost, type IssueTarget, type LabelSpec, type WatchMarks } from '../issues/host.ts';
 import type { FieldValue, HostField, HostFieldRead, IssueFields } from '../issues/fields.ts';
 import type { LinkedIssue } from '../issues/issue.ts';
 import type { HostPost, HostPosts } from '../issues/post.ts';
 import type { HostPull } from '../issues/pull.ts';
+
+/** The login a fake host's access, and FakeGh's token, belong to until a test says otherwise: the account the sync runs as. */
+export const FAKE_VIEWER = 'sync-bot';
 
 /** What each use does, as the fake's access line words it. */
 const USE_VERB: Readonly<Record<HostUse, string>> = { read: 'reads', open: 'opens issues', write: 'writes' };
@@ -53,6 +56,10 @@ export class FakeIssueHost implements IssueHost {
   private readonly unassignable = new Set<string>();
   private readonly spellings = new Map<string, string>();
   private assigneeRead: HostAssignee | undefined;
+  /** Whom the access belongs to; the sync's own account, FAKE_VIEWER, until a test says otherwise. */
+  private viewerRead: HostViewer = { kind: 'found', login: FAKE_VIEWER };
+  /** How many times who the access belongs to was read. */
+  viewerReads = 0;
   private assignEnd: HostEnd = { kind: 'done' };
   private readonly itemLabels = new Map<string, readonly string[]>();
   private issueLabelsRead: HostIssueLabels | undefined;
@@ -97,6 +104,12 @@ export class FakeIssueHost implements IssueHost {
   /** From now on, the host spells each of these logins as given, whatever case a read names it in. */
   spells(...logins: string[]): this {
     logins.forEach((login) => this.spellings.set(login.toLowerCase(), login));
+    return this;
+  }
+
+  /** From now on, every read of whom the access belongs to ends as `viewer`: found with a login, or failed. */
+  runsAs(viewer: HostViewer): this {
+    this.viewerRead = viewer;
     return this;
   }
 
@@ -371,6 +384,11 @@ export class FakeIssueHost implements IssueHost {
 
   assigneeExists(_repo: string, login: string): Promise<HostAssignee> {
     return Promise.resolve(this.assigneeRead ?? (this.participants.has(login) ? { kind: 'missing' } : this.assignee(login)));
+  }
+
+  viewer(_repo: string): Promise<HostViewer> {
+    this.viewerReads += 1;
+    return Promise.resolve(this.viewerRead);
   }
 
   /** As assigneeExists, but a login that took part in an item may be assigned to it too. */

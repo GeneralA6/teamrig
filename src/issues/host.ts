@@ -74,6 +74,9 @@ export type HostLabelFile = { readonly kind: 'read'; readonly labels: readonly L
  */
 export type HostAssignee = { readonly kind: 'found'; readonly login: string } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
 
+/** The login the host's access for a repository belongs to, as the host spells it, or why it could not be read. */
+export type HostViewer = { readonly kind: 'found'; readonly login: string } | { readonly kind: 'failed'; readonly reason: string };
+
 /** The labels one issue or pull request carries as one read found them; missing when the host shows no such item; or the read failed. */
 export type HostIssueLabels = { readonly kind: 'read'; readonly labels: readonly string[] } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
 
@@ -178,6 +181,8 @@ export interface IssueHost {
   addBlockedBy(target: IssueTarget, blockerId: number): Promise<HostEnd>;
   /** Whether `login` may be assigned in `repo`, so an assign is only sent for one the host would not drop. */
   assigneeExists(repo: string, login: string): Promise<HostAssignee>;
+  /** The login the access used for `repo` belongs to: the one the sync runs as, which the status push assigns when a session maps to none. */
+  viewer(repo: string): Promise<HostViewer>;
   /**
    * Whether `login` may be assigned to the issue or pull request: one with access to the repository, or one who took
    * part in that item, such as a commenter asking to take it (issue assign).
