@@ -1,10 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { hasIssueOrReason, isIssueRef } from '../register/model.ts';
+import { SRC_DIR, sourcesUnder, underSrc } from '../testing/source-files.ts';
 import { bareRef, branchHint, parseRef, refOf } from './ref.ts';
 
 describe('isIssueRef', () => {
@@ -85,8 +84,6 @@ const REF_TEXT = /^gh:(?!\s)/;
 /** A pattern that matches an issue ref's prefix. */
 const REF_PATTERN = /gh:/;
 
-const SRC = fileURLToPath(new URL('..', import.meta.url));
-
 /** One place a source names the prefix, with its 1-based line. */
 interface PrefixUse {
   readonly line: number;
@@ -128,17 +125,6 @@ function prefixUses(fileName: string, source: string): PrefixUse[] {
   return found;
 }
 
-/** Every TypeScript source under `dir` that is no test. */
-function sourcesUnder(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      return sourcesUnder(path);
-    }
-    return entry.isFile() && entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts') ? [path] : [];
-  });
-}
-
 describe('prefixUses', () => {
   it('finds the constant, a string or template that starts as a ref, and a pattern of one', () => {
     const source = [
@@ -168,9 +154,9 @@ describe('prefixUses', () => {
 
 describe('teamrig code', () => {
   it('names the prefix of an issue ref only where refs are read and written (T4619)', () => {
-    const files = sourcesUnder(SRC).filter((path) => !REF_MODULES.has(relative(SRC, path).split(sep).join('/')));
+    const files = sourcesUnder(SRC_DIR).filter((path) => !REF_MODULES.has(underSrc(path)));
     assert.ok(files.length > 100, `the scan read only ${files.length} files`);
-    const found = files.flatMap((path) => prefixUses(path, readFileSync(path, 'utf8')).map((use) => `${relative(SRC, path)}:${use.line} ${JSON.stringify(use.text)}`));
+    const found = files.flatMap((path) => prefixUses(path, readFileSync(path, 'utf8')).map((use) => `${underSrc(path)}:${use.line} ${JSON.stringify(use.text)}`));
     assert.deepEqual(found, []);
   });
 });
