@@ -3,14 +3,6 @@ import assert from 'node:assert/strict';
 import { DEFAULT_REGISTER } from './defaults.ts';
 import { BLOCKER_PRIORITY, isRightNow, NOW_PRIORITY, priorityLevels, priorityName, topPriority } from './priorities.ts';
 
-describe('isRightNow', () => {
-  it('holds p0 and any level above it, and no configured level (T4414)', () => {
-    assert.equal(isRightNow(NOW_PRIORITY.id), true);
-    assert.equal(isRightNow(NOW_PRIORITY.id - 1), true);
-    assert.equal(isRightNow(1), false);
-  });
-});
-
 describe('priorityLevels', () => {
   it('puts the blocker, then p0, ahead of the configured levels, a team with its own levels included', () => {
     assert.deepEqual(priorityLevels(DEFAULT_REGISTER.priorities).map((priority) => priority.id), [-1, 0, 1, 2, 3, 4, 5]);
@@ -44,5 +36,11 @@ describe('topPriority', () => {
     assert.equal(topPriority(DEFAULT_REGISTER.priorities), 1);
     assert.equal(topPriority([{ id: 4, name: 'later' }, { id: 2, name: 'now' }, { id: 3, name: 'soon' }]), 2);
     assert.equal(topPriority([]), undefined);
+  });
+});
+
+describe('isRightNow', () => {
+  it('takes p0 and the blocker above it, and no configured level (T4414, T4329)', () => {
+    assert.deepEqual([BLOCKER_PRIORITY.id, NOW_PRIORITY.id, 1, 2].map(isRightNow), [true, true, false, false]);
   });
 });

@@ -1,4 +1,4 @@
-import { NOW_PRIORITY } from '../config/priorities.ts';
+import { isRightNow } from '../config/priorities.ts';
 import type { FocusConfig, FocusScoreConfig } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { ItemType } from './events.ts';
@@ -109,12 +109,12 @@ export function sizePctOf(facts: SizeFacts, score: Pick<FocusScoreConfig, 'defau
 }
 
 /**
- * The band of a task. A p0 always expedites: it means started ahead of the task in hand, whatever its class or who
+ * The band of a task. A p0 or a blocker always expedites: it means started ahead of the task in hand, whatever its class or who
  * asked, so no config turns it off. Every other expedite needs its arm on in `focus.expedite`.
  */
 export function bandOf(facts: Pick<ScoreFacts, 'workClass' | 'critical' | 'priority' | 'ownerSourced'>, focus: Pick<ScoreFocus, 'roadmapClass' | 'maintenanceClass' | 'expedite'>): Band {
   const maintenance = facts.workClass === focus.maintenanceClass;
-  if (facts.priority === NOW_PRIORITY.id || (focus.expedite.critical && maintenance && facts.critical) || (focus.expedite.ownerP1 && facts.ownerSourced && facts.priority === 1)) {
+  if (isRightNow(facts.priority) || (focus.expedite.critical && maintenance && facts.critical) || (focus.expedite.ownerP1 && facts.ownerSourced && facts.priority === 1)) {
     return 0;
   }
   return maintenance || facts.workClass === focus.roadmapClass ? 1 : 2;
