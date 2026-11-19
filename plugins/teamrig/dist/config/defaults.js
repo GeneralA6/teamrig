@@ -228,12 +228,26 @@ export const DEFAULT_MEETING = {
 /** About a screenful: two or three failing tests with their errors and first stack frames. */
 export const DEFAULT_TESTS = { maxFailureChars: 4000 };
 /**
+ * GitHub's own field names and default issue types. A goal is a Feature, as an issue opened for one is typed
+ * (T3349), else a Goal where the organization made that type.
+ */
+export const DEFAULT_ISSUE_FIELDS = {
+    push: true,
+    priority: 'Priority',
+    // P<n> first, for a field whose options are named so; else GitHub's own Priority options, p0 and p1 both Urgent as done-groups groups them.
+    priorityOptions: { p0: ['P0', 'Urgent'], p1: ['P1', 'Urgent'], p2: ['P2', 'High'], p3: ['P3', 'Medium'], p4: ['P4', 'Low'], p5: ['P5', 'Low'] },
+    startDate: 'Start date',
+    targetDate: 'Target date',
+    score: 'Score',
+    types: { task: ['Task'], bug: ['Bug'], goal: ['Feature', 'Goal'], design: ['Design'] },
+};
+/**
  * Off until a team lists a repository; two weeks of closed issues covers a sync missed over a holiday. Every 15
  * minutes a new issue reaches its session within a working block, at two gh calls per repository each time (one more
  * per further hundred open, or recently changed closed, issues). An outsider's issue waits for the `teamrig` label,
  * named after the tool so it does not clash with a repository's own triage labels.
  */
-export const DEFAULT_GITHUB = { repos: [], owners: {}, areaOwners: {}, sessions: {}, closedDays: 14, probeSeconds: 60, statusPush: false, acceptLabel: 'teamrig', similarThreshold: 0.35, activity: true, followMax: 20, stamp: true };
+export const DEFAULT_GITHUB = { repos: [], owners: {}, areaOwners: {}, sessions: {}, closedDays: 14, probeSeconds: 60, statusPush: false, acceptLabel: 'teamrig', similarThreshold: 0.35, activity: true, followMax: 20, stamp: true, fields: DEFAULT_ISSUE_FIELDS };
 /**
  * Claude Code compacts a 200k window at about 167k, so 120k refreshes before that; every 3 tasks catches a
  * session that grows slowly, from 80k up. Measured over 8 days of 12 sessions: about 9 refreshes a day in all.

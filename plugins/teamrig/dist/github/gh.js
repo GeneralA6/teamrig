@@ -529,11 +529,67 @@ export function isLinkAdd(args) {
         field.slice(0, equals) === key &&
         HOST_ID.test(field.slice(equals + 1)));
 }
-/** A command line the runner will not start: none of a shipped query's page, a watch probe, one issue's creation, comment, body, labels, close or link, a failed job's log, or a mention scan's read. */
+/** `repos/<owner>/<name>/issues/<number>/issue-field-values`: the values of one issue's fields. */
+const FIELD_VALUES_PATH = /^repos\/([^/]+\/[^/]+)\/issues\/([1-9][0-9]{0,9})\/issue-field-values$/;
+/** The id of the field a value is for. */
+const FIELD_ID_KEY = 'issue_field_values[][field_id]';
+/** The value itself: text, a day or an option's name as a raw field, a number as a typed one. */
+const FIELD_VALUE_KEY = 'issue_field_values[][value]';
+/** A number field's value as a typed field takes it: a whole number of digits only, so no `@file` or other gh form rides on it. */
+const FIELD_NUMBER = /^-?(0|[1-9][0-9]{0,14})$/;
+/** A field's text, day, option or type name: one bounded line, so nothing beside the value can be read into it. */
+const FIELD_TEXT = /^[^\p{Cc}]{1,1024}$/u;
+/**
+ * The command line that sets one field of `target` to `value`: the field by its id, a number as a typed field, else
+ * raw text (a day as `YYYY-MM-DD`, a single-select by its option's name). Only that field changes; the others stay.
+ */
+export function fieldValueSetArgs(target, fieldId, value) {
+    const set = typeof value === 'number' ? [TYPED_FIELD, `${FIELD_VALUE_KEY}=${value}`] : [RAW_FIELD, `${FIELD_VALUE_KEY}=${value}`];
+    return ['api', `repos/${target.repo}/issues/${target.number}/issue-field-values`, '-X', 'POST', TYPED_FIELD, `${FIELD_ID_KEY}=${fieldId}`, ...set];
+}
+/**
+ * True for `gh api repos/<owner>/<name>/issues/<number>/issue-field-values -X POST -F <field_id>=<id>` then the value,
+ * `-f <value>=<line>` or `-F <value>=<whole number>`, and nothing more: one field of one issue set, its id digits only.
+ * A second value, another method (a PUT that replaces every value, a DELETE), field or flag is refused.
+ */
+export function isFieldValueSet(args) {
+    const match = FIELD_VALUES_PATH.exec(args[1] ?? '');
+    const repo = match?.[1];
+    const id = args[5] ?? '';
+    const value = args[7] ?? '';
+    const valuePrefix = `${FIELD_VALUE_KEY}=`;
+    const shown = value.slice(valuePrefix.length);
+    const valueOk = value.startsWith(valuePrefix) && ((args[6] === RAW_FIELD && FIELD_TEXT.test(shown)) || (args[6] === TYPED_FIELD && FIELD_NUMBER.test(shown)));
+    return (args.length === 8 &&
+        args[0] === 'api' &&
+        repo !== undefined &&
+        REPO_NAME.test(repo) &&
+        args[2] === '-X' &&
+        args[3] === 'POST' &&
+        args[4] === TYPED_FIELD &&
+        id.startsWith(`${FIELD_ID_KEY}=`) &&
+        HOST_ID.test(id.slice(FIELD_ID_KEY.length + 1)) &&
+        valueOk);
+}
+/** The command line that sets the type of one issue to `type`, by its name, a raw field. */
+export function issueTypeSetArgs(target, type) {
+    return ['api', `repos/${target.repo}/issues/${target.number}`, '-X', 'PATCH', RAW_FIELD, `type=${type}`];
+}
+/**
+ * True for `gh api repos/<owner>/<name>/issues/<number> -X PATCH -f type=<name>` and nothing more: the type of one
+ * issue set, its name one line. Any other field beside it, or in its place, is refused.
+ */
+export function isIssueTypeSet(args) {
+    const call = issueCall(args);
+    const pairs = rawPairs(args.slice(4));
+    const pair = pairs?.length === 1 ? pairs[0] : undefined;
+    return call?.method === 'PATCH' && call.part === 'issue' && pair?.[0] === 'type' && FIELD_TEXT.test(pair[1]);
+}
+/** A command line the runner will not start: none of a shipped query's page, a watch probe, one issue's creation, comment, body, labels, close, link, type or field, a failed job's log, or a mention scan's read. */
 export class GhRefusedError extends Error {
     name = 'GhRefusedError';
     constructor(args) {
-        super(`teamrig only runs gh for its shipped issue queries, its two watch probes, to open, read, comment on, edit the body of, label, assign, close or link an issue, to read a failed job's log, and to read the posts that may mention a user: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
+        super(`teamrig only runs gh for its shipped issue queries, its two watch probes, to open, read, comment on, edit the body of, label, assign, close, link, type or set a field of an issue, to read a failed job's log, and to read the posts that may mention a user: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
     }
 }
 /** True for each fixed command line the runner starts; it also makes a label a read label file named (isFileLabelCreate). */
@@ -555,6 +611,8 @@ export function isAllowedGh(args) {
         isUserRead(args) ||
         isLabelCreate(args) ||
         isLinkAdd(args) ||
+        isFieldValueSet(args) ||
+        isIssueTypeSet(args) ||
         isWatchProbe(args) ||
         isJobLogRead(args) ||
         isMentionRead(args) ||
