@@ -675,6 +675,24 @@ describe('RegisterPolicy.setStatus to verifying', () => {
     assert.equal(waiting.ok, true, 'a waiting task may wait on one not started');
   });
 
+  it("refuses a proof on its owner's open task planned after an unfinished one, naming it, as that task cannot start now", () => {
+    const started = '2030-01-07T10:00:00.000Z';
+    const tasks = [
+      testTask({ id: 'T4', owner: 'bravo', status: 'in-progress', startedAt: started }),
+      testTask({ id: 'T5', owner: 'bravo', status: 'done', startedAt: started }),
+      testTask({ id: 'T6', owner: 'alpha', status: 'open' }),
+      testTask({ id: 'T8', owner: 'alpha', status: 'open', after: ['T5', 'T4', 'T6'] }),
+      testTask({ id: 'T9', owner: 'alpha', status: 'open', after: ['T5'] }),
+    ];
+    const context = { ...CTX, state: stateOf(TASK, ...tasks) };
+    const onTask = (id: string): StatusInput => ({ status: 'verifying', note: 'shipped', proof: 'p', waits: [{ kind: 'task', id }], followups: [] });
+    assert.equal(
+      error(policy.setStatus(TASK, 'alpha', onTask('T8'), context)),
+      "T8 is planned after T4, T6, not finished yet, so it cannot start now: a proof waits on an open task of its own owner's only once it can start; until then, set T1 waiting on it (--status waiting --waits task:T8)",
+    );
+    assert.equal(policy.setStatus(TASK, 'alpha', onTask('T9'), context).ok, true, 'every task T9 is planned after is finished, so it can start now');
+  });
+
   it("refuses a peer's approval of the proof, naming the ask that makes it the peer's task", () => {
     const peer = { status: 'verifying' as const, note: 'x', proof: 'p', waits: [{ kind: 'approval' as const, who: 'bravo' }], followups: [] };
     assert.equal(
