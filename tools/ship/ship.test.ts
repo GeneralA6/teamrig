@@ -27,7 +27,7 @@ describe('ship cli', () => {
     assert.equal(check.stderr, 'usage: ship.ts check <repo dir>\n');
     const merge = repo.run(CLI, ['merge']);
     assert.equal(merge.status, 1, merge.stdout);
-    assert.match(merge.stderr, /^usage: ship\.ts merge <repo dir> \[--head <branch>\]/);
+    assert.match(merge.stderr, /^usage: ship\.ts merge <repo dir> \[--head <branch> \| --release <task>\]/);
     const pr = repo.run(CLI, ['pr']);
     assert.equal(pr.status, 1, pr.stdout);
     assert.equal(pr.stderr, 'usage: ship.ts pr <repo dir> --head <branch> --approved <sha> [--note-file <path>]\n');
