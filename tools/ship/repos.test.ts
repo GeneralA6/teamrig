@@ -77,9 +77,11 @@ test('reads what a merge checks locally, full when not listed, and refuses anoth
   assert.throws(() => parseProfiles(entry('local', '"changed"')), /O\/R "mergeChecks": "changed" needs the "ci" gate/);
 });
 
-test('the shipped repos.json keeps every repo\'s merge on the whole local suite until its main requires CI (T3414)', () => {
+test('the shipped repos.json keeps every repo\'s merge on the whole local suite until its main requires CI (T3414); teamrig\'s does, so its merge runs the changed checks (#1464)', () => {
   const profiles = readProfiles();
-  for (const slug of repoSlugs(profiles)) assert.equal(profileFor(profiles, slug).mergeChecks, 'full', slug);
+  // This repository's main requires CI (.github/rulesets/main.json), so a second full local run at merge only repeats it.
+  assert.ok(rulesetRequiredChecks().length > 0, 'teamrig\'s main requires CI');
+  for (const slug of repoSlugs(profiles)) assert.equal(profileFor(profiles, slug).mergeChecks, slug === 'GeneralA6/teamrig' ? 'changed' : 'full', slug);
 });
 
 test('the shipped repos.json names each repo\'s every-check-passed job its summary', () => {
