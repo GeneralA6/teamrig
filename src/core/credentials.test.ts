@@ -1,13 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  nodeProgramRunner,
-  systemCredentials,
-  windowsReadScript,
-  type ProgramRequest,
-  type ProgramResult,
-  type ProgramRunner,
-} from './credentials.ts';
+import { systemCredentials, windowsReadScript } from './credentials.ts';
+import type { ProgramRequest, ProgramResult, ProgramRunner } from './program-runner.ts';
 
 const NAME = 'teamrig-gh-acme';
 const TOKEN = 'tok-acme';
@@ -113,19 +107,5 @@ describe('credential names', () => {
       reason: `"acme'; rm" is not a credential name: letters, digits, '.', '_' or '-'`,
     });
     assert.deepEqual(runner.ran, []);
-  });
-});
-
-describe('nodeProgramRunner', () => {
-  it('runs a program with no shell and gives its end, stdout and stderr', async () => {
-    const result = await nodeProgramRunner()({
-      program: process.execPath,
-      args: ['-e', 'process.stdout.write("out"); process.stderr.write("err"); process.exitCode = 3'],
-    });
-    assert.deepEqual(result, { end: { kind: 'exited', code: 3 }, stdout: 'out', stderr: 'err' });
-  });
-
-  it('rejects when the program is not there', async () => {
-    await assert.rejects(nodeProgramRunner()({ program: 'teamrig-no-such-program', args: [] }), { code: 'ENOENT' });
   });
 });

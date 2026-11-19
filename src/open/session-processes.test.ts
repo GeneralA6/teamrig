@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { StartedProcess, SweepHost } from '../delivery/tree-kill.ts';
-import type { ProgramRequest, ProgramResult } from '../github/credentials.ts';
+import type { ProgramRequest, ProgramResult } from '../core/program-runner.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { FakeSweepHost } from '../testing/fake-sweep-host.ts';
 import { FakeWindowsPowerShell } from '../testing/fake-windows-powershell.ts';
