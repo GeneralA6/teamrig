@@ -1,0 +1,41 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import * as api from './index.ts';
+
+describe('the plugin API surface', () => {
+  it('exports what an adapter builds on, and nothing leaves or joins it unseen', () => {
+    assert.deepEqual(Object.keys(api).sort(), [
+      'ADAPTER_ID',
+      'API_VERSION',
+      'CONNECTOR_FEATURES',
+      'CONNECTOR_KINDS',
+      'HOST_FEATURES',
+      'OSES',
+      'adapterEntry',
+      'apiVersionNotice',
+      'connectorAdapterProblems',
+      'connectorDeclarationProblems',
+      'declarationProblems',
+      'defineConnector',
+      'defineHost',
+      'featuresOf',
+      'hostAdapterProblems',
+      'hostDeclarationProblems',
+      'isApiVersion',
+      'isConnectorAdapter',
+      'isConnectorDeclaration',
+      'isConnectorFeatureId',
+      'isConnectorKind',
+      'isHostAdapter',
+      'isHostDeclaration',
+      'isHostFeatureId',
+      'isManifest',
+      'isOs',
+      'isProofRef',
+      'isSupport',
+      'manifestProblems',
+      'provedOn',
+      'supportProblem',
+    ]);
+  });
+});
