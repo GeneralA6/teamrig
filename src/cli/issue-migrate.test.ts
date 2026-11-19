@@ -22,8 +22,8 @@ function issueRow(id: string, repo: string, title: string, overrides: JsonRecord
 }
 
 /** A team with three open tasks, T1 to T3, and rows opening T1 in acme/web, T2 in acme/api as a p1 bug, keeping T3 local. */
-async function migratingTeam(): Promise<CliHarness> {
-  const kit = new CliHarness(GITHUB_TEAM);
+async function migratingTeam(config: JsonRecord = GITHUB_TEAM): Promise<CliHarness> {
+  const kit = new CliHarness(config);
   for (const title of ['Private health check', 'Private login bug', 'Private host move']) {
     const added = await kit.run(['add', '--title', title, '--description', 'private what and why', '--priority', 'p2', '--owner', 'alpha'], AS_LEAD);
     assert.equal(added.code, EXIT.ok, [...added.stdout, ...added.stderr].join('\n'));
@@ -125,6 +125,17 @@ describe('teamrig issue migrate', () => {
     assert.deepEqual(lines.slice(0, 2), [replaces, '2 issue(s) to open, 1 kept local, 0 skipped, 0 live task(s) with no row']);
     assert.equal(tasksOf(kit).get('T1')?.ref, 'gh:acme/web#1');
     assert.ok((kit.files.get(EVENTS_PATH) ?? '').includes('ref was: notes/plan.md'));
+  });
+
+  it("lets the migrate role's holder open another session's task, and skips one kept local (T4606)", async () => {
+    const kit = await migratingTeam({ ...GITHUB_TEAM, serviceRoles: { github: { holders: ['bravo'], commands: ['issue migrate'] } } });
+    const kept = await kit.run(['update', 'T1', '--ref', 'local: security hole, private'], { env: { TEAMRIG_SESSION: 'alpha' } });
+    assert.equal(kept.code, EXIT.ok, kept.stdout.join('\n'));
+    const result = await kit.run(['issue', 'migrate', 'rows.jsonl', '--yes'], { env: { TEAMRIG_SESSION: 'bravo' }, gh: new FakeGh() });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.deepEqual(result.stdout.slice(0, 2), ['SKIPPED T1: only the owner (alpha) or the lead (lead) changes T1', '1 issue(s) to open, 1 kept local, 1 skipped, 0 live task(s) with no row']);
+    assert.equal(tasksOf(kit).get('T1')?.ref, 'local: security hole, private');
+    assert.equal(tasksOf(kit).get('T2')?.ref, 'gh:acme/api#1');
   });
 
   it('stops, opening nothing through the gh login, when the store holds the key but cannot read it', async () => {

@@ -1072,6 +1072,9 @@ describe('RegisterPolicy.update', () => {
     assert.equal(error(tree.update(bravos, 'alpha', { ref: 'gh:acme/app#7' }, undefined, EMPTY)), notLeader, 'a session holding no such role');
     const closer = new RegisterPolicy(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie'], serviceRoles: { github: { holders: ['charlie'], commands: ['issue close'] } } }));
     assert.equal(error(closer.update(bravos, 'charlie', { ref: 'gh:acme/app#7' }, undefined, EMPTY)), notLeader, 'a role without issue migrate');
+    const kept = testTask({ id: 'T9', owner: 'bravo', ref: 'local: security hole, private' });
+    assert.equal(error(tree.update(kept, 'charlie', { ref: 'gh:acme/app#7' }, undefined, EMPTY)), notLeader, 'a task kept local stays local');
+    assert.equal(tree.update(kept, 'lead', { ref: 'gh:acme/app#7' }, undefined, EMPTY).ok, true, 'its leader lifts the mark');
   });
 
   it('keeps a class the team renamed out of focus.classes on any other change, and refuses setting one outside them (T2076)', () => {
