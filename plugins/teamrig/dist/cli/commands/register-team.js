@@ -144,7 +144,21 @@ export async function tellLine(runtime, team, by, to, text, unsent, shown = to) 
 /** Posts one line to an inbox of the team at `paths`, naming it on stderr as `shown`, or naming `unsent` and why; true when posted. */
 export async function postNamed(runtime, paths, secrets, line, unsent, shown) {
     const { inboxes } = inboxDepsOf(runtime, paths);
-    const problem = await postLine(inboxes, secrets, { ...line, now: new Date(runtime.clock.now()) });
+    const problem = await postNotice(inboxes, secrets, { ...line, now: new Date(runtime.clock.now()) });
     runtime.out.stderr(problem === undefined ? `NOTE ${shown} has an inbox line: ${line.text}` : `WARN ${unsent}: ${problem}`);
     return problem === undefined;
+}
+/**
+ * Posts a notice line that follows a register write: why it was not posted, else undefined. postLine names a line it
+ * refuses but throws the inbox file's own write error (a full disk, a file another program holds); that becomes the
+ * reason here, so the command whose register write already landed warns and exits 0, never FAILED, and its other
+ * lines still post (#745).
+ */
+export async function postNotice(inboxes, secrets, input) {
+    try {
+        return await postLine(inboxes, secrets, input);
+    }
+    catch (error) {
+        return `the inbox write failed (${errorMessage(error)})`;
+    }
 }
