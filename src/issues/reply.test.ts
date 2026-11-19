@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FAKE_VIEWER, FakeIssueHost } from '../testing/fake-issue-host.ts';
+import { trackerOnly } from '../testing/split-hosts.ts';
 import { testTask } from '../testing/task.ts';
 import { checkReply, closesIssue, sendReply, type ReplyWrite } from './reply.ts';
 import { sessionLogins } from './status-push.ts';
@@ -114,6 +115,24 @@ describe('issue reply (T3169)', () => {
     assert.equal(ok, false);
     assert.equal(lines.at(-1), 'FAILED acme/web#922: acme/web#922 is closed while T5 is verifying: reopen it, or end the task, before replying; the comment was not posted');
     assert.deepEqual(host.calls, []);
+  });
+
+  it('reads and sends with a tracker that is no code host (T4619)', async () => {
+    const host = new FakeIssueHost().hasLabels('status:in review').holdsThread(922, { labels: ['status:open'] }).holdsThread(7, { pull: true, body: 'Adds it.', labels: [] });
+    const tracker = trackerOnly(host);
+    const write: ReplyWrite = { target: TARGET, body: 'On it.', pull: 7, followup: { title: 'The rest', body: '' }, assign: [] };
+    const lines: string[] = [];
+    const say = (line: string): void => {
+      lines.push(line);
+    };
+    const check = await checkReply(tracker, write, say);
+    assert.ok(check.kind === 'read', lines.join('\n'));
+    const task = testTask({ id: 'T5', owner: 'bravo', status: 'verifying', ref: 'gh:acme/web#922' });
+    assert.ok(await sendReply(tracker, write, check.reads, task, LOGINS, say), lines.join('\n'));
+    assert.deepEqual(
+      host.calls.map((call) => call.kind),
+      ['label-add', 'label-remove', 'assign', 'body', 'open', 'comment'],
+    );
   });
 });
 

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { FailedJob, HostPull } from '../issues/pull.ts';
 import { FakeIssueHost } from '../testing/fake-issue-host.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { codeHostOnly } from '../testing/split-hosts.ts';
 import { ciExcerptName, ciExcerptText, LOG_READS_PER_RUN, withCiExcerpts, type CiDeps } from './ci-excerpt.ts';
 import type { PullEvent } from './pull-news.ts';
 
@@ -96,6 +97,13 @@ describe('withCiExcerpts', () => {
     const ci = await withCiExcerpts(deps(new FakeIssueHost(), new FullDisk()), events);
     assert.deepEqual(ci.events, events);
     assert.deepEqual(ci.lines, [`FAILED CI LOG gh:acme/web#12: ${join(DIR, 'acme-web-12.md')} could not be written: ENOSPC: no space left on device`]);
+  });
+
+  it('reads the job logs through a code host that is no tracker (T4619)', async () => {
+    const host = new FakeIssueHost().holdsJobLog(120, { kind: 'read', step: 'Run tests', lines: ['not ok 3 - parses'] });
+    const ci = await withCiExcerpts({ ...deps(host), host: codeHostOnly(host) }, [{ kind: 'checks-failing', pull: pull(12) }]);
+    assert.deepEqual(ci.events[0]?.ci?.jobs, [{ name: 'test (ubuntu-latest)', step: 'Run tests' }]);
+    assert.deepEqual(host.jobLogReads, [{ repo: 'acme/web', jobId: 120 }]);
   });
 });
 

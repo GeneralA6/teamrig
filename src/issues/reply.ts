@@ -1,6 +1,6 @@
 import type { Task } from '../register/fold.ts';
 import { DESIGN_LABEL } from './design-label.ts';
-import { targetText, type IssueHost, type IssueTarget } from './host.ts';
+import { targetText, type Assignees, type Comments, type HostAccess, type IssueStore, type IssueTarget, type Labels } from './host.ts';
 import type { IssueThread } from './issue.ts';
 import { applyPush } from './push-apply.ts';
 import { planAssigned, viewerOf } from './push-assignees.ts';
@@ -44,7 +44,7 @@ export type ReplyCheck = { readonly kind: 'read'; readonly reads: ReplyReads } |
  * request (open and one), and each login to assign (one the repository may assign). Run before the register is set,
  * so a reply that cannot be sent changes nothing anywhere.
  */
-export async function checkReply(host: IssueHost, write: ReplyWrite, say: (line: string) => void): Promise<ReplyCheck> {
+export async function checkReply(host: HostAccess & IssueStore & Assignees, write: ReplyWrite, say: (line: string) => void): Promise<ReplyCheck> {
   const { target } = write;
   const reach = await host.reach(target.repo, 'write');
   if (reach.kind === 'unreachable') {
@@ -88,7 +88,7 @@ export async function checkReply(host: IssueHost, write: ReplyWrite, say: (line:
 }
 
 /** One read of `target`, refused when the host has none or it is not of the kind `pull` names (either, when undefined). */
-async function threadOf(host: IssueHost, target: IssueTarget, pull: boolean | undefined): Promise<{ readonly kind: 'read'; readonly thread: IssueThread } | { readonly kind: 'refused'; readonly reason: string }> {
+async function threadOf(host: IssueStore, target: IssueTarget, pull: boolean | undefined): Promise<{ readonly kind: 'read'; readonly thread: IssueThread } | { readonly kind: 'refused'; readonly reason: string }> {
   const shown = targetText(target);
   const read = await host.thread(target);
   if (read.kind === 'failed') {
@@ -111,7 +111,7 @@ async function threadOf(host: IssueHost, target: IssueTarget, pull: boolean | un
  * `task` is the one holding an issue; a pull request has none, its labels checked by checkReply. True when every step
  * was done.
  */
-export async function sendReply(host: IssueHost, write: ReplyWrite, reads: ReplyReads, task: Task | undefined, logins: SessionLogins, say: (line: string) => void): Promise<boolean> {
+export async function sendReply(host: IssueStore & Comments & Labels & Assignees, write: ReplyWrite, reads: ReplyReads, task: Task | undefined, logins: SessionLogins, say: (line: string) => void): Promise<boolean> {
   const { target } = write;
   const shown = targetText(target);
   const done: string[] = [];
@@ -179,7 +179,7 @@ type PullLink = { readonly kind: 'done'; readonly done: readonly string[] } | { 
  * pull request to the issues its body closes), and the issue's own labels it lacks added, but for the status and
  * design labels, which are the issue's alone.
  */
-async function linkPull(host: IssueHost, target: IssueTarget, pull: IssueTarget, reads: ReplyReads, say: (line: string) => void): Promise<PullLink> {
+async function linkPull(host: IssueStore & Labels, target: IssueTarget, pull: IssueTarget, reads: ReplyReads, say: (line: string) => void): Promise<PullLink> {
   const shown = targetText(pull);
   const pullThread = reads.pull;
   if (pullThread === undefined) {

@@ -1,5 +1,5 @@
 import { DESIGN_LABEL } from './design-label.ts';
-import { targetText, type IssueHost, type IssueTarget } from './host.ts';
+import { targetText, type Assignees, type HostAccess, type IssueTarget, type Labels } from './host.ts';
 
 /** The most logins one assign adds and takes off together: a hand write gives an item to its takers, never a crowd. */
 export const MAX_ASSIGN_LOGINS = 3;
@@ -36,7 +36,7 @@ export function loginRefusal(login: string): string | undefined {
  * asking to take it), so the host never drops one silently. The first failure stops it, and a failure after a write
  * says what was done.
  */
-export async function assignIssue(host: IssueHost, write: AssignWrite, say: (line: string) => void): Promise<AssignEnd> {
+export async function assignIssue(host: HostAccess & Labels & Assignees, write: AssignWrite, say: (line: string) => void): Promise<AssignEnd> {
   const shown = targetText(write.target);
   const reach = await host.reach(write.target.repo, 'write');
   if (reach.kind === 'unreachable') {
