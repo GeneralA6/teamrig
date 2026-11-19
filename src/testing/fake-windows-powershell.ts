@@ -1,4 +1,4 @@
-import type { ProgramRequest, ProgramResult } from '../github/credentials.ts';
+import type { ProgramRequest, ProgramResult } from '../core/program-runner.ts';
 
 /** One process as Win32_Process describes it; a null command line is one Windows does not show. */
 export interface Win32Process {

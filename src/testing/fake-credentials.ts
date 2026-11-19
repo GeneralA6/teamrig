@@ -1,4 +1,4 @@
-import type { CredentialRead, CredentialStore } from '../github/credentials.ts';
+import type { CredentialRead, CredentialStore } from '../core/credentials.ts';
 import { tokenName } from '../github/tokens.ts';
 
 /** The repository owners the specs' GitHub teams list: `acme/web`, `globex/api`. */

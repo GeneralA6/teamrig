@@ -1,6 +1,6 @@
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { powerShellRequest } from '../core/powershell.ts';
-import type { ProgramRunner } from '../github/credentials.ts';
+import type { ProgramRunner } from '../core/program-runner.ts';
 import { powerShellOutput } from './powershell-output.ts';
 
 /** The file name of the shortcut that runs a restore by hand, in the Start menu and wherever the person copied or pinned it. */
