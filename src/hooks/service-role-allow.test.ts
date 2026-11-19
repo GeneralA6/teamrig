@@ -35,6 +35,15 @@ describe('service-role allow: the daily cap and the log', () => {
     assert.equal(roleAllowsSince('', 'github', 0), 0);
   });
 
+  it('weighs a migrate by the issue rows its line names, and any line with no positive whole count as one (T4606)', () => {
+    const migrate = { command: 'issue migrate', target: '/kit/teams/app/tasks/T1/rows.jsonl', session: 'alpha' } as const;
+    const at = '2030-01-07T11:00:00.000Z';
+    const counted = toJsonlLine(roleAllowRecord({ at: new Date(at), session: 'alpha', claudeSession: 'c', role: 'github', call: migrate, count: 5 }));
+    const odd = [0, -2, 1.5, '7'].map((count) => toJsonlLine({ v: 1, at, answer: 'role', role: 'github', command: 'issue migrate', target: 'x', count }));
+    assert.equal(roleAllowsSince([counted, line(at, 'github'), ...odd].join(''), 'github', now - ROLE_CAP_WINDOW_MS), 5 + 1 + odd.length);
+    assert.equal(recordOf(counted)['count'], 5);
+  });
+
   it('logs the role, command and issue, never the text', () => {
     const record = roleAllowRecord({ at: new Date(now), session: 'alpha', claudeSession: 'c', role: 'github', call });
     assert.deepEqual(record, {

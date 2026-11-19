@@ -246,20 +246,38 @@ describe('hook route-allow: the ship role (T2984)', () => {
 describe('hook route-allow: the migrate role (T4606)', () => {
   const ROWS = `${TASKS}/T1/rows.jsonl`;
   const MIGRATE = `teamrig issue migrate ${ROWS} --yes --session alpha`;
+  const ROWS_FILE = resolve(TEAM_HOME, 'tasks', 'T1', 'rows.jsonl');
   const migrates = { serviceRoles: { github: { holders: ['alpha'], commands: ['issue close', 'issue migrate'] } } };
+  const issueRow = (id: string): string => JSON.stringify({ id, decision: 'issue', repo: 'acme/web', type: 'task', priority: 'p2', title: `Fix ${id.slice(1)}`, body: 'Why.' });
 
-  it("allows the holder's run on a rows file in a task folder, logging the resolved file", async () => {
-    const kit = await boundKit(migrates);
+  /** A role team bound to alpha whose rows file holds `issues` issue rows and one local row. */
+  async function migrateKit(issues: number, extra: JsonRecord = {}): Promise<CliHarness> {
+    const kit = await boundKit({ ...migrates, ...extra });
+    const rows = Array.from({ length: issues }, (_, index) => issueRow(`T${index + 2}`));
+    await kit.files.write(ROWS_FILE, [...rows, JSON.stringify({ id: 'T99', decision: 'local', reason: 'Names a host.' })].join('\n'));
+    return kit;
+  }
+
+  it("allows the holder's run on a rows file in a task folder, logging the resolved file and its issue rows", async () => {
+    const kit = await migrateKit(2);
     const result = await kit.run(HOOK, { stdin: call(MIGRATE), env: ALPHA });
     assert.equal(decisionOf(result), 'allow');
     assert.deepEqual(result.stderr, []);
     assert.deepEqual(await answersOf(kit), [
-      { v: 1, at: '2030-01-08T10:00:00.000Z', session: 'alpha', claudeSession: CLAUDE_SESSION, tool: 'Bash', event: 'PreToolUse', answer: 'role', role: 'github', command: 'issue migrate', target: resolve(TEAM_HOME, 'tasks', 'T1', 'rows.jsonl') },
+      { v: 1, at: '2030-01-08T10:00:00.000Z', session: 'alpha', claudeSession: CLAUDE_SESSION, tool: 'Bash', event: 'PreToolUse', answer: 'role', role: 'github', command: 'issue migrate', target: ROWS_FILE, count: 2 },
     ]);
   });
 
-  it('gives no role for a rows file outside the task folders, a preview, or a role without the command', async () => {
+  it('gives no role for a rows file it cannot weigh: missing, or holding a row the run refuses', async () => {
     const kit = await boundKit(migrates);
+    assert.deepEqual(await kit.run(HOOK, { stdin: call(MIGRATE), env: ALPHA }), NOTHING, 'missing');
+    await kit.files.write(ROWS_FILE, `${issueRow('T2')}\nnot json`);
+    assert.deepEqual(await kit.run(HOOK, { stdin: call(MIGRATE), env: ALPHA }), NOTHING, 'a bad row');
+    assert.deepEqual(await answersOf(kit), []);
+  });
+
+  it('gives no role for a rows file outside the task folders, a preview, or a role without the command', async () => {
+    const kit = await migrateKit(1);
     for (const line of [
       `teamrig issue migrate ${TASKS}/rows.jsonl --yes --session alpha`,
       `teamrig issue migrate ${TASKS.replace('/tasks', '/state')}/rows.jsonl --yes --session alpha`,
@@ -272,11 +290,22 @@ describe('hook route-allow: the migrate role (T4606)', () => {
     assert.deepEqual(await answersOf(kit), []);
   });
 
-  it('counts a run toward the daily cap with the closes, once however many rows it holds (C6)', async () => {
-    const kit = await boundKit({ ...migrates, prompts: { serviceRoleDailyCap: 2 } });
+  it('counts each issue row of a run toward the daily cap with the closes, refusing a run past the room left (C6)', async () => {
+    const kit = await migrateKit(2, { prompts: { serviceRoleDailyCap: 3 } });
     assert.equal(decisionOf(await kit.run(HOOK, { stdin: call(CLOSE), env: ALPHA })), 'allow');
-    assert.equal(decisionOf(await kit.run(HOOK, { stdin: call(MIGRATE), env: ALPHA })), 'allow');
-    assert.equal(decisionOf(await kit.run(HOOK, { stdin: call(MIGRATE), env: ALPHA })), 'deny');
+    assert.equal(decisionOf(await kit.run(HOOK, { stdin: call(MIGRATE), env: ALPHA })), 'allow', 'one close and two issues fill the cap of 3');
+    assert.equal(decisionOf(await kit.run(HOOK, { stdin: call(CLOSE), env: ALPHA })), 'deny', 'a close past them');
     assert.equal((await answersOf(kit)).length, 2);
+
+    const tight = await migrateKit(3, { prompts: { serviceRoleDailyCap: 3 } });
+    assert.equal(decisionOf(await tight.run(HOOK, { stdin: call(CLOSE), env: ALPHA })), 'allow');
+    const refused = await tight.run(HOOK, { stdin: call(MIGRATE), env: ALPHA });
+    assert.equal(decisionOf(refused), 'deny', 'three issues where two are left');
+    assert.match(refused.stdout.join(''), /has less room than this run's 3 issue rows left of its 3 calls/);
+    assert.doesNotMatch(refused.stdout.join(''), /split it/);
+    assert.equal((await answersOf(tight)).length, 1);
+
+    const big = await migrateKit(4, { prompts: { serviceRoleDailyCap: 3 } });
+    assert.match((await big.run(HOOK, { stdin: call(MIGRATE), env: ALPHA })).stdout.join(''), /more issue rows than the cap never runs under the role: split it/, 'a file past the whole cap');
   });
 });
