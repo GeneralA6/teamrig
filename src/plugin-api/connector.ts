@@ -4,6 +4,7 @@ import type { Env } from '../core/home.ts';
 import type { ProgramRunner } from '../core/program-runner.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { featuresOf, isConnectorKind, type ConnectorKind } from '../features/registry.ts';
+import type { CodeHost, Tracker } from '../issues/host.ts';
 import { adapterEntry, declarationProblems, type AdapterDeclaration } from './declaration.ts';
 import { isSupport } from './support.ts';
 
@@ -25,10 +26,10 @@ export interface ConnectorDeps {
   readonly stamp: boolean;
 }
 
-/** The ports a connector builds, one group per kind it declares. No port type is named yet: the port split gives each group its own. */
+/** The ports a connector builds, one per kind it declares: a tool that is both kinds, as GitHub is, builds both. */
 export interface ConnectorPorts {
-  readonly tracker?: object;
-  readonly codeHost?: object;
+  readonly tracker?: Tracker;
+  readonly codeHost?: CodeHost;
 }
 
 /** The adapter of one outside tool: its declaration, and the ports it builds once the loader has accepted it. */
