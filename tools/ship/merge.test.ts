@@ -502,6 +502,27 @@ interface RunFixture {
    * and why the release check refuses its head (it never does unless given). Unset, repos.json lists none.
    */
   release?: { open?: boolean; refusal?: string };
+  /** Whether main merges through GitHub's merge queue (T3386): its pull request is out of the queue, then merged at QUEUED. */
+  queue?: boolean;
+}
+
+/** The queue's merge commit of the pull request, which main on origin holds once it landed. */
+const QUEUED = 'queued0eee';
+
+/** GitHub's merge queue in front of `rest`: the graphql reads and the enqueue go to it, every other call to `rest`. */
+function withMergeQueue(rest: Gh, enqueued: string[][]): Gh {
+  let reads = 0;
+  return args => {
+    if (args[1] !== 'graphql') return rest(args);
+    if (args.some(arg => arg.startsWith('query=mutation'))) {
+      enqueued.push([...args]);
+      return JSON.stringify({ data: { enqueuePullRequest: { mergeQueueEntry: { state: 'QUEUED', position: 1 } } } });
+    }
+    const merged = reads++ > 0;
+    return JSON.stringify({
+      data: { repository: { pullRequest: { id: 'PR_node3', merged, mergeCommit: merged ? { oid: QUEUED } : null, mergeQueueEntry: null, timelineItems: { nodes: [] } } } },
+    });
+  };
 }
 
 /** The branch the release tool keeps the release pull request on (T4645). */
@@ -584,6 +605,8 @@ function runFixture(fixture: RunFixture = {}): {
   catchUp: ReturnType<typeof mock.fn<MergeDeps['catchUp']>>;
   /** Each step-away and step-back of the step's host share, in turn, with the catch-ups run before it. */
   shareCalls: string[];
+  /** Each enqueue call to GitHub's merge queue (fixture `queue`). */
+  enqueued: string[][];
 } {
   const gitCalls: string[] = [];
   const shareCalls: string[] = [];
@@ -609,6 +632,7 @@ function runFixture(fixture: RunFixture = {}): {
     'rev-parse --verify --quiet abc1234^{commit}': SHA,
     [`fetch --quiet origin ${RELEASE} main`]: '',
     [`rev-parse refs/remotes/origin/${RELEASE}`]: SHA,
+    [`merge-base ${BASE} ${QUEUED}`]: QUEUED,
   };
   const out: string[] = [];
   const err: string[] = [];
@@ -623,7 +647,9 @@ function runFixture(fixture: RunFixture = {}): {
   let mainFetches = 0;
   let raced = fixture.racedFetches ?? 0;
   const local = fakeGate(fixture.local ?? {}, line => out.push(line));
-  const ghFor = mock.fn((_token: string): Gh => gh);
+  const enqueued: string[][] = [];
+  const github = fixture.queue === true ? withMergeQueue(gh, enqueued) : gh;
+  const ghFor = mock.fn((_token: string): Gh => github);
   const renamedCallers = mock.fn((_base: string, _tip: string, _repo: string): string | null => fixture.renamedCallers ?? null);
   const sweep = mock.fn<MergeDeps['sweep']>(() => undefined);
   const clearMerge = mock.fn<MergeDeps['clearMerge']>(() => Promise.resolve(fixture.clearance ?? { kind: 'approved', by: 'lead' }));
@@ -646,7 +672,7 @@ function runFixture(fixture: RunFixture = {}): {
       if (answer === undefined) throw new Error(`unexpected git ${key}`);
       return answer;
     },
-    profiles: parseProfiles(`{"${REPO}":{"main":"main","gate":"${fixture.local === undefined ? 'ci' : 'local'}","checks":["gates","test"],"regenerated":["out/"],${LOCAL_PROFILE}${releaseProfile}}}`),
+    profiles: parseProfiles(`{"${REPO}":{"main":"main","gate":"${fixture.local === undefined ? 'ci' : 'local'}","checks":["gates","test"],"regenerated":["out/"],${LOCAL_PROFILE}${releaseProfile}${fixture.queue === true ? ',"queue":true' : ''}}}`),
     credential: () => fixture.credential ?? { kind: 'found', secret: GH_SECRET },
     ghFor,
     waiter: fakeWaiter(),
@@ -680,7 +706,7 @@ function runFixture(fixture: RunFixture = {}): {
     out: line => out.push(line),
     err: line => err.push(line),
   };
-  return { deps, gitCalls, out, err, ghFor, ghWrites: writes, local, renamedCallers, sweep, clearMerge, clearTaskMerge, releaseRefusal, catchUp, shareCalls };
+  return { deps, gitCalls, out, err, ghFor, ghWrites: writes, local, renamedCallers, sweep, clearMerge, clearTaskMerge, releaseRefusal, catchUp, shareCalls, enqueued };
 }
 
 const ARGS: MergeArgs = { dir: 'C:/repo', head: BRANCH, timeoutMin: 10, intervalS: 60, noteFile: null, approved: null, release: null };
@@ -732,6 +758,27 @@ test('merges the pushed head of a repo found from its origin remote, with the to
   assert.equal(ghFor.mock.calls[0]?.arguments[0], GH_SECRET);
   assert.equal(gitCalls[1], `fetch --quiet origin ${BRANCH} main`);
   assert.ok(!gitCalls.includes('rev-parse --abbrev-ref HEAD'), 'an explicit --head is not second-guessed');
+});
+
+test("on a merge queue repo, a head whose checks passed is enqueued at its sha with no landing turn and no merge call, and lands at the queue's commit (T3386)", async () => {
+  const { deps, gitCalls, out, err, ghWrites, enqueued, sweep } = runFixture({ queue: true });
+  assert.equal(await runMerge(ARGS, deps), 0);
+  assert.deepEqual(err, []);
+  assert.equal(enqueued.length, 1);
+  assert.ok(enqueued[0]?.includes(`head=${SHA}`), 'the queue takes the checked head only');
+  assert.ok(!gitCalls.includes('turn wait'), 'the queue orders the landings, so no landing turn is waited for');
+  assert.deepEqual(ghWrites.filter(write => write.some(arg => arg.endsWith('/merge'))), []);
+  assert.ok(out.includes(`enqueued #3 at ${SHA.slice(0, 7)} in the merge queue`));
+  assert.equal(out.at(-1), `MERGED #3 into main, now at ${QUEUED.slice(0, 7)}`);
+  assert.equal(sweep.mock.callCount(), 1);
+});
+
+test('without the merge queue, a head whose checks passed waits for its landing turn and merges through the merge call', async () => {
+  const { deps, gitCalls, ghWrites, enqueued } = runFixture();
+  assert.equal(await runMerge(ARGS, deps), 0);
+  assert.ok(gitCalls.includes('turn wait'));
+  assert.deepEqual(enqueued, []);
+  assert.equal(ghWrites.filter(write => write.some(arg => arg.endsWith('/merge'))).length, 1);
 });
 
 test('without --head it merges the branch checked out in the repo dir', async () => {
