@@ -318,9 +318,56 @@ function mergeOrLanded(gh: Gh, main: MainBranch, request: MergeRequest, pull: nu
   return { merged: false, message: `${first.message}; again: ${second.message}; ${request.base} does not hold the checked tree, so check #${pull} on GitHub before shipping again` };
 }
 
-export async function mergeThroughPull(request: MergeRequest, gh: Gh, main: MainBranch, proof: Proof, log: (line: string) => void): Promise<MergeResult> {
+/** How a proven pull request lands on main: GitHub's merge call from here, or GitHub's merge queue (merge-queue.ts). */
+export interface Landing {
+  /** main's move that stops `request` landing as checked, read before its proof; null when none. */
+  behind(request: MergeRequest): MainMove | null;
+  /** Lands the proven pull request at `request.sha`, or says why it did not. */
+  land(pull: PullRequest, request: MergeRequest, log: (line: string) => void): Promise<MergeResult>;
+}
+
+/**
+ * GitHub's merge call from here, pinned to the checked head: main read once more after the proof, as it may have
+ * moved while the checks ran, then the merge, then the tree main holds compared with the checked one.
+ */
+export function directLanding(gh: Gh, main: MainBranch): Landing {
+  return {
+    behind: request => behindMain(main, request),
+    land: async (pull, request, log) => {
+      const checkedTip = main.tip();
+      const moved = behindMain(main, request, checkedTip);
+      if (moved !== null) return { kind: 'moved', pull, ...moved };
+      const merged = mergeOrLanded(gh, main, request, pull.number, checkedTip, log);
+      if (!merged.merged) {
+        // Read main only for this answer: it names main's move, and the head is then simply behind it.
+        const raced = BASE_MODIFIED.test(merged.message) ? behindMain(main, request) : null;
+        if (raced !== null) return { kind: 'moved', pull, ...raced };
+        const rule = REPO_RULE.test(merged.message) ? " (a rule set on the repo, not the change: changing it is the repo owner's call, so report it and stop)" : '';
+        return { kind: 'refused', pull, reason: `GitHub refused the merge: ${merged.message}${rule}` };
+      }
+      const drift = driftAfter(main, request, merged.sha);
+      switch (drift.kind) {
+        case 'same':
+          return { kind: 'merged', pull, sha: merged.sha };
+        case 'drifted':
+          return { kind: 'drifted', pull, sha: merged.sha, reason: drift.reason };
+        case 'unread':
+          return { kind: 'unchecked', pull, sha: merged.sha, reason: drift.reason };
+      }
+    },
+  };
+}
+
+export async function mergeThroughPull(
+  request: MergeRequest,
+  gh: Gh,
+  main: MainBranch,
+  proof: Proof,
+  log: (line: string) => void,
+  landing: Landing = directLanding(gh, main),
+): Promise<MergeResult> {
   const { repo, head, base, sha } = request;
-  const stale = behindMain(main, request);
+  const stale = landing.behind(request);
   if (stale !== null) return { kind: 'moved', pull: null, ...stale };
   const unready = proof.before(sha);
   if (unready !== null) return { kind: 'refused', pull: null, reason: unready };
@@ -334,28 +381,7 @@ export async function mergeThroughPull(request: MergeRequest, gh: Gh, main: Main
 
   const failed = await proof.prove(sha, log);
   if (failed !== null) return { kind: 'refused', pull, reason: failed };
-  // main may have moved while the checks ran.
-  const checkedTip = main.tip();
-  const moved = behindMain(main, request, checkedTip);
-  if (moved !== null) return { kind: 'moved', pull, ...moved };
-
-  const merged = mergeOrLanded(gh, main, request, pull.number, checkedTip, log);
-  if (!merged.merged) {
-    // Read main only for this answer: it names main's move, and the head is then simply behind it.
-    const raced = BASE_MODIFIED.test(merged.message) ? behindMain(main, request) : null;
-    if (raced !== null) return { kind: 'moved', pull, ...raced };
-    const rule = REPO_RULE.test(merged.message) ? " (a rule set on the repo, not the change: changing it is the repo owner's call, so report it and stop)" : '';
-    return { kind: 'refused', pull, reason: `GitHub refused the merge: ${merged.message}${rule}` };
-  }
-  const drift = driftAfter(main, request, merged.sha);
-  switch (drift.kind) {
-    case 'same':
-      return { kind: 'merged', pull, sha: merged.sha };
-    case 'drifted':
-      return { kind: 'drifted', pull, sha: merged.sha, reason: drift.reason };
-    case 'unread':
-      return { kind: 'unchecked', pull, sha: merged.sha, reason: drift.reason };
-  }
+  return landing.land(pull, request, log);
 }
 
 /** git's refusal of a fetch whose remote ref another fetch of the same repo (another worktree) moved under it. */
