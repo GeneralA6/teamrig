@@ -22,6 +22,18 @@ export interface LocalChecks {
   runner: string | null;
 }
 
+/**
+ * The release pull request a release tool (release-please) keeps open on the repo (T4645): `ship.ts merge --release`
+ * merges it on its task's approval, like any pull request, when it raises only the version files' version (the
+ * `regenerated` files that are no folder) and adds only lines to `changelog`.
+ */
+export interface ReleasePull {
+  /** The branch the release tool keeps the release pull request on, and rewrites on each move of main. */
+  head: string;
+  /** The release notes file, relative to the repo dir, to which the release pull request adds its version's notes. */
+  changelog: string;
+}
+
 export interface RepoProfile {
   slug: string;
   /**
@@ -64,6 +76,8 @@ export interface RepoProfile {
    * Empty when not listed: any note, or none, opens one.
    */
   pullSections: readonly string[];
+  /** The repo's release pull request; null when not listed, so `ship.ts merge --release` refuses the repo. */
+  release: ReleasePull | null;
 }
 
 export const PROFILES_PATH = new URL('./repos.json', import.meta.url);
@@ -101,6 +115,18 @@ function parsePullSections(slug: string, value: unknown): readonly string[] {
   return value;
 }
 
+const BRANCH = /^[\w./-]+$/u;
+
+function parseRelease(slug: string, value: unknown): ReleasePull | null {
+  if (value === undefined) return null;
+  const head = isRecord(value) ? value['head'] : undefined;
+  const changelog = isRecord(value) ? value['changelog'] : undefined;
+  if (!isText(head) || !BRANCH.test(head) || !isText(changelog) || changelog.startsWith('/') || changelog.split('/').includes('..')) {
+    throw new Error(`repos.json: ${slug} "release" needs a "head" branch name and a "changelog" path inside the repo`);
+  }
+  return { head, changelog };
+}
+
 function parseRegenerated(slug: string, value: unknown): readonly string[] {
   if (value === undefined) return [];
   if (!isNameList(value) || value.some(path => path.startsWith('/') || path.split('/').includes('..'))) {
@@ -134,7 +160,7 @@ export function repoSlugs(profiles: ReadonlyMap<string, RepoProfile>): string[] 
 
 export function parseProfiles(json: string): Map<string, RepoProfile> {
   const body: unknown = JSON.parse(json);
-  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky", "aliases", "mergeChecks", "pullSections" } }');
+  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky", "aliases", "mergeChecks", "pullSections", "release" } }');
   const profiles = new Map<string, RepoProfile>();
   for (const [slug, entry] of Object.entries(body)) {
     if (!isRecord(entry) || typeof entry['main'] !== 'string' || !isNameList(entry['checks'])) throw new Error(`repos.json: ${slug} needs "main" and a "checks" list of names`);
@@ -155,6 +181,7 @@ export function parseProfiles(json: string): Map<string, RepoProfile> {
       flaky: parseFlaky(slug, entry['flaky'], entry['checks'], summary),
       mergeChecks: parseMergeChecks(slug, entry['mergeChecks'], gate),
       pullSections: parsePullSections(slug, entry['pullSections']),
+      release: parseRelease(slug, entry['release']),
     };
     for (const name of [slug, ...aliases]) {
       const key = name.toLowerCase();
