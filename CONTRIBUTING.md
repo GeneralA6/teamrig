@@ -303,6 +303,12 @@ join; agents follow [`dev-design-issue`](.claude/skills/dev-design-issue/SKILL.m
 - **A leg a docs run leaves out**: a check listed `conditional` in `tools/ship/repos.json` (teamrig's windows and
   macOS test legs) is one the run makes only for some changes; once `every check passed` passed without it, the
   merge stops waiting for it, and one that does show must pass.
+- **The merge queue** (off by default): when the repository's entry in `tools/ship/repos.json` says `"queue": true`,
+  which needs the `ci` gate, the merge puts the pull request in GitHub's merge queue at the checked head once its
+  checks pass, in place of its own merge call, and waits for the queue to land it. The queue orders the landings,
+  so the merge takes no landing turn. A pull request already queued is waited on, not queued again. One the queue
+  lets go unmerged stops the merge with GitHub's reason and the failed merge group run's jobs; one still queued at
+  the timeout stays queued, and a merge run again waits on it.
 - **Review**: a code owner (`.github/CODEOWNERS`: the maintainer) reviews the code and approves the last push, and a
   new push dismisses an approval given before it. The reviewer holds it to
   [What a change is held to](#what-a-change-is-held-to) and declines a wrong direction. On a threshold, limit or trigger the reviewer asks "can this
