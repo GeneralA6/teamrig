@@ -3,6 +3,14 @@
  * in hand. No config lists it (`register.priorities` ids start at 1), so every team has it, its own levels or not.
  */
 export const NOW_PRIORITY = { id: 0, name: 'urgent, right now' };
+/**
+ * True for work that must be done right now: p0, or a level teamrig puts above it. Every rule that drops what it does
+ * for such work (a closed session reopened to help with it, T4414) asks this, never `=== 0`, so a level added above p0
+ * passes it too.
+ */
+export function isRightNow(priority) {
+    return priority <= NOW_PRIORITY.id;
+}
 /** Every level a task may take, most urgent first: teamrig's p0, then the config's `register.priorities`. */
 export function priorityLevels(priorities) {
     return [NOW_PRIORITY, ...priorities];

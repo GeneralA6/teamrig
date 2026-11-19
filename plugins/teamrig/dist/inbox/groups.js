@@ -71,7 +71,7 @@ export function treeLeadsOf(tree, team) {
     });
 }
 /** The team whose task `reader` reads as `id` (T1139): its own when its register holds one, else the first to hold one. */
-function holderOf(registers, reader, id) {
+export function holderOf(registers, reader, id) {
     const own = registers.find((register) => register.team === reader);
     return own?.tasks.has(id) === true ? reader : registers.find((register) => register.tasks.has(id))?.team;
 }

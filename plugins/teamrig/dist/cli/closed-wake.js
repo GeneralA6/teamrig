@@ -94,8 +94,12 @@ export async function closedByTeamrig(runtime, kit, id) {
 export function closedTimedWakeLine(label, id, clock) {
     return `CLOSED: ${label} is closed, so this line waits: the idle pass reopens it for the line once it is due (${clock}) and the host has room, or run: ${KIT_NAME} open ${id}`;
 }
-/** The line a sender is shown for a closed session's wake, never WAKES; undefined for an open one. */
-export function closedWakeLine(wake, label, id) {
+/**
+ * The line a sender is shown for a closed session's wake, never WAKES; undefined for an open one. A wake for
+ * right-now work (`rightNow`, T4414) that could not reopen it now says its reopen goes first in the idle pass's line
+ * (`byReopenOrder` in src/cli/idle-pass.ts), so the sender knows it waits only for room, not behind other reopens.
+ */
+export function closedWakeLine(wake, label, id, rightNow = false) {
     switch (wake.kind) {
         case 'open':
             return undefined;
@@ -104,6 +108,6 @@ export function closedWakeLine(wake, label, id) {
                 ? `REOPENS ${label}: it was closed, and its reopen started a moment ago is still under way, so none started for this line; it opens once the host has room, the idle pass log saying REOPENED or KEPT with why (or run: ${KIT_NAME} open ${id})`
                 : `REOPENS ${label}: it was closed, and its reopen started now for this line; it opens once the host has room, the idle pass log saying REOPENED or KEPT with why (or run: ${KIT_NAME} open ${id})`;
         case 'closed':
-            return `CLOSED: ${label} was not woken: ${wake.why}; the idle pass tries again each minute, or run: ${KIT_NAME} open ${id}`;
+            return `CLOSED: ${label} was not woken: ${wake.why}; the idle pass tries again each minute${rightNow ? ", its reopen first in the pass's line as right-now work" : ''}, or run: ${KIT_NAME} open ${id}`;
     }
 }
