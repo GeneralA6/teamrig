@@ -1,6 +1,7 @@
 import { leftoversCommand } from './leftovers.ts';
 import { checkCommand } from './local-gate.ts';
 import { mergeCommand } from './merge.ts';
+import { openPullCommand } from './open-pull.ts';
 import { shipCommand } from './ship-command.ts';
 import { realShipDeps } from './ship-deps.ts';
 
@@ -14,6 +15,8 @@ import { realShipDeps } from './ship-deps.ts';
  *   node ship.ts check <repo dir>
  * And merges a pushed change branch into main (merge.ts: PR, its head proven by the repo's gate, rebase):
  *   node ship.ts merge <repo dir> [--head <branch>, default the checked-out one] [--timeout-min 45] [--interval-s 30]
+ * And opens the pull request of an approved head already pushed, with no gate and no merge (open-pull.ts):
+ *   node ship.ts pr <repo dir> --head <branch> --approved <sha> [--note-file <path>]
  * And deletes the heads of closed, unmerged pull requests on origin, then lists the other branches against main (leftovers.ts):
  *   node ship.ts leftovers <repo dir>
  * This file only dispatches to those commands, a ship with the real deps of ship-deps.ts; ship.test.ts runs it as its
@@ -22,6 +25,7 @@ import { realShipDeps } from './ship-deps.ts';
 
 const argv = process.argv.slice(2);
 if (argv[0] === 'merge') process.exitCode = await mergeCommand(argv.slice(1));
+else if (argv[0] === 'pr') process.exitCode = await openPullCommand(argv.slice(1));
 else if (argv[0] === 'check') process.exitCode = checkCommand(argv.slice(1));
 else if (argv[0] === 'leftovers') process.exitCode = leftoversCommand(argv.slice(1));
 else process.exitCode = await shipCommand(argv, realShipDeps, (line) => console.error(line));
