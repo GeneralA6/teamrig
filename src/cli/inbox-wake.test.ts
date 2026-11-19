@@ -144,6 +144,55 @@ describe('teamrig inbox add --wake now', () => {
   });
 });
 
+describe('teamrig inbox add naming right-now work (T4414)', () => {
+  /** The tree with alpha's own T1 at `priority`. */
+  async function withAlphaTask(priority: string): Promise<CliHarness> {
+    const kit = await treeHarness(LED);
+    const added = await kit.run(['add', '--title', 'Fix the outage', '--description', 'what and why', '--priority', priority, '--session', 'alpha']);
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    return kit;
+  }
+
+  it('wakes as --wake now a line with no wake flag that names an unfinished p0, and says so', async () => {
+    const kit = await withAlphaTask('p0');
+    const result = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'T1 needs your review', '--session', 'alpha']);
+    assert.deepEqual(result, {
+      code: EXIT.ok,
+      stdout: [
+        'POSTED to bravo; bravo is reminded at its next prompt',
+        "WAKES bravo if its tab is idle, within about 3 minutes: at least about 210k W for the first call, cold; whole turns usually cost more, on app's budget line",
+      ],
+      stderr: ['NOTE T1 is p0 work, so the line wakes as --wake now'],
+    });
+    assert.equal(askOf(kit, 'app', 'bravo'), formatWakeAsk({ from: 'alpha', text: 'T1 needs your review', at: NOW }));
+  });
+
+  it('posts with no wake, and says why, where --wake now would be refused: a group from a session that leads no one', async () => {
+    const kit = await withAlphaTask('p0');
+    const result = await kit.run(['inbox', 'add', '--to', 'all', '--text', 'T1 freezes main', '--session', 'alpha']);
+    assert.equal(result.code, EXIT.ok);
+    assert.deepEqual(result.stderr, [
+      "NOTE T1 is p0 work, but the line posts with no wake: --wake now on a group is a leader's: alpha leads no one on app; post the line without --wake, and each receiver reads it at its next prompt",
+    ]);
+    assert.equal(kit.files.get(teamInboxOf('app', 'bravo')), '- 2030-01-08 10:00 alpha: T1 freezes main\n');
+    assert.equal(askOf(kit, 'app', 'bravo'), undefined);
+  });
+
+  it('wakes no one for a line naming a p1, nor for a p0 once done', async () => {
+    const p1 = await withAlphaTask('p1');
+    const plain = await p1.run(['inbox', 'add', '--to', 'bravo', '--text', 'T1 needs your review', '--session', 'alpha']);
+    assert.deepEqual([plain.stdout, plain.stderr], [['POSTED to bravo; bravo is reminded at its next prompt'], []]);
+    assert.equal(askOf(p1, 'app', 'bravo'), undefined);
+
+    const p0 = await withAlphaTask('p0');
+    const done = await p0.run(['set', 'T1', '--status', 'done', '--note', 'fixed', '--evidence', 'sha 1', '--skill', 'none', '--followups', 'none', '--session', 'alpha']);
+    assert.equal(done.code, EXIT.ok, done.stderr.join('\n'));
+    const report = await p0.run(['inbox', 'add', '--to', 'bravo', '--text', 'T1 is done', '--session', 'alpha']);
+    assert.deepEqual(report.stderr, []);
+    assert.equal(askOf(p0, 'app', 'bravo'), undefined);
+  });
+});
+
 describe('teamrig inbox add --wake-by', () => {
   const DUE = Date.parse('2030-01-08T16:30:00Z');
 

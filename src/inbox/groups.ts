@@ -109,7 +109,7 @@ export interface RegisterTasks {
 export type TaskGroup = { readonly ok: true; readonly sessions: SessionAddress[] } | { readonly ok: false; readonly problem: string };
 
 /** The team whose task `reader` reads as `id` (T1139): its own when its register holds one, else the first to hold one. */
-function holderOf(registers: readonly RegisterTasks[], reader: string, id: string): string | undefined {
+export function holderOf(registers: readonly RegisterTasks[], reader: string, id: string): string | undefined {
   const own = registers.find((register) => register.team === reader);
   return own?.tasks.has(id) === true ? reader : registers.find((register) => register.tasks.has(id))?.team;
 }
