@@ -126,7 +126,7 @@ const COPY_FOLDER = "require('node:fs').cpSync(process.argv[1], process.argv[2],
 /** Every step of the first run but the hooks, which hooks.json in the clone names. */
 export function installSteps(input: InstallInput): readonly InstallStep[] {
   const { clone, plugin, project } = layoutOf(input.home);
-  const teamrig =(label: string, args: readonly string[], expect: string): InstallStep => ({
+  const teamrig = (label: string, args: readonly string[], expect: string): InstallStep => ({
     label,
     request: teamrigRequest(input, args),
     cwd: project,
