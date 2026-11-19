@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { LEAD_KEYS } from './lead-keys.ts';
+import { OWNER_GATED_KEYS } from './owner-gated.ts';
 import type { ConfigIssue } from './reader.ts';
 
 /**
@@ -38,8 +39,9 @@ export interface SettingRow {
 /**
  * Keys whose change is an owner gate (core rule 6), named with their gate: the budget, what spends more of it, the
  * host's shared resources, and everything that grants, guards or takes away what a session may do. A path matches its
- * own entry or the nearest one above it; every top-level `<name>Guard` is a permissions gate too (GUARD_KEY). Only the
- * gate's name rests on this map: a key on neither it nor LEAD_KEYS is the owner's all the same.
+ * own entry or the nearest one above it; every top-level `<name>Guard` is a permissions gate too (GUARD_KEY), and so is
+ * every key the config guard refuses (OWNER_GATED_KEYS) that this map does not name. Only the gate's name rests on
+ * this map: a key on neither it nor LEAD_KEYS is the owner's all the same.
  */
 const GATED_KEYS: ReadonlyMap<string, string> = new Map([
   ['budget', 'budget'],
@@ -132,8 +134,9 @@ function rowOf(
   const type = typeOf(node);
   const items = isRecord(node['items']) ? typeOf(node['items']) : undefined;
   const gatedBy = gateOf(path);
+  // A roster key (roles) is owner-gated too, but its note names the commands that change it.
   const readOnly =
-    gatedBy !== undefined
+    gatedBy !== undefined && !ROSTER_KEYS.has(group)
       ? `owner gate: ${gatedBy}`
       : (readOnlyNote(path, group, type, items) ?? (leadKeys.has(path) ? undefined : UNLISTED_NOTE));
   const problem = issues.find((issue) => isAtOrUnder(issue.path, path));
@@ -184,7 +187,8 @@ function gateOf(path: string): string | undefined {
       return gate;
     }
   }
-  return undefined;
+  // A key the config guard refuses a session writing is a permission, by the guard's own list (#1470).
+  return OWNER_GATED_KEYS.some((keyPath) => keyPath.every((part, index) => parts[index] === part)) ? 'permissions' : undefined;
 }
 
 /** A node, or the `$defs` entry its `$ref` names, its own description kept over the definition's. */

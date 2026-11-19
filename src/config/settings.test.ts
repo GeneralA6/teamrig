@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { LEAD_KEYS } from './lead-keys.ts';
+import { OWNER_GATED_KEYS } from './owner-gated.ts';
 import { rowsUnder, settingRows, type SettingRow } from './settings.ts';
 
 const SCHEMA: JsonRecord = {
@@ -200,6 +201,17 @@ describe('settingRows over the shipped schema', async () => {
       assert.ok(byGroup(prefix).length > 0, `no rows under ${prefix}`);
       assert.deepEqual(byGroup(prefix).filter((row) => row.gatedBy !== gate || row.editable).map((row) => row.path), []);
     }
+  });
+
+  it('gates every key the config guard refuses a session writing, read from the one list both use (#1470)', () => {
+    for (const keyPath of OWNER_GATED_KEYS) {
+      const path = keyPath.join('.');
+      const under = rowsUnder(rows, path);
+      assert.ok(under.length > 0, `no rows at or under ${path}`);
+      assert.deepEqual(under.filter((row) => row.gatedBy === undefined || row.editable).map((row) => row.path), [], path);
+    }
+    // A map's entries are under its key: one repository's ship tool is as gated as the map of them.
+    assert.deepEqual([rowAt(rows, 'delivery.repos').gatedBy, rowAt(rows, 'delivery.passEnv').gatedBy, rowAt(rows, 'github.owners').gatedBy], ['permissions', 'permissions', 'permissions']);
   });
 
   it('keeps the folders teamrig keeps records in read-only', () => {
