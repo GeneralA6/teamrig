@@ -342,8 +342,9 @@ teamrig issue migrate rows.jsonl --yes               # opens the issues
 - **A service role may run it.** The owner may give a session `issue migrate` in a service role (`teamrig roles
   grant github --holder <id> --commands "issue migrate" --yes`): its tab then runs `teamrig issue migrate
   <rows file> --yes --session <id>` past the permission check when the rows file sits in one task folder
-  (`teamrig files T<id>`), once per run toward the role's daily cap, and the register lets it link any session's
-  task holding no issue to its new issue, the ref alone.
+  (`teamrig files T<id>`). Each issue row counts toward the role's daily cap, and a file with more rows than the
+  room left is refused. The register lets it link any session's task of the team holding no issue to its new issue,
+  the ref alone, never a task kept local (`local: <why>` stays its owner's or a leader's call).
 - **Write access, for this run only.** The token of each owner needs **Issues: Read and write**. Set it back to
   Read-only once the issues are open, unless you comment on, label or close issues with it; the sync needs nothing
   more.

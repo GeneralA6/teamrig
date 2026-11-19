@@ -466,7 +466,7 @@
           "default": "on"
         },
         "serviceRoleDailyCap": {
-          "description": "How many calls one service role (serviceRoles) lets run with no permission check in 24 hours, so a holder steered by text from outside closes, comments or migrates only so much; past it, the role's next call is refused. 0 lets none through. Each allowed call is a line of state/prompt-answers.jsonl naming the role, command and target, never the text.",
+          "description": "How many calls one service role (serviceRoles) lets run with no permission check in 24 hours, a migrate counting each issue row, so a holder steered by text from outside closes, comments or migrates only so much; past it, the role's next call is refused. 0 lets none through. Each allowed call is a line of state/prompt-answers.jsonl naming the role, command and target, never the text.",
           "type": "integer",
           "minimum": 0,
           "maximum": 200,
@@ -1565,7 +1565,7 @@
             ]
           },
           "commands": {
-            "description": "The commands the role holds: issue close (teamrig issue close on a repository of github.repos), issue comment (teamrig issue comment on one), issue migrate (teamrig issue migrate --yes on a rows file in one of the team's task folders, opening an issue for each row's task and pointing that task's ref at it, any session's task), queue ship and queue merge (teamrig queue --kind test, or --kind ship or merge for a merge, running the shipTool of a delivery repository on a worktree whose task branch the holding session owns, so a role of holders team gives each session its own ships only). The daily cap counts closes, comments and migrate runs, each run once.",
+            "description": "The commands the role holds: issue close (teamrig issue close on a repository of github.repos), issue comment (teamrig issue comment on one), issue migrate (teamrig issue migrate --yes on a rows file in one of the team's task folders, opening an issue for each row's task and pointing that task's ref at it, any session's task of the team, never one kept local), queue ship and queue merge (teamrig queue --kind test, or --kind ship or merge for a merge, running the shipTool of a delivery repository on a worktree whose task branch the holding session owns, so a role of holders team gives each session its own ships only). The daily cap counts closes, comments and the issue rows of each migrate.",
             "type": "array",
             "items": { "enum": ["issue close", "issue comment", "issue migrate", "queue ship", "queue merge"] },
             "minItems": 1,
