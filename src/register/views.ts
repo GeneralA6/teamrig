@@ -610,6 +610,15 @@ export function assignedNotice(task: Pick<Task, 'id' | 'priority' | 'due' | 'tit
 }
 
 /**
+ * The line the owner's leader and the lead get when a task becomes a blocker (T4329), so the ones who set work order
+ * can take it over or lower it: `T5 is a blocker of bravo: Restore the queue; bravo drops the rest to fix it now (take
+ * it over, or lower it to p0 if it blocks no one)`.
+ */
+export function blockerNotice(task: Pick<Task, 'id' | 'owner' | 'title'>): string {
+  return `${task.id} is a blocker of ${task.owner}: ${task.title}; ${task.owner} drops the rest to fix it now (take it over, or lower it to p0 if it blocks no one)`;
+}
+
+/**
  * The copy line a team's lead gets, under the asker's `<team>/<id>`, when a session of another team asks one of its
  * sessions for work (T1141), so the lead, who sets its team's work order, can reorder or reassign it:
  * `T5 went to front (p2): Show the signup errors; reorder or reassign it: teamrig update T5 --priority|--after|--owner`.
