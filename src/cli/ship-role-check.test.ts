@@ -145,4 +145,24 @@ describe('toolCodeAt reads the code a ship tool runs at a commit (T3419)', () =>
       assert.ok(!code.includes(file), file);
     }
   });
+
+  it('holds every module run.ts loads by import() outside a command entry, which runs before any command the ship spawns (#1686)', () => {
+    const top = join(import.meta.dirname, '..', '..');
+    const code = toolCodeAt(GIT_MERGE, top, 'HEAD', 'tools/ship/ship.ts') ?? [];
+    const run = GIT_MERGE.filesAt(top, 'HEAD', ['src/cli/run.ts'])?.get('src/cli/run.ts') ?? '';
+    const loaders = [...run.matchAll(/const (\w+) = \(\) => import\('(\.\/[^']+)'\);/g)];
+    assert.ok(loaders.length > 0, "run.ts's command table");
+    // run.ts is staticOnly in the roots file: a loader called anywhere but a command's own `load` (such as the tab check
+    // runCli does before every write command) runs for step-away and step-back too, so its module must be a root.
+    const preamble = loaders.filter(([, name]) => {
+      const calls = run.match(new RegExp(`\\b${name}\\(\\)`, 'g'))?.length ?? 0;
+      const loads = run.match(new RegExp(`load: async \\(\\) =>\\s*\\(await ${name}\\(\\)\\)`, 'g'))?.length ?? 0;
+      return calls > loads;
+    });
+    assert.ok(preamble.length > 0, 'the tab check before a write command');
+    for (const [, , specifier = ''] of preamble) {
+      const file = `src/cli/${specifier.slice('./'.length)}`;
+      assert.ok(code.includes(file), file);
+    }
+  });
 });
