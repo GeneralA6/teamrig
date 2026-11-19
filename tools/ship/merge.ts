@@ -315,9 +315,7 @@ export async function mergeThroughPull(request: MergeRequest, gh: Gh, main: Main
   const unready = proof.before(sha);
   if (unready !== null) return { kind: 'refused', pull: null, reason: unready };
   const found = findOpenPull(gh, repo, head, base);
-  if (found === null && request.lacks !== null) {
-    return { kind: 'refused', pull: null, reason: `the pull request would lack ${request.lacks}, which this repo's template asks for: write it in a --note-file and ship again` };
-  }
+  if (found === null && request.lacks !== null) return { kind: 'refused', pull: null, reason: lackingSections(request.lacks) };
   const pull = found ?? openPull(gh, repo, head, base, request.title, request.body);
   log(`${found === null ? 'opened' : 'found'} pull request #${pull.number} ${pull.url}`);
   if (found !== null && request.lacks !== null) log(`warning: pull request #${pull.number} lacks ${request.lacks}, which this repo's template asks for: add it to its text`);
@@ -402,6 +400,12 @@ export function parseArgs(argv: readonly string[]): MergeArgs {
   }
   return parsed;
 }
+
+/** The title of the pull request a ship opens from `head` into `main` for `commits` work commits. */
+export const pullTitle = (head: string, main: string, commits: number): string => `Merge ${head} into ${main}: ${commits} commit(s)`;
+
+/** Why no pull request opens on a note lacking the template's `lacks` sections (missingSections). */
+export const lackingSections = (lacks: string): string => `the pull request would lack ${lacks}, which this repo's template asks for: write it in a --note-file and ship again`;
 
 /** The PR body: the note when there is one, the commits it ships, then the attribution line. */
 export function pullBody(subjects: readonly string[], note: string | null = null, limit = 60): string {
@@ -659,7 +663,7 @@ export async function mergeRun(args: MergeArgs, deps: MergeDeps, gate: MergeGate
       ? awayDuring(inTurn(ciProof(gh, repo, head, { names: profile.checks, summary: profile.summary, flaky: profile.flaky }, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 }), deps.turn), deps.share)
       : { proof: localProof(args.dir, profile.local, deps.gate), away: () => false };
   const result = await mergeThroughPull(
-    { repo, head, base: profile.main, sha, title: `Merge ${head} into ${profile.main}: ${subjects.length} commit(s)`, body: pullBody(subjects, note), lacks: missingSections(note, profile.pullSections) },
+    { repo, head, base: profile.main, sha, title: pullTitle(head, profile.main, subjects.length), body: pullBody(subjects, note), lacks: missingSections(note, profile.pullSections) },
     gh,
     mainBranchOf(git, profile.main),
     proof.proof,
