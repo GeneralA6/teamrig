@@ -3,9 +3,10 @@ import { targetText, } from "../issues/host.js";
 import { LABEL_FILE, parseLabelFile } from "../issues/label-file.js";
 import { MAX_COMMENT } from "../issues/write.js";
 import { exitText } from "../open/processes.js";
-import { assigneeReadArgs, blockedByAddArgs, commentsReadArgs, issueAssignArgs, issueUnassignArgs, issueBodyArgs, issueCloseArgs, issueCommentArgs, issueCreateArgs, issueLabelAddArgs, issueLabelRemoveArgs, issueReadArgs, jobLogArgs, labelReadArgs, isLogin, labelCreateArgs, labelFileReadArgs, subIssueAddArgs, WATCH_PATHS, watchProbeArgs, userReadArgs, } from "./gh.js";
+import { assigneeReadArgs, blockedByAddArgs, commentsReadArgs, fieldValueSetArgs, issueAssignArgs, issueUnassignArgs, issueBodyArgs, issueCloseArgs, issueCommentArgs, issueCreateArgs, issueLabelAddArgs, issueLabelRemoveArgs, issueReadArgs, issueTypeSetArgs, jobLogArgs, labelReadArgs, isLogin, labelCreateArgs, labelFileReadArgs, subIssueAddArgs, WATCH_PATHS, watchProbeArgs, userReadArgs, } from "./gh.js";
 import { probeAnswerOf } from "./probe.js";
 import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, readCommentsIn, runRead, startFailureText } from "./issues.js";
+import { readFields } from "./fields.js";
 import { failedLogExcerpt } from "./job-log.js";
 import { listLinks } from "./links.js";
 import { createdNumber } from "./migrate.js";
@@ -334,6 +335,18 @@ export class GitHubIssueHost {
      * reads as changed again later); failed when none changed and one failed, with that line, any secret shape
      * redacted; else unchanged. GitHub answers an unchanged probe 304, which does not count against the rate limit.
      */
+    /**
+     * Issue fields and types: a read of the shipped fields query with the same access as a list, and each write one
+     * field's value or the type of one issue (gh.ts isFieldValueSet, isIssueTypeSet).
+     */
+    fields = {
+        read: async (repo) => {
+            const access = await this.tokens.accessFor(repo);
+            return access instanceof NoAccessError ? { kind: 'failed', reason: access.message } : readFields(this.gh, access, repo);
+        },
+        setField: (target, field, value) => this.write(target, fieldValueSetArgs(target, field.id, value), `set the field ${JSON.stringify(field.name)} of`),
+        setType: (target, type) => this.write(target, issueTypeSetArgs(target, type), 'set the type of'),
+    };
     async watch(repo, marks) {
         const access = await this.tokens.accessFor(repo);
         if (access instanceof NoAccessError) {

@@ -22,6 +22,7 @@ import { EXIT, RefusedError } from "../runtime.js";
 import { teamRegister } from "../team-register.js";
 import { claimBudget, recordClaims } from "./issue-claim.js";
 import { pullThreads, recordClocks, repoThreads } from "./issue-clock.js";
+import { fieldRunOf } from "./issue-field-push.js";
 import { issuePush, pushEndLine, pushRepos } from "./issue-push.js";
 import { GITHUB_OFF, githubOff, readSyncState, reportAutoSync } from "./issue-sync-auto.js";
 import { githubWatcher } from "../../github/watcher.js";
@@ -238,6 +239,7 @@ export async function issueSync(args, runtime) {
             limits: { writesPerRun: Math.max(0, writesPerRun - claimed.writes), closes: false },
             logins: sessionLogins(config.github.owners),
             told,
+            fields: await fieldRunOf(runtime, config, kit.paths, register),
         }, say);
         say(pushEndLine(true, pushed, writesPerRun));
         for (const failure of pushed.failures) {

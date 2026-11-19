@@ -88,6 +88,8 @@ export const COMMIT_GATES = ['off', 'warn', 'refuse'];
 export function isCommitGate(value) {
     return COMMIT_GATES.some((gate) => gate === value);
 }
+/** The kinds of issue a task's issue is typed as (T3406): a design issue, a goal (a task planned after its parts), a bug, else a task. */
+export const ISSUE_KINDS = ['task', 'bug', 'goal', 'design'];
 export const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 export function isWeekday(value) {
     return WEEKDAYS.some((day) => day === value);

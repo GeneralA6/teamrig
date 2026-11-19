@@ -1,5 +1,5 @@
 /**
- * The only GraphQL texts teamrig sends to GitHub: three reads of a repository's issues and two of its pull requests, a
+ * The only GraphQL texts teamrig sends to GitHub: four reads of a repository's issues and two of its pull requests, a
  * page at a time. gh.ts refuses a `gh api graphql` run whose query is not one of these word for word, so a query never writes (no
  * mutation) and never reads past the fields below.
  */
@@ -70,6 +70,39 @@ export const ISSUE_LINKS_QUERY = `query($owner: String!, $name: String!, $after:
     }
   }
 }`;
+/** Issue fields and issue types one read names, and field values per issue: past any organization's few. */
+export const FIELDS_READ = 25;
+/**
+ * Every open issue, oldest first, with what the field push compares (issues/field-push.ts): its type and the value
+ * of each of its fields; and with each page, the repository's fields (each one's kind by its type name, its id a
+ * write names, a single-select's options) and its issue types. No text of an issue beside its fields.
+ * `numberValue` is an alias: a number value's `value` is a Float where the others' are a String.
+ */
+export const ISSUE_FIELDS_QUERY = `query($owner: String!, $name: String!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    issueTypes(first: ${FIELDS_READ}) { nodes { name isEnabled } }
+    issueFields(first: ${FIELDS_READ}) {
+      nodes { __typename ... on IssueFieldCommon { name fullDatabaseId } ... on IssueFieldSingleSelect { options { name } } }
+    }
+    issues(states: [OPEN], first: ${ISSUE_PAGE_SIZE}, after: $after, orderBy: {field: CREATED_AT, direction: ASC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number
+        issueType { name }
+        issueFieldValues(first: ${FIELDS_READ}) {
+          nodes {
+            __typename
+            ... on IssueFieldValueCommon { field { ... on IssueFieldCommon { name } } }
+            ... on IssueFieldDateValue { value }
+            ... on IssueFieldNumberValue { numberValue: value }
+            ... on IssueFieldTextValue { value }
+            ... on IssueFieldSingleSelectValue { value }
+          }
+        }
+      }
+    }
+  }
+}`;
 /** Pull requests one page reads: fewer than issues, as each also reads its last commit's check rollup. */
 export const PULL_PAGE_SIZE = 50;
 /** Checks of a pull request's last commit one read names: enough for a CI matrix, few enough to keep a page small. */
@@ -128,6 +161,7 @@ export const QUERY_VARIABLES = new Map([
     [OPEN_ISSUES_QUERY, new Set(['owner', 'name', 'after'])],
     [CLOSED_ISSUES_QUERY, new Set(['owner', 'name', 'after', 'since'])],
     [ISSUE_LINKS_QUERY, new Set(['owner', 'name', 'after'])],
+    [ISSUE_FIELDS_QUERY, new Set(['owner', 'name', 'after'])],
     [PULL_REQUESTS_QUERY, new Set(['owner', 'name', 'after'])],
     [OPEN_PULLS_QUERY, new Set(['owner', 'name', 'after'])],
 ]);
@@ -138,6 +172,10 @@ export function openPageArgs(page) {
 /** The arguments for one page of every issue's links. */
 export function linksPageArgs(page) {
     return pageArgs(ISSUE_LINKS_QUERY, page, []);
+}
+/** The arguments for one page of open issues with their fields and type, and the repository's fields and types. */
+export function fieldsPageArgs(page) {
+    return pageArgs(ISSUE_FIELDS_QUERY, page, []);
 }
 /** The arguments for one page of closed issues changed on or after `since`, an ISO time. */
 export function closedPageArgs(page, since) {

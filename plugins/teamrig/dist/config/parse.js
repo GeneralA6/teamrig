@@ -13,9 +13,9 @@ import { isServiceCommand, SERVICE_COMMANDS, TEAM_HELD_COMMANDS } from "../permi
 import { PREFIX_PATTERN } from "../readonly-shell/rules.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
 import { isNeedKind, NEED_KINDS } from "../tabs/need-kind.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_RUSH, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_FREEZES, DEFAULT_DECISIONS, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_PASS_ENV, DEFAULT_GITHUB, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_EXEC, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_NEEDS_YOU, DEFAULT_MEETING_NOTICES, DEFAULT_LOOPS, DEFAULT_MERGE_REMOTE, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_SECURITY_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_DB_WRITE_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PERMISSIONS, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_FOCUS, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_BRANCHES, DEFAULT_MEETING, QUEUE_TTL_MARGIN_MINUTES, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_RUSH, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_FREEZES, DEFAULT_DECISIONS, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_PASS_ENV, DEFAULT_GITHUB, DEFAULT_ISSUE_FIELDS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_EXEC, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_NEEDS_YOU, DEFAULT_MEETING_NOTICES, DEFAULT_LOOPS, DEFAULT_MERGE_REMOTE, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_SECURITY_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_DB_WRITE_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PERMISSIONS, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_FOCUS, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_BRANCHES, DEFAULT_MEETING, QUEUE_TTL_MARGIN_MINUTES, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
-import { APPLY_FLAG_PATTERN, BUDGET_ACCOUNT_MAX_LENGTH, CLIENT_RECEIVER_PATTERN, CONFIG_LIMITS, DB_PROGRAM_NAME_PATTERN, DB_WRITE_ENTRYPOINT_LIMITS, DB_WRITE_NAME_LIMITS, GITHUB_LABEL_MAX_LENGTH, MEETING_COLOUR_PATTERN, MEETING_HELD_TEXT_MAX_LENGTH, NODE_MODULE_PATTERN, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS, SERVICE_ROLE_LIMITS, } from "./limits.js";
+import { APPLY_FLAG_PATTERN, BUDGET_ACCOUNT_MAX_LENGTH, CLIENT_RECEIVER_PATTERN, CONFIG_LIMITS, DB_PROGRAM_NAME_PATTERN, DB_WRITE_ENTRYPOINT_LIMITS, DB_WRITE_NAME_LIMITS, GITHUB_LABEL_MAX_LENGTH, ISSUE_FIELD_NAME_MAX_LENGTH, MEETING_COLOUR_PATTERN, MEETING_HELD_TEXT_MAX_LENGTH, NODE_MODULE_PATTERN, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS, SERVICE_ROLE_LIMITS, } from "./limits.js";
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from "./migrate.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
 import { AUTO_RESTART_LEAD, AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, DB_CLIENT_VOCABULARIES, DB_PROGRAM_SHAPES, DB_WRITES, ESCALATIONS, GOALS_MODES, isDbClientVocabulary, isDbProgramShape, isDbWrites, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isGoalsMode, isHiringPolicy, isOverAction, isHookAsks, isIdleLeaderKeep, isIdleMode, isOtherAreaListing, isPushToProtected, isReviewClass, isReviewPathMode, isRouteAllow, isSecretReads, isSecretWrites, isSkipHooks, isTerminalChoice, isResetKind, isReviewMode, isVerifyGate, isWeekday, RESET_KINDS, HOOK_ASKS, IDLE_LEADER_KEEPS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, SECRET_READS, SECRET_WRITES, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, isWipMode, WIP_MODES, } from "./types.js";
@@ -480,6 +480,7 @@ function parseGithub(read, raw, sessions) {
         closedDays: read.integer(raw, 'closedDays', 'github', DEFAULT_GITHUB.closedDays, CONFIG_LIMITS.closedDays),
         probeSeconds: readProbeSeconds(read, raw),
         statusPush: read.boolean(raw, 'statusPush', 'github', DEFAULT_GITHUB.statusPush),
+        fields: parseIssueFields(read, read.section(raw, 'fields', 'github')),
         acceptLabel: read.string(raw, 'acceptLabel', 'github', DEFAULT_GITHUB.acceptLabel, shortLine(GITHUB_LABEL_MAX_LENGTH)),
         similarThreshold: read.number(raw, 'similarThreshold', 'github', DEFAULT_GITHUB.similarThreshold, CONFIG_LIMITS.similarThreshold),
         activity: read.boolean(raw, 'activity', 'github', DEFAULT_GITHUB.activity),
@@ -497,6 +498,43 @@ function readIssueAtAdd(read, raw, repos) {
         return undefined;
     }
     return repo;
+}
+/** A field or type name: one line without control characters, which the host shows as written. */
+const ISSUE_NAME = shortLine(ISSUE_FIELD_NAME_MAX_LENGTH, (value) => (/\p{Cc}/u.test(value) ? 'expected no control characters' : undefined));
+/**
+ * `github.fields` (T3406): the push switch, the name of the field each value goes to (an empty name writes none, so
+ * a team turns one field off alone), and the issue types each kind is set as, each list tried in order.
+ */
+function parseIssueFields(read, raw) {
+    const path = 'github.fields';
+    const name = (key) => raw[key] === '' ? '' : read.string(raw, key, path, DEFAULT_ISSUE_FIELDS[key], ISSUE_NAME);
+    const typesRaw = read.section(raw, 'types', path);
+    const { maxItems } = CONFIG_LIMITS.issueTypeNames;
+    const typeOf = (kind) => read.stringList(typesRaw, kind, `${path}.types`, DEFAULT_ISSUE_FIELDS.types[kind], ISSUE_NAME, maxItems);
+    return {
+        push: read.boolean(raw, 'push', path, DEFAULT_ISSUE_FIELDS.push),
+        priority: name('priority'),
+        priorityOptions: readPriorityOptions(read, read.section(raw, 'priorityOptions', path), maxItems),
+        startDate: name('startDate'),
+        targetDate: name('targetDate'),
+        score: name('score'),
+        types: { task: typeOf('task'), bug: typeOf('bug'), goal: typeOf('goal'), design: typeOf('design') },
+    };
+}
+/** A priority level as `github.fields.priorityOptions` names it: `p` and its number. */
+const PRIORITY_LEVEL = /^p[0-9]{1,2}$/;
+/** `github.fields.priorityOptions`: each listed level's option names over the default's; a key that is not a level is reported and left out. */
+function readPriorityOptions(read, raw, maxItems) {
+    const path = 'github.fields.priorityOptions';
+    const options = { ...DEFAULT_ISSUE_FIELDS.priorityOptions };
+    for (const level of Object.keys(raw)) {
+        if (!PRIORITY_LEVEL.test(level)) {
+            read.report(`${path}.${level}`, 'expected a priority level: p and its number, such as p1');
+            continue;
+        }
+        options[level] = read.stringList(raw, level, path, DEFAULT_ISSUE_FIELDS.priorityOptions[level] ?? [], ISSUE_NAME, maxItems);
+    }
+    return options;
 }
 /** Below this, a probe every few seconds would spend gh starts for nothing GitHub shows that fast. */
 export const MIN_PROBE_SECONDS = 30;
