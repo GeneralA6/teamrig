@@ -1060,6 +1060,20 @@ describe('RegisterPolicy.update', () => {
     assert.equal(error(tree.update(bravos, 'charlie', { ref: 'gh:acme/app#7' }, undefined, EMPTY)), 'only the owner (bravo) or a leader above bravo (alpha or lead) changes T9');
   });
 
+  it("lets a holder of issue migrate point any session's task holding no issue at its issue, the ref alone (T4606)", () => {
+    const roles = { serviceRoles: { github: { holders: ['charlie'], commands: ['issue migrate'] } } };
+    const tree = new RegisterPolicy(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie'], ...roles }));
+    const bravos = testTask({ id: 'T9', owner: 'bravo', ref: 'notes/plan.md' });
+    assert.deepEqual(tree.update(bravos, 'charlie', { ref: 'gh:acme/app#7' }, 'ref was: notes/plan.md', EMPTY), { ok: true, value: { changes: { ref: 'gh:acme/app#7' }, note: 'ref was: notes/plan.md' } });
+    const notLeader = 'only the owner (bravo) or the lead (lead) changes T9';
+    assert.equal(error(tree.update(bravos, 'charlie', { ref: 'gh:acme/app#7', priority: 1 }, undefined, EMPTY)), notLeader, 'another field beside it');
+    assert.equal(error(tree.update(bravos, 'charlie', { ref: 'notes/other.md' }, undefined, EMPTY)), notLeader, 'a ref that is no issue');
+    assert.equal(error(tree.update(testTask({ id: 'T9', owner: 'bravo', ref: 'gh:acme/app#3' }), 'charlie', { ref: 'gh:acme/app#7' }, undefined, EMPTY)), notLeader, 'its issue stays');
+    assert.equal(error(tree.update(bravos, 'alpha', { ref: 'gh:acme/app#7' }, undefined, EMPTY)), notLeader, 'a session holding no such role');
+    const closer = new RegisterPolicy(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie'], serviceRoles: { github: { holders: ['charlie'], commands: ['issue close'] } } }));
+    assert.equal(error(closer.update(bravos, 'charlie', { ref: 'gh:acme/app#7' }, undefined, EMPTY)), notLeader, 'a role without issue migrate');
+  });
+
   it('keeps a class the team renamed out of focus.classes on any other change, and refuses setting one outside them (T2076)', () => {
     const stale = testTask({ workClass: 'Chores' });
     assert.equal(policy.update(stale, 'alpha', { title: 'Add two health checks' }, undefined, EMPTY).ok, true, 'a kept class stands');

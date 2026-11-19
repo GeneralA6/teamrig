@@ -2,7 +2,8 @@ import type { ServiceRoleConfig } from '../config/types.ts';
 import { TEAM_HELD_COMMANDS, type ServiceCommand } from './service-commands.ts';
 
 /**
- * Who holds a service role's command (T2984): read by the role allow, which lets the holder's call run with no prompt.
+ * Who holds a service role's command (T2984): read by the role allow, which lets the holder's call run with no prompt,
+ * and by the register, which lets the holder of `issue migrate` link another session's task to its issue (T4606).
  */
 
 /** True when the role gives `command` to `holder`: a holder it names, or every session for a command that checks its own caller. */
