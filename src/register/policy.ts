@@ -15,7 +15,7 @@ import { verdictIsCurrent, verdictReadOf, type SecurityVerdictPin } from './secu
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields, type TaskPrep } from './events.ts';
 import { droppedApproval, isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { commitsNamed } from './head-sha.ts';
-import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
+import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, hasIssueOrReason, ISSUE_REF_PREFIX, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
 import { ITEM_TYPE_TRAITS, traitsOf } from './item-types.ts';
 import { waitsOnOwner } from './owner-waits.ts';
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts, type ProblemReview } from './review.ts';
@@ -1237,13 +1237,15 @@ export class RegisterPolicy {
    * task whose owner left the team, or when it points a task holding no issue ref at an issue: issue migrate opens an
    * issue for each task of the team and links it, replacing a note ref, while a task's issue stays its issue), and a
    * sub-lead hands a task only to itself or a session it leads, so work never leaves its group by a sub-lead's hand. A
-   * holder of a service role giving `issue migrate` (T4606) may make that one change, the ref alone, on any task.
+   * holder of a service role giving `issue migrate` (T4606) may make that one change, the ref alone, on any task but one
+   * kept local (`local: <why>`, a security hole among them): lifting that mark stays its owner's or a leader's call.
    */
   private leaderUpdateProblem(task: Task, caller: string, names: readonly TaskFieldName[], changes: Partial<TaskFields>): string | undefined {
     const isLead = caller === this.tree.lead;
     const linksIssue = linksAnIssue(task, changes);
-    // The migrate role's holder links every team task to the issue its run opened for it (T4606), and nothing else.
-    if (linksIssue && names.length === 1 && roleHolding(this.config.serviceRoles, MIGRATE_COMMAND, caller) !== undefined) {
+    // The migrate role's holder links every team task to the issue its run opened for it (T4606), and nothing else; a
+    // task kept local is never one, so a holder's --yes run skips its row (migrate.ts skipReason asks this judge).
+    if (linksIssue && names.length === 1 && !hasIssueOrReason(task.ref) && roleHolding(this.config.serviceRoles, MIGRATE_COMMAND, caller) !== undefined) {
       return undefined;
     }
     if (!isLead && !this.tree.leads(caller, task.owner)) {
