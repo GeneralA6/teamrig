@@ -21,7 +21,7 @@ import { issueSync } from "./issue-sync.js";
  */
 const HOUR_MS = 3_600_000;
 /** The sync a change calls for, as the Stop hook used to start it: every repository, written, with its reports. */
-const AUTO_SYNC = { command: 'issue sync', positionals: [], flags: new Map(), switches: new Set(['auto']), rest: [], help: false };
+const AUTO_SYNC = { command: 'issue sync', positionals: [], flags: new Map(), switches: new Set(['auto']), rest: [], help: false, common: new Map() };
 /** Why no watch runs for this config and machine, or undefined when one should. */
 export function watchOffReason(config, env) {
     if (githubOff(env)) {
