@@ -28,6 +28,7 @@ the rules that apply on every turn, and the project skills in `.claude/skills/` 
 | [`dev-add-config-key`](.claude/skills/dev-add-config-key/SKILL.md) | a new key in the team config |
 | [`dev-update-docs`](.claude/skills/dev-update-docs/SKILL.md) | the docs a change must update, and the checks that hold them to the code |
 | [`dev-ship-change`](.claude/skills/dev-ship-change/SKILL.md) | from the last commit to the merge: checks, push, pull request |
+| [`dev-ship-release`](.claude/skills/dev-ship-release/SKILL.md) | merging the release pull request: the lead's approval of its head, then `ship.ts merge --release` |
 | [`dev-design-issue`](.claude/skills/dev-design-issue/SKILL.md) | joining a design issue: a reasoned comment, nothing taken until it is agreed, no sensitive data |
 | [`dev-github-intake`](.claude/skills/dev-github-intake/SKILL.md) | a maintainer taking in issues and pull requests: labels, best fix first, landing with credit, design issues |
 
@@ -202,7 +203,11 @@ matrix.
 - Nothing is pushed to `main` directly, and release tags are set only by the release workflow.
 - The `release` workflow (`.github/workflows/release.yml`, run on each push to `main`) keeps one release pull request open
   through release-please (`release-please-config.json`): it raises the version in the plugin's `plugin.json` and
-  `src/core/version.ts` and writes the notes, and a person reviews and merges it. Once it merged, the next run tags
+  `src/core/version.ts` and writes the notes. It merges like any pull request, through `tools/ship`: the lead approves
+  a release task at the release pull request's head, and `node tools/ship/ship.ts merge <repo dir> --release T<id>
+  --approved <sha>` merges it (skill `dev-ship-release`). That merge refuses a head holding anything but the version
+  raises and the changelog's new notes, never opens the pull request, and asks for a new head's approval when main
+  moved, since release-please rewrites the head on each push to main. Once it merged, the next run tags
   main `teamrig-v<version>` with the notes, builds the dist with a read-only token, and pushes main's commit with
   the dist on top to the `release` branch, tagged `v<version>` (`tools/release/publish.ts`). The marketplace entry
   installs from that branch (a `git-subdir` source on ref `release`), so main ignores `plugins/teamrig/dist` and no
