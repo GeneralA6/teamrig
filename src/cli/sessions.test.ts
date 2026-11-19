@@ -323,6 +323,19 @@ describe('teamrig sessions --pass', () => {
     assert.equal(blind.stdout[2], 'REOPEN app-bravo (session bravo): an urgent line from lead');
   });
 
+  it('reopens first a session whose urgent line is for right-now work, ahead of an older plain urgent line (T4414)', async () => {
+    const kit = await closedTeam();
+    await new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks')).post('bravo', { from: 'lead', text: 'the docs', at: NOW - 2 * MINUTE_MS });
+    // A p0 handed to closed alpha posts its line with a wake ask, so alpha's wish is an asked one, the newer.
+    await hand(kit, 'alpha', 'p0');
+    const result = await kit.run(['sessions', '--pass'], { probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists([]) });
+    assertOk(result);
+    assert.deepEqual(result.stdout.slice(1, 3), [
+      'REOPEN app-alpha (session alpha): an urgent line from lead',
+      'LATER app-bravo (session bravo): an urgent line from lead; app-alpha reopens first, one a pass',
+    ]);
+  });
+
   it('leaves a reopen for later when the host has no room, and a session closed with work under the wake priority', async () => {
     const kit = await closedTeam();
     await hand(kit, 'alpha', 'p1');

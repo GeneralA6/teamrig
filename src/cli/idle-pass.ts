@@ -5,6 +5,8 @@ import type { TimeZone } from '../core/zone.ts';
 import { isRightNow } from '../config/priorities.ts';
 import type { Task } from '../register/fold.ts';
 import { parkRulesOf } from '../register/park.ts';
+import { isActive } from '../register/stats.ts';
+import { TaskTree } from '../register/tree.ts';
 import { waitingOnYouText } from '../register/views.ts';
 import { noRoomText } from '../sessions/headroom.ts';
 import { reopenVerdict, type ReopenInput, type ReopenVerdict } from '../sessions/idle.ts';
@@ -70,6 +72,18 @@ async function folderOrRefusalOf(folderOf: SessionFolderOf, id: string): Promise
     }
     throw error;
   }
+}
+
+/**
+ * The most urgent right-now task (`isRightNow`) a closed session's urgent lines may be for: its own active one, or
+ * another session's that waits on it (`TaskTree.waitingOn`); undefined when none is. A right-now task's line wakes its
+ * session with a wake ask (`wakeWaitedOn`, `reopenForUrgent`), so the session's wish is an asked one, and without this
+ * top it would lose the place right-now work has first in the pass's line (T4414).
+ */
+export function rightNowTopOf(facts: Pick<IdleFacts, 'tasks' | 'elsewhere' | 'now' | 'zone'>, id: string): Task | undefined {
+  const own = [...facts.tasks.values()].filter((task) => task.owner === id && isActive(task.status));
+  const waiting = new TaskTree(facts.tasks, new Date(facts.now), facts.zone, null, facts.elsewhere).waitingOn(id).map((entry) => entry.task);
+  return [...own, ...waiting].filter((task) => isRightNow(task.priority)).sort(byUrgency)[0];
 }
 
 /** True for a wish whose top task is right-now work (`isRightNow`), which goes first in the pass's line (T4414). */
@@ -164,7 +178,7 @@ export async function judgeSession(runtime: CliRuntime, kit: Kit, config: KitCon
   const input: ReopenInput = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, parking: parkRulesOf(config), dayStart, unseenLines, reopenUnreadLines, now, zone };
   const asAwake = reopenVerdict(input);
   if (asAwake.kind === 'asked') {
-    return wishOf(folderOf, id, asAwake, undefined);
+    return wishOf(folderOf, id, asAwake, rightNowTopOf(facts, id));
   }
   // Right-now work wakes past every rest, so its reopen needs no weighing.
   if (asAwake.kind === 'needed') {
