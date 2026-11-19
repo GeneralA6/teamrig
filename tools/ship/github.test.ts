@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
-import { type Gh, type GhSpawn, type Job, type Run, evaluate, ghWithToken, newestRuns, parseJobs, parseRuns, parseStatuses, readChecks, rerunFailedJobs, verdictOf } from './github.ts';
+import { type CheckOutcome, type Gh, type GhSpawn, type Job, type Run, evaluate, ghWithToken, newestRuns, parseJobs, parseRuns, parseStatuses, plannedOut, readChecks, rerunFailedJobs, verdictOf } from './github.ts';
 
 const TOKEN = ['github', '_pat_', 'secret_value'].join('');
 const REPO = 'Owner/repo';
@@ -128,7 +128,7 @@ test('reads the newest runs\' latest jobs and the commit statuses of the sha', (
     if (path === `repos/${REPO}/commits/${SHA}/status`) return JSON.stringify({ statuses: [{ context: 'ext/ci', state: 'success' }] });
     throw new Error(`unexpected ${path}`);
   });
-  assert.deepEqual(readChecks(gh, REPO, SHA, 'dev', { names: ['gates', 'ext/ci'], summary: null, flaky: [] }).map(({ state }) => state), ['passed', 'passed']);
+  assert.deepEqual(readChecks(gh, REPO, SHA, 'dev', { names: ['gates', 'ext/ci'], summary: null, flaky: [], conditional: [] }).map(({ state }) => state), ['passed', 'passed']);
   assert.equal(gh.mock.callCount(), 3);
 });
 
@@ -154,7 +154,7 @@ test('reads only the runs of the merged branch, so a cancelled run of the same s
     if (jobs === undefined) throw new Error(`unexpected ${path}`);
     return jobs;
   };
-  const required = { names: ['windows'], summary: null, flaky: [] };
+  const required = { names: ['windows'], summary: null, flaky: [], conditional: [] };
   const before = readChecks(ghFor(false), REPO, SHA, 't2657-b', required);
   assert.deepEqual(before.map(({ state }) => state), ['missing']);
   assert.equal(verdictOf(before), 'waiting');
@@ -180,4 +180,18 @@ test('a flaky failure beside any other failure fails at once; the summary echoin
   assert.equal(beside?.state, 'failed');
   const [mac, , unstartedAll] = evaluate(['mac', 'gates', 'all'], [unstarted('mac', 1), job('gates', 'success'), job('all', 'failure')], [], 'all', ['test']);
   assert.deepEqual([mac?.state, unstartedAll?.state], ['unstarted', 'unstarted'], 'a runner that never came stays unstarted');
+});
+
+test('a conditional check its run left out passes once the summary passed; before that, or unlisted, it still waits (T4617)', () => {
+  const names = ['gates', 'mac', 'all'];
+  const settled = (jobs: readonly Job[], conditional: readonly string[] = ['mac']): CheckOutcome[] => plannedOut(evaluate(names, jobs, [], 'all'), 'all', conditional);
+  const docsRun = settled([job('gates', 'success'), job('all', 'success')]);
+  assert.deepEqual(docsRun.map(({ name, state }) => `${name}: ${state}`), ['gates: passed', 'mac: passed', 'all: passed']);
+  assert.equal(docsRun[1]?.detail, 'not made by its run, whose summary passed: a check this change does not need');
+  assert.equal(verdictOf(docsRun), 'passed');
+  assert.equal(verdictOf(settled([job('gates', 'success'), job('all', null, 'in_progress')])), 'waiting', 'the summary has not passed yet');
+  assert.equal(verdictOf(settled([job('gates', 'success')])), 'waiting', 'no summary yet');
+  assert.equal(verdictOf(settled([job('gates', 'success'), job('all', 'success')], [])), 'waiting', 'a check not listed as conditional waits');
+  assert.equal(verdictOf(settled([job('gates', 'success'), job('mac', 'failure'), job('all', 'success')])), 'failed', 'a conditional check that ran keeps its verdict');
+  assert.equal(verdictOf(plannedOut(evaluate(['mac'], [], []), null, ['mac'])), 'waiting', 'no summary named');
 });

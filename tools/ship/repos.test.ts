@@ -9,7 +9,7 @@ const LOCAL = '"local":{"runner":"tools/ci/local.ts"}';
 
 test('reads each repo\'s main branch, gate and check lists, looked up without regard to case', () => {
   const profiles = parseProfiles(`{"Owner/Repo":{"main":"main","gate":"ci","checks":["a","b"]}}`);
-  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [], aliases: [], mergeChecks: 'full', pullSections: [], release: null });
+  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [], conditional: [], aliases: [], mergeChecks: 'full', pullSections: [], release: null });
   const local = parseProfiles(`{"Owner/Local":{"main":"main","gate":"local","checks":[],${LOCAL}}}`);
   assert.deepEqual(profileFor(local, 'Owner/Local').local, { runner: 'tools/ci/local.ts' });
 });
@@ -188,6 +188,23 @@ test('the shipped repos.json re-runs only teamrig\'s test legs once as flaky (T2
   const profiles = readProfiles();
   assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig').flaky, ['test (ubuntu-latest, node 22)', 'test (windows-latest, node 22)', 'test (macos-latest, node 22)']);
   assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig-pane').flaky, []);
+});
+
+test('reads the conditional checks, and refuses them without a summary, or one not among the checks, the summary, a blank or a repeat (T4617)', () => {
+  const entry = (conditional: string, summary = '"all"'): string => `{"O/R":{"main":"main","gate":"ci","checks":["a","t","all"],"summary":${summary},"conditional":${conditional}}}`;
+  assert.deepEqual(profileFor(parseProfiles(entry('["t"]')), 'O/R').conditional, ['t']);
+  assert.deepEqual(profileFor(parseProfiles('{"O/R":{"main":"main","gate":"ci","checks":["a"]}}'), 'O/R').conditional, []);
+  assert.throws(() => parseProfiles('{"O/R":{"main":"main","gate":"ci","checks":["a","t"],"conditional":["t"]}}'), /O\/R "conditional" needs a "summary"/);
+  for (const conditional of ['["b"]', '["all"]', '[""]', '"t"']) {
+    assert.throws(() => parseProfiles(entry(conditional)), /O\/R "conditional" needs a list of its "checks", the summary apart/, conditional);
+  }
+  assert.throws(() => parseProfiles(entry('["t","t"]')), /O\/R lists a conditional check twice/);
+});
+
+test('the shipped repos.json leaves teamrig\'s windows and macOS test legs conditional, which a docs-only run does not make (T4617)', () => {
+  const profiles = readProfiles();
+  assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig').conditional, ['test (windows-latest, node 22)', 'test (macos-latest, node 22)']);
+  assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig-pane').conditional, []);
 });
 
 test('finds a repo under each of its aliases, any case, as the same profile, and lists it once by its own name (T3275)', () => {

@@ -139,6 +139,22 @@ export interface RequiredChecks {
   readonly summary: string | null;
   /** Checks a failure of which is re-run once before it fails the merge (repos.ts `flaky`). */
   readonly flaky: readonly string[];
+  /** Checks the summary's run makes only for some changes, not waited for once the summary passed without them (repos.ts `conditional`). */
+  readonly conditional: readonly string[];
+}
+
+const PLANNED_OUT = 'not made by its run, whose summary passed: a check this change does not need';
+
+/**
+ * A `conditional` check that is missing counts as passed once the summary passed: the run made every job it planned
+ * and each succeeded, so a docs-only run's absent windows and macOS legs (T4617) do not hold the merge until its
+ * timeout. Before the summary passed, a missing one still waits; one that shows keeps its own verdict.
+ */
+export function plannedOut(outcomes: readonly CheckOutcome[], summary: string | null, conditional: readonly string[]): CheckOutcome[] {
+  const summaryPassed = summary !== null && outcomes.some(outcome => outcome.name === summary && outcome.state === 'passed');
+  return outcomes.map((outcome): CheckOutcome =>
+    summaryPassed && outcome.state === 'missing' && conditional.includes(outcome.name) ? { ...outcome, state: 'passed', detail: PLANNED_OUT } : outcome,
+  );
 }
 
 const firstAttemptUnstarted = (job: Job): boolean => cancelledUnstarted(job) && job.runAttempt === 1;
@@ -229,5 +245,5 @@ export function readChecks(gh: Gh, repo: string, sha: string, branch: string, re
   const runs = newestRuns(parseRuns(gh(['api', `repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`])).filter(run => run.branch === branch));
   const jobs = runs.flatMap(run => parseJobs(gh(['api', `repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`]), run));
   const statuses = parseStatuses(gh(['api', `repos/${repo}/commits/${sha}/status`]));
-  return evaluate(required.names, jobs, statuses, required.summary, required.flaky);
+  return plannedOut(evaluate(required.names, jobs, statuses, required.summary, required.flaky), required.summary, required.conditional);
 }

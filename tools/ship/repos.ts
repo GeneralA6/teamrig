@@ -68,6 +68,12 @@ export interface RepoProfile {
    * pass alone (T2532). Each is one of `checks`, never the summary, which echoes them (github.ts). Empty when not listed.
    */
   flaky: readonly string[];
+  /**
+   * Checks the summary's run makes only for some changes (teamrig's windows and macOS test legs, which a docs-only run
+   * leaves out, T4617): one that is missing is not waited for once the summary passed; one that shows must pass. Each
+   * is one of `checks`, never the summary, and needs a summary to be named. Empty when not listed.
+   */
+  conditional: readonly string[];
   /** What a --merge run checks locally before it pushes; `full` when not listed. `changed` needs the `ci` gate. */
   mergeChecks: MergeChecks;
   /**
@@ -106,6 +112,16 @@ function parseFlaky(slug: string, value: unknown, checks: readonly string[], sum
     throw new Error(`repos.json: ${slug} "flaky" needs a list of its "checks", the summary apart`);
   }
   if (new Set(value).size !== value.length) throw new Error(`repos.json: ${slug} lists a flaky check twice`);
+  return value;
+}
+
+function parseConditional(slug: string, value: unknown, checks: readonly string[], summary: string | null): readonly string[] {
+  if (value === undefined) return [];
+  if (summary === null) throw new Error(`repos.json: ${slug} "conditional" needs a "summary": only its pass says the run left a check out by plan`);
+  if (!isNameList(value) || value.some(name => !checks.includes(name) || name === summary)) {
+    throw new Error(`repos.json: ${slug} "conditional" needs a list of its "checks", the summary apart`);
+  }
+  if (new Set(value).size !== value.length) throw new Error(`repos.json: ${slug} lists a conditional check twice`);
   return value;
 }
 
@@ -160,7 +176,7 @@ export function repoSlugs(profiles: ReadonlyMap<string, RepoProfile>): string[] 
 
 export function parseProfiles(json: string): Map<string, RepoProfile> {
   const body: unknown = JSON.parse(json);
-  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky", "aliases", "mergeChecks", "pullSections", "release" } }');
+  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky", "conditional", "aliases", "mergeChecks", "pullSections", "release" } }');
   const profiles = new Map<string, RepoProfile>();
   for (const [slug, entry] of Object.entries(body)) {
     if (!isRecord(entry) || typeof entry['main'] !== 'string' || !isNameList(entry['checks'])) throw new Error(`repos.json: ${slug} needs "main" and a "checks" list of names`);
@@ -179,6 +195,7 @@ export function parseProfiles(json: string): Map<string, RepoProfile> {
       local: parseLocalChecks(slug, entry['local']),
       regenerated: parseRegenerated(slug, entry['regenerated']),
       flaky: parseFlaky(slug, entry['flaky'], entry['checks'], summary),
+      conditional: parseConditional(slug, entry['conditional'], entry['checks'], summary),
       mergeChecks: parseMergeChecks(slug, entry['mergeChecks'], gate),
       pullSections: parsePullSections(slug, entry['pullSections']),
       release: parseRelease(slug, entry['release']),
