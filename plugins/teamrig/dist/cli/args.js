@@ -10,6 +10,11 @@ export class UsageError extends Error {
 }
 /** Asks for the help of the command they follow, wherever a flag or word could stand: `set --help`, `inbox -h`. */
 export const HELP_FLAGS = new Set(['--help', '-h']);
+/**
+ * The flags every command reads (#654): the caller and its team. A command that takes them for its own use lists them
+ * in its flags; on any other, `runCli` checks them (src/cli/common-flags.ts) and the command ignores them.
+ */
+export const COMMON_FLAGS = ['session', 'team'];
 /** Ends a command's own flags: every word after it belongs to the command line it runs. */
 export const REST_MARKER = '--';
 /** The command a line names: two words when they form a command (`inbox read`), else one; a group word before `--help`. */
@@ -38,7 +43,7 @@ function commandOf(argv, commandFlags, renamedCommands) {
     throw new UsageError(`${first} ${actions.join('|')}`, first);
 }
 /**
- * Splits `<command> [words] [--name value] [--switch]...`. Only the command's own flags are
+ * Splits `<command> [words] [--name value] [--switch]...`. Only the command's own flags and COMMON_FLAGS are
  * accepted, so a typo is refused instead of silently meaning nothing; every flag takes exactly one
  * value, except the command's switches, which take none. A renamed flag or command is refused with its
  * new name. `--help` or `-h` after the command stops the reading: the line asks for that command's help.
@@ -51,14 +56,15 @@ export function parseArgs(argv, commandFlags, commandSwitches = {}, renamed = {}
     const switchable = commandSwitches[command] ?? [];
     const positionals = [];
     const flags = new Map();
+    const common = new Map();
     const switches = new Set();
     for (let index = 0; index < tail.length; index += 1) {
         const token = tail[index] ?? '';
         if (HELP_FLAGS.has(token)) {
-            return { command, positionals: [], flags: new Map(), switches: new Set(), rest: [], help: true };
+            return { command, positionals: [], flags: new Map(), switches: new Set(), rest: [], help: true, common: new Map() };
         }
         if (token === REST_MARKER && restCommands.has(command)) {
-            return { command, positionals, flags, switches, rest: tail.slice(index + 1), help: false };
+            return { command, positionals, flags, switches, rest: tail.slice(index + 1), help: false, common };
         }
         if (!token.startsWith('--')) {
             positionals.push(token);
@@ -76,20 +82,20 @@ export function parseArgs(argv, commandFlags, commandSwitches = {}, renamed = {}
             switches.add(name);
             continue;
         }
-        if (!allowed.includes(name)) {
+        if (!allowed.includes(name) && !COMMON_FLAGS.includes(name)) {
             throw new UsageError(`${command} takes no ${token}`, command);
         }
         const value = tail[index + 1];
         if (value === undefined || value.startsWith('--')) {
             throw new UsageError(`${token} needs a value`, command);
         }
-        if (flags.has(name)) {
+        if (flags.has(name) || common.has(name)) {
             throw new UsageError(`${token} is given twice`, command);
         }
-        flags.set(name, value);
+        (allowed.includes(name) ? flags : common).set(name, value);
         index += 1;
     }
-    return { command, positionals, flags, switches, rest: [], help: false };
+    return { command, positionals, flags, switches, rest: [], help: false, common };
 }
 export function noPositionals(args) {
     const [extra] = args.positionals;
