@@ -124,6 +124,7 @@ const request = (overrides: Partial<MergeRequest> = {}): MergeRequest => ({
   title: 'Merge dev into main: 2 commit(s)',
   body: '- a\n- b',
   lacks: null,
+  opens: true,
   ...overrides,
 });
 
@@ -455,8 +456,8 @@ test("fetches main once more when the fetch lost a ref-store race with another f
 });
 
 test('reads the repo dir and the polling flags', () => {
-  assert.deepEqual(parseArgs(['C:/repo']), { dir: 'C:/repo', head: null, timeoutMin: 45, intervalS: 30, noteFile: null, approved: null });
-  assert.deepEqual(parseArgs(['C:/repo', '--head', 'feature/x', '--timeout-min', '5', '--interval-s', '10']), { dir: 'C:/repo', head: 'feature/x', timeoutMin: 5, intervalS: 10, noteFile: null, approved: null });
+  assert.deepEqual(parseArgs(['C:/repo']), { dir: 'C:/repo', head: null, timeoutMin: 45, intervalS: 30, noteFile: null, approved: null, release: null });
+  assert.deepEqual(parseArgs(['C:/repo', '--head', 'feature/x', '--timeout-min', '5', '--interval-s', '10']), { dir: 'C:/repo', head: 'feature/x', timeoutMin: 5, intervalS: 10, noteFile: null, approved: null, release: null });
   assert.equal(parseArgs(['C:/repo', '--approved', 'abc1234def']).approved, 'abc1234def');
   assert.throws(() => parseArgs(['C:/repo', '--approved', 'HEAD']), /usage: ship\.ts merge/);
   assert.throws(() => parseArgs([]), /usage: ship\.ts merge/);
@@ -496,7 +497,15 @@ interface RunFixture {
   work?: Readonly<Record<string, readonly WorkCommit[]>>;
   /** How many of main's fetches after the merge call fail on a ref-store race with another fetch (#1452); none unless given. */
   racedFetches?: number;
+  /**
+   * The repo's release pull request (T4645), on RELEASE at SHA as origin has it: whether it is open (yes unless given)
+   * and why the release check refuses its head (it never does unless given). Unset, repos.json lists none.
+   */
+  release?: { open?: boolean; refusal?: string };
 }
+
+/** The branch the release tool keeps the release pull request on (T4645). */
+const RELEASE = 'release-please--branches--main';
 
 /** The head a catch-up pushes: BRANCH rebased onto MOVED. */
 const NEXT = 't9-change-2';
@@ -570,6 +579,8 @@ function runFixture(fixture: RunFixture = {}): {
   renamedCallers: ReturnType<typeof mock.fn<MergeDeps['renamedCallers']>>;
   sweep: ReturnType<typeof mock.fn<MergeDeps['sweep']>>;
   clearMerge: ReturnType<typeof mock.fn<MergeDeps['clearMerge']>>;
+  clearTaskMerge: ReturnType<typeof mock.fn<MergeDeps['clearTaskMerge']>>;
+  releaseRefusal: ReturnType<typeof mock.fn<MergeDeps['releaseRefusal']>>;
   catchUp: ReturnType<typeof mock.fn<MergeDeps['catchUp']>>;
   /** Each step-away and step-back of the step's host share, in turn, with the catch-ups run before it. */
   shareCalls: string[];
@@ -596,6 +607,8 @@ function runFixture(fixture: RunFixture = {}): {
     [`merge-base ${REBASED} ${MOVED}`]: fixture.rebasedBehind === true ? BASE : MOVED,
     [`rev-parse ${REBASED}^{tree}`]: 'tree-checked',
     'rev-parse --verify --quiet abc1234^{commit}': SHA,
+    [`fetch --quiet origin ${RELEASE} main`]: '',
+    [`rev-parse refs/remotes/origin/${RELEASE}`]: SHA,
   };
   const out: string[] = [];
   const err: string[] = [];
@@ -603,7 +616,9 @@ function runFixture(fixture: RunFixture = {}): {
   const caughtUpHead = fixture.mainTip === MOVED;
   // A main that moves during the wait sees the first head's pull request opened, then the caught-up one's.
   const heads: readonly PushedHead[] | undefined = fixture.movesDuringWait === true ? [{ sha: SHA, branch: BRANCH }, { sha: REBASED, branch: NEXT }] : undefined;
-  const { gh, writes } = fakeGitHub({ rounds: fixture.rounds ?? [green], openedSha: caughtUpHead ? REBASED : SHA, branch: caughtUpHead ? NEXT : BRANCH, ...(heads === undefined ? {} : { heads }) });
+  // The release tool opened the release pull request at SHA, and CI ran on its branch.
+  const releasePull = fixture.release === undefined ? {} : { openPullSha: fixture.release.open === false ? null : SHA, branch: RELEASE };
+  const { gh, writes } = fakeGitHub({ rounds: fixture.rounds ?? [green], openedSha: caughtUpHead ? REBASED : SHA, branch: caughtUpHead ? NEXT : BRANCH, ...(heads === undefined ? {} : { heads }), ...releasePull });
   let mainReads = 0;
   let mainFetches = 0;
   let raced = fixture.racedFetches ?? 0;
@@ -612,6 +627,9 @@ function runFixture(fixture: RunFixture = {}): {
   const renamedCallers = mock.fn((_base: string, _tip: string, _repo: string): string | null => fixture.renamedCallers ?? null);
   const sweep = mock.fn<MergeDeps['sweep']>(() => undefined);
   const clearMerge = mock.fn<MergeDeps['clearMerge']>(() => Promise.resolve(fixture.clearance ?? { kind: 'approved', by: 'lead' }));
+  const clearTaskMerge = mock.fn<MergeDeps['clearTaskMerge']>(() => Promise.resolve(fixture.clearance ?? { kind: 'approved', by: 'lead' }));
+  const releaseRefusal = mock.fn<MergeDeps['releaseRefusal']>(() => fixture.release?.refusal ?? null);
+  const releaseProfile = fixture.release === undefined ? '' : `,"release":{"head":"${RELEASE}","changelog":"CHANGELOG.md"}`;
   const answersOfCatchUp = fixture.catchUp ?? [CAUGHT_UP_REFUSED];
   let caughtUp = 0;
   const catchUp = mock.fn<MergeDeps['catchUp']>(() => answersOfCatchUp[Math.min(caughtUp++, answersOfCatchUp.length - 1)] ?? CAUGHT_UP_REFUSED);
@@ -628,7 +646,7 @@ function runFixture(fixture: RunFixture = {}): {
       if (answer === undefined) throw new Error(`unexpected git ${key}`);
       return answer;
     },
-    profiles: parseProfiles(`{"${REPO}":{"main":"main","gate":"${fixture.local === undefined ? 'ci' : 'local'}","checks":["gates","test"],"regenerated":["out/"],${LOCAL_PROFILE}}}`),
+    profiles: parseProfiles(`{"${REPO}":{"main":"main","gate":"${fixture.local === undefined ? 'ci' : 'local'}","checks":["gates","test"],"regenerated":["out/"],${LOCAL_PROFILE}${releaseProfile}}}`),
     credential: () => fixture.credential ?? { kind: 'found', secret: GH_SECRET },
     ghFor,
     waiter: fakeWaiter(),
@@ -636,6 +654,8 @@ function runFixture(fixture: RunFixture = {}): {
     renamedCallers,
     sweep,
     clearMerge,
+    clearTaskMerge,
+    releaseRefusal,
     catchUp,
     workOf: (rev) => (fixture.work ?? { [SHA]: APPROVED_WORK, [REBASED]: REBASED_WORK })[rev] ?? [],
     share: {
@@ -660,10 +680,10 @@ function runFixture(fixture: RunFixture = {}): {
     out: line => out.push(line),
     err: line => err.push(line),
   };
-  return { deps, gitCalls, out, err, ghFor, ghWrites: writes, local, renamedCallers, sweep, clearMerge, catchUp, shareCalls };
+  return { deps, gitCalls, out, err, ghFor, ghWrites: writes, local, renamedCallers, sweep, clearMerge, clearTaskMerge, releaseRefusal, catchUp, shareCalls };
 }
 
-const ARGS: MergeArgs = { dir: 'C:/repo', head: BRANCH, timeoutMin: 10, intervalS: 60, noteFile: null, approved: null };
+const ARGS: MergeArgs = { dir: 'C:/repo', head: BRANCH, timeoutMin: 10, intervalS: 60, noteFile: null, approved: null, release: null };
 /** What `ship.ts merge` says once the lead's approval cleared the head (T2788). */
 const APPROVED_LINE = `merge of ${BRANCH} abc1234de: approved by lead`;
 
@@ -883,6 +903,67 @@ test(`main moving past ${MERGE_ATTEMPTS} heads in one merge is refused, each new
   );
   assert.deepEqual(err, [`REFUSED main moved to moved00, which ${NEXT} rebased does not contain: rebase ${NEXT} onto origin/main, push it and run merge again (main moved ${MERGE_ATTEMPTS} times during this merge)`]);
   assert.equal(sweep.mock.callCount(), 0);
+});
+
+/** `ship.ts merge --release` on the release task T7, approved at SHA (T4645). */
+const RELEASE_ARGS: MergeArgs = { ...ARGS, head: null, release: 'T7', approved: 'abc1234' };
+
+test('--release names the release task, and takes neither --head nor --note-file (T4645)', () => {
+  assert.equal(parseArgs(['C:/repo', '--release', 'T7']).release, 'T7');
+  assert.throws(() => parseArgs(['C:/repo', '--release', 'seven']), /usage: ship\.ts merge/);
+  assert.throws(() => parseArgs(['C:/repo', '--release', 'T7', '--head', RELEASE]), /--release merges the branch repos\.json names for the release pull request, so it takes no --head/);
+  assert.throws(() => parseArgs(['C:/repo', '--note-file', 'C:/pr.md', '--release', 'T7']), /--release opens no pull request, so it takes no --note-file/);
+});
+
+test("the release pull request merges on its release task's approval, its head read from origin alone (T4645)", async () => {
+  const { deps, gitCalls, out, err, clearMerge, clearTaskMerge, releaseRefusal, ghWrites, sweep } = runFixture({ release: {} });
+  assert.equal(await runMerge(RELEASE_ARGS, deps), 0, err.join('\n'));
+  assert.deepEqual(clearTaskMerge.mock.calls.map(call => call.arguments), [['T7', SHA, 'abc1234']]);
+  assert.equal(clearMerge.mock.callCount(), 0, 'the release branch names no task to clear on');
+  assert.deepEqual(releaseRefusal.mock.calls.map(call => call.arguments.slice(1)), [[{ head: RELEASE, changelog: 'CHANGELOG.md' }, SHA]]);
+  assert.equal(out[0], `merge of the release pull request ${RELEASE} abc1234de: approved by lead on T7`);
+  assert.equal(out.at(-1), 'MERGED #3 into main, now at main999');
+  assert.ok(!gitCalls.some(call => call === 'rev-parse --abbrev-ref HEAD' || call.startsWith('rev-parse refs/heads/')), 'no local branch is read');
+  assert.ok(!ghWrites.some(args => args[1] === `repos/${REPO}/pulls`), 'it opens no pull request');
+  assert.deepEqual(sweep.mock.calls.map(call => call.arguments[0]), [{ repo: REPO, head: RELEASE, sha: SHA }]);
+});
+
+test('a release pull request that is not open is refused, never opened by the merge (T4645)', async () => {
+  const { deps, err, ghWrites } = runFixture({ release: { open: false } });
+  assert.equal(await runMerge(RELEASE_ARGS, deps), 1);
+  assert.deepEqual(err, [`REFUSED no open pull request from ${RELEASE} into main: the release tool opens it, never a merge`]);
+  assert.deepEqual(ghWrites, []);
+});
+
+test('a release head holding more than a release, or refused clearance, stops before the token is read or any GitHub call (T4645)', async () => {
+  const notRelease = 'src/cli/main.ts is not a version file nor the changelog: the release pull request holds only a release';
+  const changed = runFixture({ release: { refusal: notRelease } });
+  assert.equal(await runMerge(RELEASE_ARGS, changed.deps), 1);
+  assert.deepEqual(changed.err, [`REFUSED ${notRelease}`]);
+  assert.equal(changed.clearTaskMerge.mock.callCount(), 0);
+  assert.equal(changed.ghFor.mock.callCount(), 0);
+
+  const unapproved = runFixture({ release: {}, clearance: { kind: 'refused', reason: 'T7 has no approval of abc1234de by lead' } });
+  assert.equal(await runMerge(RELEASE_ARGS, unapproved.deps), 1);
+  assert.deepEqual(unapproved.err, ['REFUSED T7 has no approval of abc1234de by lead']);
+  assert.equal(unapproved.ghFor.mock.callCount(), 0);
+});
+
+test('a release head main moved past is refused and never caught up: the release tool rewrites it (T4645)', async () => {
+  const { deps, err, catchUp, sweep } = runFixture({ release: {}, mainTip: MOVED, catchUp: [CAUGHT_UP] });
+  assert.equal(await runMerge(RELEASE_ARGS, deps), 1);
+  assert.deepEqual(err, [
+    "REFUSED the main branch moved to moved00, past the release pull request's head: the release tool rewrites that head on each move of main, so once its new head's checks pass, ask approval of that head and merge again",
+  ]);
+  assert.equal(catchUp.mock.callCount(), 0);
+  assert.equal(sweep.mock.callCount(), 0);
+});
+
+test('--release on a repo whose repos.json lists no release pull request is refused before any GitHub call (T4645)', async () => {
+  const { deps, gitCalls, ghFor } = runFixture();
+  await assert.rejects(runMerge(RELEASE_ARGS, deps), /Owner\/repo lists no release pull request in repos\.json/);
+  assert.ok(!gitCalls.some(call => call.startsWith('fetch')));
+  assert.equal(ghFor.mock.callCount(), 0);
 });
 
 /** A catch-up whose push failed as main moved again, to AGAIN (T4131). */
