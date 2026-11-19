@@ -8,7 +8,7 @@ import { AFFECTS_USAGE, CARD_FLAGS, GATE_FLAG, proofWordOf, RUN_FLAG, whyAskUsag
 import { taskNumber, type Task } from './fold.ts';
 import { auditOf, runFileDrift, type RunFiles } from './hand-step.ts';
 import { leaderHolds, waitedMinutes, type LeaderWaitFocus } from './leader-wait.ts';
-import { ACTIVE_STATUSES, hasIssueOrReason, priorityText, type TaskStatus } from './model.ts';
+import { ACTIVE_STATUSES, BLOCKER_PRIORITY_ID, hasIssueOrReason, priorityText, type TaskStatus } from './model.ts';
 import { isProofAsk, isUngated, unreviewedSecurityWord } from './owner-waits.ts';
 import { isUntriaged, type Leaders } from './park.ts';
 import { loopFix, NO_TASKS_ELSEWHERE, pathText, planBand, TaskTree, type RankedPlace, type TasksElsewhere, type TreeRanking } from './tree.ts';
@@ -19,6 +19,7 @@ import { allReady, isPeerWait, isReady, unfinishedAfter, waitSpelling, type Wait
 /** In report order: the most urgent first. */
 export const FLAG_KINDS = [
   'URGENT',
+  'BLOCKER-OPEN',
   'OVERDUE',
   'VERIFY-OVERDUE',
   'SLICE-LATE',
@@ -82,6 +83,8 @@ export interface Flag {
  * - URGENT: open at p0 or the blocker above it (teamrig's own levels, isRightNow) and free to start (every task it comes after finished):
  *   its owner starts it now, ahead of the task in hand; with an effective due, the detail names the lead's deadline
  *   burst that may pay for finishing it by then;
+ * - BLOCKER-OPEN: a blocker not yet shipped (open, in progress or waiting) longer than `blockerOpenAfterHours` after it
+ *   became one: a blocker is fixed now, so its owner fixes it, or its leader takes it over or lowers it (T4329);
  * - OVERDUE: past its effective deadline (its own due, or an earlier one of a task that needs it, named in the detail
  *   as `due 01-10, from T5`); VERIFY-OVERDUE when the task is verifying: that date is the date to verify it by;
  * - LOOP: the lowest-numbered task of a loop among active tasks (`T2 -> T5 -> T2`), which none of them can finish:
@@ -169,6 +172,7 @@ export function checkTasks(
   const runs = selfMadeRuns(all, at, config.check.maxSelfMadePerDay);
   const flags = active.flatMap((task) => [
     ...urgentFlags(task, tree),
+    ...blockerOpenFlags(task, at, config.check, tree),
     ...verifyFlags(task, tree, piles, config.maxVerifying),
     ...reparkedFlags(task, config.maxReparks),
     ...selfMadeFlags(task, runs, config.check.maxSelfMadePerDay),
@@ -425,6 +429,17 @@ function urgentFlags(task: Task, tree: TaskTree): Flag[] {
   const burst =
     due === undefined ? '' : `; to finish it by its due, the lead may run burst start deadline --task ${task.id} --by "${tree.zone.minute(new Date(due.at))}" --stop-pct <n> --reason "<why>"`;
   return [{ kind: 'URGENT', task, detail: `${priorityText(task.priority)}: start it now, ahead of the task in hand${burst}` }];
+}
+
+/** BLOCKER-OPEN: a blocker held (not yet shipped) past `blockerOpenAfterHours` since it became one. */
+function blockerOpenFlags(task: Task, at: number, check: RegisterCheckConfig, tree: TaskTree): Flag[] {
+  const heldMs = at - Date.parse(task.priorityAt);
+  if (task.priority !== BLOCKER_PRIORITY_ID || !HELD_STATUSES.includes(task.status) || heldMs <= check.blockerOpenAfterHours * MS_PER_HOUR) {
+    return [];
+  }
+  const hours = Math.floor(heldMs / MS_PER_HOUR);
+  const detail = `a blocker since ${minute(task.priorityAt, tree.zone)}, ${hours} h, past ${check.blockerOpenAfterHours} h: its owner fixes it now, or its leader takes it over or lowers it`;
+  return [{ kind: 'BLOCKER-OPEN', task, detail }];
 }
 
 /** OVERDUE or VERIFY-OVERDUE on the effective due, then NOT-PICKED-UP or else STALE. */

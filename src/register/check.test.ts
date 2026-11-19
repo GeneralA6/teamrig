@@ -209,6 +209,32 @@ describe('checkTasks: URGENT', () => {
   });
 });
 
+describe('checkTasks: BLOCKER-OPEN (T4329)', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+  const blocker = testTask({ id: 'T1', priority: BLOCKER_PRIORITY_ID, status: 'in-progress', priorityAt: '2030-01-10T07:00:00.000Z', ...seen });
+  const openIds = (tasks: Parameters<typeof checkTasks>[0], config = CONFIG) =>
+    checkTasks(tasks, NOW, TimeZone.UTC, null, config).filter((flag) => flag.kind === 'BLOCKER-OPEN').map((flag) => flag.task.id);
+
+  it('flags a blocker unfixed past the allowance since it became one, right after URGENT', () => {
+    const raised = checkTasks([{ ...blocker, status: 'open' }], NOW, TimeZone.UTC, null, CONFIG);
+    assert.deepEqual(raised.map((flag) => flag.kind), ['URGENT', 'BLOCKER-OPEN']);
+    assert.equal(raised[1]?.detail, 'a blocker since 01-10 07:00 UTC, 5 h, past 4 h: its owner fixes it now, or its leader takes it over or lowers it');
+  });
+
+  it('flags one in progress or waiting too, and none shipped, inside the allowance or below blocker', () => {
+    assert.deepEqual(openIds([blocker]), ['T1']);
+    assert.deepEqual(openIds([{ ...blocker, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD }]), ['T1']);
+    assert.deepEqual(openIds([{ ...blocker, status: 'verifying' }]), []);
+    assert.deepEqual(openIds([{ ...blocker, priorityAt: '2030-01-10T09:00:00.000Z' }]), []);
+    assert.deepEqual(openIds([{ ...blocker, priority: 0 }]), []);
+  });
+
+  it('reads its allowance from the config', () => {
+    const quick = testConfig({ register: { check: { blockerOpenAfterHours: 2 } } }).register;
+    assert.deepEqual(openIds([{ ...blocker, priorityAt: '2030-01-10T09:00:00.000Z' }], quick), ['T1']);
+  });
+});
+
 describe('leaderWaitFlags', () => {
   const focus = { roadmapClass: 'Roadmap', defaultClass: 'Improvements', leaderWaitMinutes: 60 };
   const askedAt = '2030-01-10T10:30:00.000Z';

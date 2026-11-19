@@ -1598,6 +1598,7 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
     check: {
       staleAfterHours: read.integer(check, 'staleAfterHours', `${path}.check`, defaults.check.staleAfterHours, { min: 1 }),
       notPickedUpAfterHours: read.integer(check, 'notPickedUpAfterHours', `${path}.check`, defaults.check.notPickedUpAfterHours, { min: 1 }),
+      blockerOpenAfterHours: read.integer(check, 'blockerOpenAfterHours', `${path}.check`, defaults.check.blockerOpenAfterHours, { min: 1 }),
       prioritySkipAfterHours: read.integer(check, 'prioritySkipAfterHours', `${path}.check`, defaults.check.prioritySkipAfterHours, { min: 1 }),
       maxSelfMadePerDay: read.integer(check, 'maxSelfMadePerDay', `${path}.check`, defaults.check.maxSelfMadePerDay, CONFIG_LIMITS.maxSelfMadePerDay),
       goalProgressDays: read.integer(check, 'goalProgressDays', `${path}.check`, defaults.check.goalProgressDays, CONFIG_LIMITS.goalProgressDays),
