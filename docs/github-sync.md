@@ -65,7 +65,10 @@ Anyone can open an issue on a public repository, so teamrig takes only the issue
   the issue is not accepted any more. Once you have read the new text, remove the label and add it again.
 
 An issue that counts neither way writes nothing. A task the sync already added for one keeps its text: its priority
-and open or closed state still follow GitHub, its title and description stay as they are.
+and open or closed state still follow GitHub, its title and description stay as they are. The priority is the issue's
+most urgent `p<n>` label your levels list. No label makes a task p0 or a blocker: both wake their owner past the
+budget, so only a session of the team sets them, with `teamrig update --priority`. teamrig itself labels an issue
+only `p1`, `p2` or `p3` (a blocker or a p0 as `p1`), as it creates no label but its own.
 
 ## 2. Give teamrig read access
 
