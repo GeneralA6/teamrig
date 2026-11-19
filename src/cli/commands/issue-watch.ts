@@ -16,12 +16,12 @@ import {
   type ProbeRound,
   type WatchLease,
 } from '../../github/watch.ts';
-import type { WatchMarks } from '../../issues/host.ts';
+import { GITHUB_REPOS_HOST, type WatchMarks } from '../../issues/host.ts';
 import { runsClaude } from '../../open/session-processes.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { fileLockOf } from '../file-locks.ts';
-import { hostOf } from '../issue-hosts.ts';
+import { hostsOf } from '../issue-hosts.ts';
 import { openTeamKit, requireConfig, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { GITHUB_OFF, githubOff } from './issue-sync-auto.ts';
@@ -212,7 +212,8 @@ async function probeRound(
   config: KitConfig,
   marks: ReadonlyMap<string, WatchMarks>,
 ): Promise<{ readonly round: ProbeRound; readonly pending: ReadonlyMap<string, WatchMarks> }> {
-  const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp);
+  // The probe goes over github.repos, GitHub's list, and asks its tracker.
+  const host = (await hostsOf(GITHUB_REPOS_HOST, runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp)).tracker;
   const pending = new Map<string, WatchMarks>();
   let failed = false;
   for (const repo of config.github.repos) {

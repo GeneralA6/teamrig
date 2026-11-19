@@ -2,7 +2,7 @@ import { ENV } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { RepoFailure } from '../../github/auto.ts';
 import { closedSince } from '../../github/sync.ts';
-import { targetText, type PullRequests, type Tracker } from '../../issues/host.ts';
+import { GITHUB_REPOS_HOST, targetText, type PullRequests, type Tracker } from '../../issues/host.ts';
 import { applyPush } from '../../issues/push-apply.ts';
 import { planAssigned, viewerOf } from '../../issues/push-assignees.ts';
 import { changeLine, changeWrites, planPush, pushAssignees, SESSION_PUSH, sessionLogins, VIEWER_UNREAD, type PushLimits, type PushPlan, type SessionLogins } from '../../issues/status-push.ts';
@@ -10,7 +10,7 @@ import type { Task } from '../../register/fold.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { hostOf, reposOf } from '../issue-hosts.ts';
+import { hostsOf, reposOf } from '../issue-hosts.ts';
 import { sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { GITHUB_OFF, githubOff } from './issue-sync-auto.ts';
@@ -52,11 +52,11 @@ export async function issuePush(args: ParsedArgs, runtime: CliRuntime): Promise<
     return EXIT.ok;
   }
   // github.repos is GitHub's list, so every repository it names is GitHub's, which is its tracker and its code host.
-  const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp);
+  const hosts = await hostsOf(GITHUB_REPOS_HOST, runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp);
   const totals = await pushRepos(
     {
-      host,
-      pulls: host,
+      host: hosts.tracker,
+      pulls: hosts.codeHost,
       repos: reposOf(config.github.repos, args.flags.get('repo')),
       since: closedSince(new Date(runtime.clock.now()), config.github.closedDays),
       tasks: async () => (await team.register.snapshot()).state.tasks.values(),
