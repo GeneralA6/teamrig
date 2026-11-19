@@ -75,7 +75,7 @@ export async function issueReply(args: ParsedArgs, runtime: CliRuntime): Promise
   if (status !== undefined) {
     const wanted = TASK_STATUS_OF_LABEL[status] ?? status;
     if (wanted !== before.status || passed.length > 0) {
-      const setExit = await set({ command: 'set', positionals: [before.id], flags: setFlagsOf(args.flags, wanted, passed), switches: new Set(), rest: [], help: false }, runtime);
+      const setExit = await set({ command: 'set', positionals: [before.id], flags: setFlagsOf(args.flags, wanted, passed), switches: new Set(), rest: [], help: false, common: new Map() }, runtime);
       if (setExit !== EXIT.ok) {
         say(`STOPPED ${targetText(target)}: ${before.id} was not set, so nothing was written to the thread`);
         return setExit;

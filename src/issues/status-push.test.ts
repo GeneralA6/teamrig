@@ -349,7 +349,7 @@ describe('planIssue (T3169)', () => {
 
   it('makes a plan that sends one change alone', () => {
     const change: IssueChange = { target, task: 'T1', status: 'open', add: ['status:open'], remove: [], close: undefined };
-    assert.deepEqual(onePushPlan(REPO, change), { repo: REPO, changes: [change], deferred: [], heldCloses: [], unchanged: 0, closedActive: [], keptOpen: [], unlisted: [], shared: [] });
+    assert.deepEqual(onePushPlan(REPO, change), { repo: REPO, changes: [change], deferred: [], heldCloses: [], unchanged: 0, closedActive: [], keptOpen: [], unlisted: [], shared: [], openPulls: [] });
   });
 
   it('leaves open an issue a finished task holds that is taken outside the team, or a design issue, as the repository push does', () => {
