@@ -1577,10 +1577,14 @@ describe("teamrig queue gives a ship step the task its worktree's branch names (
       ['bash', '-c', 'cd /repo/other && git push'],
       ['node', '/repo/other/deploy.ts'],
       ['node', '/nowhere/deploy.ts'],
+      ['/repo/other/deploy.sh'],
+      ['/repo/other/deploy.sh', 'main'],
     ]) {
       assert.equal(await heldRepo(team, ['--kind', 'ship', '--', ...words], appGit()), undefined, words.join(' '));
     }
     assert.equal(await heldRepo(team, ['--kind', 'ship', '--', 'git', 'push', 'origin', 'HEAD'], appGit()), `${MAIN_CHECKOUT}/.git`, 'words naming no place');
+    assert.equal(await heldRepo(team, ['--kind', 'ship', '--', '/usr/bin/git', 'push', 'origin', 'HEAD'], appGit()), `${MAIN_CHECKOUT}/.git`, 'a program in no repository');
+    assert.equal(await heldRepo(team, ['--kind', 'ship', '--', '/repo/app/deploy.sh'], appGit()), `${MAIN_CHECKOUT}/.git`, "a program of the folder's own repository");
   });
 
   it("records for a ship tool's merge the repository of the worktree it merges, not of the folder it was queued in (#1711)", async () => {

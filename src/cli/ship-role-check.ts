@@ -183,7 +183,8 @@ function pointsElsewhere(git: Pick<MergeGit, 'commonDir'>, word: string, cwd: st
 /**
  * The repository a step that holds the ship slot moves (#1711), as its shared git folder: for a step that runs a
  * configured ship tool, its target worktree's (the word after the tool, after its `merge` in the merge form); for any
- * other, the step's folder's, unless a word after the program may point it elsewhere (`pointsElsewhere`). Undefined
+ * other, the step's folder's, unless a word after the program may point it elsewhere (`pointsElsewhere`) or the
+ * program is a path in another repository. Undefined
  * when that is in doubt, so the step holds the slot of every repository, as before.
  */
 export function shipSlotRepoOf(git: Pick<MergeGit, 'commonDir'>, kit: Kit, config: KitConfig, words: readonly string[], cwd: string): string | undefined {
@@ -193,7 +194,15 @@ export function shipSlotRepoOf(git: Pick<MergeGit, 'commonDir'>, kit: Kit, confi
     return worktree === undefined || worktree.startsWith('-') ? undefined : git.commonDir(placeOfWord(worktree, cwd));
   }
   const own = git.commonDir(cwd);
-  return own === undefined || words.slice(1).some((word) => pointsElsewhere(git, word, cwd, own)) ? undefined : own;
+  if (own === undefined || words.slice(1).some((word) => pointsElsewhere(git, word, cwd, own))) {
+    return undefined;
+  }
+  // The program word by its path: a script of another repository run straight moves that one; a program in no
+  // repository (`/usr/bin/git`) is a tool, which moves the folder's.
+  const program = words[0] ?? '';
+  const place = placeOfWord(program, cwd);
+  const programRepo = /[/\\]/.test(program) ? (git.commonDir(place) ?? git.commonDir(dirname(place))) : undefined;
+  return programRepo === undefined || samePath(programRepo, own) ? own : undefined;
 }
 
 /** The words after the configured ship tool a step's words run; undefined when they run none. */
