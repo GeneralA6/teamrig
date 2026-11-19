@@ -34,7 +34,7 @@ test('reads the sections a pull request note must hold, and refuses a list that 
   for (const sections of ['"Reach"', '[""]', '["Reach","Reach"]', '[3]']) {
     assert.throws(() => parseProfiles(`{"O/R":{"main":"main","gate":"ci","checks":["a"],"pullSections":${sections}}}`), /O\/R "pullSections" needs a list of distinct section names/, sections);
   }
-  assert.deepEqual(readProfiles().get('generala6/teamrig')?.pullSections, ['Reach']);
+  assert.deepEqual(readProfiles().get('generala6/teamrig')?.pullSections, ['Reach', 'Risks']);
 });
 
 test('reads the release pull request\'s branch and changelog, none when not listed, and refuses a bad branch or a path outside the repo (T4645)', () => {

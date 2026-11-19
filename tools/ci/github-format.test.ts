@@ -4,6 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { DEFAULT_GITHUB } from '../../src/config/defaults.ts';
 import { DESIGN_LABEL_SPEC } from '../../src/issues/design-label.ts';
 import { parseLabelFile } from '../../src/issues/label-file.ts';
+import { profileFor, readProfiles } from '../ship/repos.ts';
 import { formInputs, formLabels, ISSUE_FORMS, PULL_SECTIONS, sectionsOf } from './github-format.ts';
 
 const read = (path: string): string => readFileSync(new URL(`../../.github/${path}`, import.meta.url), 'utf8');
@@ -76,5 +77,11 @@ describe('.github issue forms, labels and pull request template', () => {
 
   it('gives the pull request template its sections, in order', () => {
     assert.deepEqual(sectionsOf(read('pull_request_template.md')), PULL_SECTIONS);
+  });
+
+  it('asks a pull request note only for sections the template has, so the ship tool never refuses one it lacks (T4661)', () => {
+    for (const name of profileFor(readProfiles(), 'teamrig/teamrig').pullSections) {
+      assert.ok(PULL_SECTIONS.includes(name), `pullSections names ${name}, which the template lacks`);
+    }
   });
 });

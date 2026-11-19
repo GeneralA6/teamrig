@@ -12,6 +12,9 @@
 ## Changes
 <!-- The parts it touches, one line each. -->
 
+## Risks
+<!-- What could go wrong (a break for a caller, a security or data risk, a cost, a migration) and how each is softened; or "none foreseen" and why. See CONTRIBUTING.md, What a change is held to. -->
+
 ## Old-code proof
 <!-- A bug fix: the regression test that fails on the old code, and how you ran it there. Otherwise "none, not a fix". -->
 
