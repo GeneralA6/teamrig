@@ -1,9 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { Env } from '../core/home.ts';
+import { endOf, type ShellEnd } from '../core/shell-end.ts';
 import { posixQuote } from '../open/quote.ts';
-
-/** How a shell command ended: its exit code, or the signal that stopped it. */
-export type ShellEnd = { readonly kind: 'exited'; readonly code: number } | { readonly kind: 'signal'; readonly signal: string };
 
 export interface ShellRequest {
   /** One command line, read by the platform's shell: `sh` on POSIX, `cmd.exe` on Windows. */
@@ -82,11 +80,6 @@ export function posixWord(word: string): string {
 
 function cmdWord(word: string): string {
   return word !== '' && !CMD_SPECIAL.test(word) ? word : `"${word.replaceAll('"', '\\"')}"`;
-}
-
-/** The end Node reports on `close`: a code, or no code and the signal that stopped the process. */
-export function endOf(code: number | null, signal: string | null): ShellEnd {
-  return code === null ? { kind: 'signal', signal: signal ?? 'an unknown signal' } : { kind: 'exited', code };
 }
 
 /** The real shell: Node's `spawn` with `shell: true`, stdin closed, stdout and stderr read as they come. */
