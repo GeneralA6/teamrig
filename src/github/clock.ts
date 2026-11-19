@@ -226,7 +226,7 @@ export function lateText(clock: Clock, now: number, zone: TimeZone): string {
 const GROUPED_REFS = 3;
 
 /** When a clock's answer target falls. */
-function dueAt(clock: Pick<Clock, 'kind' | 'since'>): number {
+export function dueAt(clock: Pick<Clock, 'kind' | 'since'>): number {
   return clock.since + targetMs(clock.kind);
 }
 

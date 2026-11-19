@@ -66,7 +66,30 @@ describe('check GH-LATE (T3028)', () => {
     assert.equal(await told(), 1);
     await kit.files.write(CLOCKS, clocks(...fifty.slice(1)));
     assert.equal(await told(), 1, 'an older one answered: no new line');
-    await kit.files.write(CLOCKS, clocks(...fifty.slice(1), late(51, 25)));
+    await kit.files.write(CLOCKS, clocks(...fifty.slice(1, 49)));
+    assert.equal(await told(), 1, 'the newest one answered: no new line');
+    await kit.files.write(CLOCKS, clocks(...fifty.slice(1, 48)));
+    assert.equal(await told(), 1, 'the next newest answered too: still no new line');
+    await kit.files.write(CLOCKS, clocks(...fifty.slice(1, 48), late(51, 25)));
     assert.equal(await told(), 2, 'a newer wait went late: told again');
+    await kit.files.write(CLOCKS, clocks(...fifty.slice(1, 48)));
+    assert.equal(await told(), 2, 'that newer one answered: no new line');
+  });
+
+  it('tells a late thread again once every earlier late thread was answered hours before (#1475)', async () => {
+    const kit = new CliHarness(TEAM);
+    const now = kit.clock.now();
+    const told = async (): Promise<number> => {
+      assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
+      const inbox = (await kit.files.read(join(TEAM_HOME, 'state', 'inbox', 'lead.md'))) ?? '';
+      return inbox.split('\n').filter((line) => line.includes('GH-LATE ')).length;
+    };
+    await kit.files.write(CLOCKS, clocks({ ...bug(now - 30 * MS_PER_HOUR), ref: 'gh:acme/web#5' }));
+    assert.equal(await told(), 1);
+    await kit.files.write(CLOCKS, clocks());
+    assert.equal(await told(), 1);
+    kit.clock.advance(3 * MS_PER_HOUR);
+    await kit.files.write(CLOCKS, clocks({ ...bug(now - 40 * MS_PER_HOUR), ref: 'gh:acme/web#6' }));
+    assert.equal(await told(), 2, 'an older wait late in a newly watched repo, nothing late before it for hours: told');
   });
 });

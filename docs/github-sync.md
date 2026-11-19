@@ -294,7 +294,9 @@ submitted; a draft waits on nobody until it is marked ready for review. The targ
   gh:acme/web#3 (security, by 11-16 03:00 UTC), ... and 9 more; ...`.
 - At 100%, `teamrig check` shows the lead `GH-LATE gh:acme/web#9 (bug, web) has waited 25 h ...`. Several late
   threads make one GH-LATE with their count and the oldest three (`GH-LATE 12 GitHub threads waited past their answer
-  target ..., oldest first: ...`). The lead is told once, and again only when a newer wait goes late.
+  target ..., oldest first: ...`). The lead is told once, and again only when a newer wait goes late: answering any
+  of them, the newest included, tells nothing new while others stay late. Once none was late for two hours, the next
+  late thread is told again, however old.
 - Your answer, or the issue or pull request closing, stops the clock. A repository that cannot be read keeps its clocks until it can.
 - `teamrig stats` shows the W your GitHub-linked tasks used on its `GITHUB` line. That number stays in teamrig:
   nothing is posted to GitHub.
