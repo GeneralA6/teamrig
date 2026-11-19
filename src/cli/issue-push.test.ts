@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
-import { isIssueQuery } from '../github/gh.ts';
+import { isIssueQuery, isViewerRead } from '../github/gh.ts';
 import { PUSH_WRITES_PER_RUN } from '../issues/status-push.ts';
 import { CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FakeGh, ghIssue, ghPull } from '../testing/fake-gh.ts';
@@ -64,14 +64,15 @@ describe('teamrig issue sync --push', () => {
       'LABEL acme/web#7 T1 in-progress: add status:in progress',
       'CLOSE acme/web#8 T2 dropped: close as not-planned, take off status:open',
       // #9's task is open with a due date, so the issue is claimed and goes to someone: the lead's session maps to no
-      // login, so the repository's owner.
-      'LABEL acme/web#9 T3 open: add status:claimed, take off status:open, assign acme',
+      // login, so the login the sync runs as, never the repository's owner (T4581).
+      'LABEL acme/web#9 T3 open: add status:claimed, take off status:open, assign sync-bot',
       'KEPT acme/web#5 T4 open: closed on the host (not_planned) while the task is active; the push never reopens an issue, so set the task to match or reopen the issue',
       'UNLISTED acme/web#3 T5 open: not open on the host (closed before github.closedDays, or gone) while the task is active; the push never reopens an issue',
       'PUSH acme/api: 0 to change, 0 unchanged',
       `PREVIEW nothing was written; a push would send 6 write(s) now, at most ${PUSH_WRITES_PER_RUN} a run, and plan the rest again on the next`,
     ]);
-    assert.ok(gh.ran.length > 0 && gh.ran.every((request) => isIssueQuery(request.args)), 'gh was asked for something other than a shipped issue query');
+    const reads = gh.ran.filter((request) => !isIssueQuery(request.args)).map((request) => request.args.join(' '));
+    assert.deepEqual(reads, ['api user', 'api users/sync-bot', 'api repos/acme/web/assignees/sync-bot'], 'gh was asked for something other than a shipped issue query or the assignee reads');
     assert.equal(kit.files.get(EVENTS_PATH), log);
   });
 
@@ -127,7 +128,10 @@ describe('teamrig issue sync --push', () => {
 
     const none = issues();
     await expectRun(new CliHarness(GITHUB_TEAM), ['issue', 'sync', '--push', '--repo', 'acme/web'], none, EXIT.ok);
-    assert.ok(none.ran.every((request) => isIssueQuery(request.args) && !request.args.join(' ').includes('pullRequests')), 'no task held a number the list left out, so no pull request read');
+    assert.ok(
+      none.ran.every((request) => isViewerRead(request.args) || (isIssueQuery(request.args) && !request.args.join(' ').includes('pullRequests'))),
+      'no task held a number the list left out, so no pull request read',
+    );
   });
 
   it('plans only the repository --repo names', async () => {
@@ -165,22 +169,23 @@ describe('teamrig issue sync --push', () => {
     assert.deepEqual(lines.filter((line) => /^(SET|PUSHED) /u.test(line)), [
       'SET acme/web#7 T1 in-progress: add status:in progress',
       'SET acme/web#8 T2 dropped: close as not-planned, take off status:open',
-      'SET acme/web#9 T3 open: add status:claimed, take off status:open, assign acme',
+      'SET acme/web#9 T3 open: add status:claimed, take off status:open, assign sync-bot',
       `PUSHED 3 change(s), 6 write(s); at most ${PUSH_WRITES_PER_RUN} a run, the rest planned again on the next`,
     ]);
     assert.deepEqual(
       gh.ran.filter((request) => !isIssueQuery(request.args)).map((request) => request.args.join(' ')),
       [
+        'api user',
+        'api users/sync-bot',
+        'api repos/acme/web/assignees/sync-bot',
         'api repos/acme/web/labels/status%3Ain%20progress',
         'api repos/acme/web/labels/status%3Aclaimed',
-        'api users/acme',
-        'api repos/acme/web/assignees/acme',
         'api repos/acme/web/issues/7/labels -X POST -f labels[]=status:in progress',
         'api repos/acme/web/issues/8/labels/status%3Aopen -X DELETE',
         'api repos/acme/web/issues/8 -X PATCH -f state=closed -f state_reason=not_planned',
         'api repos/acme/web/issues/9/labels -X POST -f labels[]=status:claimed',
         'api repos/acme/web/issues/9/labels/status%3Aopen -X DELETE',
-        'api repos/acme/web/issues/9/assignees -X POST -f assignees[]=acme',
+        'api repos/acme/web/issues/9/assignees -X POST -f assignees[]=sync-bot',
       ],
     );
   });

@@ -11,8 +11,9 @@ import type { HostIssue } from './issue.ts';
  * the task with the issue as the host lists it now, not with what an earlier run sent, so five status changes since
  * the last run are one label swap, a run that failed half way is redone by the next, and a status label someone
  * edited by hand is set back. A person's close is never undone here: the issue stays closed and the plan names it.
- * An open issue with no assignee gets one (T2999): the login of the task's owning session, else the repository's owner
- * account; an issue a person assigned keeps its assignees, and the push takes none off.
+ * An open issue with no assignee gets one (T2999): the login of the task's owning session, else the login the sync runs
+ * as (T4581), else none; never the repository's owner, which may be an organization no one can be assigned as. An
+ * issue a person assigned keeps its assignees, and the push takes none off.
  * An open task no session has scheduled leaves its issue open to anyone (T3021): `status:open` and no assignee, so a
  * contributor sees what is free to take. A scheduled one, or one a person took, shows `status:claimed`. A goal, a
  * task planned after its parts, shows no status label: its parts' issues carry theirs (T3056).
@@ -161,12 +162,56 @@ export function sessionLogins(owners: Readonly<Record<string, string>>): Session
 }
 
 /**
- * Who an issue of `repo` whose task `session` owns is assigned to: the session's login, else the account that owns
- * the repository, who answers for the team's work there. Sessions are not GitHub users, so a session no login maps
- * to cannot be named itself.
+ * The login the sync's access belongs to, the one it runs as: not read yet, or read, undefined when the host could not
+ * say. It costs a read, so the push asks for it only when a plan needs it (PushPlan.wantsViewer).
  */
-export function assigneeOf(repo: string, session: string, logins: SessionLogins): string {
-  return logins.get(session) ?? repo.slice(0, repo.indexOf('/'));
+export type ViewerLogin = { readonly kind: 'unread' } | { readonly kind: 'read'; readonly login: string | undefined };
+
+/** The viewer of a run that has not read it yet. */
+export const VIEWER_UNREAD: ViewerLogin = { kind: 'unread' };
+
+/** The viewer as read: `login`, undefined when it could not be read. */
+export function viewerRead(login: string | undefined): ViewerLogin {
+  return { kind: 'read', login };
+}
+
+/** The viewer's login, undefined while it is unread or when it could not be read. */
+function viewerLogin(viewer: ViewerLogin): string | undefined {
+  return viewer.kind === 'read' ? viewer.login : undefined;
+}
+
+/**
+ * Whom the push may assign in one repository: each session's login, the login the sync runs as, and what the host
+ * answered for each login read so far. GitHub logins match whatever their case, so both sets key by the lowercase.
+ */
+export interface PushAssignees {
+  readonly logins: SessionLogins;
+  /** The login the sync's access belongs to, the one it runs as (ViewerLogin). */
+  readonly viewer: ViewerLogin;
+  /** Logins the repository may not assign, lowercase: each is passed over for the next in line. */
+  readonly refused: ReadonlySet<string>;
+  /** Logins the repository may assign, lowercase, to the host's own spelling, which GitHub's assign needs. */
+  readonly spelled: ReadonlyMap<string, string>;
+}
+
+/** The assignees of a run whose logins the host has not been asked about yet. */
+export function pushAssignees(logins: SessionLogins, viewer: ViewerLogin): PushAssignees {
+  return { logins, viewer, refused: new Set(), spelled: new Map() };
+}
+
+/**
+ * Who an issue whose task `session` owns is assigned to: the session's login, else the login the sync runs as, each
+ * skipped when the repository may not assign it; undefined when neither is left, and the issue stays unassigned, or
+ * while the viewer is unread. Sessions are not GitHub users, so a session no login maps to cannot be named itself; the
+ * repository's owner is never a fallback, as an organization owns it once moved and no one is assigned as one.
+ */
+export function assigneeOf(session: string, who: PushAssignees): string | undefined {
+  for (const login of [who.logins.get(session), viewerLogin(who.viewer)]) {
+    if (login !== undefined && !who.refused.has(login.toLowerCase())) {
+      return who.spelled.get(login.toLowerCase()) ?? login;
+    }
+  }
+  return undefined;
 }
 
 /** A closed issue whose task is still active: closed by a person, so it stays closed, and the task's owner decides. */
@@ -230,6 +275,11 @@ export interface PushPlan {
   readonly shared: readonly SharedIssue[];
   /** Numbers an active task holds that are open pull requests, which the issue list never holds (#1451). */
   readonly openPulls: readonly UnlistedIssue[];
+  /**
+   * Whether the plan would change once the unread viewer is known: an issue to assign that its session's login cannot
+   * take, or a close left for logins outside the team, which may be the viewer's. Planned again after the read.
+   */
+  readonly wantsViewer: boolean;
 }
 
 /** The writes one change sends: one per label added or taken off, one for the assign, and one for the close. */
@@ -258,8 +308,10 @@ export const SESSION_PUSH: PushLimits = { writesPerRun: PUSH_WRITES_PER_RUN, clo
  * When a team task and an imported one hold the same issue, the team task speaks for it: the issue is its work. When
  * two or more active team tasks hold it, none does: the plan writes nothing to it and names them (SharedIssue); one
  * active team task speaks over finished ones (holders). The run sends at most `limits.writesPerRun` writes; the rest is deferred. Without `limits.closes` a closing change
- * is held instead, taking none of the run's writes. With `logins` an open issue of a scheduled task with no assignee
- * is assigned (assigneeOf); without, the plan assigns nobody. A number the list left out that is in `openPulls`, the
+ * is held instead, taking none of the run's writes. With `who` an open issue of a scheduled task with no assignee
+ * is assigned (assigneeOf); without, the plan assigns nobody. While `who`'s viewer is unread, the plan says where it
+ * would count (wantsViewer), for the caller to read it and plan again. A login `who` refuses is never planned, so it takes none
+ * of the run's writes and the changes behind it go out (T4581). A number the list left out that is in `openPulls`, the
  * repository's open pull requests, is named as one, not as an issue gone from the list.
  */
 export function planPush(
@@ -267,7 +319,7 @@ export function planPush(
   issues: readonly HostIssue[],
   tasks: Iterable<Task>,
   limits: PushLimits = SESSION_PUSH,
-  logins?: SessionLogins,
+  who?: PushAssignees,
   openPulls: ReadonlySet<number> = new Set(),
 ): PushPlan {
   const listed = new Map(issues.filter((issue) => issue.repo === repo).map((issue) => [issue.number, issue]));
@@ -277,6 +329,7 @@ export function planPush(
   const unlisted: UnlistedIssue[] = [];
   const pulls: UnlistedIssue[] = [];
   let unchanged = 0;
+  let wantsViewer = false;
   const held = holders(repo, tasks);
   for (const [target, task] of [...held.speakers].sort(([a], [b]) => a - b).map(([number, holder]) => [{ repo, number }, holder] as const)) {
     const issue = listed.get(target.number);
@@ -295,12 +348,15 @@ export function planPush(
       closedActive.push({ target, task: task.id, status: task.status, stateReason: issue.stateReason });
       continue;
     }
-    const kept = goal.open || issue.state === 'closed' ? undefined : closeLeft(repo, issue, logins);
+    const kept = goal.open || issue.state === 'closed' ? undefined : closeLeft(repo, issue, who);
     if (kept !== undefined) {
+      wantsViewer ||= kept.kind === 'taken' && who?.viewer.kind === 'unread';
       keptOpen.push({ target, task: task.id, status: task.status, why: kept });
       continue;
     }
-    const assign = goal.open && goal.claim && logins !== undefined && issue.assignees.length === 0 ? assigneeOf(repo, task.owner, logins) : undefined;
+    const assigns = goal.open && goal.claim && who !== undefined && issue.assignees.length === 0;
+    const assign = assigns ? assigneeOf(task.owner, who) : undefined;
+    wantsViewer ||= assigns && assign === undefined && who.viewer.kind === 'unread';
     const change = changeFor(target, task, issue, goal, assign);
     if (change === undefined) {
       unchanged += 1;
@@ -312,19 +368,22 @@ export function planPush(
   const sendable = limits.closes ? planned : planned.filter((change) => change.close === undefined);
   const { changes, deferred } = withinRun(sendable, limits.writesPerRun);
   const shared = [...held.shared].sort(([a], [b]) => a - b).map(([number, ids]) => ({ target: { repo, number }, tasks: ids }));
-  return { repo, changes, deferred, heldCloses, unchanged, closedActive, keptOpen, unlisted, shared, openPulls: pulls };
+  return { repo, changes, deferred, heldCloses, unchanged, closedActive, keptOpen, unlisted, shared, openPulls: pulls, wantsViewer };
 }
 
 /**
  * Why a finished task's close of the open `issue` is left, or undefined when the close is the task's to send. The
- * team's logins are its sessions' (`logins`, from `github.owners`) and the repository's owner account; GitHub logins
- * match whatever their case. A session two logins map to counts by its first, as assigneeOf assigns it.
+ * team's logins are its sessions' (from `github.owners`), the one the sync runs as, and the repository's owner account,
+ * whom pushes before T4581 assigned; GitHub logins match whatever their case. A session two logins map to counts by its
+ * first, as assigneeOf assigns it.
  */
-function closeLeft(repo: string, issue: HostIssue, logins: SessionLogins | undefined): KeptOpen['why'] | undefined {
+function closeLeft(repo: string, issue: HostIssue, who: PushAssignees | undefined): KeptOpen['why'] | undefined {
   if (issue.labels.includes(DESIGN_LABEL)) {
     return { kind: 'design' };
   }
-  const team = new Set([repo.slice(0, repo.indexOf('/')), ...(logins?.values() ?? [])].map((login) => login.toLowerCase()));
+  const viewer = who === undefined ? undefined : viewerLogin(who.viewer);
+  const ours = [repo.slice(0, repo.indexOf('/')), ...(who?.logins.values() ?? []), ...(viewer === undefined ? [] : [viewer])];
+  const team = new Set(ours.map((login) => login.toLowerCase()));
   const outside = issue.assignees.filter((login) => !team.has(login.toLowerCase()));
   return issue.assignees.length > 0 && outside.length === issue.assignees.length ? { kind: 'taken', assignees: outside } : undefined;
 }

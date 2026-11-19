@@ -4,7 +4,8 @@ import type { RepoFailure } from '../../github/auto.ts';
 import { closedSince } from '../../github/sync.ts';
 import { targetText, type IssueHost } from '../../issues/host.ts';
 import { applyPush } from '../../issues/push-apply.ts';
-import { changeLine, changeWrites, planPush, SESSION_PUSH, sessionLogins, type PushLimits, type PushPlan, type SessionLogins } from '../../issues/status-push.ts';
+import { planAssigned, viewerOf } from '../../issues/push-assignees.ts';
+import { changeLine, changeWrites, planPush, pushAssignees, SESSION_PUSH, sessionLogins, VIEWER_UNREAD, type PushLimits, type PushPlan, type SessionLogins } from '../../issues/status-push.ts';
 import type { Task } from '../../register/fold.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
@@ -81,7 +82,7 @@ export interface PushRun {
   readonly send: boolean;
   /** The writes the whole run sends at most, over every repository, in their order, and whether it may close. */
   readonly limits: PushLimits;
-  /** Each session's GitHub login, so an unassigned issue is assigned (status-push.ts assigneeOf). */
+  /** Each session's GitHub login, so an unassigned issue is assigned (status-push.ts assigneeOf); else the login the sync runs as. */
   readonly logins: SessionLogins;
   /** The scopes whose ACCESS line was already printed, so each is printed once per command. */
   readonly told: Set<string>;
@@ -99,13 +100,17 @@ export interface PushTotals {
 /**
  * Plans each repository of `run` against the register's tasks and, with send, sends the plan (issues/push-apply.ts),
  * a repository stopping at its first failed write. The run's writes are shared: each repository's plan is given what
- * the ones before it left, counted by what they planned, so a run never sends more than `limits.writesPerRun`.
+ * the ones before it left, counted by what they planned, so a run never sends more than `limits.writesPerRun`. Each
+ * login a plan assigns is read before the plan is kept (issues/push-assignees.ts), so a refused one costs none of them.
  */
 export async function pushRepos(run: PushRun, say: (line: string) => void): Promise<PushTotals> {
   const failures: RepoFailure[] = [];
   let left = run.limits.writesPerRun;
   let writes = 0;
   let sent = 0;
+  // The login each access scope runs as, read at most once a run and only when a plan wants it: the assignee of an
+  // issue whose session maps to none, and one of the team's logins when a close is left for outside ones.
+  const viewers = new Map<string, Promise<string | undefined>>();
   if (run.fields !== undefined && run.host.fields === undefined && run.repos.length > 0) {
     say(`SKIPPED fields: ${run.host.name} has no issue fields or types, so the push writes none`);
   }
@@ -130,8 +135,22 @@ export async function pushRepos(run: PushRun, say: (line: string) => void): Prom
     // Held as a list: the label plan (twice when a number is left out) and the field plan each go over every task.
     const tasks = [...(await run.tasks())];
     const limits = { writesPerRun: left, closes: run.limits.closes };
-    const listed = planPush(repo, read.issues, tasks, limits, run.logins);
-    const plan = listed.unlisted.length === 0 ? listed : planPush(repo, read.issues, tasks, limits, run.logins, await openPullsOf(run.host, repo, say));
+    const readViewer = (): Promise<string | undefined> => {
+      const known = viewers.get(reach.scope);
+      if (known !== undefined) {
+        return known;
+      }
+      const reading = viewerOf(run.host, repo, say);
+      viewers.set(reach.scope, reading);
+      return reading;
+    };
+    const assigned = await planAssigned(run.host, repo, (who) => planPush(repo, read.issues, tasks, limits, who), pushAssignees(run.logins, VIEWER_UNREAD), readViewer, say);
+    if (assigned.kind === 'failed') {
+      failures.push({ repo, reason: assigned.reason });
+      continue;
+    }
+    const plan =
+      assigned.plan.unlisted.length === 0 ? assigned.plan : planPush(repo, read.issues, tasks, limits, assigned.who, await openPullsOf(run.host, repo, say));
     planLines(plan).forEach(say);
     const planned = plan.changes.reduce((sum, change) => sum + changeWrites(change), 0);
     left -= planned;
