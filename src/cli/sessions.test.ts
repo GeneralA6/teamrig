@@ -284,7 +284,8 @@ describe('teamrig sessions --pass', () => {
     assert.deepEqual(result.stdout, [
       'AWAY app-lead (session lead): not running, and teamrig did not close it',
       'CLOSED app-alpha (session alpha): nothing it can start',
-      'REOPEN app-bravo (session bravo): work handed to it since its close: T2',
+      // The p0's add posted bravo a wake ask (T4414), so the pass reopens it for that line.
+      'REOPEN app-bravo (session bravo): an urgent line from lead',
       'PASS 3 session(s): 0 to close, 1 to reopen, 0 to reopen later, 0 kept open, 1 closed, 1 away; nothing changed',
     ]);
   });
