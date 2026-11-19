@@ -9,7 +9,7 @@ const LOCAL = '"local":{"runner":"tools/ci/local.ts"}';
 
 test('reads each repo\'s main branch, gate and check lists, looked up without regard to case', () => {
   const profiles = parseProfiles(`{"Owner/Repo":{"main":"main","gate":"ci","checks":["a","b"]}}`);
-  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [], aliases: [], mergeChecks: 'full', pullSections: [] });
+  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [], aliases: [], mergeChecks: 'full', pullSections: [], release: null });
   const local = parseProfiles(`{"Owner/Local":{"main":"main","gate":"local","checks":[],${LOCAL}}}`);
   assert.deepEqual(profileFor(local, 'Owner/Local').local, { runner: 'tools/ci/local.ts' });
 });
@@ -35,6 +35,24 @@ test('reads the sections a pull request note must hold, and refuses a list that 
     assert.throws(() => parseProfiles(`{"O/R":{"main":"main","gate":"ci","checks":["a"],"pullSections":${sections}}}`), /O\/R "pullSections" needs a list of distinct section names/, sections);
   }
   assert.deepEqual(readProfiles().get('generala6/teamrig')?.pullSections, ['Reach']);
+});
+
+test('reads the release pull request\'s branch and changelog, none when not listed, and refuses a bad branch or a path outside the repo (T4645)', () => {
+  const release = (value: string): string => `{"O/R":{"main":"main","gate":"ci","checks":["a"],"release":${value}}}`;
+  assert.deepEqual(profileFor(parseProfiles(release('{"head":"release-please--main","changelog":"CHANGELOG.md"}')), 'O/R').release, { head: 'release-please--main', changelog: 'CHANGELOG.md' });
+  assert.equal(profileFor(parseProfiles('{"O/R":{"main":"main","gate":"ci","checks":["a"]}}'), 'O/R').release, null);
+  for (const value of ['"x"', '{"head":"r"}', '{"changelog":"C.md"}', '{"head":"r b","changelog":"C.md"}', '{"head":"r","changelog":"/C.md"}', '{"head":"r","changelog":"../C.md"}', '{"head":"","changelog":"C.md"}']) {
+    assert.throws(() => parseProfiles(release(value)), /O\/R "release" needs a "head" branch name and a "changelog" path inside the repo/, value);
+  }
+});
+
+test('the shipped repos.json names teamrig\'s release-please pull request branch and its CHANGELOG, and no release for teamrig-pane (T4645)', () => {
+  // release-please names its branch release-please--branches--<main>--components--<component>.
+  const config = readFileSync(new URL('../../release-please-config.json', import.meta.url), 'utf8');
+  const component = /"component":\s*"([^"]+)"/.exec(config)?.[1];
+  const changelog = /"changelog-path":\s*"([^"]+)"/.exec(config)?.[1];
+  assert.deepEqual(readProfiles().get('teamrig/teamrig')?.release, { head: `release-please--branches--main--components--${component ?? ''}`, changelog });
+  assert.equal(readProfiles().get('teamrig/teamrig-pane')?.release, null);
 });
 
 test('refuses a missing or unknown gate', () => {
