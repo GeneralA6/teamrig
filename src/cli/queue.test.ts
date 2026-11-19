@@ -1607,8 +1607,9 @@ describe("teamrig queue gives a ship step the task its worktree's branch names (
     const { kit, steps } = harness(team);
     let held: unknown;
     steps.ends(0, MINUTE).whileRunning(async () => {
-      const share = JSON.parse(kit.files.get(`${SHARED}/id-1.json`) ?? kit.files.get(LOCK) ?? '{}') as { request?: { repo?: string } };
-      held = share.request === undefined ? 'no request' : share.request.repo;
+      const share: unknown = JSON.parse(kit.files.get(`${SHARED}/id-1.json`) ?? kit.files.get(LOCK) ?? '{}');
+      const request = isRecord(share) ? share['request'] : undefined;
+      held = isRecord(request) ? request['repo'] : 'no request';
     });
     const result = await kit.run(['queue', '--session', 'alpha', '--what', 'step', ...args], { steps, mergeGit: git });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
