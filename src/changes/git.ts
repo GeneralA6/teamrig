@@ -4,15 +4,20 @@ import type { ChangeGit, GitCommit, Release, ResolvedPoint } from './source.ts';
 /** A version as releases write it: `1.2.3`, maybe with a pre-release part (`1.2.3-rc.1`). */
 const VERSION = String.raw`(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)`;
 
-/** A version tag: `v1.2.3` or `1.2.3`. */
-const VERSION_TAG = new RegExp(`^v?${VERSION}$`);
+/**
+ * A version tag: `v1.2.3`, `1.2.3`, or a component's `teamrig-v1.2.3` as release-please tags one. Each component
+ * word starts with a letter and holds no `-`, so a tag of any length is read in linear time.
+ */
+const VERSION_TAG = new RegExp(`^(?:[A-Za-z][\\w.]*(?:-[A-Za-z][\\w.]*)*-)?v?${VERSION}$`);
 
 /**
  * A commit subject that names a release, for a project that tags none: `plugin: version 0.447.0, ...` (an area
- * prefix, then "version", "release" or "bump to"), `chore(release): 1.2.3` (a release scope), or a bare `v1.2.3`.
+ * prefix, then "version", "release" or "bump to"), release-please's `chore(main): release teamrig 1.2.3` (a
+ * component before the version), `chore(release): 1.2.3` (a release scope), or a bare `v1.2.3`.
  */
 const RELEASE_SUBJECTS: readonly RegExp[] = [
   new RegExp(`^(?:[\\w-]+(?:\\([^)]*\\))?!?:\\s*)?(?:release|version|bump(?:\\s+version)?(?:\\s+to)?)\\s+v?${VERSION}(?![\\w.])`, 'i'),
+  new RegExp(`^[\\w-]+(?:\\([^)]*\\))?!?:\\s*release\\s+[\\w@/.-]+\\s+v?${VERSION}(?![\\w.])`, 'i'),
   new RegExp(`^[\\w-]+\\(release\\)!?:\\s*v?${VERSION}(?![\\w.])`, 'i'),
   new RegExp(`^v?${VERSION}$`),
 ];

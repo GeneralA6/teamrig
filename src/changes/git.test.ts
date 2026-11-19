@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { assertWithin } from '../testing/time-bound.ts';
 import { COMMIT_FORMAT, logArgs, parseCommits, parseReleaseCommits, parseReleaseTags, releaseIndexOf, releaseVersionOf } from './git.ts';
 
 const R = '\x1e';
@@ -12,9 +13,13 @@ describe('releaseVersionOf', () => {
     assert.equal(releaseVersionOf('release v2.0.0-rc.1'), '2.0.0-rc.1');
     assert.equal(releaseVersionOf('chore: bump version to 3.4.5'), '3.4.5');
     assert.equal(releaseVersionOf('v1.0.0'), '1.0.0');
+    assert.equal(releaseVersionOf('chore(main): release teamrig 0.492.0'), '0.492.0');
+    assert.equal(releaseVersionOf('chore: release my-pkg v1.2.3-rc.1'), '1.2.3-rc.1');
   });
 
   it('reads no version from a commit that only mentions one', () => {
+    assert.equal(releaseVersionOf('docs: release notes for the changes command'), undefined);
+    assert.equal(releaseVersionOf("build(release): set the manifest to main's version 0.491.0"), undefined);
     assert.equal(releaseVersionOf('fix(ship): refuse a ship tool older than 0.447.0'), undefined);
     assert.equal(releaseVersionOf('docs: the version 0.447.0.1 scheme'), undefined);
     assert.equal(releaseVersionOf('build: rebuild the plugin dist'), undefined);
@@ -44,6 +49,20 @@ describe('the release index', () => {
     assert.deepEqual(parseReleaseTags(`v0.1.0${F}2026-11-14T12:00:00Z${F}t1\nnightly${F}2026-11-14T12:00:00Z${F}t2\nv0.0.9${F}${F}t3\n`), [
       { version: '0.1.0', at: '2026-11-14T12:00:00.000Z', sha: 't1' },
     ]);
+  });
+
+  it("reads a component's release-please tag, with or without its v, and no other tag", () => {
+    const at = '2026-11-18T12:00:00Z';
+    const tags = ['teamrig-v0.492.0', 'teamrig-0.491.0', 'my-pkg-v1.2.3-rc.1', 'nightly', 'teamrig-v0.1.x', '-v0.1.0'];
+    assert.deepEqual(
+      parseReleaseTags(tags.map((name, index) => `${name}${F}${at}${F}t${index}`).join('\n')).map((release) => `${release.sha} ${release.version}`),
+      ['t0 0.492.0', 't1 0.491.0', 't2 1.2.3-rc.1'],
+    );
+  });
+
+  it('reads a tag of any length in linear time', async () => {
+    const long = `${'a-'.repeat(60_000)}x`;
+    assert.deepEqual(await assertWithin(1000, () => parseReleaseTags(`${long}${F}2026-11-18T12:00:00Z${F}t1`)), []);
   });
 
   it('lets a tag win over a commit naming its version, and sorts newest first', () => {
