@@ -17,6 +17,7 @@ export function localChecks(base: string): readonly LocalCheck[] {
   return [
     ...commitChecks(base),
     TYPECHECK,
+    BOUNDARIES,
     ...BUILD,
     { name: 'coverage gate', argv: ['node', 'tools/ci/coverage-cli.ts'] },
     { name: 'dist smoke', argv: ['node', 'tools/ci/dist-smoke-cli.ts'] },
@@ -38,6 +39,7 @@ export function prePushChecks(base: string): readonly LocalCheck[] {
   return [
     ...commitChecks(base),
     TYPECHECK,
+    BOUNDARIES,
     ...BUILD,
     PLUGIN_TESTS,
     ...DOC_CHECKS,
@@ -45,6 +47,9 @@ export function prePushChecks(base: string): readonly LocalCheck[] {
 }
 
 const TYPECHECK: LocalCheck = { name: 'typecheck', argv: ['node', TSC, '-p', 'tsconfig.json'] };
+
+/** The layer boundaries of `src`, counted in under a second; in warn mode it fails only when it cannot read the tree. */
+const BOUNDARIES: LocalCheck = { name: 'boundaries', argv: ['node', 'tools/ci/boundaries-cli.ts'] };
 
 /** `npm run build`'s three steps: the dist cleared, compiled and its integrity list written. */
 const BUILD: readonly LocalCheck[] = [
