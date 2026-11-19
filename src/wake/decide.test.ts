@@ -5,6 +5,7 @@ import type { ApprovalAnswer, OwnerDecision, Task } from '../register/fold.ts';
 import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from '../register/tree.ts';
 import type { WaitReason } from '../register/waits.ts';
 import { parkedFacts, TEST_PARKING } from '../testing/ranking.ts';
+import { BLOCKER_PRIORITY_ID } from '../register/model.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import {
@@ -474,6 +475,10 @@ describe('wake text', () => {
 
   it("says a task woke for the owner's decision a leader recorded (T1366)", () => {
     assert.equal(taskListText([p1({ status: 'waiting', title: 'Fix it', decided: DECIDED })]), `T1 "Fix it" (p1, waiting: lead recorded the owner's decision)`);
+  });
+
+  it('names a blocker by its level, never p-1 (T4329)', () => {
+    assert.equal(taskListText([p1({ title: 'Fix it', priority: BLOCKER_PRIORITY_ID })]), 'T1 "Fix it" (blocker)');
   });
 
   it('asks the session to start a work block and states the cost; the toast names the tasks', () => {

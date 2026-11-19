@@ -8,6 +8,7 @@ import { testTask } from '../testing/task.ts';
 import { checkTasks, formatFlag, leaderWaitFlags, noIssueFlags, PACE_DAYS, peerWaitFlags, runFileFlags, unknownGoalFlags, untriagedFlags } from './check.ts';
 import { RETAIN_DAYS } from './compaction.ts';
 import type { Task } from './fold.ts';
+import { BLOCKER_PRIORITY_ID } from './model.ts';
 import type { RunFiles } from './hand-step.ts';
 import { NO_TASKS_ELSEWHERE, TaskTree } from './tree.ts';
 import { WATCH_USAGE } from './verify.ts';
@@ -182,6 +183,12 @@ describe('checkTasks: URGENT', () => {
     const [first] = raised;
     assert.ok(first);
     assert.equal(formatFlag(first, undefined, TREE),'URGENT (p0: start it now, ahead of the task in hand) T1 open, p0, owner alpha, from lead | Add a health check');
+  });
+
+  it('flags an open blocker as URGENT under its own name (T4329)', () => {
+    const blocker = testTask({ id: 'T4', priority: BLOCKER_PRIORITY_ID, ...seen });
+    assert.deepEqual(urgentIds([blocker]), ['T4']);
+    assert.equal(flags([blocker])[0]?.detail, 'blocker: start it now, ahead of the task in hand');
   });
 
   it("names the lead's deadline burst on its effective due, typed on the team's clock: its own or a later task's", () => {

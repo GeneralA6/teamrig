@@ -12,7 +12,7 @@ import { answerTo } from '../register/approval.ts';
 import { waitsLetGoOn } from '../register/can-move.ts';
 import type { PokeMark } from './rush-poke.ts';
 import { taskNumber, type Task } from '../register/fold.ts';
-import type { TaskStatus } from '../register/model.ts';
+import { priorityText, type TaskStatus } from '../register/model.ts';
 import { wouldPark, type ParkRules } from '../register/park.ts';
 import { neededIds, type TasksElsewhere } from '../register/tree.ts';
 import { unfinishedAfter, waitContext, type WaitContext } from '../register/waits.ts';
@@ -393,13 +393,13 @@ export function taskListText(tasks: readonly Task[]): string {
  */
 function taskTag(task: Task): string {
   if (!goesOnByWaits(task.status)) {
-    return `p${task.priority}`;
+    return priorityText(task.priority);
   }
   if (task.decided !== null) {
-    return `p${task.priority}, ${task.status}: ${task.decided.by} recorded the owner's decision`;
+    return `${priorityText(task.priority)}, ${task.status}: ${task.decided.by} recorded the owner's decision`;
   }
   const answer = task.waits.map((reason) => answerTo(task, reason)).find((found) => found !== undefined);
-  return `p${task.priority}, ${task.status}: ${answer === undefined ? 'every wait cleared' : `${answer.by} ${answer.verdict} it`}`;
+  return `${priorityText(task.priority)}, ${task.status}: ${answer === undefined ? 'every wait cleared' : `${answer.by} ${answer.verdict} it`}`;
 }
 
 /** The prompt the session reads, under the plugin's name. */

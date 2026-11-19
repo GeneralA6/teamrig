@@ -13,6 +13,7 @@ import { JsonlEventLog } from '../register/store.ts';
 import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
+import { BLOCKER_PRIORITY_ID } from '../register/model.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { rotateRegister } from '../testing/rotation.ts';
@@ -102,6 +103,11 @@ describe('queuedWork', () => {
     assert.deepEqual([...work.urgent], [['alpha', ['T1', 'T2']]]);
     // p0..p5 weigh 6..1; each session weighs its top task alone.
     assert.deepEqual(work.weights, byPriority({ alpha: { 0: 6 }, charlie: { 2: 4 } }));
+  });
+
+  it('lists an open blocker beside p0 as work that goes on past the daily stop (T4329)', () => {
+    const work = queuedWork([workTask({ id: 'T1', owner: 'alpha', status: 'open', priority: BLOCKER_PRIORITY_ID }), workTask({ id: 'T2', owner: 'alpha', status: 'open', priority: 0 })], priorities, NOW);
+    assert.deepEqual([...work.urgent], [['alpha', ['T1', 'T2']]]);
   });
 
   it("lists each session's answers another session waits on: its queued task a waiter names, and a waiter's approval or decision asked of it (T2656)", () => {
