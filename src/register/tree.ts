@@ -293,7 +293,7 @@ export interface WaitOn<T extends TreeTask = Task> extends WaitingOnYou<T> {
 }
 
 /** The task's decision and approval waits no answer met yet (T1422: an answered one lets its owner go on). */
-function unansweredAsks(task: TreeTask): PersonWait[] {
+export function unansweredAsks(task: TreeTask): PersonWait[] {
   return task.waits.filter((reason): reason is PersonWait => (reason.kind === 'decision' || reason.kind === 'approval') && answerTo({ answer: task.answer ?? null }, reason) === undefined);
 }
 

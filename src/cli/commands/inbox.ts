@@ -15,7 +15,7 @@ import { formatRead, formatStatus, inboxLineOf, inboxStatus, lineOnClock, postLi
 import { lineHash } from '../../inbox/line-hash.ts';
 import { boundElsewhereOf, CLAUDE_SESSION_ID, RECEIVER_TABS, tabsOf, type InboxMark } from '../../inbox/marks.ts';
 import { reachOf } from '../../inbox/reach.ts';
-import { rightNowNamedIn } from '../../inbox/right-now.ts';
+import { actorsOf, rightNowNamedIn } from '../../inbox/right-now.ts';
 import { routeReminderOf } from '../../inbox/route.ts';
 import { InboxDir, JsonlMarkLog } from '../../inbox/store.ts';
 import { WAKE_AT_ONCE, WAKE_NOW, wakeByOf, wakeRefusal, wakesLine, type ReceiverWake, type WakeSender, type WakeTarget, type WakeWhen } from '../../inbox/wake-now.ts';
@@ -457,25 +457,63 @@ function wakeWhenOf(wake: string | undefined, wakeBy: string | undefined, now: n
 interface RightNowWake {
   readonly when: WakeWhen | undefined;
   readonly note: string | undefined;
+  /** The recipients the wake reaches: all of them for a one-recipient line, else those who act on the work now. */
+  readonly woken: readonly Recipient[];
 }
+
+/** Why `--wake now` (or `--wake-by`) on `woken` would be refused, read as a group wake when `group`; undefined when it may wake them. */
+type WakeRefusalOf = (when: WakeWhen, woken: readonly Recipient[], group: boolean) => Promise<string | undefined>;
 
 /**
  * The wake a line sent with neither `--wake now` nor `--wake-by` takes (T4414): `--wake now` when it names unfinished
  * right-now work of the sender's tree ({@link rightNowNamedIn}), since such work never waits for a prompt; none
- * otherwise. Where `--wake now` would be refused (a group from a session that leads no one, another team from a
- * member), the line still posts, with no wake and a note saying why: the sender never asked for one.
+ * otherwise. A line to many sessions wakes only those of them who act on the work now ({@link actorsOf}, T4431): a p0
+ * named to the whole team must not wake every tab, and none of them when no receiver acts on it. That narrowed wake
+ * is a targeted one, so the group gate does not apply to it. Where `--wake now` would be refused (a group from a
+ * session that leads no one, another team from a member), the line still posts, with no wake and a note saying why:
+ * the sender never asked for one.
  */
-async function rightNowWakeOf(reads: SenderTreeReads, team: string, text: string, refusalOf: (when: WakeWhen) => Promise<string | undefined>): Promise<RightNowWake> {
-  const registers = await reads.treeRegisters();
-  const task = registers === undefined ? undefined : rightNowNamedIn(text, registers.map(({ team: holder, snapshot }) => ({ team: holder, tasks: snapshot.state.tasks })), team);
-  if (task === undefined) {
-    return { when: undefined, note: undefined };
+async function rightNowWakeOf(
+  reads: SenderTreeReads,
+  team: string,
+  text: string,
+  recipients: readonly Recipient[],
+  group: boolean,
+  refusalOf: WakeRefusalOf,
+): Promise<RightNowWake> {
+  const loaded = await reads.treeRegisters();
+  const registers = loaded?.map(({ team: holder, snapshot }) => ({ team: holder, tasks: snapshot.state.tasks }));
+  const held = registers === undefined ? undefined : rightNowNamedIn(text, registers, team);
+  if (registers === undefined || held === undefined) {
+    return { when: undefined, note: undefined, woken: [] };
   }
-  const work = `${task.id} is ${priorityText(task.priority)} work`;
-  const refusal = await refusalOf(WAKE_AT_ONCE);
+  const work = `${held.task.id} is ${priorityText(held.task.priority)} work`;
+  if (recipients.length === 1) {
+    const refusal = await refusalOf(WAKE_AT_ONCE, recipients, group);
+    return refusal === undefined
+      ? { when: WAKE_AT_ONCE, note: `NOTE ${work}, so the line wakes as --wake ${WAKE_NOW}`, woken: recipients }
+      : { when: undefined, note: `NOTE ${work}, but the line posts with no wake: ${refusal}`, woken: [] };
+  }
+  const actors = new Set(actorsOf(held, registers).map((actor) => `${actor.team}/${actor.id}`));
+  const woken = recipients.filter((recipient) => actors.has(`${recipient.team}/${recipient.id}`));
+  const others = recipients.length - woken.length;
+  if (woken.length === 0) {
+    return {
+      when: undefined,
+      note: `NOTE ${work}, but the line wakes no one: none of its ${recipients.length} receivers owns it or holds work it waits on, so each reads it at its next prompt`,
+      woken,
+    };
+  }
+  const refusal = await refusalOf(WAKE_AT_ONCE, woken, false);
+  const labels = woken.map((recipient) => recipient.label).join(', ');
+  const rest = others === 0 ? '' : `; the other ${others} read it at their next prompt`;
   return refusal === undefined
-    ? { when: WAKE_AT_ONCE, note: `NOTE ${work}, so the line wakes as --wake ${WAKE_NOW}` }
-    : { when: undefined, note: `NOTE ${work}, but the line posts with no wake: ${refusal}` };
+    ? {
+        when: WAKE_AT_ONCE,
+        note: `NOTE ${work}, so the line wakes as --wake ${WAKE_NOW} only the receivers who act on it now, its owner and the owners of work it waits on: ${labels}${rest}`,
+        woken,
+      }
+    : { when: undefined, note: `NOTE ${work}, but the line posts with no wake: ${refusal}`, woken: [] };
 }
 
 const TO_FORMS ='a session id or name, <team>/<id>, all, leads, group:<leader>, team:<team>, tree:leads, task:T<n>, or a comma-separated list of them';
@@ -493,7 +531,8 @@ const TO_FORMS ='a session id or name, <team>/<id>, all, leads, group:<leader>, 
  * it at that time instead, and only if it has not seen the line by then. A group is woken only by a leader, another
  * team only by a team lead (a team below its own, any team's lead, a role holder its config names), else nothing is
  * posted. A line with neither flag that names unfinished right-now work wakes as `--wake now` where that gate lets it,
- * and posts with no wake where it does not (T4414).
+ * and posts with no wake where it does not (T4414); a line to many sessions wakes only those of them who act on that
+ * work now, its owner and the owners of what it waits on (T4431).
  */
 export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -525,20 +564,21 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   const own: SenderTeam = { from: { team, id: sessionIdOf(roster, caller) }, paths: kit.paths, config, roster };
   const reads = new SenderTreeReads(runtime, team);
   const recipients = await recipientsOf(runtime, own, items, to, reads);
-  const refusalOf = async (asked: WakeWhen): Promise<string | undefined> =>
+  const group = items.some((item) => item.kind !== 'session');
+  const refusalOf: WakeRefusalOf = async (asked, woken, asGroup) =>
     wakeRefusal(
-      await wakeSenderOf(own, recipients, reads),
-      items.some((item) => item.kind !== 'session'),
-      recipients.map((recipient) => wakeTargetOf(own, recipient)),
+      await wakeSenderOf(own, woken, reads),
+      asGroup,
+      woken.map((recipient) => wakeTargetOf(own, recipient)),
       asked,
     );
   if (asked !== undefined) {
-    const refusal = await refusalOf(asked);
+    const refusal = await refusalOf(asked, recipients, group);
     if (refusal !== undefined) {
       throw new RefusedError(refusal);
     }
   }
-  const { when, note } = asked === undefined ? await rightNowWakeOf(reads, team, text, refusalOf) : { when: asked, note: undefined };
+  const { when, note, woken } = asked === undefined ? await rightNowWakeOf(reads, team, text, recipients, group, refusalOf) : { when: asked, note: undefined, woken: recipients };
   const secrets = new SecretScanner([
     ...config.register.secretPatterns,
     ...recipients.filter((recipient) => recipient.crossing).flatMap((recipient) => recipient.config.register.secretPatterns),
@@ -553,7 +593,7 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
     runtime.out.stderr(note);
   }
   if (when !== undefined) {
-    for (const line of await postWakes(runtime, own, recipients, text.trim(), now, when)) {
+    for (const line of await postWakes(runtime, own, woken, text.trim(), now, when)) {
       runtime.out.stdout(line);
     }
   }
