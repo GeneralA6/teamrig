@@ -27,8 +27,31 @@ function secretOrWriteLines(text: string): readonly string[] {
     .filter((line) => /\bsecrets\b/.test(line) || /:\s*write(-all)?\s*$/.test(line));
 }
 
+/** A job's step: what it runs (the `run:` command, else the action `uses:` names, its version left out) and its `if`. */
+interface Step {
+  readonly does: string;
+  readonly when: string | undefined;
+}
+
+/** The steps of a job, in order, from its `steps:` list (six-space items, deeper lines belong to the step above). */
+function stepsOf(job: string): readonly Step[] {
+  const list = job.slice(job.search(/^ {4}steps:\n/m));
+  return list
+    .split(/^(?= {6}- )/m)
+    .slice(1)
+    .map((step) => {
+      const does = /^ {6}- (?:id: \w+\n {8})?(?:run: (.+)|uses: ([^@\s]+)@)/m.exec(step);
+      assert.ok(does !== null, `a step that neither runs nor uses: ${step.slice(0, 60)}`);
+      return { does: does[1] ?? does[2] ?? '', when: /^ {8}if: (.+)$/m.exec(step)?.[1] };
+    });
+}
+
 const SUMMARY = 'summary';
+const CHANGES = 'changes';
 const PUBLIC_ONLY = '    if: ${{ !github.event.repository.private }}\n';
+const CODE = "${{ needs.changes.outputs.kind == 'code' }}";
+const NOT_DESIGN = "${{ needs.changes.outputs.kind != 'design' }}";
+const DOCS = "${{ needs.changes.outputs.kind == 'docs' }}";
 
 describe('ci.yml', () => {
   const jobs = jobsOf(workflow);
@@ -108,6 +131,64 @@ describe('ci.yml', () => {
       const minutes = /^ {4}timeout-minutes: (\d+)$/m.exec(job)?.[1];
       assert.ok(minutes !== undefined, `job ${id} sets no timeout-minutes, so GitHub's 6-hour default holds it`);
       assert.ok(Number(minutes) <= 20, `job ${id} waits ${minutes} minutes`);
+    }
+  });
+
+  it("names the run's change kind first, from the whole history, for the jobs after it (T4617)", () => {
+    assert.equal(checks[0], CHANGES, 'the summary needs it first, as every gated job does');
+    const changes = jobs.get(CHANGES) ?? '';
+    assert.match(changes, /^ {4}name: change kind$/m);
+    assert.match(changes, /^ {4}outputs:\n {6}kind: \$\{\{ steps\.kind\.outputs\.kind \}\}$/m);
+    assert.match(changes, /^ {10}fetch-depth: 0$/m, "a pull request's base must be in the checkout to compare with");
+    assert.match(changes, /^ {6}- id: kind\n {8}run: node tools\/ci\/change-kind-cli\.ts --github$/m);
+  });
+
+  it('skips steps, never a job, for a docs or design change, so the summary still fails any job that skipped', () => {
+    for (const [id, job] of jobs) {
+      const jobIf = /^ {4}if: (.+)$/m.exec(job)?.[1] ?? '';
+      assert.doesNotMatch(jobIf, /needs\.changes/, `job ${id} skips itself on the change kind`);
+    }
+    for (const id of ['coverage', 'test']) {
+      assert.match(jobs.get(id) ?? '', /^ {4}needs: changes$/m, `job ${id} reads the change kind`);
+    }
+    assert.doesNotMatch(workflow, /^ {2}(?:push|pull_request|merge_group):\n(?: {4}.*\n)* {4}paths(?:-ignore)?:/m, 'a skipped workflow never reports the required check');
+  });
+
+  it('runs no coverage step for a docs or design change, which has no code to cover', () => {
+    const steps = stepsOf(jobs.get('coverage') ?? '');
+    assert.ok(steps.length >= 4, steps.map((step) => step.does).join(', '));
+    for (const step of steps) {
+      assert.equal(step.when, CODE, `coverage runs ${step.does} for a change with no code`);
+    }
+  });
+
+  it('tests a code change on every OS, and a docs or design change on ubuntu alone with only its own steps', () => {
+    const test = jobs.get('test') ?? '';
+    assert.match(
+      test,
+      /^ {8}os: \$\{\{ fromJSON\(needs\.changes\.outputs\.kind == 'code' && '\["ubuntu-latest", "windows-latest", "macos-latest"\]' \|\| '\["ubuntu-latest"\]'\) \}\}$/m,
+    );
+    assert.deepEqual(stepsOf(test), [
+      { does: 'actions/checkout', when: undefined },
+      { does: 'actions/setup-node', when: undefined },
+      { does: 'npm ci --ignore-scripts', when: NOT_DESIGN },
+      { does: 'npm run typecheck', when: CODE },
+      { does: 'npm run build', when: NOT_DESIGN },
+      { does: 'npm test', when: CODE },
+      { does: 'node --test "tools/docs/*.test.ts" tools/ci/security-workflows.test.ts', when: DOCS },
+      { does: 'node tools/ci/dist-smoke-cli.ts', when: CODE },
+      { does: 'node tools/ci/fresh-install-cli.ts', when: CODE },
+      { does: 'node tools/docs/images-cli.ts --check', when: NOT_DESIGN },
+      { does: 'node tools/docs/configuration-cli.ts --check', when: NOT_DESIGN },
+      { does: 'node tools/docs/doc-check-cli.ts', when: undefined },
+    ]);
+  });
+
+  it('runs the commit checks on every change, docs and design included', () => {
+    for (const id of ['gates', 'size-rule', 'commit-subjects']) {
+      const job = jobs.get(id) ?? '';
+      assert.doesNotMatch(job, /needs\.changes/, `job ${id} reads the change kind`);
+      assert.ok(stepsOf(job).every((step) => step.when === undefined), `job ${id} skips a step`);
     }
   });
 

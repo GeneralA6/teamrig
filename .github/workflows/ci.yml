@@ -24,6 +24,29 @@ concurrency:
 # Every job stops after 20 minutes (timeout-minutes), well past the slowest run, so a hung test fails its job
 # instead of holding the required check pending for GitHub's 6-hour default.
 jobs:
+  changes:
+    name: change kind
+    # Names the run's change code, docs or design (tools/ci/change-kind.ts, T4617). A docs change runs the commit
+    # checks, then on ubuntu alone the specs and checks that hold the docs to the code; a design change only the
+    # commit checks and the docs' links. The jobs skip their steps, never themselves, so each still passes and the
+    # summary keeps failing any job that skipped. Never a workflow-level paths filter: the required check would
+    # never report.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      kind: ${{ steps.kind.outputs.kind }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+      - id: kind
+        run: node tools/ci/change-kind-cli.ts --github
+
   gates:
     name: scrub and DCO gates
     if: ${{ !github.event.repository.private }}
@@ -95,31 +118,40 @@ jobs:
   coverage:
     name: coverage gate
     # Fails on a failing, skipped or todo test, a source file no test loads, or a file or total
-    # below the floors in tools/ci/coverage.json (see CONTRIBUTING.md).
+    # below the floors in tools/ci/coverage.json (see CONTRIBUTING.md). A docs or design change has no code to
+    # cover: every step skips and the job passes.
+    needs: changes
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        if: ${{ needs.changes.outputs.kind == 'code' }}
         with:
           persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        if: ${{ needs.changes.outputs.kind == 'code' }}
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
+        if: ${{ needs.changes.outputs.kind == 'code' }}
       # Specs load the built plugin (its hooks, launcher and integrity list), which main does not carry.
       - run: npm run build
+        if: ${{ needs.changes.outputs.kind == 'code' }}
       - run: node tools/ci/coverage-cli.ts
+        if: ${{ needs.changes.outputs.kind == 'code' }}
 
   test:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})
     # Each run tests all three OSes, since paths, renames and hook launch differ by OS (macOS minutes
-    # bill at 10x, Windows at 2x). Node 22 only, to ease the shared free GitHub runners.
+    # bill at 10x, Windows at 2x). Node 22 only, to ease the shared free GitHub runners. A docs or design change
+    # changes no code, so it runs on ubuntu alone, only the steps its kind names (change kind above).
+    needs: changes
     if: ${{ !github.event.repository.private }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ fromJSON(needs.changes.outputs.kind == 'code' && '["ubuntu-latest", "windows-latest", "macos-latest"]' || '["ubuntu-latest"]') }}
         node: [22]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -131,19 +163,31 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm ci --ignore-scripts
+        if: ${{ needs.changes.outputs.kind != 'design' }}
       - run: npm run typecheck
+        if: ${{ needs.changes.outputs.kind == 'code' }}
       # Before the tests: specs load the built plugin (its hooks, launcher and integrity list).
       - run: npm run build
+        if: ${{ needs.changes.outputs.kind != 'design' }}
       - run: npm test
+        if: ${{ needs.changes.outputs.kind == 'code' }}
+      # A docs change runs only the specs that hold the docs to the code: tools/docs/, and SECURITY.md's.
+      - run: node --test "tools/docs/*.test.ts" tools/ci/security-workflows.test.ts
+        if: ${{ needs.changes.outputs.kind == 'docs' }}
       # Runs the launcher and every hook from the dist, as an installed plugin runs them.
       - run: node tools/ci/dist-smoke-cli.ts
+        if: ${{ needs.changes.outputs.kind == 'code' }}
       # A new developer's first run: a clone with no login, a bare teamrig on the PATH, a new team on a new project, every hook.
       - run: node tools/ci/fresh-install-cli.ts
+        if: ${{ needs.changes.outputs.kind == 'code' }}
       # The docs' pictures are drawn in code, the commands screen from the CLI's real output; they must match on every OS.
       - run: node tools/docs/images-cli.ts --check
+        if: ${{ needs.changes.outputs.kind != 'design' }}
       # The configuration reference is drawn from the config schema; it must match the committed page.
       - run: node tools/docs/configuration-cli.ts --check
-      # Every link, anchor and Mermaid block in the Markdown must resolve on every OS.
+        if: ${{ needs.changes.outputs.kind != 'design' }}
+      # Every link, anchor and Mermaid block in the Markdown must resolve on every OS; a design change's too, as
+      # docs/design/ is Markdown a reader follows.
       - run: node tools/docs/doc-check-cli.ts
 
   summary:
@@ -153,7 +197,7 @@ jobs:
     # failed, was cancelled or skipped; always() runs it after a failed one, where a job would skip, which
     # a required check reads as a pass.
     if: ${{ always() && !github.event.repository.private }}
-    needs: [gates, dependency-review, size-rule, commit-subjects, coverage, test]
+    needs: [changes, gates, dependency-review, size-rule, commit-subjects, coverage, test]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # actions: read lists this run's jobs; a job's permissions replace the workflow's, so contents: read is restated.
