@@ -319,7 +319,8 @@ checkpoint; a session may run it for itself.
 
 | Flag | Raised when | What to do |
 | --- | --- | --- |
-| `URGENT` | an open `p0` task (teamrig's own level for urgent work, above every configured one) free to start (every task it comes after finished); with a due, the detail names the lead's deadline burst (`burst start deadline --task <id> --by <its due> ...`) | The owner parks the task in hand and starts it now; the lead may run the burst to pay for finishing it by its due. |
+| `URGENT` | an open `blocker` or `p0` task (teamrig's own levels for urgent work, above every configured one) free to start (every task it comes after finished); with a due, the detail names the lead's deadline burst (`burst start deadline --task <id> --by <its due> ...`) | The owner parks the task in hand and starts it now; the lead may run the burst to pay for finishing it by its due. |
+| `BLOCKER-OPEN` | a `blocker` not yet shipped (open, in progress or waiting) over 4 h after it became one [register.check.blockerOpenAfterHours] | The owner fixes it now; else its leader takes it over, or lowers it to `p0` when it blocks no one. |
 | `OVERDUE` | the effective due time has passed: its own, or the earlier due of an active task that needs it (the detail names it: `due 10-14, from T9`) | The owner finishes it or says what blocks it; the lead re-dates it (`update --due`) or tells the human. |
 | `VERIFY-OVERDUE` | a `verifying` task's due time, the date to verify it by, has passed | The owner checks the proof: `done` with it as evidence, `in-progress` when it failed, or a new due date and why. |
 | `SLICE-LATE` | a slice of one of the team's goals (`goal slice`) is past its ship day with no proof recorded; raised on its first active task in plan order, else its first task the register holds | The slice's owner records the proof once it shows (`goal slice <tag> <n> --proven "<evidence>"`), or the lead moves its ship day (`--ship`, a slip kept with its note). |
