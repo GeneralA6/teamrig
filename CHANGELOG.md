@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.495.0](https://github.com/teamrig/teamrig/compare/teamrig-v0.494.0...teamrig-v0.495.0) (2026-11-19)
+
+
+### Features
+
+* **github:** read the login the token belongs to (T4581) ([f7c8410](https://github.com/teamrig/teamrig/commit/f7c8410e0366ecaedb98cdd01c4d688d5b094fe1))
+* **inbox:** a line naming a p0 sent to many sessions wakes only those who act on it (T4431) ([1b99895](https://github.com/teamrig/teamrig/commit/1b998954976c419ca04045c81e62be5c61b0354f))
+
+
+### Bug Fixes
+
+* **ci:** the pre-push light checks build the dist before the plugin's tests, which load it (T4595) ([6938809](https://github.com/teamrig/teamrig/commit/6938809267b68c9dd62d8c9905a5bc23e16a0615))
+* **issues:** the status push assigns the login the sync runs as, never the repo owner, and a refused assign costs no write (T4581) ([1dea906](https://github.com/teamrig/teamrig/commit/1dea906439880449c704ac64440893bec6c4f46e))
+* **push-guard:** a program that may set variables unseen cuts only what runs after it ([ab4d090](https://github.com/teamrig/teamrig/commit/ab4d0909b8c64cf60580a3a5d3320350519bb6f3))
+* **push-guard:** resolve a redirection target a line's variable names ([b4d6297](https://github.com/teamrig/teamrig/commit/b4d62972902840466ecf9868033eb20af09e8a41))
+* **push-guard:** test a heredoc stored through a variable path ahead of an unknown program ([276b225](https://github.com/teamrig/teamrig/commit/276b225bb940aee0f7e2497a5611db79d2edde01))
+* **register:** a proof may wait on its owner's own open task ([#1544](https://github.com/teamrig/teamrig/issues/1544)) ([029aadd](https://github.com/teamrig/teamrig/commit/029aaddf6d85e7f16ecf28f6317040faf6c03c12))
+* **register:** a proof waits on its owner's open task only once every --after task is finished ([#1544](https://github.com/teamrig/teamrig/issues/1544)) ([3b4e92e](https://github.com/teamrig/teamrig/commit/3b4e92e096d84600ca661b969a718e35253dc378))
+
 ## [0.494.0](https://github.com/teamrig/teamrig/compare/teamrig-v0.493.0...teamrig-v0.494.0) (2026-11-19)
 
 
