@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { admissionOrder, agedPriority, isAdmissionMode, laneOf, placeInLine, UNNAMED_PRIORITY, type AdmissionRules, type InLine, type RunningStep } from './admission.ts';
+import { BLOCKER_PRIORITY_ID } from '../register/model.ts';
 import type { StepKind } from './process-request.ts';
 import type { WaitCause } from './wait-cause.ts';
 
@@ -106,6 +107,15 @@ describe('admissionOrder', () => {
     ];
     const turns = new Map([['Roadmap', 0], ['Improvements', 50], ['Maintenance', 90]]);
     assert.deepEqual(idsOf(admissionOrder(line, NOW, PIPELINE, turns)), ['p0-first', 'p0-later', 'roadmap-p1']);
+  });
+
+  it('puts a blocker step ahead of earlier p0 steps (T4329)', () => {
+    const line = [
+      ticket('p0-first', { waitedMinutes: 9, priority: 0, class: 'Roadmap' }),
+      ticket('blocker', { waitedMinutes: 1, priority: BLOCKER_PRIORITY_ID, class: 'Improvements' }),
+      ticket('p1', { waitedMinutes: 9, priority: 1, class: 'Roadmap' }),
+    ];
+    assert.deepEqual(idsOf(admissionOrder(line, NOW, PIPELINE, NO_TURNS)), ['blocker', 'p0-first', 'p1']);
   });
 
   it("puts the steps of a task its lead put at the front before p0 ones, the earliest front first; serial mode keeps arrival order (T4082)", () => {
