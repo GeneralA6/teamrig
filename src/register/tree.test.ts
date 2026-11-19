@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { TEST_OWNER_SOURCE, testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import type { Task } from './fold.ts';
+import { BLOCKER_PRIORITY_ID } from './model.ts';
 import type { Band } from './score.ts';
 import {
   decidingKey,
@@ -459,12 +460,25 @@ describe('TaskTree unblocks and placeOf', () => {
   it('places a task on every key, in the week plan in force by default', () => {
     assert.equal(tree.week, '2030-01-07', 'T2\'s week has not started');
     assert.deepEqual(tree.placeOf(testTask({ id: 'T1', status: 'in-progress', week: '2030-01-07', size: 3 })), {
-      id: 'T1', pinned: false, ranked: undefined, blocked: false, at: undefined, started: true, unblocks: { first: 'T6', priority: 1, count: 3 }, inWeek: true, size: 3,
+      id: 'T1', holding: false, pinned: false, ranked: undefined, blocked: false, at: undefined, started: true, unblocks: { first: 'T6', priority: 1, count: 3 }, inWeek: true, size: 3,
     });
     assert.deepEqual(tree.placeOf(testTask({ id: 'T2', week: '2030-01-14' })), {
-      id: 'T2', pinned: false, ranked: undefined, blocked: false, at: undefined, started: false, unblocks: undefined, inWeek: false, size: null,
+      id: 'T2', holding: false, pinned: false, ranked: undefined, blocked: false, at: undefined, started: false, unblocks: undefined, inWeek: false, size: null,
     });
     assert.equal(tree.placeOf(testTask({ id: 'T2', pin: 'lead' })).pinned, true);
+  });
+
+  it('holds a blocker its owner can take up ahead of every key, a pin too, as start refuses all else (T4329)', () => {
+    const holding = (fields: Partial<Task>): boolean | undefined => tree.placeOf(testTask({ id: 'T2', priority: BLOCKER_PRIORITY_ID, ...fields })).holding;
+    assert.equal(holding({}), true);
+    assert.equal(holding({ status: 'in-progress' }), true);
+    for (const status of ['waiting', 'verifying', 'done', 'dropped'] as const) {
+      assert.equal(holding({ status }), false, status);
+    }
+    assert.equal(holding({ after: ['T1'] }), false, 'an `after` not finished: it cannot move, so it holds nothing');
+    assert.equal(holding({ priority: 0 }), false, 'a p0 holds nothing');
+    const blocker = testTask({ id: 'T2', priority: BLOCKER_PRIORITY_ID });
+    assert.ok(tree.byPlanOrder(blocker, testTask({ id: 'T4', priority: 0, pin: 'lead' })) < 0);
   });
 
   it('reads the week it is given, null for none', () => {
