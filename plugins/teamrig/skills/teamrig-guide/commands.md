@@ -5149,7 +5149,10 @@ wait the checkout must still be at that commit or at the newest main, or at a co
 no file the tool runs at either commit changed: the tool; the files its roots file beside it names as data
 (`<tool>.roots.json`, such as `tools/ship/ship.roots.json` holding `{"roots": ["src/cli/main.ts", "package.json"]}`:
 a CLI it spawns by a joined path, the package files that set how its modules load), and that file itself; every file
-those reach through their relative imports, read from the code and never from a comment or a string; and the data
+those reach through their relative imports, read from the code and never from a comment or a string, except the
+`import('…')` calls of a module its roots file names under `"staticOnly"` (a CLI's command table, which loads a
+command's module only when that command runs: `{"roots": ["src/cli/main.ts", "src/cli/commands/step-aside.ts"],
+"staticOnly": ["src/cli/run.ts"]}` counts only the commands the ship runs); and the data
 files they open beside themselves (`new URL('./repos.json', import.meta.url)`). So a ship that waited while main moved
 on still runs when the tool's own code is the same. A closure that cannot be read whole (a file missing, an import
 outside the checkout, a roots file that is not that JSON or names a path outside the checkout, more than 2000 files) runs only at the queued commit or the newest main (`REFUSED the ship tool ... is not

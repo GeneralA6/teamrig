@@ -704,7 +704,7 @@
                 "default": ".claude/worktrees"
               },
               "shipTool": {
-                "description": "The ship tool a service role may run through teamrig queue with no permission check, a run without --merge as --kind test and a merge as --kind ship or merge: its script, in a checkout of this repository kept clean at main's current code, checked at every allow, as a queued step that runs it is queued and again when it starts; at the start, a checkout moved on along main's history runs too when no file the tool runs (its relative imports, followed, the files it opens beside itself, and the files its <tool>.roots.json beside it names, such as a CLI it spawns) changed. A relative path is in the main checkout. Unset: no role runs a ship.",
+                "description": "The ship tool a service role may run through teamrig queue with no permission check, a run without --merge as --kind test and a merge as --kind ship or merge: its script, in a checkout of this repository kept clean at main's current code, checked at every allow, as a queued step that runs it is queued and again when it starts; at the start, a checkout moved on along main's history runs too when no file the tool runs (its relative imports, followed, the files it opens beside itself, and the files its <tool>.roots.json beside it names, such as a CLI it spawns, with no import() followed in the modules it names as staticOnly, such as a CLI's command table whose other commands the tool never runs) changed. A relative path is in the main checkout. Unset: no role runs a ship.",
                 "type": "string",
                 "minLength": 1
               },
