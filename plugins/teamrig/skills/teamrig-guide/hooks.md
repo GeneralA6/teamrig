@@ -909,7 +909,8 @@ with no permission check when all of these hold:
 - **a migrate reads the team's task files**: its rows file is named by an absolute path inside one task folder of
   the team (`<team>/tasks/T<id>/...`, what `teamrig files T<id>` gives), never `--out`, so every row it opens an
   issue for was written where the team keeps its task files; the register lets the holder of `issue migrate` point
-  any session's task holding no issue at its new issue, the ref alone;
+  any session's task of the team holding no issue at its new issue, the ref alone, never one kept local (`local:
+  <why>`);
 - **the text posts as it reads**: no format or bidi character (a right-to-left override, a zero-width space), no line
   or paragraph separator, and no @-mention (`@bob`, `@acme/team`; an @ inside a word, as in an e-mail address, is fine),
   so a role never pings someone or posts text that reads other than it is without the owner seeing it;
@@ -928,14 +929,15 @@ with no permission check when all of these hold:
 - **every guard passed it**: the same push, package, secret, db-write, exec, pass-record and service-role guards as
   the route allow; a guard that refuses answers instead;
 - **the role is under its cap**, for a close, comment or migrate: fewer than `prompts.serviceRoleDailyCap` (10 by
-  default, 0 to 200) closes, comments and migrate runs the role allowed in the last 24 hours; a migrate counts once,
-  however many rows it holds. Past it the call is refused, with the reason
+  default, 0 to 200) closes, comments and migrated issues the role allowed in the last 24 hours; a migrate counts each
+  issue row of its rows file and is refused when they do not fit the room left, and a rows file it cannot read or
+  parse gets no role. Past it the call is refused, with the reason
   "teamrig: the service role github ran its 10 calls of the last 24 hours (prompts.serviceRoleDailyCap), so this
   one is refused. ...". A ship or merge counts toward no cap: it acts only
   on the session's own task branch, through the ship tool's own checks.
 
 Each allow writes a line to `state/prompt-answers.jsonl` naming the session, the role, the command and the issue,
-the migrate's rows file or the ship's branch (`"answer": "role"`), never the text; the cap counts those lines, so a log it cannot write lets
+the migrate's rows file and its issue rows' `count` or the ship's branch (`"answer": "role"`), never the text; the cap counts those lines, so a log it cannot write lets
 nothing past. A config with any issue, or one a newer teamrig wrote, gives no role, and `prompts.routeAllow: off`
 takes the allow away without a release. A permission rule or another hook that denies the call still wins: Claude
 Code applies a deny over any hook's allow. Anything else, a role call it does not allow included, goes on to the

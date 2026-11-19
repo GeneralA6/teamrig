@@ -45,7 +45,7 @@ export function isCappedCommand(text: unknown): text is CappedCommand {
  * (`holders: "team"`). A ship or merge runs only on a worktree whose task branch the tab's bound session owns, with the
  * team's ship tool from a clean checkout on main (ship-role-check.ts), and the tool clears a merge for that same
  * session alone (tools/ship/approval.ts). `issue close`, `issue comment` and `issue migrate` act as whoever runs them,
- * and a migrate links any session's task, so each needs named holders.
+ * and a migrate links any session's task of the team, so each needs named holders.
  */
 export const TEAM_HELD_COMMANDS: ReadonlySet<ServiceCommand> = new Set<ServiceCommand>(SHIP_COMMANDS);
 
@@ -58,7 +58,7 @@ export const SERVICE_COMMAND_REACH: Readonly<Record<ServiceCommand, string>> = {
   'issue close': "closes any issue or pull request of github.repos, an outside author's too (a pull request closes unmerged), posting its --comment first",
   'issue comment': "posts a comment on any issue or pull request of github.repos, an outside author's too",
   'issue migrate':
-    "opens an issue on github.repos for each row of a rows file in the team's task files, with the row's public wording, and points that task's ref at it, any session's task; one call counts once toward the daily cap however many rows it holds",
+    "opens an issue on github.repos for each row of a rows file in the team's task files, with the row's public wording, and points that task's ref at it, any session's task of the team, never one kept local; each issue row counts toward the daily cap",
   'queue ship': "queues the team's ship tool on a worktree of the holder's own task branch: it builds, checks and commits there, and pushes nothing",
   'queue merge': "queues the ship tool's merge of the holder's own task branch: it pushes the branch and merges its pull request once the head is approved",
 };
