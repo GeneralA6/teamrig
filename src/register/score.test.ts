@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { BLOCKER_PRIORITY_ID } from './model.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { TEST_FOCUS } from '../testing/ranking.ts';
 import { bandOf, ownerOrderOf, scoreOf, sizePctOf, unblocksOf, urgencyOf, valueOf, wholeSizePctOf, type ScoreFacts, type ScoreFocus, type ValueFacts } from './score.ts';
@@ -131,6 +132,11 @@ describe('bandOf', () => {
     const noArms = { ...FOCUS, expedite: { critical: false, ownerP1: false } };
     assert.deepEqual(['Roadmap', 'Improvements', 'Sideline'].map((workClass) => bandOf(facts({ workClass, priority: 0 }), noArms)), [0, 0, 0]);
     assert.equal(bandOf(facts({ workClass: 'Improvements', priority: 0, ownerSourced: true }), FOCUS), 0);
+  });
+
+  it('puts a blocker in band 0 in any class with both expedite arms off, as a p0 (T4329)', () => {
+    const noArms = { ...FOCUS, expedite: { critical: false, ownerP1: false } };
+    assert.deepEqual(['Roadmap', 'Improvements', 'Sideline'].map((workClass) => bandOf(facts({ workClass, priority: BLOCKER_PRIORITY_ID }), noArms)), [0, 0, 0]);
   });
 
   it('turns each expedite arm off on its own', () => {
