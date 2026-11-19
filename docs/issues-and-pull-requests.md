@@ -68,7 +68,10 @@ you seven days to link a pull request to it ([Claims](github-sync.md#claims-a-co
 - **Docs in the same pull request** as the change they describe.
 - **Leave the version and the dist to us**: the maintainer raises the plugin version and rebuilds `plugins/teamrig/dist`
   when it lands.
-- **Fill in the template**: what, why, its reach, the old-code proof and `Fixes #<n>`.
+- **Fill in the template**: what, why, its reach, its risks, the old-code proof and `Fixes #<n>`.
+- **Built to the house standard**: it fits the design, reuses what exists and keeps to SOLID
+  ([What a change is held to](../CONTRIBUTING.md#what-a-change-is-held-to)); the review holds it to that list and may
+  push back on the direction before the details.
 - **No private data** anywhere: the scrub refuses home paths, e-mail addresses, host names and secrets.
 
 ## What happens next

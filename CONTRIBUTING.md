@@ -44,8 +44,8 @@ the rules that apply on every turn, and the project skills in `.claude/skills/` 
   <why>`); `src/core/hidden-children.test.ts` holds both.
 - **Typed code with no casts**: no `any`, no `as unknown as`; narrow `unknown` with a type guard.
 - **The why in plain words, where the reader finds it**: a comment says why the code is as it is, with a task or issue
-  id only as a trace and never a path outside the repo; a pull request that settles a design question fills in the
-  template's `## Alternatives` (the options weighed and why this one won). There is no decisions folder: the reasons
+  id only as a trace and never a path outside the repo; a pull request that settles a design question says in its
+  `## Why` the options weighed and why this one won. There is no decisions folder: the reasons
   live in the code, its issues and its pull requests, and [how it works](docs/how-it-works.md) shows how the parts fit.
 - When a step in a skill turns out wrong, fix the skill in the same pull request.
 - **Generic first**: every change has a reach, decided before it is built and stated in its task and its pull request
