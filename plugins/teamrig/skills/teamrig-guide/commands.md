@@ -5172,7 +5172,8 @@ folder, so every worktree of one repository shares it: for a ship tool run, the 
 for any other step, that of the folder it queued in. A ship of another repository runs beside it. A step whose
 repository is in doubt holds the slot of every repository: one queued outside any repository or by an older teamrig,
 and one whose words may move another (`-C <dir>`, `-R`/`--repo`, `--git-dir`, `--work-tree`, `cd`, `pushd`, a
-`NAME=value` word, a shell script in one word, or a path in another repository or none).
+`NAME=value` word, a shell script in one word, or a path in another repository or none), or whose program is a path
+in another repository (`/repo/other/deploy.sh`; a program in no repository, such as `/usr/bin/git`, keeps the folder's).
 
 The lock is `host.lock` in the kit home, one for every team on the host, unless `delivery.queue.lockPath` names
 another. It lasts `delivery.queue.lockTtlMinutes` (150); a lock past that, or one whose process is gone, is
