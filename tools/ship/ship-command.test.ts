@@ -71,8 +71,8 @@ describe('shipCommand', () => {
     assert.deepEqual(wired, []);
   });
 
-  it('refuses a plan with no chunks in one line before it builds any deps', async () => {
-    const plan = writePlan({ chunks: [] });
+  it('refuses a plan with no chunk list in one line before it builds any deps', async () => {
+    const plan = writePlan({ chunks: {} });
     assert.equal(await shipCommand(['C:/repo', plan], depsFor(), err), 1);
     assert.deepEqual(errors, [`${plan}: expected { "chunks": [ ... ] }`]);
     assert.deepEqual(wired, []);

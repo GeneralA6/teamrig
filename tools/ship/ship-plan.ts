@@ -61,11 +61,14 @@ export function parseShipArgs(argv: readonly string[]): ShipArgs {
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const isStringList = (value: unknown): value is string[] => Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === 'string');
 
-/** plan.json: { "chunks": [ { "files": ["src/a.ts", ...], "subject": "area: what", "body": "why" } ] } */
+/**
+ * plan.json: { "chunks": [ { "files": ["src/a.ts", ...], "subject": "area: what", "body": "why" } ] }. An empty list
+ * ships the commits the branch already carries (T4116); the ship refuses it on a branch that carries none.
+ */
 export function parsePlan(text: string, path: string): Chunk[] {
   const plan: unknown = JSON.parse(text);
   const chunks = isRecord(plan) ? plan['chunks'] : undefined;
-  if (!Array.isArray(chunks) || chunks.length === 0) throw new Error(`${path}: expected { "chunks": [ ... ] }`);
+  if (!Array.isArray(chunks)) throw new Error(`${path}: expected { "chunks": [ ... ] }`);
   return chunks.map((chunk: unknown, index) => {
     if (isRecord(chunk) && isStringList(chunk['files']) && typeof chunk['subject'] === 'string' && typeof chunk['body'] === 'string') {
       return { files: chunk['files'], subject: chunk['subject'], body: chunk['body'] };

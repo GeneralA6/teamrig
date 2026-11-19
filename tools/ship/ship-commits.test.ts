@@ -313,6 +313,43 @@ test('any other chunk with nothing to commit is refused before any commit too (T
   assert.ok(!events.some((event) => event.startsWith('git add') || event.startsWith('git commit')));
 });
 
+test("an empty plan ships the branch's own commits as they are: no take back, no commit of its own, then the build and the gate (T4116)", async () => {
+  const { deps, events } = fake({ answers: { 'rev-list --count origin/main..HEAD': '1\n' } });
+  assert.equal(await shipCommits(ARGS, [], deps), 0);
+  assert.deepEqual(events, [
+    'take back 0 chunk(s) since origin/main',
+    'sync',
+    'git rev-list --count origin/main..HEAD',
+    'node tools/build/bundle.ts',
+    `git add -- ${DIST}`,
+    'git diff --cached --numstat',
+    'prove',
+    'git log --oneline origin/main..HEAD',
+  ]);
+});
+
+test('an empty plan with --merge pushes and merges the commits the branch carries (T4116)', async () => {
+  const { deps, events } = fake({ answers: { 'rev-list --count origin/main..HEAD': '1\n' } });
+  assert.equal(await shipCommits({ ...ARGS, merge: true }, [], deps), 0);
+  assert.ok(!events.some((event) => event.startsWith('git commit')));
+  assert.deepEqual(events.slice(-2), ['push', 'merge t827-ship-tool']);
+});
+
+test('an empty plan on a branch that carries no commit is refused before the build (T4116)', async () => {
+  const { deps, events } = fake({ answers: { 'rev-list --count origin/main..HEAD': '0\n' } });
+  await assert.rejects(
+    shipCommits(ARGS, [], deps),
+    /^Error: REFUSED the plan has no chunks and the branch carries no commit past origin\/main: there is nothing to ship$/,
+  );
+  assert.ok(!events.some((event) => event.startsWith('node ')));
+});
+
+test('a plan with chunks never asks how many commits the branch carries (T4116)', async () => {
+  const { deps, events } = fake();
+  await shipCommits(ARGS, CHUNKS, deps);
+  assert.ok(!events.some((event) => event.startsWith('git rev-list')));
+});
+
 test('runs no typecheck or coverage suite of its own: the gate runs each once on the committed tree (T4064)', async () => {
   const { deps, events } = fake();
   await shipCommits(ARGS, CHUNKS, deps);

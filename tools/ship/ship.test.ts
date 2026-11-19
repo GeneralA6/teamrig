@@ -33,8 +33,8 @@ describe('ship cli', () => {
     assert.equal(leftovers.stderr, 'usage: ship.ts leftovers <repo dir>\n');
   });
 
-  it('refuses a plan with no chunks before it touches the repo', () => {
-    const plan = repo.write('plan.json', '{ "chunks": [] }');
+  it('refuses a plan with no chunk list before it touches the repo', () => {
+    const plan = repo.write('plan.json', '{ "chunks": {} }');
     const result = repo.run(CLI, [repo.dir, plan]);
     assert.equal(result.status, 1, result.stdout);
     assert.equal(result.stderr, `${plan}: expected { "chunks": [ ... ] }\n`);
