@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Read the guide first: https://github.com/GeneralA6/teamrig/blob/main/docs/issues-and-pull-requests.md
+        Read the guide first: https://github.com/teamrig/teamrig/blob/main/docs/issues-and-pull-requests.md
         Each section becomes part of the task teamrig tracks for this issue.
   - type: textarea
     id: problem
