@@ -84,6 +84,12 @@ export interface RepoProfile {
   pullSections: readonly string[];
   /** The repo's release pull request; null when not listed, so `ship.ts merge --release` refuses the repo. */
   release: ReleasePull | null;
+  /**
+   * Whether main merges through GitHub's merge queue (T3386): a merge then enqueues the checked head and waits for the
+   * queue to land it, in place of its own merge call, as the queue tests each group on main's newest tip. False when not
+   * listed; true needs the `ci` gate, since the queue lands only what its required checks pass.
+   */
+  queue: boolean;
 }
 
 export const PROFILES_PATH = new URL('./repos.json', import.meta.url);
@@ -159,6 +165,13 @@ function parseMergeChecks(slug: string, value: unknown, gate: Gate): MergeChecks
   return value;
 }
 
+function parseQueue(slug: string, value: unknown, gate: Gate): boolean {
+  if (value === undefined || value === false) return false;
+  if (value !== true) throw new Error(`repos.json: ${slug} "queue" is true (main merges through GitHub's merge queue) or false`);
+  if (gate !== 'ci') throw new Error(`repos.json: ${slug} "queue": true needs the "ci" gate: the merge queue lands only what required CI checks pass`);
+  return true;
+}
+
 const SLUG = /^[\w.-]+\/[\w.-]+$/u;
 
 function parseAliases(slug: string, value: unknown): readonly string[] {
@@ -176,7 +189,7 @@ export function repoSlugs(profiles: ReadonlyMap<string, RepoProfile>): string[] 
 
 export function parseProfiles(json: string): Map<string, RepoProfile> {
   const body: unknown = JSON.parse(json);
-  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky", "conditional", "aliases", "mergeChecks", "pullSections", "release" } }');
+  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky", "conditional", "aliases", "mergeChecks", "pullSections", "release", "queue" } }');
   const profiles = new Map<string, RepoProfile>();
   for (const [slug, entry] of Object.entries(body)) {
     if (!isRecord(entry) || typeof entry['main'] !== 'string' || !isNameList(entry['checks'])) throw new Error(`repos.json: ${slug} needs "main" and a "checks" list of names`);
@@ -199,6 +212,7 @@ export function parseProfiles(json: string): Map<string, RepoProfile> {
       mergeChecks: parseMergeChecks(slug, entry['mergeChecks'], gate),
       pullSections: parsePullSections(slug, entry['pullSections']),
       release: parseRelease(slug, entry['release']),
+      queue: parseQueue(slug, entry['queue'], gate),
     };
     for (const name of [slug, ...aliases]) {
       const key = name.toLowerCase();

@@ -10,7 +10,7 @@ const LOCAL = '"local":{"runner":"tools/ci/local.ts"}';
 
 test('reads each repo\'s main branch, gate and check lists, looked up without regard to case', () => {
   const profiles = parseProfiles(`{"Owner/Repo":{"main":"main","gate":"ci","checks":["a","b"]}}`);
-  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [], conditional: [], aliases: [], mergeChecks: 'full', pullSections: [], release: null });
+  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [], conditional: [], aliases: [], mergeChecks: 'full', pullSections: [], release: null, queue: false });
   const local = parseProfiles(`{"Owner/Local":{"main":"main","gate":"local","checks":[],${LOCAL}}}`);
   assert.deepEqual(profileFor(local, 'Owner/Local').local, { runner: 'tools/ci/local.ts' });
 });
@@ -94,6 +94,22 @@ test('reads what a merge checks locally, full when not listed, and refuses anoth
     assert.throws(() => parseProfiles(entry('ci', value)), /O\/R "mergeChecks" is "full" \(the whole suite\) or "changed"/, value);
   }
   assert.throws(() => parseProfiles(entry('local', '"changed"')), /O\/R "mergeChecks": "changed" needs the "ci" gate/);
+});
+
+test('reads whether main merges through GitHub\'s merge queue, false when not listed, and refuses another value or true without the ci gate (T3386)', () => {
+  const entry = (gate: string, queue: string): string => `{"O/R":{"main":"main","gate":"${gate}","checks":["a"],${LOCAL},"queue":${queue}}}`;
+  assert.equal(profileFor(parseProfiles('{"O/R":{"main":"main","gate":"ci","checks":["a"]}}'), 'O/R').queue, false);
+  assert.equal(profileFor(parseProfiles(entry('ci', 'false')), 'O/R').queue, false);
+  assert.equal(profileFor(parseProfiles(entry('ci', 'true')), 'O/R').queue, true);
+  for (const value of ['"true"', '1', 'null', '[true]']) {
+    assert.throws(() => parseProfiles(entry('ci', value)), /O\/R "queue" is true \(main merges through GitHub's merge queue\) or false/, value);
+  }
+  assert.throws(() => parseProfiles(entry('local', 'true')), /O\/R "queue": true needs the "ci" gate/);
+});
+
+test('the shipped repos.json merges no repo through the merge queue until main\'s ruleset turns the queue on (T3386)', () => {
+  const profiles = readProfiles();
+  for (const slug of repoSlugs(profiles)) assert.equal(profileFor(profiles, slug).queue, false, slug);
 });
 
 test('the shipped repos.json keeps every repo\'s merge on the whole local suite until its main requires CI (T3414); teamrig\'s does, so its merge runs the changed checks (#1464)', () => {
