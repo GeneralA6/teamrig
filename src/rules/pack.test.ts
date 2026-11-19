@@ -167,7 +167,12 @@ describe('renderCorePack', () => {
     assert.match(pack, /^5\. Work your own task list in plan order \(`teamrig list --session <you>`\); self-made work is a task too, added with `teamrig add` first,/m);
     assert.match(pack, /and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting \(one-commit fixes exempt\)\./);
     assert.match(pack, /A loop, cron or scheduled wake-up needs the lead's OK and a written stop\./);
-    assert.match(pack, /If you repeat a step with no progress or drift from your task, stop and ask your leader\.$/m);
+    assert.match(pack, /Looping or off your task: stop, ask your leader\.$/m);
+  });
+
+  it('puts a blocker ahead of everything in rule 5, so its owner drops the rest and fixes it now (T4329)', () => {
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
+    assert.match(pack, /^5\. .*\(one-commit fixes exempt\)\. A `blocker` comes first: drop the rest, fix it now\. A loop,/m);
   });
 
   it('wakes a peer with an inbox line for what it acts on now and keeps a message for a live back-and-forth, with wakes on', () => {
@@ -286,7 +291,7 @@ describe('renderCorePack', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /Edit in your own worktree and branch in each repo, never a main checkout\./);
     // T1279: any removal but the command, `rm -rf` or `Remove-Item -Recurse` too, not `git worktree remove` alone.
-    assert.match(pack, /Remove a worktree only with `teamrig worktree remove <path>`: any other removal may empty the main node_modules\./);
+    assert.match(pack, /Remove a worktree only with `teamrig worktree remove <path>`: other removals may empty main's node_modules\./);
     assert.doesNotMatch(pack, /rmdir/);
   });
 
