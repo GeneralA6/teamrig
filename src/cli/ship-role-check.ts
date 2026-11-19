@@ -163,13 +163,16 @@ export function shipTaskOfWords(git: MergeGit, kit: Kit, config: KitConfig, word
 /** Words that point git, gh or a shell at another place than the step's folder. */
 const ELSEWHERE_WORDS: ReadonlySet<string> = new Set(['-C', '-R', '--repo', '--git-dir', '--work-tree', 'cd', 'pushd']);
 
+/** A word the shell reads as a script, not one argument: it holds whitespace, an operator or an expansion. */
+const SHELL_SCRIPT_WORD = /[\s;&|$`]/;
+
 /**
  * True when `word` may point the step at another repository than `own`, its folder's: an option naming a repository or
  * folder (`-C <dir>`, `-R <owner/repo>`, `--git-dir=`), an environment setting (`GIT_DIR=...`), a shell script in one
  * word, or a path whose folder lies in another repository or in none.
  */
 function pointsElsewhere(git: Pick<MergeGit, 'commonDir'>, word: string, cwd: string, own: string): boolean {
-  if (ELSEWHERE_WORDS.has(word) || /^-[CR]./.test(word) || /^--(repo|git-dir|work-tree)=/.test(word) || /^[A-Za-z_]\w*=/.test(word) || /[\s;&|$`]/.test(word)) {
+  if (ELSEWHERE_WORDS.has(word) || /^-[CR]./.test(word) || /^--(repo|git-dir|work-tree)=/.test(word) || /^[A-Za-z_]\w*=/.test(word) || SHELL_SCRIPT_WORD.test(word)) {
     return true;
   }
   if (!/[/\\]/.test(word)) {
@@ -183,9 +186,10 @@ function pointsElsewhere(git: Pick<MergeGit, 'commonDir'>, word: string, cwd: st
 /**
  * The repository a step that holds the ship slot moves (#1711), as its shared git folder: for a step that runs a
  * configured ship tool, its target worktree's (the word after the tool, after its `merge` in the merge form); for any
- * other, the step's folder's, unless a word after the program may point it elsewhere (`pointsElsewhere`) or the
- * program is a path in another repository. Undefined
- * when that is in doubt, so the step holds the slot of every repository, as before.
+ * other, the step's folder's, unless a word after the program may point it elsewhere (`pointsElsewhere`), the
+ * program is a path in another repository, or the program word is a whole shell line (a step of one word runs as one,
+ * `commandLine`), whose words are not read. Undefined when that is in doubt, so the step holds the slot of every
+ * repository, as before.
  */
 export function shipSlotRepoOf(git: Pick<MergeGit, 'commonDir'>, kit: Kit, config: KitConfig, words: readonly string[], cwd: string): string | undefined {
   const args = shipToolArgsOf(kit, config, words, cwd);
@@ -193,13 +197,13 @@ export function shipSlotRepoOf(git: Pick<MergeGit, 'commonDir'>, kit: Kit, confi
     const worktree = args[0] === 'merge' ? args[1] : args[0];
     return worktree === undefined || worktree.startsWith('-') ? undefined : git.commonDir(placeOfWord(worktree, cwd));
   }
+  const program = words[0] ?? '';
   const own = git.commonDir(cwd);
-  if (own === undefined || words.slice(1).some((word) => pointsElsewhere(git, word, cwd, own))) {
+  if (own === undefined || SHELL_SCRIPT_WORD.test(program) || words.slice(1).some((word) => pointsElsewhere(git, word, cwd, own))) {
     return undefined;
   }
   // The program word by its path: a script of another repository run straight moves that one; a program in no
   // repository (`/usr/bin/git`) is a tool, which moves the folder's.
-  const program = words[0] ?? '';
   const place = placeOfWord(program, cwd);
   const programRepo = /[/\\]/.test(program) ? (git.commonDir(place) ?? git.commonDir(dirname(place))) : undefined;
   return programRepo === undefined || samePath(programRepo, own) ? own : undefined;
