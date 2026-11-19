@@ -1,3 +1,4 @@
+import { isNonNegativeInteger } from '../core/guards.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 
 /**
@@ -78,6 +79,11 @@ export function hasIssueOrReason(ref: string | null): boolean {
  * which refuses a negative priority, reads it as p0.
  */
 export const BLOCKER_PRIORITY_ID = -1;
+
+/** Whether a stored value is a priority id: the blocker's, or p0 and below. */
+export function isPriorityId(value: unknown): value is number {
+  return value === BLOCKER_PRIORITY_ID || isNonNegativeInteger(value);
+}
 
 /** How the blocker level is typed and printed. */
 export const BLOCKER_PRIORITY_TEXT = 'blocker';
