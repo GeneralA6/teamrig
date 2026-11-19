@@ -95,6 +95,16 @@ export async function clearMerge(caller: MergeCaller, reads: MergeReads, branch:
   if (taskId === null) {
     return refused(`branch ${branch} names no task: a merged branch is t<id>-<name>, after any type folder (fix/t<id>-<name>)`);
   }
+  return clearTaskMerge(caller, reads, taskId, head, approved);
+}
+
+/**
+ * The clearance of a merge at `head` on the approval of task `taskId`, named by the caller rather than read from a
+ * branch: the release pull request's branch, which its release tool names, names no task (T4645). Refused when the
+ * caller, team or tab is not set, the tab is not bound to the caller alone, or the register cannot be read; else
+ * `mergeClearance`.
+ */
+export async function clearTaskMerge(caller: MergeCaller, reads: MergeReads, taskId: string, head: string, approved: string | null): Promise<MergeClearance> {
   if (caller.session === undefined || caller.session === '' || caller.team === undefined || caller.team === '') {
     return refused('TEAMRIG_SESSION and TEAMRIG_TEAM must name the merging session and its team');
   }
@@ -124,12 +134,27 @@ export type ClearMerge = (branch: string, head: string, approved: string | null)
  * (stopgap T791), so the guards stay the trust boundary.
  */
 export function clearMergeFrom(env: Env, reader: KitReader): ClearMerge {
-  const caller = { session: env[ENV.session]?.trim(), team: env[ENV.team]?.trim(), claudeSession: env[ENV.claudeSession]?.trim() };
-  const reads: MergeReads = {
-    tabCallerOf: (team, claudeSession, session) => tabCallerOf(reader, team, claudeSession, session),
-    standingOf: (team, session, taskId) => mergeStandingOf(reader, team, session, taskId),
-  };
+  const { caller, reads } = mergeContextOf(env, reader);
   return (branch, head, approved) => clearMerge(caller, reads, branch, head, approved);
+}
+
+/** The clearance of a merge at `head` on the approval of the task the caller names, on the approved sha it names or null. */
+export type ClearTaskMerge = (taskId: string, head: string, approved: string | null) => Promise<MergeClearance>;
+
+/** `clearTaskMerge` for the session, team and tab `env` names, read as `clearMergeFrom` reads them. */
+export function clearTaskMergeFrom(env: Env, reader: KitReader): ClearTaskMerge {
+  const { caller, reads } = mergeContextOf(env, reader);
+  return (taskId, head, approved) => clearTaskMerge(caller, reads, taskId, head, approved);
+}
+
+function mergeContextOf(env: Env, reader: KitReader): { readonly caller: MergeCaller; readonly reads: MergeReads } {
+  return {
+    caller: { session: env[ENV.session]?.trim(), team: env[ENV.team]?.trim(), claudeSession: env[ENV.claudeSession]?.trim() },
+    reads: {
+      tabCallerOf: (team, claudeSession, session) => tabCallerOf(reader, team, claudeSession, session),
+      standingOf: (team, session, taskId) => mergeStandingOf(reader, team, session, taskId),
+    },
+  };
 }
 
 /** Runs git in the repo and returns its stdout; throws when git fails. */
