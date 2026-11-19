@@ -17,7 +17,10 @@ import {
   SESSION_PUSH,
   STATUS_LABELS,
   assigneeOf,
+  pushAssignees,
   sessionLogins,
+  VIEWER_UNREAD,
+  viewerRead,
   type IssueChange,
 } from './status-push.ts';
 
@@ -133,7 +136,7 @@ describe('planPush (T2682)', () => {
       ],
       [holding('T1', 7, { status: 'done' }), holding('T2', 8, { status: 'dropped' }), holding('T3', 9, { status: 'done' }), holding('T4', 10, { status: 'done' })],
       SESSION_PUSH,
-      logins,
+      pushAssignees(logins, viewerRead(undefined)),
     );
     assert.deepEqual(plan.keptOpen, [
       { target: { repo: REPO, number: 7 }, task: 'T1', status: 'done', why: { kind: 'taken', assignees: ['outsider'] } },
@@ -325,38 +328,80 @@ describe('planPush (T2682)', () => {
 
 describe('the assignee (T2999)', () => {
   const logins = sessionLogins({ octocat: 'bravo', hubot: 'bravo', monalisa: 'alpha' });
+  const who = pushAssignees(logins, viewerRead('sync-bot'));
 
-  it("maps each session to its first login, and an issue to its session's login, else the repository's owner", () => {
+  it("maps each session to its first login, and an issue to its session's login, else the login the sync runs as, never the repository's owner (T4581)", () => {
     assert.deepEqual([...logins], [
       ['bravo', 'octocat'],
       ['alpha', 'monalisa'],
     ]);
-    assert.equal(assigneeOf(REPO, 'bravo', logins), 'octocat');
-    assert.equal(assigneeOf(REPO, 'lead', logins), 'acme');
+    assert.equal(assigneeOf('bravo', who), 'octocat');
+    assert.equal(assigneeOf('lead', who), 'sync-bot');
+    assert.equal(assigneeOf('lead', pushAssignees(logins, viewerRead(undefined))), undefined);
+    assert.equal(assigneeOf('lead', pushAssignees(logins, VIEWER_UNREAD)), undefined);
+    assert.equal(assigneeOf('bravo', pushAssignees(logins, VIEWER_UNREAD)), 'octocat');
+  });
+
+  it('wants the unread viewer only for an issue its session cannot assign, or a close left for outside logins (T4581)', () => {
+    const unread = pushAssignees(logins, VIEWER_UNREAD);
+    const mapped = [holding('T1', 7, { owner: 'bravo', status: 'in-progress' })];
+    assert.equal(planPush(REPO, [testHostIssue(7)], mapped, undefined, unread).wantsViewer, false);
+    assert.equal(planPush(REPO, [testHostIssue(7)], [holding('T1', 7, { owner: 'lead', status: 'in-progress' })], undefined, unread).wantsViewer, true);
+    assert.equal(planPush(REPO, [testHostIssue(7)], mapped, undefined, { ...unread, refused: new Set(['octocat']) }).wantsViewer, true);
+    const finished = [holding('T1', 7, { owner: 'bravo', status: 'done' })];
+    assert.equal(planPush(REPO, [testHostIssue(7, { assignees: ['outsider'] })], finished, undefined, unread).wantsViewer, true);
+    assert.equal(planPush(REPO, [testHostIssue(7, { assignees: ['octocat'] })], finished, undefined, unread).wantsViewer, false);
+    assert.equal(planPush(REPO, [testHostIssue(7, { assignees: ['outsider'] })], finished, undefined, pushAssignees(logins, viewerRead('outsider'))).wantsViewer, false);
+    assert.equal(planPush(REPO, [testHostIssue(7)], [holding('T1', 7, { owner: 'lead', status: 'in-progress' })], undefined, who).wantsViewer, false);
+  });
+
+  it('passes over a login the repository refuses for the next in line, whatever its case, and gives the host spelling of one it takes (T4581)', () => {
+    const read = { ...who, refused: new Set(['octocat']), spelled: new Map([['sync-bot', 'Sync-Bot']]) };
+    assert.equal(assigneeOf('bravo', read), 'Sync-Bot');
+    assert.equal(assigneeOf('alpha', read), 'monalisa');
+    assert.equal(assigneeOf('bravo', { ...read, refused: new Set(['octocat', 'sync-bot']) }), undefined);
+    assert.equal(assigneeOf('bravo', { ...who, refused: new Set(['octocat']), viewer: viewerRead('OctoCat') }), undefined);
   });
 
   it('assigns an open issue of a scheduled task no one is assigned to, alone or with its label, and never one a person assigned', () => {
     const issues = [testHostIssue(7), testHostIssue(8, { labels: ['status:claimed'] }), testHostIssue(9, { assignees: ['someone'] })];
     const tasks = [holding('T1', 7, { owner: 'bravo', status: 'in-progress' }), holding('T2', 8, { owner: 'lead', due: '2030-01-09' }), holding('T3', 9, { owner: 'bravo' })];
-    const plan = planPush(REPO, issues, tasks, undefined, logins);
+    const plan = planPush(REPO, issues, tasks, undefined, who);
     assert.deepEqual(
       plan.changes.map((change) => [change.task, change.add, change.assign, changeWrites(change)]),
       [
         ['T1', ['status:in progress'], 'octocat', 2],
-        ['T2', [], 'acme', 1],
+        ['T2', [], 'sync-bot', 1],
         ['T3', ['status:claimed'], undefined, 1],
       ],
     );
     assert.deepEqual(plan.changes.map(changeLine), [
       'LABEL acme/web#7 T1 in-progress: add status:in progress, assign octocat',
-      'ASSIGN acme/web#8 T2 open: assign acme',
+      'ASSIGN acme/web#8 T2 open: assign sync-bot',
       'LABEL acme/web#9 T3 open: add status:claimed',
     ]);
   });
 
+  it('plans no write for an assign no login is left for, so it takes none of the run (T4581)', () => {
+    const issues = [testHostIssue(7, { labels: ['status:claimed'] }), testHostIssue(8)];
+    const tasks = [holding('T1', 7, { owner: 'lead', due: '2030-01-09' }), holding('T2', 8, { owner: 'bravo', status: 'in-progress' })];
+    const limits = { writesPerRun: 2, closes: true };
+    assert.deepEqual(planPush(REPO, issues, tasks, limits, who).deferred.map((change) => change.task), ['T2']);
+    const plan = planPush(REPO, issues, tasks, limits, { ...who, refused: new Set(['sync-bot']), spelled: new Map([['octocat', 'octocat']]) });
+    assert.equal(plan.unchanged, 1);
+    assert.deepEqual(plan.changes.map(changeLine), ['LABEL acme/web#8 T2 in-progress: add status:in progress, assign octocat']);
+    assert.deepEqual(plan.deferred, []);
+  });
+
+  it("counts the login the sync runs as one of the team's, so a finished task closes an issue it was assigned (T4581)", () => {
+    const plan = planPush(REPO, [testHostIssue(7, { assignees: ['Sync-Bot'] })], [holding('T1', 7, { status: 'done' })], SESSION_PUSH, who);
+    assert.deepEqual(plan.keptOpen, []);
+    assert.deepEqual(plan.changes.map((change) => change.close), ['completed']);
+  });
+
   it('assigns no one to the issue of an open task no one scheduled, and claims it once a person is assigned (T3021)', () => {
     const issues = [testHostIssue(7, { labels: ['status:open'] }), testHostIssue(8, { labels: ['status:open'], assignees: ['someone'] })];
-    const plan = planPush(REPO, issues, [holding('T1', 7, { owner: 'bravo' }), holding('T2', 8, { owner: 'bravo' })], undefined, logins);
+    const plan = planPush(REPO, issues, [holding('T1', 7, { owner: 'bravo' }), holding('T2', 8, { owner: 'bravo' })], undefined, who);
     assert.equal(plan.unchanged, 1);
     assert.deepEqual(plan.changes.map(changeLine), ['LABEL acme/web#8 T2 open: add status:claimed, take off status:open']);
   });
@@ -364,7 +409,7 @@ describe('the assignee (T2999)', () => {
   it('takes every status label off a design issue and assigns it to no one, even once scheduled (T3096)', () => {
     const issues = [testHostIssue(7, { labels: ['design', 'status:open'] }), testHostIssue(8, { labels: ['design'] })];
     const tasks = [holding('T1', 7, { owner: 'bravo' }), holding('T2', 8, { owner: 'bravo', status: 'in-progress', due: '2030-01-09' })];
-    const plan = planPush(REPO, issues, tasks, undefined, logins);
+    const plan = planPush(REPO, issues, tasks, undefined, who);
     assert.equal(plan.unchanged, 1);
     assert.deepEqual(plan.changes.map(changeLine), ['LABEL acme/web#7 T1 open: take off status:open']);
   });
@@ -372,13 +417,13 @@ describe('the assignee (T2999)', () => {
   it('takes every status label off a goal, and still assigns it once scheduled (T3056)', () => {
     const issues = [testHostIssue(7, { labels: ['feature', 'status:open'] }), testHostIssue(8)];
     const tasks = [holding('T1', 7, { owner: 'bravo', after: ['T3'] }), holding('T2', 8, { owner: 'bravo', status: 'in-progress', after: ['T3'] })];
-    const plan = planPush(REPO, issues, tasks, undefined, logins);
+    const plan = planPush(REPO, issues, tasks, undefined, who);
     assert.deepEqual(plan.changes.map(changeLine), ['LABEL acme/web#7 T1 open: take off status:open', 'ASSIGN acme/web#8 T2 in-progress: assign octocat']);
   });
 
   it('assigns no closing issue, and nobody without logins', () => {
     const issues = [testHostIssue(7), testHostIssue(8, { labels: ['status:open'] })];
-    assert.equal(planPush(REPO, issues, [holding('T1', 7, { status: 'done' })], undefined, logins).changes[0]?.assign, undefined);
+    assert.equal(planPush(REPO, issues, [holding('T1', 7, { status: 'done' })], undefined, who).changes[0]?.assign, undefined);
     assert.deepEqual(planPush(REPO, issues, [holding('T2', 8, { status: 'open' })]).changes, []);
   });
 });
