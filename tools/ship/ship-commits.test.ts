@@ -335,6 +335,7 @@ test("an empty plan ships the branch's own commits as they are: no take back, no
     'sync',
     'git rev-list --count origin/main..HEAD',
     'node tools/build/bundle.ts',
+    `git ls-files -- ${DIST}`,
     `git add -- ${DIST}`,
     'git diff --cached --numstat',
     'prove',
