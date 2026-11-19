@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
 import { FakeIssueHost } from '../testing/fake-issue-host.ts';
+import { codeHostOnly, trackerOnly } from '../testing/split-hosts.ts';
 import { areaLabelSpec } from './managed-labels.ts';
 import { editIssueBody, labelIssue, labelRefusal, MAX_COMMENT, MAX_LABEL, postRefusal, writeIssue, type IssueWrite, type LabelWrite } from './write.ts';
 
@@ -14,10 +15,13 @@ async function run(host: FakeIssueHost, write: IssueWrite): Promise<{ done: bool
   return { done, lines };
 }
 
-/** Runs `write` as a label change on `host`, giving whether every step was done and the lines it said. */
+/**
+ * Runs `write` as a label change on `host`, as the tracker and the code host both, giving whether every step was done
+ * and the lines it said.
+ */
 async function label(host: FakeIssueHost, write: Omit<LabelWrite, 'target'>): Promise<{ done: boolean; lines: string[] }> {
   const lines: string[] = [];
-  const done = await labelIssue(host, { target: TARGET, ...write }, (line) => lines.push(line));
+  const done = await labelIssue(host, host, { target: TARGET, ...write }, (line) => lines.push(line));
   return { done, lines };
 }
 
@@ -296,5 +300,34 @@ describe('labelIssue', () => {
       'UNLABELED acme/web#7: "p2"',
       'FAILED acme/web#7: HTTP 502; it already added "p1", took off "p2"',
     ]);
+  });
+
+  it('reads the label file from the code host and writes the labels on the tracker, when they are two hosts (T4619)', async () => {
+    const area = { name: 'area:cli', color: '1d76db', description: 'Area: the command line' };
+    const tracker = new FakeIssueHost();
+    const code = new FakeIssueHost().holdsLabelFile('acme/web', { kind: 'read', labels: [area] });
+    const lines: string[] = [];
+    const done = await labelIssue(trackerOnly(tracker), codeHostOnly(code), { target: TARGET, add: ['area:cli'], remove: [] }, (line) => lines.push(line));
+    assert.deepEqual([done, lines], [true, ['ACCESS acme: writes as the test', 'MADE acme/web: the label "area:cli", as its .github/labels.json names it', 'LABELED acme/web#7: "area:cli"']]);
+    assert.deepEqual([tracker.labelFileReads, code.labelFileReads], [[], ['acme/web']]);
+    assert.deepEqual(tracker.calls, [
+      { kind: 'label-create', repo: 'acme/web', label: area },
+      { kind: 'label-add', target: TARGET, labels: ['area:cli'] },
+    ]);
+    assert.deepEqual(code.calls, []);
+  });
+});
+
+describe('a write on a tracker that is no code host (T4619)', () => {
+  it('comments, closes as a duplicate and edits the body with the tracker alone', async () => {
+    const host = new FakeIssueHost();
+    const lines: string[] = [];
+    const original = { repo: 'acme/web', number: 3 };
+    assert.equal(await writeIssue(trackerOnly(host), { target: TARGET, comment: 'Thanks', close: true, reason: 'duplicate', duplicateOf: original }, (line) => lines.push(line)), true);
+    assert.equal(await editIssueBody(trackerOnly(host), { target: TARGET, body: '## Spec' }, (line) => lines.push(line)), true);
+    assert.deepEqual(
+      host.calls.map((call) => call.kind),
+      ['comment', 'close', 'body'],
+    );
   });
 });

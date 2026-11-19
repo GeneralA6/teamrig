@@ -1,6 +1,6 @@
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import type { IssueHost } from '../../issues/host.ts';
+import type { IssueLinks } from '../../issues/host.ts';
 import { changedIssues, planLinks, type LinkPlan, type LinkWrite } from '../../issues/links.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hostOf, reposOf } from '../issue-hosts.ts';
@@ -72,7 +72,7 @@ export async function issueLinks(args: ParsedArgs, runtime: CliRuntime): Promise
 }
 
 /** Adds each link in turn, stopping at the first failure: a refused token or a rate limit would refuse the rest too. */
-async function addLinks(host: IssueHost, writes: readonly LinkWrite[]): Promise<{ readonly added: number; readonly failure: string | undefined }> {
+async function addLinks(host: IssueLinks, writes: readonly LinkWrite[]): Promise<{ readonly added: number; readonly failure: string | undefined }> {
   let added = 0;
   for (const link of writes) {
     const end = link.kind === 'sub-issue' ? await host.addSubIssue(link.parent, link.childId) : await host.addBlockedBy(link.target, link.blockerId);
