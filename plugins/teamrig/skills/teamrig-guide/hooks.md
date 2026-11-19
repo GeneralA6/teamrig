@@ -329,7 +329,9 @@ the guard cannot read (`--script-shell=node`, or a variable) is refused as a dou
 - **Refuses, in doubt**: when it cannot read part of the line (an unclosed quote, a branch or alias only known when
   the line runs, a push held in quoted text such as `x='$(git push)'`, which bash runs if `${x@P}` or `$((x))`
   reads it again, though not quoted backticks that never close, which run nothing; a bash variable counts as known when the line set it earlier to text and other known variables,
-  as in `B=feat; git push -u origin $B` or `G="git -C /w"; $G push`, and never set it otherwise; `$HOME` and a
+  as in `B=feat; git push -u origin $B` or `G="git -C /w"; $G push`, and never set it otherwise, in a command or a
+  file it writes to (`cat > $S/x`); from a command that may set variables unseen (`read B`, `eval`, a program held
+  in an unknown variable), or from the start of a loop or group that holds one, no variable counts as known; `$HOME` and a
   value's leading `~` count as your home folder in the line's own shell, as in `T=~/bin/teamrig; $T list`): "The guard
   cannot tell whether this command pushes to a protected branch (...): <why>. Write the push out plainly, a branch
   named and no command built at run time." A line whose words depend on the shell's version, its host or how it is started (a NUL or a `` `u{2d} ``
