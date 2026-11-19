@@ -1,6 +1,7 @@
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { HOST_ID } from "./gh.js";
-import { ISSUE_READ, nodesOf, plainLine, runRead } from "./issues.js";
+import { ISSUE_READ, nodesOf, runRead } from "./issues.js";
+import { plainLine } from "../core/printable.js";
 import { linksPageArgs } from "./queries.js";
 /**
  * The most issues a links read takes before it stops asking for pages. Unlike the import, it reads closed issues

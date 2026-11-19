@@ -3,7 +3,7 @@ import { clipEnd } from "../core/clip.js";
 import { isNonNegativeInteger, stringField } from "../core/guards.js";
 import { KIT_NAME } from "../core/home.js";
 import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
-import { plainLine } from "../github/issues.js";
+import { plainLine } from "../core/printable.js";
 import { foldEvents } from "../register/fold.js";
 /**
  * The leader digest: what a leader's prompt hook shows of the register changes in its tree since its last prompt, so a

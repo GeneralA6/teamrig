@@ -4,7 +4,7 @@ import { errorCode, errorMessage, isNonNegativeInteger, isRecord, stringField } 
 import { parseObject } from "../core/jsonl.js";
 import { UTF8_OUTPUT } from "../core/powershell.js";
 import { sweepTree, windowsSweepHost } from "../delivery/tree-kill.js";
-import { nodeProgramRunner } from "../github/credentials.js";
+import { nodeProgramRunner } from "../core/program-run.js";
 import { exitText, outcomeOfError } from "./processes.js";
 const CLAUDE_PROGRAM = /^claude(\.exe)?$/i;
 const NODE_PROGRAM = /^node(\.exe)?$/i;

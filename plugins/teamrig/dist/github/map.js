@@ -1,11 +1,10 @@
 import { MAX_DESCRIPTION } from "../config/defaults.js";
 import { SecretScanner } from "../core/secrets.js";
 import { ISSUE_REF_PREFIX } from "../register/model.js";
-import { plainLine } from "./issues.js";
+import { SECRET_BODY } from "../issues/issue.js";
+import { plainLine } from "../core/printable.js";
 /** The priority of an issue with no priority label of the team's: p2, or the team's least urgent level when it has no p2. */
 export const ISSUE_PRIORITY = 2;
-/** The description of an issue whose body looks like it holds a secret: the body stays on GitHub only. */
-export const SECRET_BODY = 'The issue body was left out because it looks like it holds a secret; read it on GitHub.';
 /** A priority label: `p1`, `P2`. */
 const PRIORITY_LABEL = /^p([1-9]\d?)$/i;
 /** How GitHub closed an issue that was not done: the task is dropped. Any other close, `COMPLETED` among them, is done. */

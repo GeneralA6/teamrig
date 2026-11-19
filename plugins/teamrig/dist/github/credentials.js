@@ -1,7 +1,5 @@
-import { spawn } from 'node:child_process';
 import { errorCode, errorMessage } from "../core/guards.js";
 import { powerShellRequest } from "../core/powershell.js";
-import { endOf } from "../test-run/shell.js";
 /** A credential's name: letters, digits, `.`, `_` or `-`, so it never needs quoting on any command line. */
 export const CREDENTIAL_NAME = /^[\w.-]{1,128}$/;
 /** A token is printable ASCII with no spaces; anything else was saved some other way. */
@@ -123,16 +121,4 @@ function endText(end) {
 }
 function firstLine(text) {
     return text.split(/\r?\n/).find((line) => line.trim() !== '')?.trim() ?? 'no error text';
-}
-/** The real runner: `spawn` with no shell, stdin closed, and a time limit. */
-export function nodeProgramRunner(timeoutMs = CREDENTIAL_TIMEOUT_MS) {
-    return (request) => new Promise((resolve, reject) => {
-        const child = spawn(request.program, [...request.args], { stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, windowsHide: true });
-        const stdout = [];
-        const stderr = [];
-        child.stdout.setEncoding('utf8').on('data', (chunk) => stdout.push(chunk));
-        child.stderr.setEncoding('utf8').on('data', (chunk) => stderr.push(chunk));
-        child.once('error', reject);
-        child.once('close', (code, signal) => resolve({ end: endOf(code, signal), stdout: stdout.join(''), stderr: stderr.join('') }));
-    });
 }

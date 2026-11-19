@@ -13,7 +13,8 @@ import { realSleep, systemClock } from "../core/lock.js";
 import { NODE_PATH_PROBE } from "../core/path-probe.js";
 import { NODE_STORE_FOLDERS } from "../core/node-store-folders.js";
 import { chatWebhook } from "../core/webhook.js";
-import { nodeProgramRunner, systemCredentials } from "../github/credentials.js";
+import { nodeProgramRunner } from "../core/program-run.js";
+import { CREDENTIAL_TIMEOUT_MS, systemCredentials } from "../github/credentials.js";
 import { GIT_CHECKOUT } from "../exec/binding.js";
 import { nodeExecSpawner } from "../exec/runner.js";
 import { nodeGhRunner } from "../github/gh.js";
@@ -89,7 +90,7 @@ export async function runWithNode(argv, entry) {
         memory: nodeHostMemory(process.platform),
         cpu: nodeHostCpu(),
         gh: nodeGhRunner(),
-        credentials: systemCredentials(process.platform, nodeProgramRunner()),
+        credentials: systemCredentials(process.platform, nodeProgramRunner(CREDENTIAL_TIMEOUT_MS)),
         probe: NODE_PATH_PROBE,
         pluginStore: NODE_STORE_FOLDERS,
         transcripts: nodeTranscriptSource,

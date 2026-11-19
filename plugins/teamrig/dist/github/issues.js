@@ -2,6 +2,7 @@ import { errorCode, errorMessage, isRecord, recordField, stringField } from "../
 import { exitText } from "../open/processes.js";
 import { GH_TIMEOUT_MS, GhOutputCapError } from "./gh.js";
 import { isClaim } from "../issues/claim.js";
+import { plainLine } from "../core/printable.js";
 import { closedPageArgs, openPageArgs } from "./queries.js";
 /** The most issues one list reads before it stops asking for pages; a list stopped with more on GitHub says so. */
 export const ISSUE_LIMIT = 500;
@@ -38,10 +39,6 @@ export function repoPage(repo, after) {
         return null;
     }
     return { owner, name, after };
-}
-/** Text from outside on one plain line: control and format characters (escapes, bidi overrides) become spaces. */
-export function plainLine(text) {
-    return text.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').replace(/\s+/g, ' ').trim();
 }
 /**
  * Reads a repository's issues in one state through gh, as `access` reads it: page after page until GitHub has no

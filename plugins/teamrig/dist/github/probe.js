@@ -1,5 +1,5 @@
 import { ENTITY_TAG } from "./gh.js";
-import { plainLine } from "./issues.js";
+import { plainLine } from "../core/printable.js";
 import { exitText } from "../open/processes.js";
 /** The status line `gh api -i` prints first, such as `HTTP/2.0 304 Not Modified`. */
 const STATUS_LINE = /^HTTP\/[0-9.]+ ([1-5][0-9]{2})\b/;

@@ -1,5 +1,6 @@
 import { isRecord, recordField, stringField } from "../core/guards.js";
-import { connectionPage, kindOf, loginOf, nodesOf, plainLine, postOf, repoPage, runRead, timeField, WEB_URL } from "./issues.js";
+import { connectionPage, kindOf, loginOf, nodesOf, postOf, repoPage, runRead, timeField, WEB_URL } from "./issues.js";
+import { plainLine } from "../core/printable.js";
 import { pullPageArgs } from "./queries.js";
 /** How a failed pull request read is worded, and the permission a fine-grained token needs for it. */
 export const PULL_READ = { noun: 'pull requests', permission: 'Pull requests', command: 'gh api graphql' };

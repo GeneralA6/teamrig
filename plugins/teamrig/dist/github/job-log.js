@@ -1,4 +1,4 @@
-import { plainLine } from "./issues.js";
+import { plainLine } from "../core/printable.js";
 /** Lines of a failed step's log a session is shown: its last ones, where the error is. */
 export const EXCERPT_LINES = 20;
 /** Characters of one log line kept: a line past it is cut, as a bundle or a dump can run on for pages. */
