@@ -1,7 +1,7 @@
 import type { GithubConfig } from '../config/types.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import type { IssueDraft } from '../issues/host.ts';
-import { ISSUE_REF_PREFIX, LOCAL_REF_PREFIX } from '../register/model.ts';
+import { isIssueRef, LOCAL_REF_PREFIX } from '../register/model.ts';
 import type { Verdict } from '../register/policy.ts';
 import { issueLabels, priorityLabelOf, publicIssueText, type RowType } from './migrate.ts';
 
@@ -46,7 +46,7 @@ export function addIssuePlan(ask: AddIssueAsk, github: Pick<GithubConfig, 'repos
   if (asksIssue) {
     return openPlan(ask, github, scanner);
   }
-  if (github.issueAtAdd !== undefined && !(ask.ref?.startsWith(ISSUE_REF_PREFIX) ?? false)) {
+  if (github.issueAtAdd !== undefined && !isIssueRef(ask.ref)) {
     return {
       ok: false,
       error: `github.issueAtAdd is ${github.issueAtAdd}: give the task's public issue with --issue <title> --issue-body <text>, or why it stays local with --local <reason>`,

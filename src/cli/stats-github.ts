@@ -1,6 +1,6 @@
 import { formatW } from '../budget/format.ts';
 import { taskWOf } from '../budget/task-use.ts';
-import { ISSUE_REF_PREFIX } from '../register/model.ts';
+import { isIssueRef } from '../register/model.ts';
 import type { Task } from '../register/fold.ts';
 import type { RolledTeam } from './roll-up.ts';
 import type { CliRuntime } from './runtime.ts';
@@ -18,7 +18,7 @@ export function githubWLines(tasks: Iterable<Pick<Task, 'id' | 'ref'>>, wByTask:
   const spent = [...tasks]
     .flatMap((task) => {
       const w = wByTask.get(task.id) ?? 0;
-      return task.ref !== null && task.ref.startsWith(ISSUE_REF_PREFIX) && w > 0 ? [{ id: task.id, ref: task.ref, w }] : [];
+      return isIssueRef(task.ref) && w > 0 ? [{ id: task.id, ref: task.ref, w }] : [];
     })
     .sort((a, b) => b.w - a.w || a.id.localeCompare(b.id));
   if (spent.length === 0) {

@@ -1,5 +1,5 @@
 import { SECRET_BODY } from '../github/map.ts';
-import { ACTIVE_STATUSES, ISSUE_REF_PREFIX } from '../register/model.ts';
+import { ACTIVE_STATUSES, isIssueRef } from '../register/model.ts';
 import type { Task } from '../register/fold.ts';
 
 /**
@@ -146,15 +146,15 @@ export function issueDoc(ref: string, task: Pick<Task, 'title' | 'description'>)
 }
 
 /**
- * The issues the register mirrors, as the scorer reads them: each task an issue made (its ref starts with
- * ISSUE_REF_PREFIX) still active, or done or dropped within `closedDays` of `now`, the window a sync reads closed
+ * The issues the register mirrors, as the scorer reads them: each task an issue made (its ref is an issue ref,
+ * isIssueRef) still active, or done or dropped within `closedDays` of `now`, the window a sync reads closed
  * issues in. A body the import left out as a likely secret counts as none, so those issues do not match each other.
  */
 export function mirroredIssues(tasks: Iterable<Task>, now: Date, closedDays: number): readonly SimilarDoc[] {
   const since = now.getTime() - closedDays * DAY_MS;
   const docs: SimilarDoc[] = [];
   for (const task of tasks) {
-    if (task.ref === null || !task.ref.startsWith(ISSUE_REF_PREFIX)) {
+    if (!isIssueRef(task.ref)) {
       continue;
     }
     if (ACTIVE_STATUSES.includes(task.status) || Date.parse(task.statusAt) >= since) {

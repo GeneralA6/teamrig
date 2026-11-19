@@ -1,5 +1,5 @@
 import type { Task } from '../register/fold.ts';
-import { ACTIVE_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX } from '../register/model.ts';
+import { ACTIVE_STATUSES, GITHUB_SOURCE, isIssueRef } from '../register/model.ts';
 import type { ImportChanges, ImportInput, StatusInput } from '../register/policy.ts';
 import type { HostIssue } from '../issues/issue.ts';
 import { issueTask, type ImportRules, type IssueTask } from './map.ts';
@@ -55,7 +55,7 @@ export function importedTasks(tasks: Iterable<Task>): Map<string, Task> {
 export function refHolders(tasks: readonly Task[]): Map<string, Task> {
   const held = importedTasks(tasks);
   for (const task of tasks) {
-    if (task.ref !== null && task.ref.startsWith(ISSUE_REF_PREFIX) && !held.has(task.ref)) {
+    if (isIssueRef(task.ref) && !held.has(task.ref)) {
       held.set(task.ref, task);
     }
   }
@@ -70,7 +70,7 @@ export function refHolders(tasks: readonly Task[]): Map<string, Task> {
 export function linkedRefs(tasks: Iterable<Task>): Set<string> {
   const refs = new Set<string>();
   for (const task of tasks) {
-    if (task.source !== GITHUB_SOURCE && task.ref !== null && task.ref.startsWith(ISSUE_REF_PREFIX)) {
+    if (task.source !== GITHUB_SOURCE && isIssueRef(task.ref)) {
       refs.add(task.ref);
     }
   }

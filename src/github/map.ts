@@ -1,8 +1,8 @@
 import { MAX_DESCRIPTION } from '../config/defaults.ts';
 import type { KitConfig } from '../config/types.ts';
 import { SecretScanner } from '../core/secrets.ts';
-import { ISSUE_REF_PREFIX } from '../register/model.ts';
 import type { HostIssue } from '../issues/issue.ts';
+import { refOf } from '../issues/ref.ts';
 import { plainLine } from './issues.ts';
 
 /** The priority of an issue with no priority label of the team's: p2, or the team's least urgent level when it has no p2. */
@@ -70,7 +70,7 @@ export function importRules(config: KitConfig): ImportRules {
 
 /** The ref of an issue's task: one per issue, whatever its title or state. */
 export function issueRef(repo: string, number: number): string {
-  return `${ISSUE_REF_PREFIX}${repo}#${number}`;
+  return refOf({ repo, number });
 }
 
 export function issueTask(issue: HostIssue, rules: ImportRules): IssueTask {
