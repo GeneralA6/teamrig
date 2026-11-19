@@ -160,6 +160,42 @@ export function shipTaskOfWords(git: MergeGit, kit: Kit, config: KitConfig, word
   return branch === undefined ? undefined : taskBranchOf(branch, config.pushGuard.protectedBranches);
 }
 
+/** Words that point git, gh or a shell at another place than the step's folder. */
+const ELSEWHERE_WORDS: ReadonlySet<string> = new Set(['-C', '-R', '--repo', '--git-dir', '--work-tree', 'cd', 'pushd']);
+
+/**
+ * True when `word` may point the step at another repository than `own`, its folder's: an option naming a repository or
+ * folder (`-C <dir>`, `-R <owner/repo>`, `--git-dir=`), an environment setting (`GIT_DIR=...`), a shell script in one
+ * word, or a path whose folder lies in another repository or in none.
+ */
+function pointsElsewhere(git: Pick<MergeGit, 'commonDir'>, word: string, cwd: string, own: string): boolean {
+  if (ELSEWHERE_WORDS.has(word) || /^-[CR]./.test(word) || /^--(repo|git-dir|work-tree)=/.test(word) || /^[A-Za-z_]\w*=/.test(word) || /[\s;&|$`]/.test(word)) {
+    return true;
+  }
+  if (!/[/\\]/.test(word)) {
+    return false;
+  }
+  const place = placeOfWord(word, cwd);
+  const repo = git.commonDir(place) ?? git.commonDir(dirname(place));
+  return repo === undefined || !samePath(repo, own);
+}
+
+/**
+ * The repository a step that holds the ship slot moves (#1711), as its shared git folder: for a step that runs a
+ * configured ship tool, its target worktree's (the word after the tool, after its `merge` in the merge form); for any
+ * other, the step's folder's, unless a word after the program may point it elsewhere (`pointsElsewhere`). Undefined
+ * when that is in doubt, so the step holds the slot of every repository, as before.
+ */
+export function shipSlotRepoOf(git: Pick<MergeGit, 'commonDir'>, kit: Kit, config: KitConfig, words: readonly string[], cwd: string): string | undefined {
+  const args = shipToolArgsOf(kit, config, words, cwd);
+  if (args !== undefined) {
+    const worktree = args[0] === 'merge' ? args[1] : args[0];
+    return worktree === undefined || worktree.startsWith('-') ? undefined : git.commonDir(placeOfWord(worktree, cwd));
+  }
+  const own = git.commonDir(cwd);
+  return own === undefined || words.slice(1).some((word) => pointsElsewhere(git, word, cwd, own)) ? undefined : own;
+}
+
 /** The words after the configured ship tool a step's words run; undefined when they run none. */
 function shipToolArgsOf(kit: Kit, config: KitConfig, words: readonly string[], cwd: string): readonly string[] | undefined {
   const at = words.findIndex((word) => shipRepoOf(kit, config, placeOfWord(word, cwd)) !== undefined);
