@@ -38,5 +38,6 @@ project skills in `.claude/skills/` hold the steps of each repeated job.
 | `dev-add-config-key` | a new key in the team config |
 | `dev-update-docs` | the docs a change must update, and the checks that hold them to the code |
 | `dev-ship-change` | from the last commit to the merge: checks, push, pull request |
+| `dev-ship-release` | merging the release pull request: the lead's approval of its head, then `ship.ts merge --release` |
 | `dev-design-issue` | joining a design issue: a reasoned comment, nothing taken until it is agreed, no sensitive data |
 | `dev-github-intake` | a maintainer taking in issues and pull requests: labels, best fix first, landing with credit, design issues |
