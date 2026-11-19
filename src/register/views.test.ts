@@ -33,7 +33,8 @@ import {
   type DetailExtras,
 } from './views.ts';
 import type { Task } from './fold.ts';
-import { NO_TASKS_ELSEWHERE, TaskTree } from './tree.ts';
+import { BLOCKER_PRIORITY_ID } from './model.ts';
+import { decidingKey, NO_TASKS_ELSEWHERE, TaskTree } from './tree.ts';
 import { TEST_OWNER_SOURCE, testRanking, type TestRankingFacts } from '../testing/ranking.ts';
 import type { WatchedTask } from './verify.ts';
 import type { WaitReason } from './waits.ts';
@@ -364,6 +365,14 @@ describe('aheadReason and aheadText: why a row sorts ahead of the next', () => {
     const tree = rankedTree({ classes: { T13: 'Roadmap' } }, expedite, roadmap, rest);
     assert.equal(aheadReason(placed(expedite, tree), placed(roadmap, tree)), 'expedite');
     assert.equal(aheadReason(placed(roadmap, tree), placed(rest, tree)), undefined);
+  });
+
+  it('leaves a held blocker to the priority the row shows, even ahead of a p0 (T4329)', () => {
+    const blocker = testTask({ id: 'T13', priority: BLOCKER_PRIORITY_ID });
+    const urgent = testTask({ id: 'T12', priority: 0 });
+    const tree = rankedTree({}, blocker, urgent);
+    assert.equal(decidingKey(tree.placeOf(blocker), tree.placeOf(urgent)), 'holding');
+    assert.equal(aheadReason(placed(blocker, tree), placed(urgent, tree)), undefined);
   });
 
   it('says a row can move when the next row, for all its score, cannot', () => {
