@@ -21,7 +21,7 @@ import { waitsOnOwner } from './owner-waits.ts';
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts, type ProblemReview } from './review.ts';
 import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText, type TasksElsewhere } from './tree.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, startHolds, WATCH_USAGE } from './verify.ts';
-import { isPeerWait, isReady, sameWait, sameWaits, waitContext, waitSpelling, type PersonWait, type PersonWaitKind, type WaitReason } from './waits.ts';
+import { isPeerWait, isReady, sameWait, sameWaits, unfinishedAfter, waitContext, waitSpelling, type PersonWait, type PersonWaitKind, type WaitReason } from './waits.ts';
 import { wipHold } from './wip.ts';
 
 /** Team policy, applied on WRITE only: the parser accepts any well-formed history. */
@@ -1521,12 +1521,20 @@ function runsProof(reason: WaitReason): boolean {
  * A proof runs when the task it waits on ends, so it waits only on one in progress or verifying (T1306), or on an
  * open one of the same owner (#1544), who can start it now, so its end is in sight and the verifying task stops being
  * due meanwhile; another's open task, or one waiting, has no end in sight, and the task stays waiting on it until it
- * starts.
+ * starts. An open one planned after a task not finished yet (`--after`) cannot start now either, so its end is not in
+ * sight: that refusal names the unfinished tasks.
  */
 function unstartedProofTask(task: Task, id: string, context: StatusContext): string | undefined {
   const target = context.state.tasks.get(id) ?? context.elsewhere.get(id)?.task;
-  if (target === undefined || PROOF_TASK_STATUSES.includes(target.status) || (target.status === 'open' && target.owner === task.owner)) {
+  if (target === undefined || PROOF_TASK_STATUSES.includes(target.status)) {
     return undefined;
+  }
+  if (target.status === 'open' && target.owner === task.owner) {
+    const unfinished = unfinishedAfter(target.after, waitContext(context.state.tasks, context.now, context.zone, context.elsewhere));
+    if (unfinished.length === 0) {
+      return undefined;
+    }
+    return `${id} is planned after ${unfinished.join(', ')}, not finished yet, so it cannot start now: a proof waits on an open task of its own owner's only once it can start; until then, set ${task.id} waiting on it (--status waiting --waits task:${id})`;
   }
   const whose = target.status === 'open' ? ` and ${target.owner}'s` : '';
   return `${id} is ${target.status}${whose}: a proof waits only on a task in progress or verifying, or an open one of its own owner's; until it starts, set ${task.id} waiting on it (--status waiting --waits task:${id})`;
