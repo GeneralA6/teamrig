@@ -1,4 +1,5 @@
 import { posix, win32 } from 'node:path';
+import { OWNER_GATED_KEYS } from '../config/owner-gated.ts';
 import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import type { ProgramsContext } from '../package-guard/programs.ts';
@@ -19,33 +20,6 @@ import { holdBackOutput, refusalOutput } from './permission.ts';
  * sessions and the owner share one account (stopgap T791). A teamrig call whose subcommand is only known when it runs,
  * and a shell fed by a pipe, are the exec guard's to refuse.
  */
-
-/**
- * The team config keys only the owner changes, by path: each is a permission or an owner gate (core rule 6). Who
- * holds a role or a service role; what is owner- or security-gated; who the owner is in the register; the asks, route
- * and read-only allow rules; the exec review; the alerts; whose GitHub logins count as ours; the guards; and each
- * repository's merge, deploy and check commands, which teamrig runs with the full environment.
- */
-export const OWNER_GATED_KEYS: readonly (readonly string[])[] = [
-  ['serviceRoles'],
-  ['roles'],
-  ['ownerGates'],
-  ['securityGates'],
-  ['register', 'ownerSource'],
-  ['prompts'],
-  ['readonlyShell'],
-  ['exec'],
-  ['alerts'],
-  ['github', 'owners'],
-  ['delivery', 'repos'],
-  ['delivery', 'passEnv'],
-  ['permissions'],
-  ['pushGuard'],
-  ['secretGuard'],
-  ['packageGuard'],
-  ['dbWriteGuard'],
-  ['commitGuard'],
-];
 
 /** The `teamrig roles` commands that change who holds a role. */
 export const ROLE_CHANGES: ReadonlySet<string> = new Set(['grant', 'revoke']);

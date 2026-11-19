@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { OWNER_GATED_KEYS } from '../config/owner-gated.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import { changedGatedKeys, OWNER_GATED_KEYS, serviceRoleGuardOutput, type ServiceRoleGuardEnv } from './service-role-guard.ts';
+import { changedGatedKeys, serviceRoleGuardOutput, type ServiceRoleGuardEnv } from './service-role-guard.ts';
 
 const CONFIG = 'C:/u/.teamrig/teams/shop/config.json';
 
