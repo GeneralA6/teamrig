@@ -289,8 +289,12 @@ submitted; a draft waits on nobody until it is marked ready for review. The targ
   would go to; for a pull request, the one its pull request news goes to: the owner of the task its branch names,
   else the watcher) gets one inbox line, without a wake, for example `github: GitHub gh:acme/web#9 (bug) has waited 18 h for
   an answer of ours, since 11-15 08:00 UTC; answer it in words on GitHub by 11-16 08:00 UTC, its 24 h target, or
-  GH-LATE goes to the lead`.
-- At 100%, `teamrig check` shows the lead `GH-LATE gh:acme/web#9 (bug, web) has waited 25 h ...`, once per wait.
+  GH-LATE goes to the lead`. Several threads reaching 75% in one sync make one line for that session, with their
+  count and the first three by when each falls due: `github: 12 GitHub threads wait for an answer of ours:
+  gh:acme/web#3 (security, by 11-16 03:00 UTC), ... and 9 more; ...`.
+- At 100%, `teamrig check` shows the lead `GH-LATE gh:acme/web#9 (bug, web) has waited 25 h ...`. Several late
+  threads make one GH-LATE with their count and the oldest three (`GH-LATE 12 GitHub threads waited past their answer
+  target ..., oldest first: ...`). The lead is told once, and again only when a newer wait goes late.
 - Your answer, or the issue or pull request closing, stops the clock. A repository that cannot be read keeps its clocks until it can.
 - `teamrig stats` shows the W your GitHub-linked tasks used on its `GITHUB` line. That number stays in teamrig:
   nothing is posted to GitHub.

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testHostIssue } from '../testing/host-issue.ts';
 import { TimeZone } from '../core/zone.ts';
-import { ANSWER_TARGET_HOURS, formatClocks, isLate, issueThread, lateText, postIsOurs, parseClocks, reminderText, REMIND_SHARE, stepClocks, waitingSince, type Clock, type Thread, type ThreadPost } from './clock.ts';
+import { ANSWER_TARGET_HOURS, formatClocks, isLate, issueThread, lateGroupText, lateText, postIsOurs, parseClocks, remindersText, reminderText, REMIND_SHARE, stepClocks, waitingSince, type Clock, type Thread, type ThreadPost } from './clock.ts';
 
 const HOUR = 3_600_000;
 /** A team whose `github.owners` names no login: a post is ours by its tie to the repository. */
@@ -174,6 +174,23 @@ describe('the texts', () => {
     assert.equal(
       lateText(clock, T0 + 25 * HOUR, zone),
       'GH-LATE gh:acme/web#9 (bug, alpha) has waited 25 h for an answer of ours since 11-15 08:00 UTC, past its 24 h target: have alpha answer it on GitHub',
+    );
+  });
+
+  it('words one thread as its own line, and several as one line with the count and the first few refs (#1475)', () => {
+    const at = (n: number, since: number, kind: Clock['kind'] = 'bug', owner = 'alpha'): Clock => ({ ...clock, ref: `gh:acme/web#${n}`, since, kind, owner });
+    assert.equal(remindersText([clock], T0 + 18 * HOUR, zone), reminderText(clock, T0 + 18 * HOUR, zone));
+    assert.equal(lateGroupText([clock], T0 + 25 * HOUR, zone), lateText(clock, T0 + 25 * HOUR, zone));
+    // Due first leads the reminder: the security thread's 4 h target falls before the older bug's 24 h one.
+    const due = [at(1, T0), at(2, T0 + HOUR), at(3, T0 + 15 * HOUR, 'security'), at(4, T0 + 2 * HOUR), at(5, T0 + 3 * HOUR, 'feature')];
+    assert.equal(
+      remindersText(due, T0 + 18 * HOUR, zone),
+      '5 GitHub threads wait for an answer of ours: gh:acme/web#3 (security, by 11-16 03:00 UTC), gh:acme/web#1 (bug, by 11-16 08:00 UTC), gh:acme/web#2 (bug, by 11-16 09:00 UTC) and 2 more; answer each in words on GitHub by its target, or GH-LATE goes to the lead',
+    );
+    const late = [at(7, T0 + HOUR, 'bug', 'bravo'), at(6, T0), at(8, T0 + 2 * HOUR)];
+    assert.equal(
+      lateGroupText(late, T0 + 30 * HOUR, zone),
+      'GH-LATE 3 GitHub threads waited past their answer target for an answer of ours, oldest first: gh:acme/web#6 (bug, alpha, 30 h), gh:acme/web#7 (bug, bravo, 29 h), gh:acme/web#8 (bug, alpha, 28 h): have their owners answer them on GitHub',
     );
   });
 });

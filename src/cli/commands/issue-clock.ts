@@ -1,6 +1,6 @@
 import type { KitConfig } from '../../config/types.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { formatClocks, issueThread, parseClocks, pullThread, reminderText, stepClocks, type Clock, type Thread } from '../../github/clock.ts';
+import { formatClocks, issueThread, parseClocks, pullThread, remindersText, stepClocks, type Clock, type Thread } from '../../github/clock.ts';
 import { issueOwner, issueRef, type ImportRules } from '../../github/map.ts';
 import type { OurLogins } from '../../github/trust.ts';
 import { postLine } from '../../inbox/inbox.ts';
@@ -55,8 +55,9 @@ export function pullThreads(pulls: readonly HostPull[], recipientOf: (pull: Host
 }
 
 /**
- * Steps the clocks over the repositories in `read` and posts each reminder due now, unwoken. Gives one line per
- * reminder posted and per one the inbox refused.
+ * Steps the clocks over the repositories in `read` and posts the reminders due now, unwoken: one line per owner,
+ * naming its count and first few when several fall due at once (#1475). Gives one line per owner reminded and per
+ * one the inbox refused.
  */
 export async function recordClocks(runtime: CliRuntime, kit: Kit, config: KitConfig, read: ReadonlySet<string>, threads: readonly Thread[]): Promise<string[]> {
   const now = runtime.clock.now();
@@ -69,9 +70,14 @@ export async function recordClocks(runtime: CliRuntime, kit: Kit, config: KitCon
   const secrets = new SecretScanner(config.register.secretPatterns);
   const zone = teamZone(config, runtime);
   const lines: string[] = [];
+  const byOwner = new Map<string, Clock[]>();
   for (const clock of remind) {
-    const problem = await postLine(inboxes, secrets, { to: clock.owner, from: GITHUB_ACTOR, text: reminderText(clock, now, zone), now: new Date(now) });
-    lines.push(problem === undefined ? `REMINDED ${clock.owner}: ${clock.ref} waits on an answer` : `INBOX ${clock.owner}: not posted: ${problem}`);
+    byOwner.set(clock.owner, [...(byOwner.get(clock.owner) ?? []), clock]);
+  }
+  for (const [owner, clocks] of byOwner) {
+    const problem = await postLine(inboxes, secrets, { to: owner, from: GITHUB_ACTOR, text: remindersText(clocks, now, zone), now: new Date(now) });
+    const what = clocks.length === 1 ? `${clocks[0]?.ref} waits` : `${clocks.length} GitHub threads wait`;
+    lines.push(problem === undefined ? `REMINDED ${owner}: ${what} on an answer` : `INBOX ${owner}: not posted: ${problem}`);
   }
   return lines;
 }

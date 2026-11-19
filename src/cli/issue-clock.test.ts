@@ -166,4 +166,21 @@ describe('the response clock in issue sync (T3028)', () => {
     assert.equal(failed.code, EXIT.failed);
     assert.deepEqual([...parseClocks(kit.files.get(CLOCKS) ?? '').keys()], ['gh:acme/web#9'], 'a failed read keeps its clocks');
   });
+
+  it('reminds an owner of 50 outside issues in one line with their count, not one line each (#1475)', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const opened = new Date(kit.clock.now()).toISOString();
+    const issues = Array.from({ length: 50 }, (_, index) => ghIssue('acme/web', index + 1, { labels: ['bug'], authorAssociation: 'NONE', author: 'stranger', createdAt: opened }));
+    const gh = (): FakeGh => new FakeGh().holds('acme/web', issues);
+    await sync(kit, gh());
+    assert.equal(parseClocks(kit.files.get(CLOCKS) ?? '').size, 50);
+    kit.clock.advance(18 * HOUR);
+    const out = await sync(kit, gh());
+    assert.deepEqual(out.filter((line) => line.startsWith('REMINDED')), ['REMINDED lead: 50 GitHub threads wait on an answer']);
+    const lines = githubLines(kit, 'lead');
+    assert.equal(lines.length, 1, lines.join('\n'));
+    assert.match(lines[0] ?? '', /^50 GitHub threads wait for an answer of ours: gh:acme\/web#1 \(bug, by .+\), gh:acme\/web#2 \(bug, by .+\), gh:acme\/web#3 \(bug, by .+\) and 47 more; /);
+    await sync(kit, gh());
+    assert.equal(githubLines(kit, 'lead').length, 1, 'reminded once');
+  });
 });

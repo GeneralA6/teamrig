@@ -221,3 +221,51 @@ export function lateText(clock: Clock, now: number, zone: TimeZone): string {
     `${zone.shortMinute(new Date(clock.since))}, past its ${ANSWER_TARGET_HOURS[clock.kind]} h target: have ${clock.owner} answer it on GitHub`
   );
 }
+
+/** How many refs a grouped line names before it gives the rest as a count (#1475). */
+const GROUPED_REFS = 3;
+
+/** When a clock's answer target falls. */
+function dueAt(clock: Pick<Clock, 'kind' | 'since'>): number {
+  return clock.since + targetMs(clock.kind);
+}
+
+/** The first GROUPED_REFS of `clocks` as `named` words them, and ` and N more` for the rest. */
+function namedRefs(clocks: readonly Clock[], named: (clock: Clock) => string): string {
+  const more = clocks.length - GROUPED_REFS;
+  return `${clocks.slice(0, GROUPED_REFS).map(named).join(', ')}${more > 0 ? ` and ${more} more` : ''}`;
+}
+
+/**
+ * One owner's reminders of one sync as one unwoken line (#1475): a thread alone as `reminderText` words it, several
+ * as their count and the first few by when each falls due, so many open threads never flood the owner's inbox.
+ */
+export function remindersText(clocks: readonly Clock[], now: number, zone: TimeZone): string {
+  const [only] = clocks;
+  if (only !== undefined && clocks.length === 1) {
+    return reminderText(only, now, zone);
+  }
+  const byDue = [...clocks].sort((a, b) => dueAt(a) - dueAt(b));
+  return (
+    `${clocks.length} GitHub threads wait for an answer of ours: ${namedRefs(byDue, (clock) => `${clock.ref} (${clock.kind}, by ${zone.shortMinute(new Date(dueAt(clock)))})`)}; ` +
+    'answer each in words on GitHub by its target, or GH-LATE goes to the lead'
+  );
+}
+
+/** The lead's one GH-LATE line for every late clock (#1475): one as `lateText` words it, several as their count and the oldest few. */
+export function lateGroupText(clocks: readonly Clock[], now: number, zone: TimeZone): string {
+  const [only] = clocks;
+  if (only !== undefined && clocks.length === 1) {
+    return lateText(only, now, zone);
+  }
+  const oldest = [...clocks].sort((a, b) => a.since - b.since);
+  return (
+    `GH-LATE ${clocks.length} GitHub threads waited past their answer target for an answer of ours, oldest first: ` +
+    `${namedRefs(oldest, (clock) => `${clock.ref} (${clock.kind}, ${clock.owner}, ${waitedHours(clock, now)} h)`)}: have their owners answer them on GitHub`
+  );
+}
+
+/** The late clock whose target passed last: a grouped GH-LATE is told again only when a newer wait goes late (#1475). */
+export function newestLate(clocks: readonly Clock[]): Clock | undefined {
+  return clocks.reduce<Clock | undefined>((newest, clock) => (newest === undefined || dueAt(clock) > dueAt(newest) ? clock : newest), undefined);
+}
