@@ -101,7 +101,7 @@ async function reopenForUrgent(runtime: CliRuntime, team: Team, adder: { readonl
     runtime.out.stderr(`WARN ${shown} is closed and its line has no wake ask (${errorMessage(error)}): ${KIT_NAME} open ${task.owner}`);
     return true;
   }
-  const said = closedWakeLine(await wakeClosedSession(runtime, team, team.config, team.roster, task.owner), shown, task.owner);
+  const said = closedWakeLine(await wakeClosedSession(runtime, team, team.config, team.roster, task.owner), shown, task.owner, isRightNow(task.priority));
   if (said !== undefined) {
     runtime.out.stderr(`${said} (${task.id} ${why})`);
   }

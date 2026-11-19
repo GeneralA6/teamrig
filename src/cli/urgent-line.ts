@@ -63,16 +63,16 @@ export interface WakePlace {
 /**
  * The wake ask that makes a line already in its receiver's inbox wake it ({@link urgentAskOf}); a session teamrig
  * closed has no tab to take the ask, so its reopen starts now, or stderr says why not (#1581). Why the ask was not
- * posted, or undefined once it is.
+ * posted, or undefined once it is. `rightNow` marks a wake for right-now work, whose CLOSED line says so ({@link closedWakeLine}).
  */
-export async function askWake(runtime: CliRuntime, place: WakePlace, line: UrgentLine, at: number): Promise<string | undefined> {
+export async function askWake(runtime: CliRuntime, place: WakePlace, line: UrgentLine, at: number, rightNow = false): Promise<string | undefined> {
   try {
     await new WakeAsks(runtime.files, place.paths.wakeAsks).post(line.to, urgentAskOf(line, line.text, at));
   } catch (error) {
     return `it does not wake ${line.to}: ${errorMessage(error)}`;
   }
   if (await closedByTeamrig(runtime, place, line.to)) {
-    const said = closedWakeLine(await wakeClosedSession(runtime, place, place.config, await place.roster(), line.to), line.to, line.to);
+    const said = closedWakeLine(await wakeClosedSession(runtime, place, place.config, await place.roster(), line.to), line.to, line.to, rightNow);
     if (said !== undefined) {
       runtime.out.stderr(said);
     }

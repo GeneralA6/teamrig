@@ -221,6 +221,14 @@ describe('right-now work handed to a session teamrig closed (T4414)', () => {
     assert.equal(await asksOf(kit), 1);
   });
 
+  it("no room on the host: says CLOSED with its reopen first in the idle pass's line, and keeps the ask", async () => {
+    const kit = await teamWithClosedAlpha();
+    const { result, processes } = await run(kit, add, FULL);
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    assert.match(result.stderr.join('\n'), /^CLOSED: alpha was not woken: no room on the host.*; the idle pass tries again each minute, its reopen first in the pass's line as right-now work, or run: teamrig open alpha \(T1 is a p0\)$/m);
+    assert.deepEqual([reopensStarted(processes), await asksOf(kit)], [[], 1]);
+  });
+
   it('for an open session, says the wake check wakes it at its idle prompt and starts nothing', async () => {
     const kit = await teamWithClosedAlpha(false);
     const { result, processes } = await run(kit, add);
