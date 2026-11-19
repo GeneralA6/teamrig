@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { commandLine, endOf, nodeShellRunner, unrunnableReason } from './shell.ts';
+import { commandLine, nodeShellRunner, unrunnableReason } from './shell.ts';
 
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-shell-'));
 const ENV = { ...process.env, TEAMRIG_PROBE: 'probe value' };
@@ -72,14 +72,6 @@ describe('unrunnableReason', () => {
       assert.equal(unrunnableReason(['node', 'tool.js', 'a;b', '--x=&&', '||y'], platform), undefined);
       assert.equal(unrunnableReason([';'], platform), undefined);
     }
-  });
-});
-
-describe('endOf', () => {
-  it('reads an exit code, or the signal when there is none', () => {
-    assert.deepEqual(endOf(3, null), { kind: 'exited', code: 3 });
-    assert.deepEqual(endOf(null, 'SIGTERM'), { kind: 'signal', signal: 'SIGTERM' });
-    assert.deepEqual(endOf(null, null), { kind: 'signal', signal: 'an unknown signal' });
   });
 });
 
