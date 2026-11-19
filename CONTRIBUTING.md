@@ -155,7 +155,14 @@ then the pane counts each line of the new format as one from a newer teamrig and
 ## The local gate
 CI (`.github/workflows/ci.yml`) runs on each pull request and each push to `main` (every job would skip if the
 repository were made private again, where GitHub Actions minutes bill). Its `every check passed` job passes only when
-every other job did: the one check `main` requires (see [Pull requests](#pull-requests)). Before that, the
+every other job did: the one check `main` requires (see [Pull requests](#pull-requests)). Its first job, `change
+kind` (`tools/ci/change-kind.ts`), names what the change touches: `docs` when every changed file is a top-level
+Markdown file or under `docs/`, `design` when every one is under `docs/design/`, else `code` (and `code` when there
+is no base to compare with). A `docs` change runs the commit checks (scrub, DCO, size rule, subjects, dependency
+review) and, on ubuntu alone, the build, the docs' specs, the pictures, the config reference and the doc links; a
+`design` change runs the commit checks and the doc links; a `code` change runs everything on every OS (the test
+matrix's systems come from `change kind`, `TEST_SYSTEMS` in that file). Each job still runs and skips only its steps,
+so `every check passed` reads a pass from each. Before that, the
 `pre-push` hook that `npm ci` sets proves the commit being pushed (`tools/ci/local.ts`; the lists are
 `tools/ci/local-checks.ts`). `node tools/ci/local.ts` and `npm run check` run every check CI runs, all but the
 dependency review, which reads GitHub's dependency graph ([Security checks](#security-checks)):
@@ -192,8 +199,9 @@ matrix.
 - **Dependency review**: CI's `dependency review` job fails a pull request that adds or changes a dependency (an
   npm package or a GitHub Action) with a known advisory, of any severity, dev dependencies included. It is one of
   the jobs `every check passed` needs, so such a pull request cannot merge.
-- **CodeQL** (`.github/workflows/codeql.yml`) scans the TypeScript on each pull request, each push to `main` and
-  weekly. Its findings show in the Security tab and on the pull request; it is not a required check, so read them.
+- **CodeQL** (`.github/workflows/codeql.yml`) scans the TypeScript on each pull request that changes more than
+  Markdown and `docs/`, each push to `main` and weekly. Its findings show in the Security tab and on the pull
+  request; it is not a required check, so read them.
 - **Dependabot** (`.github/dependabot.yml`) proposes npm and GitHub Actions updates weekly, one grouped pull
   request per ecosystem, and never a release younger than 14 days. A proposal is never merged as it comes: check
   the exact version against the advisories and its publish date, land it as your own signed-off commit (its
@@ -291,6 +299,9 @@ join; agents follow [`dev-design-issue`](.claude/skills/dev-design-issue/SKILL.m
   no-reply address GitHub shows under Settings, Emails: `git config user.email <id>+<user>@users.noreply.github.com`.
 - **A flaky test leg**: the merge re-runs a test leg listed `flaky` in `tools/ship/repos.json` once when only it
   failed, and reads the checks once more after a GitHub server error or timeout; a second failure stops the merge.
+- **A leg a docs run leaves out**: a check listed `conditional` in `tools/ship/repos.json` (teamrig's windows and
+  macOS test legs) is one the run makes only for some changes; once `every check passed` passed without it, the
+  merge stops waiting for it, and one that does show must pass.
 - **Review**: a code owner (`.github/CODEOWNERS`: the maintainer) reviews the code and approves the last push, and a
   new push dismisses an approval given before it. The reviewer holds it to
   [What a change is held to](#what-a-change-is-held-to) and declines a wrong direction. On a threshold, limit or trigger the reviewer asks "can this
