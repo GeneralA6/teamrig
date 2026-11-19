@@ -291,7 +291,12 @@ const TASKS_FOLDER = 'tasks';
  * task's design is found by its id, never by a search.
  */
 export function taskFolder(kitHome: string, team: string, id: string): string {
-  return join(teamHome(kitHome, team), TASKS_FOLDER, id);
+  return join(tasksFolder(kitHome, team), id);
+}
+
+/** The folder holding every task folder of the team. */
+export function tasksFolder(kitHome: string, team: string): string {
+  return join(teamHome(kitHome, team), TASKS_FOLDER);
 }
 
 /** The team's paths; `claudeDir` is Claude Code's own folder (`claudeConfigDir`), whose `skills` is the default skills folder. */
