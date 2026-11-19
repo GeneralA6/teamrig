@@ -1919,7 +1919,11 @@ Flags:
   verifying or waiting task at p0 or more urgent, read as `teamrig show` reads the id) wakes as `--wake now`, since
   such work never waits for a prompt, and a `NOTE` on stderr says so; where `--wake now` would be refused (a group
   from a session that leads no one, another team from a member), the line posts with no wake and the `NOTE` says why.
-  A finished task wakes no one, so set a task's status before the line that says it is done.
+  A line to more than one receiver wakes only those of them who act on the work now: its owner, the owner of each
+  unfinished task it is planned after or waits on, and each session asked for one of its open decisions or approvals;
+  the rest read it at their next prompt, and when none of them acts on it the line wakes no one. A p0 named to `all`
+  so wakes one tab, not the whole team. A finished task wakes no one, so set a task's status before the line that says
+  it is done.
 - `--wake-by <time>`: wakes each receiver at that time instead (`HH:MM` on the team's clock, or `YYYY-MM-DD HH:MM`),
   and only if it has not seen the line by then: a receiver that read it, or was shown it at a prompt or a tool
   call's end, before the time is not woken. One idle at its prompt then is woken at its tab's next wake check, one busy in a
