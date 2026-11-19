@@ -5,7 +5,7 @@ import { EXIT, RefusedError } from '../../src/cli/runtime.ts';
 import { mergeStandingOf, type MergeStanding } from '../../src/cli/ship-approval.ts';
 import { CLAUDE_SESSION, CliHarness, TEAM_HOME } from '../../src/testing/cli-harness.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
-import { changePatch, clearMerge, clearMergeFrom, mergeClearance, type MergeReads, shipWritesOf, type StandingOf, teamrigShipWritesOf, type TabCallerOf, taskOfBranch, type WorkCommit, workChanges, workCommitsOf } from './approval.ts';
+import { changePatch, clearMerge, clearMergeFrom, clearTaskMerge, clearTaskMergeFrom, mergeClearance, type MergeReads, shipWritesOf, type StandingOf, teamrigShipWritesOf, type TabCallerOf, taskOfBranch, type WorkCommit, workChanges, workCommitsOf } from './approval.ts';
 import { profileFor, readProfiles } from './repos.ts';
 import { TEAMRIG_RELEASE_MANIFEST, TEAMRIG_RELEASE_STAMPS, TEAMRIG_SHIP_VERSION_FILES, TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
@@ -176,6 +176,27 @@ describe('clearMerge', () => {
       throw new Error('disk gone');
     });
     await assert.rejects(clearMerge(caller, broken, 't1-cli', HEAD, HEAD), /disk gone/);
+  });
+
+  it('clearTaskMerge clears on the task the caller names, for a branch that names none, such as the release pull request (T4645)', async () => {
+    const asked: string[] = [];
+    const reads = readsOf(async (_team, _session, taskId) => {
+      asked.push(taskId);
+      return approvedBy(HEAD);
+    });
+    assert.deepEqual(await clearTaskMerge(caller, reads, 'T1', HEAD, HEAD), { kind: 'approved', by: 'lead' });
+    assert.deepEqual(asked, ['T1']);
+    assert.match(reasonOf(await clearTaskMerge({ ...caller, claudeSession: '' }, reads, 'T1', HEAD, HEAD)), /CLAUDE_CODE_SESSION_ID/);
+    assert.match(reasonOf(await clearTaskMerge(caller, fixed(await standing(await waitingKit())), 'T1', HEAD, HEAD)), /T1 \(waiting\) holds no approval of lead/);
+  });
+
+  it('clearTaskMergeFrom reads the caller, team and tab from the env, as clearMergeFrom does', async () => {
+    const kit = await waitingKit(['--note', HEAD]);
+    const marks = join(TEAM_HOME, 'state', 'inbox-marks.jsonl');
+    await kit.files.append(marks, `${JSON.stringify({ v: 1, area: 'alpha', line: 0, at: '2030-01-08T09:00:00.000Z', claudeSession: CLAUDE_SESSION, lastLineHash: null })}\n`);
+    const env = { TEAMRIG_SESSION: 'alpha', TEAMRIG_TEAM: 'app', CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION };
+    assert.deepEqual(await clearTaskMergeFrom(env, kit.runtime())('T1', HEAD, HEAD), { kind: 'approved', by: 'lead' });
+    assert.match(reasonOf(await clearTaskMergeFrom({ ...env, TEAMRIG_SESSION: 'bravo' }, kit.runtime())('T1', HEAD, HEAD)), /not bound to bravo alone/);
   });
 });
 
