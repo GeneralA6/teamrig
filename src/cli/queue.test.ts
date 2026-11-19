@@ -1579,6 +1579,11 @@ describe("teamrig queue gives a ship step the task its worktree's branch names (
       ['node', '/nowhere/deploy.ts'],
       ['/repo/other/deploy.sh'],
       ['/repo/other/deploy.sh', 'main'],
+      // One word runs as a whole shell line, whose words are not read.
+      ['git -C /repo/other push'],
+      ['cd /repo/other && git push'],
+      ['$OTHER/deploy.sh'],
+      ['git push'],
     ]) {
       assert.equal(await heldRepo(team, ['--kind', 'ship', '--', ...words], appGit()), undefined, words.join(' '));
     }
