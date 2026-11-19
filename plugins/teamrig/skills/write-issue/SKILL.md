@@ -20,6 +20,9 @@ with its path:
 - **What it must match.** The modules it extends or reuses, and the style it follows: a palette, a logo or
   wordmark, a naming rule, a docs voice. Name the file that holds each; a taker who does not know the palette picks
   their own.
+- **The design it fits.** The repository's principles and architecture, the decisions already taken (agreed design
+  issues, design docs), and its rule on code quality, such as SOLID: the work fits them or the issue says which it
+  changes and why.
 - **What a pull request is held to.** Tests, sign-off, commit size, the checks CI runs.
 - **What is there already.** Search the open and closed issues and pull requests (`gh issue list --state all
   --search "<words>"`, `gh pr list --state all --search "<words>"`), so the issue is no duplicate, and link the
@@ -52,6 +55,8 @@ These headings, in this order. Leave one out only when it has nothing to say, ne
 - **Constraints**: what step 1 found, each with its path.
 - **Acceptance checks**: how the taker and the reviewer both know it is done, each a check a reader can run or see:
   a command and its expected output, a page that renders, a test that passes.
+- **Risks**: what could go wrong (a break for a caller, a security or data risk, a cost, a migration) and how each
+  is softened, or `none foreseen` and why.
 - **What the maintainer decides**: the choices left open (an option to pick, a design to approve), and what the
   taker proposes for each.
 - **Review and dates**: when a draft or the options are due, how long a review takes, and the date it is wanted by,
@@ -90,8 +95,11 @@ maintainers mark it agreed. It replaces a discussion forum, so the talk stays be
   (`teamrig issue label <owner/name#n> --add design`), and its status push shows no status on a design issue.
 - **Sections**, in place of section 3's: **Question** (what to decide, in one or two sentences), **Context** (what
   exists today, by path, and why it needs a decision now), **Options** (each with what it costs and what it gives
-  up), **Proposal** (the opener's pick, if any) and **How it is agreed** (who decides, by when). A repository's own
-  design form, when it has one, sets these.
+  up), **Proposal** (the opener's pick, if any), **Early steps** (what is cheap to do now and would cost far more
+  once a later, more mature architecture is built: a port, a config key in place of a constant, data in place of a
+  branch in code; no hook for a need no one has named), **Risks** (as in section 3, for each option where they
+  differ) and **How it is agreed** (who decides, by when). A repository's own design form, when it has one, sets
+  these.
 - **Say at the top** that it is talk: comments with reasons, and no claim, branch, code or pull request until it is
   agreed; and that nothing sensitive is posted in it (section 2's list).
 - **Agreed** is the maintainer's mark, never a count of comments: a comment starting `Agreed:` that sums up the

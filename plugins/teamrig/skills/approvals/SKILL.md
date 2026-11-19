@@ -23,10 +23,19 @@ lets `teamrig merge` take that base, head and tree only.
 
 ## 2. Check
 
-Approve only when every line holds:
+Read it to find what is wrong, not to agree, and hold it to every line whoever asks. A wrong direction is declined,
+with the reason and the better way: a bad direction accepted costs far more than one more round trip. Approve only
+when every line holds:
 
 - Its own, finished change: the requester's task and branch, never another session's work, as only the session
   that made a change merges it.
+- It fits the design: the repository's principles and architecture, the decisions already taken, or it names the
+  one it changes and why. It reuses the module or helper that already does the job in place of a second copy, and
+  keeps each part to one reason to change (SOLID).
+- Extensibility weighed: what is cheap now and costly later (a port, a config key in place of a constant) is done
+  now; a hook for a need no one has named is not built.
+- Its risks are named, each with how it is softened (a break for a caller, a security or data risk, a cost, a
+  migration), or `none foreseen` with why.
 - Its tests are green, the run named in the note, and new behaviour comes with new tests.
 - A changed threshold, limit or trigger can still fire: ask "can this still fire?" and want a test of it firing in
   the real flow, through whatever resets its count (a compaction, a `/clear`, a restart), not only the comparison.
