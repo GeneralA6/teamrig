@@ -120,7 +120,7 @@ export interface ClaimPass {
 }
 
 /**
- * The most issues one claim pass reads the new comments of in a repository (IssueHost.newComments, one page each),
+ * The most issues one claim pass reads the new comments of in a repository (Comments.newComments, one page each),
  * so a flood of comments cannot turn one sync into hundreds of reads; the rest wait for the next pass.
  */
 export const CLAIM_READS = 10;
