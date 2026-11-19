@@ -79,11 +79,11 @@ describe('prePushChecks (T4344)', () => {
     assert.deepEqual(checks.find((check) => check.name === 'compile')?.argv, [...(full.get('build: compile')?.argv ?? []), '--noEmit']);
   });
 
-  it('leaves the suite, the build steps that write the dist, the dist checks and the fresh install to CI, which runs them all', () => {
+  it('leaves the suite, the build steps that write the dist, the dist smoke and the fresh install to CI, which runs them all', () => {
     const left = [...full.keys()].filter((name) => !checks.some((check) => check.name === name));
-    assert.deepEqual(left, ['coverage gate', 'build: clean', 'build: compile', 'build: integrity', 'dist matches the source', 'dist smoke', 'fresh install']);
+    assert.deepEqual(left, ['coverage gate', 'build: clean', 'build: compile', 'build: integrity', 'dist smoke', 'fresh install']);
     const ci = ciCommands();
-    for (const script of ['tools/ci/coverage-cli.ts', 'tools/ci/dist-fresh-cli.ts', 'tools/ci/dist-smoke-cli.ts', 'tools/ci/fresh-install-cli.ts']) {
+    for (const script of ['tools/ci/coverage-cli.ts', 'tools/ci/dist-smoke-cli.ts', 'tools/ci/fresh-install-cli.ts']) {
       assert.ok(ci.some((command) => command.startsWith(`node ${script}`)), `CI no longer runs ${script}`);
     }
   });
