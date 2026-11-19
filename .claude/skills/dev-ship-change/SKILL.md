@@ -52,5 +52,9 @@ description: Land a finished teamrig change through small signed commits with Co
   the change reaches far.
 - A missing sign-off: `git commit --amend -s` for the last commit; the `commit-msg` hook from `npm run setup` catches
   it before the push.
+- A branch you pushed yourself gets no pull request from your own gh login: only the ship token may open one. Run
+  `node tools/ship/ship.ts pr <repo dir> --head <branch> --approved <sha> --note-file <pr.md>`: it opens the pull
+  request of origin's head when that head is the approved sha and clears on that approval as a merge would, takes
+  the merge's title and body, runs no gate, merges nothing and prints the URL (an open one is found, not opened again).
 
-Last verified: 2026-11-17
+Last verified: 2026-11-19
