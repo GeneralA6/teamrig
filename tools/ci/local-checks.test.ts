@@ -41,6 +41,8 @@ describe('localChecks', () => {
       if (script !== undefined) assert.ok(argvs.some((argv) => argv.startsWith(`node ${script}`)), `no local check runs ${script}`);
       else if (tsc !== undefined) assert.ok(argvs.includes(`node node_modules/typescript/bin/tsc ${tsc}`), `no local check runs tsc ${tsc}`);
       else if (command === 'npm test') assert.ok(argvs.includes('node tools/ci/coverage-cli.ts'), 'the coverage gate runs the tests');
+      // A docs change's job runs a few specs (T4617); the coverage gate runs every spec.
+      else if (command.startsWith('node --test ')) assert.ok(argvs.includes('node tools/ci/coverage-cli.ts'), `the coverage gate runs the specs of \`${command}\``);
       else assert.fail(`CI runs \`${command}\`, which no local check covers: add it to local-checks.ts`);
     }
   });
