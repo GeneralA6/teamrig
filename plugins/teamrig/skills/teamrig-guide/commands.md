@@ -1378,8 +1378,10 @@ Flags:
   run without `--auto` reads no posts. It reads every
   repository, so it refuses `--repo`. With `github.statusPush` on it
   then sends the status push (`--push --yes`) too, labels, assignees, fields and types only: a close it plans is printed as a `HELD` line and
-  sent only by a session's `--push --yes`. Its writes per run are lowered so an hour of runs sends at most 250
-  (4 a run at the default `github.probeSeconds` of 60, 20 at 300); a failed write is told to the lead like a
+  sent only by a session's `--push --yes`. It counts its writes over the rolling hour in
+  `state/github-push-hour.json`: 40 a run until the hour has sent 250, then only what the hour has left; a count it
+  cannot read or write gives the even share (4 a run at the default `github.probeSeconds` of 60, 20 at 300) and a
+  `NOTE`; a failed write is told to the lead like a
   repository that fails.
   With the push on it also handles claims: an outside person's comment starting `/take`, "I'll take", "I'm working
   on" or "I can take", on an open issue with no assignee that is not `design` or `security` and is the repository's
