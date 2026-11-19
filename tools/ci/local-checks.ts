@@ -61,10 +61,11 @@ const BUILD: readonly LocalCheck[] = [
 /** The plugin's own tests, in an empty home: no account, settings or other plugins. */
 const PLUGIN_TESTS: LocalCheck = { name: 'plugin tests', argv: ['claude', 'plugin', 'test', 'plugins/teamrig'], isolatedHome: true };
 
-/** The checks that hold the docs to the code: the pictures, the configuration reference and the links. */
+/** The checks that hold the docs to the code: the pictures, the configuration reference, the parity page and the links. */
 const DOC_CHECKS: readonly LocalCheck[] = [
   { name: 'doc pictures', argv: ['node', 'tools/docs/images-cli.ts', '--check'] },
   { name: 'doc config reference', argv: ['node', 'tools/docs/configuration-cli.ts', '--check'] },
+  { name: 'doc parity page', argv: ['node', 'tools/docs/parity-cli.ts', '--check'] },
   { name: 'doc links', argv: ['node', 'tools/docs/doc-check-cli.ts'] },
 ];
 
