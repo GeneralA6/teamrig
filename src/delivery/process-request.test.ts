@@ -13,6 +13,7 @@ import {
   type RequestFocus,
   type StepKind,
 } from './process-request.ts';
+import { BLOCKER_PRIORITY_ID } from '../register/model.ts';
 
 describe('kindOfCommand', () => {
   for (const [command, kind] of [
@@ -163,6 +164,11 @@ describe('isLineRequest (T2210)', () => {
     assert.deepEqual(requests.filter(isLineRequest), requests);
   });
 
+  it('reads a blocker step back with its blocker priority, so a re-read keeps it ahead of p0 (T4329)', () => {
+    const blocker = { kind: 'merge', task: 'T5', priority: BLOCKER_PRIORITY_ID, class: 'Maintenance', classPct: 25 };
+    assert.equal(isLineRequest(blocker), true);
+  });
+
   it('refuses a kind, task, priority, class or share this teamrig cannot read', () => {
     const good = { kind: 'test', task: 'T5', priority: 1, class: 'Maintenance', classPct: 25 };
     const bad: readonly unknown[] = [
@@ -170,7 +176,7 @@ describe('isLineRequest (T2210)', () => {
       'test',
       { ...good, kind: 'vm' },
       { ...good, task: 5 },
-      { ...good, priority: -1 },
+      { ...good, priority: -2 },
       { ...good, priority: 1.5 },
       { ...good, class: undefined },
       { ...good, classPct: 'x' },
