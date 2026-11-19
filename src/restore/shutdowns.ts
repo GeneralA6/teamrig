@@ -1,5 +1,5 @@
 import { powerShellRequest } from '../core/powershell.ts';
-import type { ProgramRunner } from '../github/credentials.ts';
+import type { ProgramRunner } from '../core/program-runner.ts';
 
 /** When the machine's last clean shutdown ran, which tells a tab the shutdown closed from one closed at another time. */
 export interface ShutdownLog {

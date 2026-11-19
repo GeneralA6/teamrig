@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { ProgramRequest, ProgramResult, ProgramRunner } from '../github/credentials.ts';
+import type { ProgramRequest, ProgramResult, ProgramRunner } from '../core/program-runner.ts';
 import { RESTORE_RUN_VALUE, systemLogonEntry, WINDOWS_READ_SCRIPT, WINDOWS_REMOVE_SCRIPT, WINDOWS_RUN_KEY, type LogonEntry } from './logon.ts';
 
 const COMMAND = '"C:\\Windows\\System32\\conhost.exe" --headless "C:\\Program Files\\nodejs\\node.exe" "D:\\kits\\Zoë\\.teamrig\\bin\\restore-check.mjs"';
