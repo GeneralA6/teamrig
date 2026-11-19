@@ -75,7 +75,7 @@ import { markBoundary } from "./refresh.js";
 import { markKeepWorkingAsk } from "./keep-working.js";
 import { markLastTaskAsk } from "./last-task-ask.js";
 import { readSpentClasses } from "../class-share.js";
-import { openTeam, postNamed, teamOf, tellAnswer, tellAssigned, tellLine } from "./register-team.js";
+import { openTeam, postNamed, teamOf, tellAnswer, tellAssigned, tellLine, wakeWaitedOn } from "./register-team.js";
 import { askTeam, treeCallerOf } from "./team-ask.js";
 /** What a time the caller types is read against: this moment and the zone of the caller's own team. */
 function typedTimes(runtime, zone) {
@@ -214,7 +214,7 @@ async function addHere(args, runtime, caller) {
             runtime.out.stdout(`OPENED ${end.verdict.value.task.id} ${end.ref}`);
         }
     }
-    await tellNewOwner(runtime, team, by, end.verdict);
+    await wakeWaitedOn(runtime, team, by, end.verdict, await tellNewOwner(runtime, team, by, end.verdict));
     return code;
 }
 /** A NOTE asking to mark the task a bug when its text reads like one and no one gave it a type (register/bug-hint.ts). */
@@ -506,7 +506,7 @@ export async function set(args, runtime) {
     if (verdict.ok && input.status === 'waiting') {
         await markKeepWorkingAsk(runtime, paths, verdict.value);
     }
-    noteRegisterOnly(runtime, team, by, input.note, verdict, told);
+    noteRegisterOnly(runtime, team, by, input.note, verdict, [...told, ...(await wakeWaitedOn(runtime, team, by, verdict, told))]);
     return exit;
 }
 /**
@@ -523,7 +523,8 @@ async function setAsking(runtime, team, by, id, ask, input) {
     const exit = report(runtime, verdict, 'SET', team);
     const assigned = verdict.ok && verdict.value.asked.owner !== by && (await tellAssigned(runtime, team, by, verdict.value.asked)) ? [verdict.value.asked.owner] : [];
     const told = await tellLeadersOfWaits(runtime, team, by, verdict);
-    noteRegisterOnly(runtime, team, by, input.note, verdict, [...assigned, ...told]);
+    const lined = [...assigned, ...told];
+    noteRegisterOnly(runtime, team, by, input.note, verdict, [...lined, ...(await wakeWaitedOn(runtime, team, by, verdict, lined))]);
     if (verdict.ok) {
         await markKeepWorkingAsk(runtime, team.paths, verdict.value);
     }
@@ -670,7 +671,8 @@ export async function update(args, runtime) {
     const sizeBase = typeof changes.size === 'number' ? await readSizeBase(runtime, team.paths, team.config.sessions, id, runtime.clock.now()) : undefined;
     const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'), sizeBase);
     const code = report(runtime, verdict, 'UPDATED', team);
-    noteRegisterOnly(runtime, team, by, args.flags.get('note'), verdict, await tellNewOwner(runtime, team, by, verdict));
+    const told = await tellNewOwner(runtime, team, by, verdict);
+    noteRegisterOnly(runtime, team, by, args.flags.get('note'), verdict, [...told, ...(await wakeWaitedOn(runtime, team, by, verdict, told))]);
     return code;
 }
 /**

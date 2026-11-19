@@ -6,11 +6,13 @@ import { ENV, KIT_NAME } from "../../core/home.js";
 import { NAME_RULE } from "../../core/ids.js";
 import { PlainLogFile } from "../../core/log-file.js";
 import { SecretScanner } from "../../core/secrets.js";
+import { priorityText } from "../../register/model.js";
 import { groupIds, parseTo, taskGroupOf, treeLeadsOf } from "../../inbox/groups.js";
 import { formatRead, formatStatus, inboxLineOf, inboxStatus, lineOnClock, postLines, readInbox } from "../../inbox/inbox.js";
 import { lineHash } from "../../inbox/line-hash.js";
 import { boundElsewhereOf, CLAUDE_SESSION_ID, RECEIVER_TABS, tabsOf } from "../../inbox/marks.js";
 import { reachOf } from "../../inbox/reach.js";
+import { rightNowNamedIn } from "../../inbox/right-now.js";
 import { routeReminderOf } from "../../inbox/route.js";
 import { InboxDir, JsonlMarkLog } from "../../inbox/store.js";
 import { WAKE_AT_ONCE, WAKE_NOW, wakeByOf, wakeRefusal, wakesLine } from "../../inbox/wake-now.js";
@@ -396,6 +398,24 @@ function wakeWhenOf(wake, wakeBy, now, zone) {
     }
     return wakeByOf(at, now, zone);
 }
+/**
+ * The wake a line sent with neither `--wake now` nor `--wake-by` takes (T4414): `--wake now` when it names unfinished
+ * right-now work of the sender's tree ({@link rightNowNamedIn}), since such work never waits for a prompt; none
+ * otherwise. Where `--wake now` would be refused (a group from a session that leads no one, another team from a
+ * member), the line still posts, with no wake and a note saying why: the sender never asked for one.
+ */
+async function rightNowWakeOf(reads, team, text, refusalOf) {
+    const registers = await reads.treeRegisters();
+    const task = registers === undefined ? undefined : rightNowNamedIn(text, registers.map(({ team: holder, snapshot }) => ({ team: holder, tasks: snapshot.state.tasks })), team);
+    if (task === undefined) {
+        return { when: undefined, note: undefined };
+    }
+    const work = `${task.id} is ${priorityText(task.priority)} work`;
+    const refusal = await refusalOf(WAKE_AT_ONCE);
+    return refusal === undefined
+        ? { when: WAKE_AT_ONCE, note: `NOTE ${work}, so the line wakes as --wake ${WAKE_NOW}` }
+        : { when: undefined, note: `NOTE ${work}, but the line posts with no wake: ${refusal}` };
+}
 const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>, team:<team>, tree:leads, task:T<n>, or a comma-separated list of them';
 /**
  * `inbox add --to <to> --text "<line>" [--wake now]`: appends one dated line to each receiver's inbox, all of them
@@ -409,7 +429,8 @@ const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>,
  * its prompt within about 3 minutes (`wake.batchSeconds`), and says what that costs; `--wake-by <time>` (T1148) wakes
  * it at that time instead, and only if it has not seen the line by then. A group is woken only by a leader, another
  * team only by a team lead (a team below its own, any team's lead, a role holder its config names), else nothing is
- * posted.
+ * posted. A line with neither flag that names unfinished right-now work wakes as `--wake now` where that gate lets it,
+ * and posts with no wake where it does not (T4414).
  */
 export async function add(args, runtime) {
     noPositionals(args);
@@ -436,17 +457,19 @@ export async function add(args, runtime) {
     const kit = await openKit(runtime, team);
     const config = requireConfig(kit, runtime, 'write');
     const now = runtime.clock.now();
-    const when = wakeWhenOf(wake, wakeBy, now, teamZone(config, runtime));
+    const asked = wakeWhenOf(wake, wakeBy, now, teamZone(config, runtime));
     const roster = await rosterOf(runtime, kit, config);
     const own = { from: { team, id: sessionIdOf(roster, caller) }, paths: kit.paths, config, roster };
     const reads = new SenderTreeReads(runtime, team);
     const recipients = await recipientsOf(runtime, own, items, to, reads);
-    if (when !== undefined) {
-        const refusal = wakeRefusal(await wakeSenderOf(own, recipients, reads), items.some((item) => item.kind !== 'session'), recipients.map((recipient) => wakeTargetOf(own, recipient)), when);
+    const refusalOf = async (asked) => wakeRefusal(await wakeSenderOf(own, recipients, reads), items.some((item) => item.kind !== 'session'), recipients.map((recipient) => wakeTargetOf(own, recipient)), asked);
+    if (asked !== undefined) {
+        const refusal = await refusalOf(asked);
         if (refusal !== undefined) {
             throw new RefusedError(refusal);
         }
     }
+    const { when, note } = asked === undefined ? await rightNowWakeOf(reads, team, text, refusalOf) : { when: asked, note: undefined };
     const secrets = new SecretScanner([
         ...config.register.secretPatterns,
         ...recipients.filter((recipient) => recipient.crossing).flatMap((recipient) => recipient.config.register.secretPatterns),
@@ -457,6 +480,9 @@ export async function add(args, runtime) {
         throw new RefusedError(problem);
     }
     runtime.out.stdout(postedLine(recipients));
+    if (note !== undefined) {
+        runtime.out.stderr(note);
+    }
     if (when !== undefined) {
         for (const line of await postWakes(runtime, own, recipients, text.trim(), now, when)) {
             runtime.out.stdout(line);

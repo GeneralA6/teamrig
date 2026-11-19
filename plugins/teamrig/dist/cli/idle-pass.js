@@ -1,5 +1,9 @@
 import { KIT_NAME } from "../core/home.js";
+import { isRightNow } from "../config/priorities.js";
 import { parkRulesOf } from "../register/park.js";
+import { isActive } from "../register/stats.js";
+import { TaskTree } from "../register/tree.js";
+import { waitingOnYouText } from "../register/views.js";
 import { noRoomText } from "../sessions/headroom.js";
 import { reopenVerdict } from "../sessions/idle.js";
 import { closedOf, SessionLog } from "../sessions/log.js";
@@ -27,8 +31,30 @@ async function folderOrRefusalOf(folderOf, id) {
         throw error;
     }
 }
-/** The pass's pick: urgent lines first, the oldest first, then the most urgent top task, then a pile of unseen lines. */
-function byReopenOrder(a, b) {
+/**
+ * The most urgent right-now task (`isRightNow`) a closed session's urgent lines may be for: its own active one, or
+ * another session's that waits on it (`TaskTree.waitingOn`); undefined when none is. A right-now task's line wakes its
+ * session with a wake ask (`wakeWaitedOn`, `reopenForUrgent`), so the session's wish is an asked one, and without this
+ * top it would lose the place right-now work has first in the pass's line (T4414).
+ */
+export function rightNowTopOf(facts, id) {
+    const own = [...facts.tasks.values()].filter((task) => task.owner === id && isActive(task.status));
+    const waiting = new TaskTree(facts.tasks, new Date(facts.now), facts.zone, null, facts.elsewhere).waitingOn(id).map((entry) => entry.task);
+    return [...own, ...waiting].filter((task) => isRightNow(task.priority)).sort(byUrgency)[0];
+}
+/** True for a wish whose top task is right-now work (`isRightNow`), which goes first in the pass's line (T4414). */
+function isRightNowWish(wish) {
+    return wish.top !== undefined && isRightNow(wish.top.priority);
+}
+/**
+ * The pass's pick: right-now work first, the most urgent first, then urgent lines, the oldest first, then the most
+ * urgent top task, then a pile of unseen lines.
+ */
+export function byReopenOrder(a, b) {
+    const rightNow = Number(isRightNowWish(b)) - Number(isRightNowWish(a));
+    if (rightNow !== 0) {
+        return rightNow;
+    }
     if (a.reopening.kind === 'asked') {
         return b.reopening.kind === 'asked' ? a.reopening.at - b.reopening.at : -1;
     }
@@ -99,11 +125,15 @@ export async function judgeSession(runtime, kit, config, roster, facts, id, fold
     const input = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, parking: parkRulesOf(config), dayStart, unseenLines, reopenUnreadLines, now, zone };
     const asAwake = reopenVerdict(input);
     if (asAwake.kind === 'asked') {
-        return wishOf(folderOf, id, asAwake, undefined);
+        return wishOf(folderOf, id, asAwake, rightNowTopOf(facts, id));
+    }
+    // Right-now work wakes past every rest, so its reopen needs no weighing.
+    if (asAwake.kind === 'needed') {
+        return wishOf(folderOf, id, asAwake, asAwake.waiting[0]?.task);
     }
     const reopening = asAwake.kind === 'stay' ? asAwake : reopenVerdict({ ...input, ...(await wakeWeightOf(runtime, kit, config, roster, id, config.wake.priority)) });
-    // Never asked here: a session with asks reopened for them above.
-    if (reopening.kind === 'stay' || reopening.kind === 'asked') {
+    // Never asked or needed here: a session with either reopened for it above.
+    if (reopening.kind === 'stay' || reopening.kind === 'asked' || reopening.kind === 'needed') {
         return { kind: 'closed', id };
     }
     if (reopening.kind === 'piled') {
@@ -167,6 +197,8 @@ export function reopeningText(reopening, zone) {
     switch (reopening.kind) {
         case 'asked':
             return urgentLinesText(reopening.asks);
+        case 'needed':
+            return `right-now work of others waiting on it: ${reopening.waiting.map(waitingOnYouText).join('; ')}`;
         case 'handed':
             return `work handed to it since its close: ${idsText(reopening.tasks)}`;
         case 'piled':

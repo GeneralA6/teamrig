@@ -143,6 +143,10 @@ export function readAs(holder, reader, own, elsewhere) {
     }
     return { tasks, elsewhere: others };
 }
+/** The task's decision and approval waits no answer met yet (T1422: an answered one lets its owner go on). */
+function unansweredAsks(task) {
+    return task.waits.filter((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && answerTo({ answer: task.answer ?? null }, reason) === undefined);
+}
 /** What a task is worth by its class, goal and severity, as `ranking` reads them. */
 function valueFacts(task, ranking) {
     return { workClass: ranking.classOf(task), rank: ranking.goalOf(task)?.rank ?? null, type: task.type ?? null, critical: task.critical ?? false };
@@ -333,10 +337,25 @@ export class TaskTree {
                 return [];
             }
             const needs = this.inPlanOrder(this.unfinishedNeeds(task).filter((need) => need.owner === session));
-            const asks = task.waits.filter((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who === session && answerTo({ answer: task.answer ?? null }, reason) === undefined);
+            const asks = unansweredAsks(task).filter((reason) => reason.who === session);
             return needs.length === 0 && asks.length === 0 ? [] : [{ task, needs, asks }];
         });
         return waiting.sort((a, b) => this.byPlanOrder(a.task, b.task));
+    }
+    /**
+     * Who `task` waits on, the other side of {@link waitingOn}: each session other than its owner that owns an
+     * unfinished task it directly needs or is asked for one of its unanswered decisions and approvals, with what it
+     * waits on there. None for a finished or parked task, as `waitingOn` leaves those out.
+     */
+    waitsOn(task) {
+        if (!isActive(task) || this.isParked(task)) {
+            return [];
+        }
+        const needs = this.inPlanOrder(this.unfinishedNeeds(task));
+        const asks = unansweredAsks(task);
+        const sessions = new Set([...needs.map((need) => need.owner), ...asks.map((ask) => ask.who)]);
+        sessions.delete(task.owner);
+        return [...sessions].map((session) => ({ task, session, needs: needs.filter((need) => need.owner === session), asks: asks.filter((ask) => ask.who === session) }));
     }
     /**
      * The loops among active tasks, which none of their tasks can ever leave: each the shortest chain from its first

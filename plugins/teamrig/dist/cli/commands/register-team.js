@@ -1,14 +1,18 @@
+import { isRightNow } from "../../config/priorities.js";
 import { errorMessage } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
-import { assignedNotice, dueTime } from "../../register/views.js";
+import { priorityText } from "../../register/model.js";
+import { TaskTree } from "../../register/tree.js";
+import { assignedNotice, dueTime, waitingOnYouText } from "../../register/views.js";
 import { WakeAsks } from "../../wake/asks.js";
 import { HELD_PRIORITY } from "../../wake/decide.js";
 import { closedByTeamrig, closedWakeLine, wakeClosedSession } from "../closed-wake.js";
 import { openTeamKit, requireConfig, rosterOf, teamZone } from "../kit.js";
 import { leadAboveOf } from "../tree.js";
 import { teamRegister } from "../team-register.js";
+import { askWake } from "../urgent-line.js";
 import { inboxDepsOf } from "./inbox.js";
 export async function teamOf(runtime, kit, access) {
     const config = requireConfig(kit, runtime, access);
@@ -28,46 +32,93 @@ export async function openTeam(runtime, access) {
 export async function tellAssigned(runtime, team, by, task, shown = task.owner, mayWake = true) {
     const text = assignedNotice(task, team.zone);
     const posted = await tellLine(runtime, team, by, task.owner, text, `${shown} was not told of ${task.id}`, shown);
-    if (posted) {
-        await reopenForDueToday(runtime, team, { by, mayWake }, task, text, shown);
-    }
-    if (posted && task.priority === HELD_PRIORITY && team.config.wake.enabled) {
+    const closed = posted && (await reopenForUrgent(runtime, team, { by, mayWake }, task, text, shown));
+    if (posted && !closed && task.priority === HELD_PRIORITY && team.config.wake.enabled) {
         runtime.out.stderr(`NOTE ${shown} is woken at its idle prompt for ${task.id}, a p0, so no --wake now is needed`);
     }
     return posted;
 }
 /**
- * A task due today (or overdue) handed to a session teamrig closed (#1581): a closed session reopens for work only
- * within `wake.priority` or at its next day start, so a p2 due this afternoon waited for tomorrow. Its line gets a
- * wake ask, as `inbox add --wake now` does, and its reopen starts at once through the idle pass's own act
- * (src/cli/closed-wake.ts), the line saying REOPENS or CLOSED with why. Only with `open.idle.reopenForDueToday` on,
- * and only from an adder that may wake the owner (`inbox add --wake now`'s gate): a wake spends the owner's turn and
- * its team's budget line, so an add from a session that may not wake it posts the line alone and says why. Nothing
- * for an open session, a task with no due time or one due a later day, or with the team's wakes off.
+ * Why a task handed to a closed owner reopens it now, or undefined when it waits for the idle pass: right-now work
+ * (p0 or above, T4414), which the idle pass would reopen for only at its next minute, or with
+ * `open.idle.reopenForDueToday` on, a task due today (or overdue), for which a closed session reopens only within
+ * `wake.priority` or at its next day start, so a p2 due this afternoon waited for tomorrow (#1581).
  */
-async function reopenForDueToday(runtime, team, adder, task, text, shown) {
+function urgentWhy(team, task, now) {
+    if (isRightNow(task.priority)) {
+        return `is a ${priorityText(task.priority)}`;
+    }
     const due = dueTime(task, team.zone);
-    const now = runtime.clock.now();
     const today = due !== undefined && (due <= now || team.zone.day(new Date(due)) === team.zone.day(new Date(now)));
-    if (!today || !team.config.open.idle.reopenForDueToday || !team.config.wake.enabled || !(await closedByTeamrig(runtime, team, task.owner))) {
-        return;
+    return today && team.config.open.idle.reopenForDueToday ? 'is due today' : undefined;
+}
+/**
+ * Right-now work or a task due today handed to a session teamrig closed ({@link urgentWhy}): its line gets a wake
+ * ask, as `inbox add --wake now` does, and its reopen starts at once through the idle pass's own act
+ * (src/cli/closed-wake.ts), the line saying REOPENS or CLOSED with why; true when the owner is closed. Only from an
+ * adder that may wake the owner (`inbox add --wake now`'s gate): a wake spends the owner's turn and its team's budget
+ * line, so an add from a session that may not wake it posts the line alone and says why. Nothing for an open
+ * session, other work, or with the team's wakes off.
+ */
+async function reopenForUrgent(runtime, team, adder, task, text, shown) {
+    const now = runtime.clock.now();
+    const why = urgentWhy(team, task, now);
+    if (why === undefined || !team.config.wake.enabled || !(await closedByTeamrig(runtime, team, task.owner))) {
+        return false;
     }
     const { by } = adder;
     if (!adder.mayWake) {
-        runtime.out.stderr(`NOTE ${shown} is closed and ${task.id} is due today: its line is posted with no wake ask and no reopen, since ${by} may not wake it (a wake reaches another team only from a team lead); the idle pass reopens it for the line, or ask your lead to wake it`);
-        return;
+        runtime.out.stderr(`NOTE ${shown} is closed and ${task.id} ${why}: its line is posted with no wake ask and no reopen, since ${by} may not wake it (a wake reaches another team only from a team lead); the idle pass reopens it for the line, or ask your lead to wake it`);
+        return true;
     }
     try {
         await new WakeAsks(runtime.files, team.paths.wakeAsks).post(task.owner, { from: by, text, at: now });
     }
     catch (error) {
         runtime.out.stderr(`WARN ${shown} is closed and its line has no wake ask (${errorMessage(error)}): ${KIT_NAME} open ${task.owner}`);
-        return;
+        return true;
     }
-    const said = closedWakeLine(await wakeClosedSession(runtime, team, team.config, team.roster, task.owner), shown, task.owner);
+    const said = closedWakeLine(await wakeClosedSession(runtime, team, team.config, team.roster, task.owner), shown, task.owner, isRightNow(task.priority));
     if (said !== undefined) {
-        runtime.out.stderr(`${said} (${task.id} is due today)`);
+        runtime.out.stderr(`${said} (${task.id} ${why})`);
     }
+    return true;
+}
+/**
+ * Right-now work (p0 or above, T4414) a write left waiting on other sessions of the team ({@link TaskTree.waitsOn}):
+ * each it newly waits on, by its add, a raised priority, a new owner or a new wait or need, gets a line saying what
+ * (`T12 (p0, owner bravo) waits on your T7`) and a wake ask, and one teamrig closed reopens now, as `inbox add --wake
+ * now` does: else the work waits for the receiver's next prompt, or for a closed one the idle pass's next minute. One
+ * this write already told (`told`) gets the ask alone. Never the writer, nor a session of another team, whose wake
+ * goes through its lead; nothing with the team's wakes off. The sessions it reached.
+ */
+export async function wakeWaitedOn(runtime, team, by, verdict, told) {
+    if (!verdict.ok || !team.config.wake.enabled || !isRightNow(verdict.value.task.priority)) {
+        return [];
+    }
+    const { task, before, state, elsewhere } = verdict.value;
+    const now = runtime.clock.now();
+    const tree = new TaskTree(state.tasks, new Date(now), team.zone, undefined, elsewhere);
+    const earlier = new Set(before !== null && isRightNow(before.priority) ? tree.waitsOn(before).map((entry) => entry.session) : []);
+    const place = { paths: team.paths, config: team.config, roster: async () => team.roster };
+    const reached = [];
+    for (const entry of tree.waitsOn(task)) {
+        const { session } = entry;
+        if (earlier.has(session) || session === by || !team.config.sessions.includes(session)) {
+            continue;
+        }
+        const text = waitingOnYouText(entry);
+        if (!told.includes(session) && !(await tellLine(runtime, team, by, session, text, `${session} was not told that ${task.id} waits on it`))) {
+            continue;
+        }
+        runtime.out.stderr(`NOTE ${session} gets a wake ask: ${task.id} is a ${priorityText(task.priority)} waiting on it`);
+        const problem = await askWake(runtime, place, { to: session, from: by, text }, now, true);
+        if (problem !== undefined) {
+            runtime.out.stderr(`WARN ${session} has the line, but ${problem}: ${KIT_NAME} inbox add --to ${session} --text "..." --wake now`);
+        }
+        reached.push(session);
+    }
+    return reached;
 }
 /**
  * The answer to a task's approval wait, told to its owner (T1422): the inbox line, and with the team's wakes on a wake
