@@ -1,14 +1,14 @@
 /**
  * bash keywords and builtins that can set a variable in a way this module does not follow (`case`, a
- * function, `read`, `declare`, arithmetic) or run code that can (`eval`, `source`, `trap`). One anywhere in
- * a line keeps every variable of that line unresolved, except the keywords of a `for`, `while` or `until`
+ * function, `read`, `declare`, arithmetic) or run code that can (`eval`, `source`, `trap`, `jobs -x`). One anywhere
+ * in a line keeps every variable of that line unresolved, except the keywords of a `for`, `while` or `until`
  * loop, an `if`, a `{ }` group and a `!` where they start a command (see {@link Compounds}).
  */
 const UNSAFE_PROGRAMS = new Set([
     ...['if', 'then', 'elif', 'else', 'fi', 'for', 'while', 'until', 'do', 'done', 'case', 'esac', 'select', 'function'],
     ...['{', '}', '[[', ']]', '!', 'time', 'coproc'],
     ...['read', 'readarray', 'mapfile', 'getopts', 'let', 'declare', 'typeset', 'local', 'readonly', 'unset', 'wait'],
-    ...['eval', 'source', '.', 'trap', 'command', 'builtin', 'enable', 'alias', 'unalias', 'shopt', 'compgen', 'complete', 'fc'],
+    ...['eval', 'source', '.', 'trap', 'command', 'builtin', 'jobs', 'enable', 'alias', 'unalias', 'shopt', 'compgen', 'complete', 'fc'],
 ]);
 /** Variables bash itself sets or reads in a special way; a line never resolves them. */
 const SHELL_NAMES = new Set([
