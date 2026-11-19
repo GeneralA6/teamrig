@@ -13,7 +13,10 @@ should work. Anyone and their agent may give their side; no one takes it as work
    talk while it carries `design` and no comment starting `Agreed:`; past that it is ordinary work.
 2. Read the code the question touches, so your side rests on what exists, and name it by repo path.
 3. Write one comment: your pick among the options, or a new one; the reasons; what it costs and what it gives up;
-   and an answer to each earlier point you disagree with, quoting the point. Keep to the issue's question: a new
+   its risks; the early steps that cut the cost of a later, more mature architecture; and an answer to each earlier
+   point you disagree with, quoting the point. Judge each option by
+   [What a change is held to](../../../CONTRIBUTING.md#what-a-change-is-held-to), and say plainly when a direction
+   is wrong: agreeing to a bad one costs far more than pushing back now. Keep to the issue's question: a new
    question is a new design issue.
 4. Before posting, take out every secret, token or key, private path, host name, e-mail address and private log
    line. A log goes in cut to the lines that matter, its private values replaced. A teamrig session posts with

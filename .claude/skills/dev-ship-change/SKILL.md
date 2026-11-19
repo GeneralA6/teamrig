@@ -25,9 +25,10 @@ description: Land a finished teamrig change through small signed commits with Co
 7. `git push -u origin <branch>`: the pre-push hook runs the local gate's light checks (`tools/ci/local.ts`, its
    lists in `tools/ci/local-checks.ts`) on the committed tree, about 45 s; GitHub CI runs the rest on the pull request.
    Never `--no-verify`.
-8. Open the pull request and fill in the template (`.github/pull_request_template.md`): its `## Reach` always, its
-   `## Alternatives` when the change settles a design question. A pull request `tools/ship` opens takes its text from
-   `--note-file`: give that file a `## Reach` section. The merge opens no pull request without it (`pullSections` in
+8. Open the pull request and fill in the template (`.github/pull_request_template.md`): its `## Reach` and
+   `## Risks` always ([What a change is held to](../../../CONTRIBUTING.md#what-a-change-is-held-to)). A pull request
+   `tools/ship` opens takes its text from `--note-file`: give that file a `## Reach` and a `## Risks` section. The
+   merge opens no pull request without them (`pullSections` in
    `tools/ship/repos.json`), refusing before it waits on any check; one already open without it merges with a warning
    line. The repository is public: a security fix's branch name, commits, pull request text, comments and test names
    describe the hardening, never how to get past the old code, nor the private report or review by its id
