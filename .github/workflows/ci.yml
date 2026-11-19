@@ -1,13 +1,17 @@
 name: ci
 
 on:
-  # Runs on each pull request and each push to main. Every job would skip if the repository were made private
-  # again, where Actions minutes bill. Every check below that can run on a machine also runs before each push,
-  # through the pre-push hook (tools/ci/local.ts, list in tools/ci/local-checks.ts). A pull request from a fork
-  # runs with no secrets and the read-only token below.
+  # Runs on each pull request, each merge queue group and each push to main. Every job would skip if the repository
+  # were made private again, where Actions minutes bill. Every check below that can run on a machine also runs before
+  # each push, through the pre-push hook (tools/ci/local.ts, list in tools/ci/local-checks.ts). A pull request from a
+  # fork runs with no secrets and the read-only token below.
   push:
     branches: [main]
   pull_request:
+  # A queued pull request lands only once its group, its commits on the newest main with those queued ahead of it,
+  # passed the same required check (T3386). The gates read the group's range, base_sha..head_sha (github-range.ts).
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
@@ -41,8 +45,8 @@ jobs:
     name: dependency review
     # Fails a pull request that adds or changes a dependency (an npm package or a GitHub Action) with a known
     # advisory of any severity, dev dependencies included: they run at install and build time too. It reads
-    # GitHub's dependency graph, so it needs no checkout. A push to main or a run by hand has no pull request
-    # to compare, so the step skips there and the job passes.
+    # GitHub's dependency graph, so it needs no checkout. A push to main, a merge queue group (its pull requests
+    # each passed it) or a run by hand has no pull request to compare, so the step skips there and the job passes.
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 20

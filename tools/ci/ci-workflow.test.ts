@@ -23,8 +23,12 @@ describe('ci.yml', () => {
   const jobs = jobsOf(workflow);
   const checks = [...jobs.keys()].filter((id) => id !== SUMMARY);
 
-  it('runs on each pull request and each push to main, and by hand', () => {
-    assert.match(workflow, /^on:\n(?: {2}#.*\n)* {2}push:\n {4}branches: \[main\]\n {2}pull_request:\n {2}workflow_dispatch:\n/m);
+  it('runs on each pull request, each merge queue group and each push to main, and by hand', () => {
+    assert.match(
+      workflow,
+      /^on:\n(?: {2}#.*\n)* {2}push:\n {4}branches: \[main\]\n {2}pull_request:\n(?: {2}#.*\n)* {2}merge_group:\n {4}types: \[checks_requested\]\n {2}workflow_dispatch:\n/m,
+      'the merge queue waits on the same required check for each group it builds (T3386)',
+    );
     assert.doesNotMatch(workflow, /pull_request_target/, 'a fork pull request must never run with secrets or a write token');
     assert.match(workflow, /^permissions:\n {2}contents: read\n/m);
   });

@@ -9,8 +9,9 @@ export interface Revisions {
 }
 
 /**
- * The ends a CI run must compare: a pull request's base and head, a push's commit before and after,
- * or, for a new branch and any other event, the head commit alone.
+ * The ends a CI run must compare: a pull request's base and head, a merge queue group's base (the branch it lands
+ * on) and head (its queued pull requests' commits on top, T3386), a push's commit before and after, or, for a new
+ * branch and any other event, the head commit alone.
  */
 export function revisionsFromGithubEvent(eventName: string, payload: unknown, headSha: string): Revisions {
   const event: JsonRecord = isRecord(payload) ? payload : {};
@@ -18,6 +19,16 @@ export function revisionsFromGithubEvent(eventName: string, payload: unknown, he
     const pullRequest = recordField(event, 'pull_request') ?? {};
     const base = stringField(recordField(pullRequest, 'base') ?? {}, 'sha');
     const head = stringField(recordField(pullRequest, 'head') ?? {}, 'sha');
+    if (base === undefined || head === undefined) {
+      throw new Error(`${eventName} event without base and head shas`);
+    }
+    return { base, head };
+  }
+  if (eventName === 'merge_group') {
+    // Without both ends the gates would read the head's whole history, every commit main ever took: refuse instead.
+    const group = recordField(event, 'merge_group') ?? {};
+    const base = stringField(group, 'base_sha');
+    const head = stringField(group, 'head_sha');
     if (base === undefined || head === undefined) {
       throw new Error(`${eventName} event without base and head shas`);
     }
@@ -37,8 +48,8 @@ function rangeOf({ base, head }: Revisions): string {
 }
 
 /**
- * The revisions a CI run must check: a pull request's own commits, a push's new commits,
- * or, for a new branch and any other event, the whole history of the head commit.
+ * The revisions a CI run must check: a pull request's own commits, a merge queue group's queued commits, a push's
+ * new commits, or, for a new branch and any other event, the whole history of the head commit.
  */
 export function rangeFromGithubEvent(eventName: string, payload: unknown, headSha: string): string {
   return rangeOf(revisionsFromGithubEvent(eventName, payload, headSha));

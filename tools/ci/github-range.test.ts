@@ -31,6 +31,16 @@ describe('rangeFromGithubEvent', () => {
     assert.throws(() => rangeFromGithubEvent('pull_request', { pull_request: {} }, 'head'), /without base and head/);
   });
 
+  it("checks a merge queue group's queued commits, from the branch it lands on (T3386)", () => {
+    const payload = { merge_group: { base_sha: 'main1', head_sha: 'group1', base_ref: 'refs/heads/main', head_ref: 'refs/heads/gh-readonly-queue/main/pr-7-main1' } };
+    assert.equal(rangeFromGithubEvent('merge_group', payload, 'group1'), 'main1..group1');
+  });
+
+  it('rejects a merge queue group event without shas, rather than check all of main', () => {
+    assert.throws(() => rangeFromGithubEvent('merge_group', { merge_group: { head_sha: 'group1' } }, 'group1'), /merge_group event without base and head/);
+    assert.throws(() => rangeFromGithubEvent('merge_group', {}, 'group1'), /merge_group event without base and head/);
+  });
+
   it('checks the whole history for any other event or an unreadable payload', () => {
     assert.equal(rangeFromGithubEvent('workflow_dispatch', {}, 'head'), 'head');
     assert.equal(rangeFromGithubEvent('push', 'not an object', 'head'), 'head');
