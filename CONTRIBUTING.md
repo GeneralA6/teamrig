@@ -149,10 +149,10 @@ dependency review, which reads GitHub's dependency graph ([Security checks](#sec
 - It cannot be skipped: never push with `--no-verify`.
 - **Light checks** (the pre-push default): when the repository's entry in `tools/ship/repos.json` has the `ci` gate,
   a push to any branch but `main` runs the pre-push checks, about 45 s: the scrubs of the tree and the commits, the
-  DCO sign-off, the size rule, the commit subjects, the typecheck, a compile that emits nothing, the plugin's tests
+  DCO sign-off, the size rule, the commit subjects, the typecheck, the build, the plugin's tests
   and the docs checks. GitHub CI is the full gate: the whole suite with its coverage gate, the dist checks and the
-  fresh install run there, on every OS, before anything lands. The compile emits nothing as the release bot owns the
-  committed dist, so the plugin's tests load that dist. A light pass is recorded apart
+  fresh install run there, on every OS, before anything lands. The build writes the dist the plugin's tests load,
+  which main does not track, so it leaves the checkout clean. A light pass is recorded apart
   (`local-ci/light/<tree>.json`), never taken for a full or a short one; a full pass counts as a light one. A push
   to `main`, and a repository with the `local` gate, run every check as above.
 - **Short checks** (off by default): when the repository's entry in `tools/ship/repos.json` says

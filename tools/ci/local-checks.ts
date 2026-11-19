@@ -17,9 +17,7 @@ export function localChecks(base: string): readonly LocalCheck[] {
   return [
     ...commitChecks(base),
     TYPECHECK,
-    { name: 'build: clean', argv: ['node', 'tools/build/clean.ts'] },
-    { name: 'build: compile', argv: ['node', TSC, '-p', 'tsconfig.build.json'] },
-    { name: 'build: integrity', argv: ['node', 'tools/build/integrity.ts'] },
+    ...BUILD,
     { name: 'coverage gate', argv: ['node', 'tools/ci/coverage-cli.ts'] },
     { name: 'dist smoke', argv: ['node', 'tools/ci/dist-smoke-cli.ts'] },
     { name: 'fresh install', argv: ['node', 'tools/ci/fresh-install-cli.ts'] },
@@ -32,21 +30,28 @@ export function localChecks(base: string): readonly LocalCheck[] {
 /**
  * The light checks (check-scope.ts, T4344), about 45 s: the pre-push hook's proof of a branch whose main merges only
  * on GitHub's required checks, which run the rest (the whole suite with its coverage gate, the dist checks and the
- * fresh install) on every OS before anything lands. Each is the full list's own entry but the compile, which emits
- * nothing: the release bot owns the committed dist (T3346), so an emitting build would leave the checkout changed,
- * and the plugin's tests load that committed dist. The hook runs `teamrig secrets pushed` before them.
+ * fresh install) on every OS before anything lands. Each is the full list's own entry. They build the dist, as the
+ * plugin's tests load it and main tracks none (T4355): a fresh checkout has no dist until a build writes it, and
+ * the written one is ignored by git, so the checkout stays clean. The hook runs `teamrig secrets pushed` before them.
  */
 export function prePushChecks(base: string): readonly LocalCheck[] {
   return [
     ...commitChecks(base),
     TYPECHECK,
-    { name: 'compile', argv: ['node', TSC, '-p', 'tsconfig.build.json', '--noEmit'] },
+    ...BUILD,
     PLUGIN_TESTS,
     ...DOC_CHECKS,
   ];
 }
 
 const TYPECHECK: LocalCheck = { name: 'typecheck', argv: ['node', TSC, '-p', 'tsconfig.json'] };
+
+/** `npm run build`'s three steps: the dist cleared, compiled and its integrity list written. */
+const BUILD: readonly LocalCheck[] = [
+  { name: 'build: clean', argv: ['node', 'tools/build/clean.ts'] },
+  { name: 'build: compile', argv: ['node', TSC, '-p', 'tsconfig.build.json'] },
+  { name: 'build: integrity', argv: ['node', 'tools/build/integrity.ts'] },
+];
 
 /** The plugin's own tests, in an empty home: no account, settings or other plugins. */
 const PLUGIN_TESTS: LocalCheck = { name: 'plugin tests', argv: ['claude', 'plugin', 'test', 'plugins/teamrig'], isolatedHome: true };

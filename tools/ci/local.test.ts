@@ -79,7 +79,7 @@ describe('local (the local gate CLI)', () => {
 
   it('--light runs the pre-push checks, saying what it leaves to CI, and reuses a light record but no short one (T4344)', () => {
     const { head, tree } = commit();
-    const intro = 'pre-push checks: scrub, commit checks, typecheck, compile, plugin tests and docs; required CI runs the whole suite, the dist checks and the fresh install on the pull request\n';
+    const intro = 'pre-push checks: scrub, commit checks, typecheck, build, plugin tests and docs; required CI runs the whole suite, the dist checks and the fresh install on the pull request\n';
     const run = repo.run(CLI, ['--light']);
     assert.equal(run.status, 1, run.stderr);
     assert.ok(run.stdout.startsWith(`${intro}FAIL: scrub: tree (exit 1, `), run.stdout);

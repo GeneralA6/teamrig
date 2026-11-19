@@ -53,7 +53,7 @@ async function main(): Promise<number> {
 async function checksOf(scope: CheckScope, base: string, root: string, git: Git): Promise<readonly LocalCheck[]> {
   if (scope === 'full') return localChecks(base);
   if (scope === 'light') {
-    console.log('pre-push checks: scrub, commit checks, typecheck, compile, plugin tests and docs; required CI runs the whole suite, the dist checks and the fresh install on the pull request');
+    console.log('pre-push checks: scrub, commit checks, typecheck, build, plugin tests and docs; required CI runs the whole suite, the dist checks and the fresh install on the pull request');
     return prePushChecks(base);
   }
   const changed = (await git.text(['diff', '--name-only', '--no-renames', `${base}...HEAD`])).split('\n').map((line) => line.trim()).filter((line) => line !== '');

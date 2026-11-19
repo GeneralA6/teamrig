@@ -67,21 +67,26 @@ describe('prePushChecks (T4344)', () => {
   const full = new Map(localChecks('upstream/main').map((check) => [check.name, check]));
   const checks = prePushChecks('upstream/main');
 
-  it('runs the scrubs, the commit checks, the typecheck, a compile, the plugin tests and the docs checks, in that order', () => {
+  it('runs the scrubs, the commit checks, the typecheck, the build, the plugin tests and the docs checks, in that order', () => {
     assert.deepEqual(
       checks.map((check) => check.name),
-      ['scrub: tree', 'scrub: commits', 'DCO', 'size rule', 'commit subjects', 'typecheck', 'compile', 'plugin tests', 'doc pictures', 'doc config reference', 'doc links'],
+      ['scrub: tree', 'scrub: commits', 'DCO', 'size rule', 'commit subjects', 'typecheck', 'build: clean', 'build: compile', 'build: integrity', 'plugin tests', 'doc pictures', 'doc config reference', 'doc links'],
     );
   });
 
-  it("takes each check from the full list but the compile, which emits nothing so the committed dist stays as it is", () => {
-    for (const check of checks.filter((each) => each.name !== 'compile')) assert.deepEqual(check, full.get(check.name), check.name);
-    assert.deepEqual(checks.find((check) => check.name === 'compile')?.argv, [...(full.get('build: compile')?.argv ?? []), '--noEmit']);
+  it('takes each check from the full list as it is', () => {
+    for (const check of checks) assert.deepEqual(check, full.get(check.name), check.name);
   });
 
-  it('leaves the suite, the build steps that write the dist, the dist smoke and the fresh install to CI, which runs them all', () => {
+  it("builds the dist before the plugin's tests, which load it, as main tracks none (T4595)", () => {
+    const at = (name: string): number => checks.findIndex((check) => check.name === name);
+    assert.ok(at('build: integrity') >= 0 && at('build: integrity') < at('plugin tests'));
+    assert.ok(checks.every((check) => !check.argv.includes('--noEmit')), 'a compile that emits nothing leaves a fresh checkout with no dist');
+  });
+
+  it('leaves the suite, the dist smoke and the fresh install to CI, which runs them all', () => {
     const left = [...full.keys()].filter((name) => !checks.some((check) => check.name === name));
-    assert.deepEqual(left, ['build: clean', 'build: compile', 'build: integrity', 'coverage gate', 'dist smoke', 'fresh install']);
+    assert.deepEqual(left, ['coverage gate', 'dist smoke', 'fresh install']);
     const ci = ciCommands();
     for (const script of ['tools/ci/coverage-cli.ts', 'tools/ci/dist-smoke-cli.ts', 'tools/ci/fresh-install-cli.ts']) {
       assert.ok(ci.some((command) => command.startsWith(`node ${script}`)), `CI no longer runs ${script}`);

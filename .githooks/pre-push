@@ -3,7 +3,7 @@
 # a pull request, then proves the pushed commits (tools/ci/local.ts), once per tree: a tree that passed is recorded
 # and not checked again. Both read the refs git writes to stdin, so it is read once for both.
 # The remote's name and URL go to local.ts too: a branch of a repo whose tools/ship/repos.json entry has the ci gate
-# gets the light checks (scrubs, commit checks, typecheck, compile, plugin tests, docs), or the short checks when it
+# gets the light checks (scrubs, commit checks, typecheck, build, plugin tests, docs), or the short checks when it
 # says "mergeChecks": "changed", as its required CI runs the whole suite on the pull request; any other push gets
 # every check CI runs.
 # There is no skip: never push with --no-verify.
