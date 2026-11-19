@@ -14,7 +14,8 @@ import { realSleep, systemClock } from '../core/lock.ts';
 import { NODE_PATH_PROBE } from '../core/path-probe.ts';
 import { NODE_STORE_FOLDERS } from '../core/node-store-folders.ts';
 import { chatWebhook } from '../core/webhook.ts';
-import { nodeProgramRunner, systemCredentials } from '../github/credentials.ts';
+import { CREDENTIAL_TIMEOUT_MS, systemCredentials } from '../core/credentials.ts';
+import { nodeProgramRunner } from '../core/program-runner.ts';
 import { GIT_CHECKOUT } from '../exec/binding.ts';
 import { nodeExecSpawner } from '../exec/runner.ts';
 import { nodeGhRunner } from '../github/gh.ts';
@@ -106,7 +107,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     memory: nodeHostMemory(process.platform),
     cpu: nodeHostCpu(),
     gh: nodeGhRunner(),
-    credentials: systemCredentials(process.platform, nodeProgramRunner()),
+    credentials: systemCredentials(process.platform, nodeProgramRunner(CREDENTIAL_TIMEOUT_MS)),
     probe: NODE_PATH_PROBE,
     pluginStore: NODE_STORE_FOLDERS,
     transcripts: nodeTranscriptSource,

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { ProgramRequest, ProgramResult, ProgramRunner } from '../github/credentials.ts';
+import type { ProgramRequest, ProgramResult, ProgramRunner } from '../core/program-runner.ts';
 import { CLEAN_SHUTDOWN_LOOKBACK_MS, parseWindowsEvents, pickShutdown, SHUTDOWN_EVENTS, systemShutdownLog, WINDOWS_SHUTDOWN_SCRIPT } from './shutdowns.ts';
 
 const T = Date.parse('2030-01-08T07:55:00.000Z');

@@ -1,5 +1,5 @@
 import type { Env } from '../core/home.ts';
-import type { CredentialRead, CredentialStore } from './credentials.ts';
+import type { CredentialRead, CredentialStore } from '../core/credentials.ts';
 
 /**
  * How a command reaches one repository: through the token saved for the repository's owner, which gh gets as

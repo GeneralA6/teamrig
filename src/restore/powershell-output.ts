@@ -1,4 +1,4 @@
-import type { ProgramResult } from '../github/credentials.ts';
+import type { ProgramResult } from '../core/program-runner.ts';
 
 /** The output of a PowerShell run that exited 0; any other end throws with the first line it printed. */
 export function powerShellOutput(result: ProgramResult): string {
