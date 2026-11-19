@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.495.1](https://github.com/teamrig/teamrig/compare/teamrig-v0.495.0...teamrig-v0.495.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **ship:** a waiting ship's tool is checked against the remote's own head at its start ([#1466](https://github.com/teamrig/teamrig/issues/1466)) ([8cd2ce5](https://github.com/teamrig/teamrig/commit/8cd2ce581dcacb0f08b7c07e112212b7ea80f97b))
+
 ## [0.495.0](https://github.com/teamrig/teamrig/compare/teamrig-v0.494.0...teamrig-v0.495.0) (2026-11-19)
 
 
