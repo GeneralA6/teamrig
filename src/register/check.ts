@@ -416,7 +416,6 @@ function waitsForTime(task: Task, context: WaitContext): boolean {
   return task.waits.some((reason) => reason.kind === 'time' && !isReady(reason, context));
 }
 
-/** OVERDUE or VERIFY-OVERDUE on the effective due, then NOT-PICKED-UP or else STALE. */
 /** URGENT, with the lead's deadline burst on the effective due, typed on the team's clock, when the task has one. */
 function urgentFlags(task: Task, tree: TaskTree): Flag[] {
   if (task.priority !== NOW_PRIORITY.id || task.status !== 'open' || unfinishedAfter(task.after, tree.context).length > 0) {
@@ -428,6 +427,7 @@ function urgentFlags(task: Task, tree: TaskTree): Flag[] {
   return [{ kind: 'URGENT', task, detail: `p0: start it now, ahead of the task in hand${burst}` }];
 }
 
+/** OVERDUE or VERIFY-OVERDUE on the effective due, then NOT-PICKED-UP or else STALE. */
 function timeFlags(task: Task, at: number, check: RegisterCheckConfig, tree: TaskTree): Flag[] {
   const flags: Flag[] = [];
   const effective = tree.effectiveDue(task.id);
