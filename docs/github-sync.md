@@ -481,9 +481,13 @@ PREVIEW nothing was written; a push would send 7 write(s) now, at most 40 a run,
   `github.repos` order; the rest waits for the next run.
 - **On its own, once you turn it on.** With `"statusPush": true` in the team config's `github` block, the
   [automatic sync](#then-it-runs-on-its-own) sends the push after each import, so no session runs it. Each run then
-  sends fewer writes when the sync can run often, so an hour of runs sends at most 250, half GitHub's 500 an hour
-  (probing every 60 seconds: 4 a run; every 300: 20). Its own label writes read as a change, so a longer list drains
-  a run per probe. It sends labels, assignees, fields and types only: a close is the one write a person reads as a decision,
+  counts its writes over the rolling hour in `state/github-push-hour.json`, so a backlog drains 40 a run until the
+  hour has sent 250, half GitHub's 500 an hour, and each run past that sends only what the hour has left, with a
+  `NOTE` saying so. A run reserves its limit in the count before it sends and settles it to the writes it sent, so
+  two runs never both spend the same writes and a run that stops half way counts high, never low. A count that
+  cannot be read or written gives the run the even share of the hour instead (probing every 60 seconds: 4 a run;
+  every 300: 20), with a `NOTE`; one that cannot be read is rewritten from that run on. Its own label writes read as
+  a change, so a longer list drains a run per probe. It sends labels, assignees, fields and types only: a close is the one write a person reads as a decision,
   so the automatic push prints it as a `HELD` line and leaves it to a session's `teamrig issue sync --push --yes`.
   A failed write is told to the lead's inbox like a repository that cannot be read. It is off by default: read `teamrig issue sync --push` first, and give the token **Issues: Read and write**.
 
@@ -511,8 +515,8 @@ commenter, swaps `status:open` for `status:claimed`, and replies once with the r
   at most ten issues whose new comments could claim, oldest first; the rest are printed `HELD` and read on the next
   run, as is an issue whose read failed. A claim past an issue's first 30 new comments waits for a person to assign.
 - **Within the run's writes.** A claim's writes (assign, labels, reply) count in the same writes per run as the
-  status push, and come first; a claim past them is printed `HELD` and made on the next run. A run whose share of
-  the hour is less than one claim's 5 writes (4 at the default `probeSeconds` of 60) may still send one whole claim:
+  status push, and come first; a claim past them is printed `HELD` and made on the next run. A run whose writes
+  left in the hour are fewer than one claim's 5 may still send one whole claim, counted in the hour like the rest:
   at most five claims a day per repository keep that small.
 
 ## Linking issues as the task tree
