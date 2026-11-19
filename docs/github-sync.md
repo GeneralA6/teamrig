@@ -454,15 +454,20 @@ PREVIEW nothing was written; a push would send 7 write(s) now, at most 40 a run,
 - **A pull request is left as it is.** A task whose ref is an open pull request gets a `PULL` line and is counted on the
   `PUSH` line: the push writes only issues. A task on a closed pull request stays `UNLISTED`.
 - **A taker's issue stays theirs.** A done or dropped task closes its issue only when the issue is unassigned or
-  assigned to the team: the logins `github.owners` maps and the account that owns the repository. An issue assigned
+  assigned to the team: the logins `github.owners` maps, the login the sync runs as and the account that owns the
+  repository. An issue assigned
   only to people outside the team is their work, and a task that only took part in it (a comment, an answer) ends
   without closing it: an `OPEN` line names it, for its taker's pull request or a person to close. A session's second
   login in `github.owners` reads as outside the team here; map each session to the one login it assigns by.
 - **Someone answers for it.** An open issue of a scheduled task (started, or with a due date), not a design issue,
-  no one is assigned to gets an assignee: the login `github.owners` maps to the task's owning session, else the account that owns the
-  repository (sessions are not GitHub users). An issue a person assigned keeps its assignees; the push takes none off. Each login is read first: one the repository may
-  not assign (not a person with access to it) gets an `UNASSIGNED` line and its issues keep their label changes, as
-  GitHub would drop it silently and every run would send it again.
+  no one is assigned to gets an assignee: the login `github.owners` maps to the task's owning session, else the login
+  the sync runs as (the one its token belongs to, read once a run), else none (sessions are not GitHub users). It is
+  never the account that owns the repository, which for an organization's repository no one can be assigned as. An
+  issue a person assigned keeps its assignees; the push takes none off. Each login is read before the run's plan is
+  kept: one the repository may not assign (not a person with access to it) gets an `UNASSIGNED` line and its issues
+  go to the next login in line, or stay unassigned, so it takes none of the run's writes and the label changes behind
+  it go out, where GitHub would drop it silently and every run would send it again. When the login the sync runs as
+  cannot be read (a `NOTE` line), only mapped sessions are assigned.
 - **Fields and type too.** On a repository with issue fields or types, the push then sets each held open issue's
   fields, one way from the task list: the priority as an option of a single-select `Priority` field (`P<n>`, else
   GitHub's own: p0 and p1 Urgent, p2 High, p3 Medium, p4 and p5 Low; `priorityOptions` renames them), the
