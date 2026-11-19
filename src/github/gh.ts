@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { Env } from '../core/home.ts';
-import { endOf, type ShellEnd } from '../test-run/shell.ts';
+import { endOf, type ShellEnd } from '../core/shell-end.ts';
 import type { CloseReason, IssueDraft, LabelSpec } from '../issues/host.ts';
 import { LABEL_FILE, parseLabelFile } from '../issues/label-file.ts';
 import { areaLabelSpec, MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';

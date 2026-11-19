@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { errorCode, errorMessage } from '../core/guards.ts';
 import { powerShellRequest } from '../core/powershell.ts';
-import { endOf, type ShellEnd } from '../test-run/shell.ts';
+import { endOf, type ShellEnd } from '../core/shell-end.ts';
 
 /** A credential's name: letters, digits, `.`, `_` or `-`, so it never needs quoting on any command line. */
 export const CREDENTIAL_NAME = /^[\w.-]{1,128}$/;

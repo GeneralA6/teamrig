@@ -6,7 +6,7 @@ import { exitCodeOf, type StepEnd } from '../delivery/steps.ts';
 import { nodeTreeKill, type RunKill, type TreeKill } from '../delivery/tree-kill.ts';
 import { withoutCredentials } from '../core/child-env.ts';
 import type { Env } from '../core/home.ts';
-import { endOf } from '../test-run/shell.ts';
+import { endOf } from '../core/shell-end.ts';
 
 /**
  * Every hook's exit codes say the same: 0 done, this one (`EX_TEMPFAIL`) wait and come back later, anything else

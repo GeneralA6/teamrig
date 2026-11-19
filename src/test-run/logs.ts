@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
-import type { ShellEnd } from './shell.ts';
+import type { ShellEnd } from '../core/shell-end.ts';
 
 /** How many logs are kept for each session (and for runs with no session); older ones are removed. */
 export const KEPT_LOGS = 20;
