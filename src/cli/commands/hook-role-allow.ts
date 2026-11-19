@@ -1,7 +1,8 @@
 import type { KitConfig } from '../../config/types.ts';
 import { recordField, stringField, type JsonRecord } from '../../core/guards.ts';
 import { toJsonlLine } from '../../core/jsonl.ts';
-import { ROLE_CAP_WINDOW_MS, roleAllowOutput, roleAllowRecord, roleAllowsSince, roleCapOutput, roleHolding } from '../../hooks/service-role-allow.ts';
+import { ROLE_CAP_WINDOW_MS, roleAllowOutput, roleAllowRecord, roleAllowsSince, roleCapOutput } from '../../hooks/service-role-allow.ts';
+import { roleHolding } from '../../permissions/service-roles.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { isIssueCommand } from '../../permissions/service-commands.ts';
 import { toolRoleCallOf } from '../../permissions/service-role-call.ts';

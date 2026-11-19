@@ -1,7 +1,6 @@
-import type { ServiceRoleConfig } from '../config/types.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseJsonl } from '../core/jsonl.ts';
-import { isIssueCommand, TEAM_HELD_COMMANDS, type ServiceCommand } from '../permissions/service-commands.ts';
+import { isIssueCommand } from '../permissions/service-commands.ts';
 import type { RoleCall } from '../permissions/service-role-call.ts';
 import { holdBackOutput } from './permission.ts';
 
@@ -19,24 +18,6 @@ export type RoleTarget = Pick<RoleCall, 'command' | 'target'>;
 
 /** The rolling window the daily cap counts over. */
 export const ROLE_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
-
-/** True when the role gives `command` to `holder`: a holder it names, or every session for a command that checks its own caller. */
-function holds(role: ServiceRoleConfig, command: ServiceCommand, holder: string): boolean {
-  if (!role.commands.includes(command)) {
-    return false;
-  }
-  return role.holders === 'team' ? TEAM_HELD_COMMANDS.has(command) : role.holders.includes(holder);
-}
-
-/** The role, by name, that gives `holder` the command; the first by name when two do, so the cap counts one; else undefined. */
-export function roleHolding(roles: Readonly<Record<string, ServiceRoleConfig>>, command: ServiceCommand, holder: string): string | undefined {
-  return Object.keys(roles)
-    .sort()
-    .find((name) => {
-      const role = roles[name];
-      return role !== undefined && holds(role, command, holder);
-    });
-}
 
 /** How many closes and comments the role's allow let run at or after `sinceMs`, by the prompt-answers log's text; a ship counts toward no cap. */
 export function roleAllowsSince(log: string, role: string, sinceMs: number): number {
