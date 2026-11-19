@@ -152,17 +152,19 @@ export async function wakeWaitedOn(runtime: CliRuntime, team: Team, by: string, 
  * The answer to a task's approval wait, told to its owner (T1422): the inbox line, and with the team's wakes on a wake
  * ask too (src/wake/asks.ts), as an `inbox add --wake now` line gets, so an idle tab wakes on it and the idle pass's
  * reopen of a closed one quotes it. A plain line is read only at the owner's next prompt, and an idle owner has none:
- * approved work sat 14 h. An ask that cannot be posted is a WARN, the line already told.
+ * approved work sat 14 h. An ask that cannot be posted is a WARN, the line already told. True when the line was posted.
  */
-export async function tellAnswer(runtime: CliRuntime, team: Team, by: string, to: string, text: string, unsent: string, shown = to): Promise<void> {
-  if (!(await tellLine(runtime, team, by, to, text, unsent, shown)) || !team.config.wake.enabled) {
-    return;
+export async function tellAnswer(runtime: CliRuntime, team: Team, by: string, to: string, text: string, unsent: string, shown = to): Promise<boolean> {
+  const posted = await tellLine(runtime, team, by, to, text, unsent, shown);
+  if (!posted || !team.config.wake.enabled) {
+    return posted;
   }
   try {
     await new WakeAsks(runtime.files, team.paths.wakeAsks).post(to, { from: by, text, at: runtime.clock.now() });
   } catch (error) {
     runtime.out.stderr(`WARN ${shown} has the line, but its idle tab is not woken for it (${errorMessage(error)}): ${KIT_NAME} inbox add --to ${shown} --text "..." --wake now`);
   }
+  return true;
 }
 
 /** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
