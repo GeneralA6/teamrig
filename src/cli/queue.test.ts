@@ -1533,25 +1533,65 @@ describe("teamrig queue gives a ship step the task its worktree's branch names (
     });
   }
 
+  /** The repository the share of a step queued with `args` records, its folder APP read through `git`. */
+  async function heldRepo(team: Readonly<Record<string, unknown>>, args: readonly string[], git: FakeMergeGit): Promise<unknown> {
+    const { kit, steps } = harness(team);
+    let held: unknown;
+    steps.ends(0, MINUTE).whileRunning(async () => {
+      const share = JSON.parse(kit.files.get(`${SHARED}/id-1.json`) ?? kit.files.get(LOCK) ?? '{}') as { request?: { repo?: string } };
+      held = share.request === undefined ? 'no request' : share.request.repo;
+    });
+    const result = await kit.run(['queue', '--session', 'alpha', '--what', 'step', ...args], { steps, mergeGit: git });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    return held;
+  }
+
+  /** APP a worktree of the app repository, whose main checkout holds run.ts, and /repo/other another repository. */
+  function appGit(inRepo = true): FakeMergeGit {
+    const git = new FakeMergeGit();
+    if (inRepo) {
+      git.checkouts.set(APP, { top: APP, branch: 'feat/t1-cli', mainCheckout: MAIN_CHECKOUT, linked: true });
+      git.checkouts.set(MAIN_CHECKOUT, { top: MAIN_CHECKOUT, branch: 'main', mainCheckout: MAIN_CHECKOUT, linked: false });
+    }
+    git.checkouts.set('/repo/other', { top: '/repo/other', branch: 'main', mainCheckout: '/repo/other', linked: false });
+    return git;
+  }
+
   it("records on a ship's share the repository its folder is in, and none for a build or a ship outside a repository (#1711)", async () => {
-    const repoOf = async (kind: string, inRepo: boolean): Promise<unknown> => {
-      const { kit, steps } = harness({ ...TEAM, delivery: { queue: { maxHeavyParallel: 3 } } });
-      const git = new FakeMergeGit();
-      if (inRepo) {
-        git.checkouts.set(APP, { top: APP, branch: 'feat/t1-cli', mainCheckout: MAIN_CHECKOUT, linked: true });
-      }
-      let held: unknown;
-      steps.ends(0, MINUTE).whileRunning(async () => {
-        const share = JSON.parse(kit.files.get(`${SHARED}/id-1.json`) ?? kit.files.get(LOCK) ?? '{}') as { request?: { repo?: string } };
-        held = share.request === undefined ? 'no request' : share.request.repo;
-      });
-      const result = await kit.run(['queue', '--session', 'alpha', '--what', 'step', '--kind', kind, '--', 'node', '/repo/app/run.ts'], { steps, mergeGit: git });
-      assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
-      return held;
-    };
+    const team = { ...TEAM, delivery: { queue: { maxHeavyParallel: 3 } } };
+    const repoOf = (kind: string, inRepo: boolean): Promise<unknown> => heldRepo(team, ['--kind', kind, '--', 'node', '/repo/app/run.ts'], appGit(inRepo));
     assert.equal(await repoOf('ship', true), `${MAIN_CHECKOUT}/.git`, 'a worktree names its main checkout, so every worktree of it shares the slot');
     assert.equal(await repoOf('build', true), undefined);
     assert.equal(await repoOf('ship', false), undefined);
+  });
+
+  it('records none, holding every slot, for a ship whose words may move another repository than its folder (#1711)', async () => {
+    const team = { ...TEAM, delivery: { queue: { maxHeavyParallel: 3 } } };
+    for (const words of [
+      ['git', '-C', '/repo/other', 'push'],
+      ['git', '-C/repo/other', 'push'],
+      ['gh', 'pr', 'merge', '7', '-R', 'acme/other'],
+      ['gh', 'pr', 'merge', '7', '--repo=acme/other'],
+      ['git', '--git-dir=/repo/other/.git', 'push'],
+      ['env', 'GIT_DIR=/repo/other/.git', 'git', 'push'],
+      ['bash', '-c', 'cd /repo/other && git push'],
+      ['node', '/repo/other/deploy.ts'],
+      ['node', '/nowhere/deploy.ts'],
+    ]) {
+      assert.equal(await heldRepo(team, ['--kind', 'ship', '--', ...words], appGit()), undefined, words.join(' '));
+    }
+    assert.equal(await heldRepo(team, ['--kind', 'ship', '--', 'git', 'push', 'origin', 'HEAD'], appGit()), `${MAIN_CHECKOUT}/.git`, 'words naming no place');
+  });
+
+  it("records for a ship tool's merge the repository of the worktree it merges, not of the folder it was queued in (#1711)", async () => {
+    const git = shipGit();
+    const worktree = '/repo/b/.claude/worktrees/t1-cli';
+    git.checkouts.set(APP, { top: APP, branch: 'main', mainCheckout: '/repo/a', linked: true });
+    git.checkouts.set(worktree, { top: worktree, branch: 'feat/t1-cli', mainCheckout: '/repo/b', linked: true });
+    const team = { ...SHIPPING, delivery: { ...SHIPPING.delivery, queue: { maxHeavyParallel: 3 } } };
+    assert.equal(await heldRepo(team, ['--kind', 'ship', '--', 'node', SHIP_TOOL, 'merge', worktree], git), '/repo/b/.git');
+    assert.equal(await heldRepo(team, ['--kind', 'ship', '--', 'node', SHIP_TOOL, worktree, '/tasks/T1/plan.json', '--merge'], git), '/repo/b/.git');
+    assert.equal(await heldRepo(team, ['--kind', 'ship', '--', 'node', SHIP_TOOL, '/repo/none', '--merge'], git), undefined, 'a worktree in no repository');
   });
 
   it('names no task for a step that runs no ship tool, whatever the branch of a folder it names', async () => {

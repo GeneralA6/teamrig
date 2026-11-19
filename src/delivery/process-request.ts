@@ -81,8 +81,8 @@ export interface LineRequest extends ProcessRequest {
    */
   readonly frontAt?: string;
   /**
-   * The repository a step that holds the ship slot moves (#1711): the shared git folder of the folder it queued in, so
-   * the worktrees of one repository name the same one. Left out when that folder is no repository, and by an older kit.
+   * The repository a step that holds the ship slot moves (#1711), as its shared git folder, so the worktrees of one
+   * repository name the same one (cli/ship-role-check.ts `shipSlotRepoOf`). Left out when that is in doubt, and by an older kit.
    */
   readonly repo?: string;
 }
