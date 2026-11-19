@@ -8,6 +8,7 @@ import {
   changeLine,
   changeWrites,
   heldIssue,
+  hourPushWrites,
   isGoal,
   issueGoal,
   planPush,
@@ -440,6 +441,23 @@ describe('autoPushWrites (T2876)', () => {
     for (const probeSeconds of [30, 45, 60, 90, 120, 300, 420, 540, 600, 660, 780, 900, 3540, 3600]) {
       assert.ok(autoPushWrites(probeSeconds) * Math.ceil(3600 / probeSeconds) <= PUSH_WRITES_PER_HOUR, `every ${probeSeconds} seconds`);
     }
+  });
+});
+
+describe('hourPushWrites (T4592)', () => {
+  it('sends the run limit while the hour has room, at any probe interval', () => {
+    assert.equal(hourPushWrites(60, 0), PUSH_WRITES_PER_RUN);
+    assert.equal(hourPushWrites(30, 40), PUSH_WRITES_PER_RUN);
+  });
+
+  it('sends only what the hour has left, and none once it is spent', () => {
+    assert.equal(hourPushWrites(60, PUSH_WRITES_PER_HOUR - 4), 4);
+    assert.equal(hourPushWrites(60, PUSH_WRITES_PER_HOUR), 0);
+    assert.equal(hourPushWrites(60, PUSH_WRITES_PER_HOUR + 5), 0);
+  });
+
+  it('sends nothing with the watch turned off', () => {
+    assert.equal(hourPushWrites(0, 0), 0);
   });
 });
 
