@@ -92,9 +92,11 @@ export async function pushRepos(run, say) {
             continue;
         }
         read.notes.forEach((note) => say(`NOTE ${repo}: ${note}`));
-        // Held as a list: the label plan and the field plan each go over every task.
+        // Held as a list: the label plan (twice when a number is left out) and the field plan each go over every task.
         const tasks = [...(await run.tasks())];
-        const plan = planPush(repo, read.issues, tasks, { writesPerRun: left, closes: run.limits.closes }, run.logins);
+        const limits = { writesPerRun: left, closes: run.limits.closes };
+        const listed = planPush(repo, read.issues, tasks, limits, run.logins);
+        const plan = listed.unlisted.length === 0 ? listed : planPush(repo, read.issues, tasks, limits, run.logins, await openPullsOf(run.host, repo, say));
         planLines(plan).forEach(say);
         const planned = plan.changes.reduce((sum, change) => sum + changeWrites(change), 0);
         left -= planned;
@@ -128,6 +130,18 @@ export function pushEndLine(send, totals, writesPerRun) {
         ? `PUSHED ${totals.sent} change(s), ${totals.writes} write(s); at most ${writesPerRun} a run, the rest planned again on the next`
         : `PREVIEW nothing was written; a push would send ${totals.writes} write(s) now, at most ${writesPerRun} a run, and plan the rest again on the next`;
 }
+/**
+ * The numbers of `repo`'s open pull requests, read only when an active task holds a number the issue list left out,
+ * since the list holds issues alone (#1451). A read that fails is said, and leaves every such number unlisted.
+ */
+async function openPullsOf(host, repo, say) {
+    const read = await host.pulls(repo, undefined);
+    if (read.kind === 'failed') {
+        say(`NOTE ${repo}: its pull requests could not be read (${read.reason}), so a number below may be one`);
+        return new Set();
+    }
+    return new Set(read.open.map((pull) => pull.number));
+}
 /** A repository's plan: its counts, the changes this run sends, then each issue the push leaves as it is and why. */
 export function planLines(plan) {
     const counts = [
@@ -137,6 +151,7 @@ export function planLines(plan) {
         ...(plan.heldCloses.length === 0 ? [] : [`${plan.heldCloses.length} close(s) held for a session's push`]),
         ...(plan.closedActive.length === 0 ? [] : [`${plan.closedActive.length} closed on the host while the task is active`]),
         ...(plan.keptOpen.length === 0 ? [] : [`${plan.keptOpen.length} left open: not the finished task's to close`]),
+        ...(plan.openPulls.length === 0 ? [] : [`${plan.openPulls.length} on an open pull request`]),
         ...(plan.unlisted.length === 0 ? [] : [`${plan.unlisted.length} not listed`]),
         ...(plan.shared.length === 0 ? [] : [`${plan.shared.length} held by two or more tasks`]),
     ];
@@ -148,6 +163,7 @@ export function planLines(plan) {
         ...plan.heldCloses.map((held) => `${changeLine(held).replace(/^CLOSE/u, 'HELD')}; the automatic push never closes: a session's teamrig issue sync --push --yes sends the close`),
         ...plan.closedActive.map((closed) => `KEPT ${targetText(closed.target)} ${closed.task} ${closed.status}: closed on the host${closed.stateReason === '' ? '' : ` (${closed.stateReason.toLowerCase()})`} while the task is active; the push never reopens an issue, so set the task to match or reopen the issue`),
         ...plan.keptOpen.map((kept) => `OPEN ${targetText(kept.target)} ${kept.task} ${kept.status}: ${kept.why.kind === 'design' ? 'a design issue, which ends by its maintainers\' Agreed' : `taken by ${kept.why.assignees.join(', ')}, outside the team`}; the push leaves it open, for its taker or a person to close`),
+        ...plan.openPulls.map((held) => `PULL ${targetText(held.target)} ${held.task} ${held.status}: an open pull request, not an issue; the push writes only issues`),
         ...plan.unlisted.map((held) => `UNLISTED ${targetText(held.target)} ${held.task} ${held.status}: not open on the host (closed before github.closedDays, or gone) while the task is active; the push never reopens an issue`),
         ...plan.shared.map((shared) => `SHARED ${targetText(shared.target)} ${shared.tasks.join(', ')}: two or more team tasks hold it, so the push writes nothing; give the ref to one of them`),
     ];

@@ -130,23 +130,26 @@ export const SESSION_PUSH = { writesPerRun: PUSH_WRITES_PER_RUN, closes: true };
  * two or more active team tasks hold it, none does: the plan writes nothing to it and names them (SharedIssue); one
  * active team task speaks over finished ones (holders). The run sends at most `limits.writesPerRun` writes; the rest is deferred. Without `limits.closes` a closing change
  * is held instead, taking none of the run's writes. With `logins` an open issue of a scheduled task with no assignee
- * is assigned (assigneeOf); without, the plan assigns nobody.
+ * is assigned (assigneeOf); without, the plan assigns nobody. A number the list left out that is in `openPulls`, the
+ * repository's open pull requests, is named as one, not as an issue gone from the list.
  */
-export function planPush(repo, issues, tasks, limits = SESSION_PUSH, logins) {
+export function planPush(repo, issues, tasks, limits = SESSION_PUSH, logins, openPulls = new Set()) {
     const listed = new Map(issues.filter((issue) => issue.repo === repo).map((issue) => [issue.number, issue]));
     const planned = [];
     const closedActive = [];
     const keptOpen = [];
     const unlisted = [];
+    const pulls = [];
     let unchanged = 0;
     const held = holders(repo, tasks);
     for (const [target, task] of [...held.speakers].sort(([a], [b]) => a - b).map(([number, holder]) => [{ repo, number }, holder])) {
         const issue = listed.get(target.number);
         const goal = issueGoal(task, { assigned: issue !== undefined && issue.assignees.length > 0, design: issue?.labels.includes(DESIGN_LABEL) ?? false });
         if (issue === undefined) {
-            // The list holds every open issue, so one it left out is closed (or gone): as a closed task wants it.
+            // The list holds every open issue, so one it left out is closed (or gone): as a closed task wants it. An open
+            // pull request is never on it: the push writes only issues, so it leaves that one as it is.
             if (goal.open) {
-                unlisted.push({ target, task: task.id, status: task.status });
+                (openPulls.has(target.number) ? pulls : unlisted).push({ target, task: task.id, status: task.status });
             }
             else {
                 unchanged += 1;
@@ -175,7 +178,7 @@ export function planPush(repo, issues, tasks, limits = SESSION_PUSH, logins) {
     const sendable = limits.closes ? planned : planned.filter((change) => change.close === undefined);
     const { changes, deferred } = withinRun(sendable, limits.writesPerRun);
     const shared = [...held.shared].sort(([a], [b]) => a - b).map(([number, ids]) => ({ target: { repo, number }, tasks: ids }));
-    return { repo, changes, deferred, heldCloses, unchanged, closedActive, keptOpen, unlisted, shared };
+    return { repo, changes, deferred, heldCloses, unchanged, closedActive, keptOpen, unlisted, shared, openPulls: pulls };
 }
 /**
  * Why a finished task's close of the open `issue` is left, or undefined when the close is the task's to send. The
