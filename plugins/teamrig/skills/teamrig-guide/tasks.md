@@ -116,8 +116,9 @@ A shipped change is proven by the session that shipped it, oldest first, before 
   Without `--proof`, or without `--waits` naming when the proof runs, it is refused
   [register.requireProofOnVerifying]; with that key `false`, the note names the proof. A proof runs at a time
   (`time:<date>`, for an event that comes on a date) or when a task ends (`task:T<id>`): one in progress or
-  verifying, or an open one of the same owner, who starts it next, so the new work that runs the proof can start at
-  once while the verifying task waits on it; one with neither would be put off without end. `approval:owner` (with a card) may stand beside one, for a proof
+  verifying, or an open one of the same owner that can start now (every task it is planned after with `--after` is
+  finished), who starts it next, so the new work that runs the proof can start at once while the verifying task waits
+  on it; one with neither would be put off without end. `approval:owner` (with a card) may stand beside one, for a proof
   only the owner can try, which then reaches the meeting's DECISIONS.
 - A proof another party makes is that party's task: ask it with `teamrig set <id> --status waiting --ask <session>
   --text "<the run or check>"`, which adds it and makes the task wait on it. Once that task has started, set yours
