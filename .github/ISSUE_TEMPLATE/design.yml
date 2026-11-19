@@ -5,7 +5,7 @@ labels: [design]
 body:
   - type: markdown
     attributes:
-      value: "A design issue is for talk: anyone, and the agent working for them, may comment with their reasons. No one claims it, and no code or pull request comes, until the maintainer marks it agreed. Never post a secret, token, key, private path, host name, e-mail address or private log here. A security hole goes through a [private report](https://github.com/GeneralA6/teamrig/security/advisories/new), never an issue."
+      value: "A design issue is for talk: anyone, and the agent working for them, may comment with their reasons. No one claims it, and no code or pull request comes, until the maintainer marks it agreed. Never post a secret, token, key, private path, host name, e-mail address or private log here. A security hole goes through a [private report](https://github.com/teamrig/teamrig/security/advisories/new), never an issue."
   - type: textarea
     id: question
     attributes:

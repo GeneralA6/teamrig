@@ -60,7 +60,14 @@ describe('.github issue forms, labels and pull request template', () => {
   it('takes no blank issue and sends a vulnerability to a private advisory', () => {
     const config = read('ISSUE_TEMPLATE/config.yml');
     assert.match(config, /^blank_issues_enabled: false$/m);
-    assert.match(config, /^ {4}url: https:\/\/github\.com\/[\w.-]+\/teamrig\/security\/advisories\/new$/m);
+    assert.match(config, /^ {4}url: https:\/\/github\.com\/teamrig\/teamrig\/security\/advisories\/new$/m);
+  });
+
+  it('links the repository under its organization, not the account it left (T4326)', () => {
+    for (const file of [...forms, 'config.yml']) {
+      const owners = [...read(`ISSUE_TEMPLATE/${file}`).matchAll(/github\.com\/([\w.-]+)\/teamrig\b/g)].map(([, owner]) => owner);
+      assert.deepEqual(owners.filter((owner) => owner !== 'teamrig'), [], `${file} links another owner's teamrig`);
+    }
   });
 
   it('lists every label the forms, the format checks and the import use', () => {
