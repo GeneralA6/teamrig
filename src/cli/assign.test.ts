@@ -89,6 +89,10 @@ describe("runCli: a p0 handed to another session says its team's wake check wake
     assert.deepEqual(await handed(new CliHarness(), 'p1'), ['NOTE bravo has an inbox line: T1 is yours (p1): Ship the change']);
   });
 
+  it('names the wake of a blocker, the level above p0 (T4329)', async () => {
+    assert.deepEqual(await handed(new CliHarness(), 'blocker'), ['NOTE bravo has an inbox line: T1 is yours (blocker): Ship the change', 'NOTE bravo is woken at its idle prompt for T1, a blocker, so no --wake now is needed']);
+  });
+
   it('names no wake while the team has wakes off, nor for a line it could not post', async () => {
     assert.deepEqual(await handed(new CliHarness({ ...TEAM, wake: { enabled: false } }), 'p0'), ['NOTE bravo has an inbox line: T1 is yours (p0): Ship the change']);
     const unsent = await handed(new CliHarness({ ...TEAM, register: { secretPatterns: ['is yours'] } }), 'p0');

@@ -6,7 +6,7 @@ import { KIT_NAME } from '../core/home.ts';
 import { MS_PER_DAY, showStored } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
-import { ACTIVE_STATUSES, type TaskStatus } from '../register/model.ts';
+import { ACTIVE_STATUSES, BLOCKER_PRIORITY_ID, type TaskStatus } from '../register/model.ts';
 import type { TaskTree } from '../register/tree.ts';
 import type { HireCheckInput, HireFlag } from './due.ts';
 import { ownerAsk } from '../config/tree.ts';
@@ -71,10 +71,10 @@ interface AreaNeed {
   readonly stuck: number;
 }
 
-/** p0, and the config's `hiring.scaleOut.topPriorities` most urgent levels: p0 takes none of those places. */
+/** The blocker, p0, and the config's `hiring.scaleOut.topPriorities` most urgent levels: neither takes one of those places. */
 function topPriorityIds(config: ScaleOutInput['config']): ReadonlySet<number> {
   const ids = config.register.priorities.map((priority) => priority.id).sort((a, b) => a - b);
-  return new Set([NOW_PRIORITY.id, ...ids.slice(0, config.hiring.scaleOut.topPriorities)]);
+  return new Set([BLOCKER_PRIORITY_ID, NOW_PRIORITY.id, ...ids.slice(0, config.hiring.scaleOut.topPriorities)]);
 }
 
 /** The area's active tasks of the top priorities with an effective due, by that due, then in plan order. */

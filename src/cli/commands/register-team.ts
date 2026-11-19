@@ -47,8 +47,8 @@ export async function openTeam(runtime: CliRuntime, access: Access): Promise<Tea
 
 /**
  * One inbox line telling a task's owner the task is its own, true when posted; `shown` names the owner in the NOTE
- * (another team's by address). A p0 task also says the owner is woken: its team's wake check wakes an idle owner for
- * it (src/wake/decide.ts: a p0 wakes even past the budget and in blocking quiet hours), so the asker needs no
+ * (another team's by address). A p0 or blocker task also says the owner is woken: its team's wake check wakes an idle owner for
+ * it (src/wake/decide.ts: p0 and blocker wake even past the budget and in blocking quiet hours), so the asker needs no
  * `inbox add --wake now` (T2686). `mayWake`: whether `by` may wake the owner as `inbox add --wake now` gates it
  * (wakeRefusal); a session of the owner's own team always may, so only an ask from another team passes it.
  */
@@ -56,8 +56,8 @@ export async function tellAssigned(runtime: CliRuntime, team: Team, by: string, 
   const text = assignedNotice(task, team.zone);
   const posted = await tellLine(runtime, team, by, task.owner, text, `${shown} was not told of ${task.id}`, shown);
   const closed = posted && (await reopenForUrgent(runtime, team, { by, mayWake }, task, text, shown));
-  if (posted && !closed && task.priority === HELD_PRIORITY && team.config.wake.enabled) {
-    runtime.out.stderr(`NOTE ${shown} is woken at its idle prompt for ${task.id}, a p0, so no --wake now is needed`);
+  if (posted && !closed && task.priority <= HELD_PRIORITY && team.config.wake.enabled) {
+    runtime.out.stderr(`NOTE ${shown} is woken at its idle prompt for ${task.id}, a ${priorityText(task.priority)}, so no --wake now is needed`);
   }
   return posted;
 }
