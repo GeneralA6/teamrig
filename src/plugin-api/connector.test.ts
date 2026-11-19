@@ -1,8 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { SecretScanner } from '../core/secrets.ts';
-import { FakeCredentials } from '../testing/fake-credentials.ts';
+import { connectorDeps } from '../testing/adapter-deps.ts';
+import { FakeIssueHost } from '../testing/fake-issue-host.ts';
 import { SUPPORTED, UNSUPPORTED, connectorDeclarationData, manifestOf } from '../testing/manifests.ts';
+import { trackerOnly } from '../testing/split-hosts.ts';
 import { connectorAdapterProblems, connectorDeclarationProblems, defineConnector, isConnectorAdapter, isConnectorDeclaration, type ConnectorDeps } from './connector.ts';
 
 const NOT_DEFINED = 'its entry is not made by defineConnector: it needs a declaration and a create function';
@@ -49,10 +50,19 @@ describe('defineConnector', () => {
   it('hands back the adapter it is given, whose create builds its ports from the deps', () => {
     const data = connectorDeclarationData();
     assert.ok(isConnectorDeclaration(data));
-    const adapter = defineConnector({ declaration: data, create: (deps: ConnectorDeps) => ({ tracker: { stamped: deps.stamp } }) });
-    const deps: ConnectorDeps = { run: () => Promise.reject(new Error('no program runs here')), credentials: new FakeCredentials(), env: {}, scanner: new SecretScanner(), stamp: true };
+    const tracker = trackerOnly(new FakeIssueHost());
+    const given: ConnectorDeps[] = [];
+    const adapter = defineConnector({
+      declaration: data,
+      create: (deps) => {
+        given.push(deps);
+        return { tracker };
+      },
+    });
+    const deps = connectorDeps();
     assert.equal(adapter.declaration, data);
-    assert.deepEqual(adapter.create(deps), { tracker: { stamped: true } });
+    assert.deepEqual(adapter.create(deps), { tracker });
+    assert.deepEqual(given, [deps]);
     assert.equal(isConnectorAdapter(adapter), true);
   });
 });
