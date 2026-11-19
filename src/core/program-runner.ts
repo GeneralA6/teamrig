@@ -1,10 +1,15 @@
 import { spawn } from 'node:child_process';
+import type { Env } from './home.ts';
 import { endOf, type ShellEnd } from './shell-end.ts';
 
-/** One run of a command-line tool: the program and its arguments, passed as a list and never read by a shell. */
+/**
+ * One run of a command-line tool: the program and its arguments, passed as a list and never read by a shell, and the
+ * environment it runs in when the caller sets one (a connector hands its tool a key there); else this process's own.
+ */
 export interface ProgramRequest {
   readonly program: string;
   readonly args: readonly string[];
+  readonly env?: Env;
 }
 
 export interface ProgramResult {
@@ -20,7 +25,8 @@ export type ProgramRunner = (request: ProgramRequest) => Promise<ProgramResult>;
 export function nodeProgramRunner(timeoutMs: number): ProgramRunner {
   return (request) =>
     new Promise((resolve, reject) => {
-      const child = spawn(request.program, [...request.args], { stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, windowsHide: true });
+      const env = request.env === undefined ? {} : { env: request.env };
+      const child = spawn(request.program, [...request.args], { ...env, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, windowsHide: true });
       const stdout: string[] = [];
       const stderr: string[] = [];
       child.stdout.setEncoding('utf8').on('data', (chunk: string) => stdout.push(chunk));
