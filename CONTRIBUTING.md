@@ -51,6 +51,26 @@ the rules that apply on every turn, and the project skills in `.claude/skills/` 
 - **Generic first**: every change has a reach, decided before it is built and stated in its task and its pull request
   (see [Where a change lives](#where-a-change-lives)).
 
+### What a change is held to
+
+The author builds to these and the reviewer checks each one:
+
+- **SOLID**: one reason to change per module; new behaviour added beside the old, not by editing what callers rely
+  on; small interfaces; code that depends on a port, not on the outside tool behind it.
+- **Reuse before writing**: search for the module, helper or fake that already does the job, and extend it. A second
+  copy of a rule drifts from the first.
+- **The architecture and the decisions already taken**: the change fits [how it works](docs/how-it-works.md), the
+  design issues marked `Agreed:` and the design docs, or it says which one it changes and why.
+- **Extensibility weighed early**: ask what a later, more mature architecture would need (another AI CLI, another
+  issue tracker, another UI over the [public interface](docs/public-interface.md)). Do now what is cheap now and
+  costly later, such as a port, a config key in place of a constant, or data in place of a branch in code. Build
+  no hook for a need no one has named. A design lists these early steps.
+- **Risks named**: every design, issue and pull request says what could go wrong (a break for a caller, a security
+  or data risk, a cost, a migration) and how each is softened, or says `none foreseen` and why.
+- **A critical, unbiased review**: the reviewer reads to find what is wrong, not to agree, and holds the change to
+  this list whoever wrote it. A wrong direction is declined or pushed back on, with the reason and the better way,
+  because a bad direction accepted costs far more than a round trip. Each finding says why.
+
 ## Where a change lives
 teamrig is its own main user: its own sessions build it with it, so a fix they need is most often one every team
 needs. Each change has one of three reaches, and generic is the default:
@@ -228,9 +248,9 @@ is turned off.
 | Form | Its type label | Sections (all required unless marked) |
 | --- | --- | --- |
 | Bug report | `bug` | What happened, What was expected, Steps, Version (`teamrig --version`), OS |
-| Task | `task` | What, Why, Done when |
-| Feature request | `feature` | Problem, Proposal, Alternatives (optional) |
-| Design | `design` | Question, Context, Options, Proposal (optional); talk, not work, until agreed ([Design issues](#design-issues)) |
+| Task | `task` | What, Why, Done when, Risks |
+| Feature request | `feature` | Problem, Proposal, Alternatives (optional), Risks |
+| Design | `design` | Question, Context, Options, Proposal (optional), Risks; talk, not work, until agreed ([Design issues](#design-issues)) |
 
 - **Title**: `<area>: <a plain sentence>`, such as `budget: the week line counts a retired session`.
 - **Labels** are listed in `.github/labels.json`. The form sets the type. Maintainers and the GitHub watcher set
@@ -260,8 +280,9 @@ join; agents follow [`dev-design-issue`](.claude/skills/dev-design-issue/SKILL.m
   every private value taken out.
 
 ## Pull requests
-- **The description**: the template asks for What, Why, Reach (see [Where a change lives](#where-a-change-lives)), Changes, Old-code proof (for a fix, the regression test that
-  fails on the old code), Tests and Issue (`Fixes #<n>` or `Refs #<n>`), then the checklist.
+- **The description**: the template asks for What, Why, Reach (see [Where a change lives](#where-a-change-lives)), Changes, Risks (see
+  [What a change is held to](#what-a-change-is-held-to)), Old-code proof (for a fix, the regression test that fails
+  on the old code), Tests and Issue (`Fixes #<n>` or `Refs #<n>`), then the checklist.
 - **From a fork**: fork the repository, branch off its `main`, and open the pull request against this repository's
   `main`. CI runs it with no secrets and a read-only token, and an outside contributor's run waits for the
   maintainer to approve it.
@@ -271,7 +292,8 @@ join; agents follow [`dev-design-issue`](.claude/skills/dev-design-issue/SKILL.m
 - **A flaky test leg**: the merge re-runs a test leg listed `flaky` in `tools/ship/repos.json` once when only it
   failed, and reads the checks once more after a GitHub server error or timeout; a second failure stops the merge.
 - **Review**: a code owner (`.github/CODEOWNERS`: the maintainer) reviews the code and approves the last push, and a
-  new push dismisses an approval given before it. On a threshold, limit or trigger the reviewer asks "can this
+  new push dismisses an approval given before it. The reviewer holds it to
+  [What a change is held to](#what-a-change-is-held-to) and declines a wrong direction. On a threshold, limit or trigger the reviewer asks "can this
   still fire?" and wants the spec of it firing in the real flow ([Tests](#tests)). A change to the git hooks, CI, the scrub or teamrig's guards
   (`.githooks/`, `.github/`, `tools/scrub/`, `tools/ci/`, `src/hooks/`, `src/push-guard/`, `src/secret-guard/`,
   `src/package-guard/`, `src/permissions/`) also gets a security review.
