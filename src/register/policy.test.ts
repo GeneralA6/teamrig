@@ -2144,4 +2144,14 @@ describe('RegisterPolicy: a blocker (T4329)', () => {
     assert.match(error(policy.update(waiting, 'alpha', { priority: BLOCKER_PRIORITY_ID }, undefined, state)), /T1 waiting on T4 is a plain wait/);
     assert.equal(error(policy.update({ ...waiting, priority: BLOCKER_PRIORITY_ID }, 'alpha', { title: 'Renamed' }, undefined, state)), 'allowed');
   });
+
+  it("refuses its owner's start of other work, --one-commit too, until the blocker is done", () => {
+    const other = testTask({ id: 'T5', status: 'open' });
+    const open: Task = { ...BLOCKER, status: 'open', startedAt: null };
+    const context: StatusContext = { ...CTX, state: stateOf(open, other) };
+    const refusal = 'alpha holds the blocker T1: drop everything and fix it first; start T5 once it is done or waits on an answer';
+    assert.equal(error(policy.setStatus(other, 'alpha', { status: 'in-progress' }, context)), refusal);
+    assert.equal(error(policy.setStatus(other, 'alpha', { status: 'in-progress', oneCommit: true }, context)), refusal);
+    assert.equal(error(policy.setStatus(other, 'alpha', { status: 'in-progress' }, { ...CTX, state: stateOf({ ...open, status: 'done' }, other) })), 'allowed');
+  });
 });
