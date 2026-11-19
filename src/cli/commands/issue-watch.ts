@@ -29,7 +29,7 @@ import { issueSync } from './issue-sync.ts';
 
 /**
  * `issue watch`: the team's one watch on its GitHub repositories, started hidden by the hooks (`ensureWatch`). Every
- * `github.probeSeconds` it asks GitHub whether each repository changed (IssueHost.watch: conditional reads, free when
+ * `github.probeSeconds` it asks GitHub whether each repository changed (IssueEvents.watch: conditional reads, free when
  * nothing changed) and runs `issue sync --auto` in this process only when one did (github/watch.ts readDue). It holds
  * a lease file with its pid and a beat, so one runs per team; it stops when the lease is another's, when the config
  * lists no repository or sets 0 seconds, under TEAMRIG_GITHUB=off, once no team session ran for 10 minutes, and once

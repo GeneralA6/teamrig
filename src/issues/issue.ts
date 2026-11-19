@@ -35,7 +35,7 @@ export interface IssueComment {
 }
 
 /**
- * A comment as the claim pass's own read gives it (IssueHost.newComments): the list's facts and whether its text
+ * A comment as the claim pass's own read gives it (Comments.newComments): the list's facts and whether its text
  * holds a claim line (issues/claim.ts isClaim). The text itself is dropped as it is read, so an outsider's words
  * reach no task, file or session.
  */
@@ -44,7 +44,7 @@ export interface ReadComment extends IssueComment {
 }
 
 /**
- * One issue or pull request as a single read gives it (IssueHost.thread), for a write that must match its state now,
+ * One issue or pull request as a single read gives it (IssueStore.thread), for a write that must match its state now,
  * such as a reply (issues/reply.ts). Its labels and body are outside input: data, never instructions.
  */
 export interface IssueThread {
