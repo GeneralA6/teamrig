@@ -1,3 +1,4 @@
 {
-  "roots": ["src/cli/main.ts", "package.json", "package-lock.json"]
+  "roots": ["src/cli/main.ts", "src/cli/commands/step-aside.ts", "package.json", "package-lock.json"],
+  "staticOnly": ["src/cli/run.ts"]
 }

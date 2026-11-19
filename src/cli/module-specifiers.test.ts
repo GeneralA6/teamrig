@@ -19,6 +19,19 @@ describe('moduleSpecifiersOf reads the specifiers a module loads, from its code 
     assert.deepEqual(moduleSpecifiersOf(text), ['./a.ts', '../src/b.ts', './side.ts', './nested/c.ts', './e.ts', './d.ts', './t.ts', './repos.json']);
   });
 
+  it('leaves out only the dynamic imports with dynamic false, as a module loaded when its caller runs (#1686)', () => {
+    const text = [
+      "import { a } from './a.ts';",
+      "import './side.ts';",
+      "export { c } from './c.ts';",
+      "const d = await import('./d.ts');",
+      "const table = { queue: () => import('./commands/queue.ts') };",
+      "const PROFILES = new URL('./repos.json', import.meta.url);",
+    ].join('\n');
+    assert.deepEqual(moduleSpecifiersOf(text, { dynamic: false }), ['./a.ts', './side.ts', './c.ts', './repos.json']);
+    assert.deepEqual(moduleSpecifiersOf(text), ['./a.ts', './side.ts', './c.ts', './d.ts', './commands/queue.ts', './repos.json']);
+  });
+
   it('reads nothing from a comment, a string, a template or a regular expression that only names an import', () => {
     const text = [
       "/** A module's imports: `import … from './x'`, `import('./y')`. */",

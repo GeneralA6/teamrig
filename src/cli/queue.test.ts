@@ -1469,6 +1469,28 @@ describe("teamrig queue refuses a waiting ship only when the code its tool runs 
     }
   });
 
+  it("runs it when only a CLI command the ship never runs changed, and refuses it when a command it runs did (#1686)", async () => {
+    /** A CLI whose command table loads each command when it runs, the ship running only step-aside. */
+    const withCommandTable = (git: FakeMergeGit): void => {
+      for (const commit of ['base', 'b1']) {
+        git.files.set(`${commit}:tools/ship/ship.roots.json`, '{"roots": ["src/cli/main.ts", "src/cli/commands/step-aside.ts"], "staticOnly": ["src/cli/run.ts"]}');
+        git.files.set(`${commit}:src/cli/main.ts`, "import './run.ts';\n");
+        git.files.set(`${commit}:src/cli/run.ts`, "export const table = { 'step-away': () => import('./commands/step-aside.ts'), queue: () => import('./commands/queue.ts') };\n");
+        git.files.set(`${commit}:src/cli/commands/step-aside.ts`, "export {};\n");
+        git.files.set(`${commit}:src/cli/commands/queue.ts`, "export {};\n");
+      }
+    };
+    for (const [changed, refused] of [[['src/cli/commands/queue.ts'], false], [['src/cli/commands/step-aside.ts'], true]] as const) {
+      const { kit, steps } = harness(SHIPPING);
+      await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
+      const { git, sleep } = movedTwice(kit, changed);
+      withCommandTable(git);
+      const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
+      const want = refused ? [EXIT.refused, `REFUSED ${movedFrom(` (${changed.join(', ')})`)}`, 0] : [EXIT.ok, result.stdout.at(-1), 1];
+      assert.deepEqual([result.code, result.stdout.at(-1), steps.ran.length], want, changed.join());
+    }
+  });
+
   it("refuses it when the commit it moved to is off main's history, or a file the tool runs is not there", async () => {
     const off = (git: FakeMergeGit): void => void git.ancestry.delete('b1>b2');
     const missing = (git: FakeMergeGit): void => void git.files.delete('b1:src/core/home.ts');

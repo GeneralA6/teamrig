@@ -22,10 +22,11 @@ interface OpenTemplate {
 
 /**
  * The specifiers `text` loads, in order: `import … from 'x'`, `export … from 'x'`, `import 'x'`, `import('x')` and
- * `new URL('x', …)`. Undefined when a comment, string, template or regular expression does not end, as the code
- * cannot then be told apart from text.
+ * `new URL('x', …)`, leaving out `import('x')` with `dynamic: false`: a module loaded only when the code that calls
+ * it runs. Undefined when a comment, string, template or regular expression does not end, as the code cannot then be
+ * told apart from text.
  */
-export function moduleSpecifiersOf(text: string): string[] | undefined {
+export function moduleSpecifiersOf(text: string, { dynamic = true }: { readonly dynamic?: boolean } = {}): string[] | undefined {
   const found: string[] = [];
   const recent: string[] = [];
   const push = (token: string): void => {
@@ -34,7 +35,7 @@ export function moduleSpecifiersOf(text: string): string[] | undefined {
   };
   const wantsSpecifier = (): boolean => {
     const [a, b, c] = [recent.at(-3), recent.at(-2), recent.at(-1)];
-    return c === 'from' || c === 'import' || (b === 'import' && c === '(') || (a === 'new' && b === 'URL' && c === '(');
+    return c === 'from' || c === 'import' || (dynamic && b === 'import' && c === '(') || (a === 'new' && b === 'URL' && c === '(');
   };
   const startsExpression = (): boolean => {
     const last = recent.at(-1);

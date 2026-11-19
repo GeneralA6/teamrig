@@ -33,11 +33,17 @@ describe('relativeImportsOf reads the files a module loads beside it (T3419)', (
 describe('toolRootsOf reads the files a ship tool runs beside its imports, as data (T3419)', () => {
   it("names the roots file beside the tool, and reads its roots as paths in the checkout", () => {
     assert.deepEqual([toolRootsPath('tools/ship/ship.ts'), toolRootsPath('bin/ship')], ['tools/ship/ship.roots.json', 'bin/ship.roots.json']);
-    assert.deepEqual(toolRootsOf('{"roots": ["src/cli/main.ts", "./package.json"]}'), ['src/cli/main.ts', 'package.json']);
+    assert.deepEqual(toolRootsOf('{"roots": ["src/cli/main.ts", "./package.json"]}'), { roots: ['src/cli/main.ts', 'package.json'], staticOnly: [] });
   });
 
-  it('tells nothing of a file that is no JSON of that shape, or a root that is absolute or leaves the checkout', () => {
-    for (const text of ['not json', '[]', '{"roots": "main.ts"}', '{"roots": [1]}', '{"roots": ["../x.ts"]}', '{"roots": ["/x.ts"]}', '{"roots": ["C:/x.ts"]}', '{"roots": ["."]}']) {
+  it('reads the modules whose import() calls are not followed, as paths in the checkout (#1686)', () => {
+    assert.deepEqual(toolRootsOf('{"roots": ["src/cli/main.ts"], "staticOnly": ["./src/cli/run.ts"]}'), { roots: ['src/cli/main.ts'], staticOnly: ['src/cli/run.ts'] });
+  });
+
+  it('tells nothing of a file that is no JSON of that shape, or a path that is absolute or leaves the checkout', () => {
+    const bad = ['not json', '[]', '{"roots": "main.ts"}', '{"roots": [1]}', '{"roots": ["../x.ts"]}', '{"roots": ["/x.ts"]}', '{"roots": ["C:/x.ts"]}', '{"roots": ["."]}'];
+    const badStaticOnly = ['{"roots": [], "staticOnly": "x.ts"}', '{"roots": [], "staticOnly": [1]}', '{"roots": [], "staticOnly": ["../x.ts"]}', '{"roots": [], "staticOnly": ["/x.ts"]}'];
+    for (const text of [...bad, ...badStaticOnly]) {
       assert.equal(toolRootsOf(text), undefined, text);
     }
   });
@@ -85,6 +91,28 @@ describe('toolCodeAt reads the code a ship tool runs at a commit (T3419)', () =>
     assert.deepEqual(toolCodeAt(git, '/repo', 'c', 'tools/ship/ship.ts'), ['package.json', 'src/cli/main.ts', 'src/cli/run.ts', 'tools/ship/ship.roots.json', 'tools/ship/ship.ts']);
   });
 
+  it("follows no import() of a staticOnly module, only its static imports and the commands named as roots (#1686)", () => {
+    const git = gitWith({
+      'tools/ship/ship.ts': "export {};\n",
+      'tools/ship/ship.roots.json': '{"roots": ["src/cli/main.ts", "src/cli/commands/step.ts"], "staticOnly": ["src/cli/run.ts"]}',
+      'src/cli/main.ts': "import './run.ts';\n",
+      'src/cli/run.ts': "import './args.ts';\nconst table = { step: () => import('./commands/step.ts'), queue: () => import('./commands/queue.ts') };\n",
+      'src/cli/args.ts': "export {};\n",
+      'src/cli/commands/step.ts': "const lazy = () => import('../locks.ts');\n",
+      'src/cli/locks.ts': "export {};\n",
+      'src/cli/commands/queue.ts': "export {};\n",
+    });
+    assert.deepEqual(toolCodeAt(git, '/repo', 'c', 'tools/ship/ship.ts'), [
+      'src/cli/args.ts',
+      'src/cli/commands/step.ts',
+      'src/cli/locks.ts',
+      'src/cli/main.ts',
+      'src/cli/run.ts',
+      'tools/ship/ship.roots.json',
+      'tools/ship/ship.ts',
+    ]);
+  });
+
   it('tells nothing when a file is not at the commit, one leaves the checkout, the code passes its file limit, or the roots cannot be read', () => {
     const missing = gitWith({ 'tools/ship/ship.ts': "import { a } from './a.ts';\n" });
     const outside = gitWith({ 'tools/ship/ship.ts': "import { x } from '../../../x.ts';\n" });
@@ -104,12 +132,17 @@ describe('toolCodeAt reads the code a ship tool runs at a commit (T3419)', () =>
     assert.equal(toolCodeAt(huge, '/repo', 'c', 'tools/ship/m0.ts'), undefined, 'huge');
   });
 
-  it("reads the whole code this repository's own ship tool runs at HEAD, the CLI it spawns and the package files included", () => {
+  it("reads the whole code this repository's own ship tool runs at HEAD, the CLI commands it spawns and the package files included", () => {
     const top = join(import.meta.dirname, '..', '..');
     const code = toolCodeAt(GIT_MERGE, top, 'HEAD', 'tools/ship/ship.ts');
     assert.ok(code !== undefined, 'the closure is defined at HEAD');
-    for (const file of ['tools/ship/ship.roots.json', 'tools/ship/repos.json', 'tools/ship/merge.ts', 'src/cli/main.ts', 'src/cli/run.ts', 'package.json', 'package-lock.json']) {
+    const runs = ['tools/ship/ship.roots.json', 'tools/ship/repos.json', 'tools/ship/merge.ts', 'src/cli/main.ts', 'src/cli/run.ts', 'src/cli/commands/step-aside.ts', 'package.json', 'package-lock.json'];
+    for (const file of runs) {
       assert.ok(code.includes(file), file);
+    }
+    // #1686: the ship runs only step-away and step-back, so another command's module is no code of its tool.
+    for (const file of ['src/cli/commands/issue-push.ts', 'src/cli/commands/hook-meeting-panel.ts']) {
+      assert.ok(!code.includes(file), file);
     }
   });
 });
