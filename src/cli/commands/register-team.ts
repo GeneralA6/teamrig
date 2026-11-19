@@ -9,8 +9,10 @@ import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import type { Task } from '../../register/fold.ts';
 import { priorityText } from '../../register/model.ts';
-import type { Register } from '../../register/register.ts';
-import { assignedNotice, dueTime } from '../../register/views.ts';
+import type { Verdict } from '../../register/policy.ts';
+import type { Register, WriteResult } from '../../register/register.ts';
+import { TaskTree } from '../../register/tree.ts';
+import { assignedNotice, dueTime, waitingOnYouText } from '../../register/views.ts';
 import { WakeAsks } from '../../wake/asks.ts';
 import { HELD_PRIORITY } from '../../wake/decide.ts';
 import { closedByTeamrig, closedWakeLine, wakeClosedSession } from '../closed-wake.ts';
@@ -18,6 +20,7 @@ import { openTeamKit, requireConfig, rosterOf, teamZone, type Access, type Kit }
 import type { CliRuntime } from '../runtime.ts';
 import { leadAboveOf } from '../tree.ts';
 import { teamRegister } from '../team-register.ts';
+import { askWake } from '../urgent-line.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /** A team a register command reads or writes: its config, register and roster, and the zone its people read times in. */
@@ -106,6 +109,43 @@ async function reopenForUrgent(runtime: CliRuntime, team: Team, adder: { readonl
     runtime.out.stderr(`${said} (${task.id} ${why})`);
   }
   return true;
+}
+
+/**
+ * Right-now work (p0 or above, T4414) a write left waiting on other sessions of the team ({@link TaskTree.waitsOn}):
+ * each it newly waits on, by its add, a raised priority, a new owner or a new wait or need, gets a line saying what
+ * (`T12 (p0, owner bravo) waits on your T7`) and a wake ask, and one teamrig closed reopens now, as `inbox add --wake
+ * now` does: else the work waits for the receiver's next prompt, or for a closed one the idle pass's next minute. One
+ * this write already told (`told`) gets the ask alone. Never the writer, nor a session of another team, whose wake
+ * goes through its lead; nothing with the team's wakes off. The sessions it reached.
+ */
+export async function wakeWaitedOn(runtime: CliRuntime, team: Team, by: string, verdict: Verdict<WriteResult>, told: readonly string[]): Promise<readonly string[]> {
+  if (!verdict.ok || !team.config.wake.enabled || !isRightNow(verdict.value.task.priority)) {
+    return [];
+  }
+  const { task, before, state, elsewhere } = verdict.value;
+  const now = runtime.clock.now();
+  const tree = new TaskTree(state.tasks, new Date(now), team.zone, undefined, elsewhere);
+  const earlier = new Set(before !== null && isRightNow(before.priority) ? tree.waitsOn(before).map((entry) => entry.session) : []);
+  const place = { paths: team.paths, config: team.config, roster: async () => team.roster };
+  const reached: string[] = [];
+  for (const entry of tree.waitsOn(task)) {
+    const { session } = entry;
+    if (earlier.has(session) || session === by || !team.config.sessions.includes(session)) {
+      continue;
+    }
+    const text = waitingOnYouText(entry);
+    if (!told.includes(session) && !(await tellLine(runtime, team, by, session, text, `${session} was not told that ${task.id} waits on it`))) {
+      continue;
+    }
+    runtime.out.stderr(`NOTE ${session} gets a wake ask: ${task.id} is a ${priorityText(task.priority)} waiting on it`);
+    const problem = await askWake(runtime, place, { to: session, from: by, text }, now, true);
+    if (problem !== undefined) {
+      runtime.out.stderr(`WARN ${session} has the line, but ${problem}: ${KIT_NAME} inbox add --to ${session} --text "..." --wake now`);
+    }
+    reached.push(session);
+  }
+  return reached;
 }
 
 /**
