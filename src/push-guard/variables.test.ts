@@ -330,6 +330,7 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
       'cat <<$D\nB=feat\n$D\ngit push origin $B',
       'cat <<EOF\nB=feat\ngit push origin $B',
       'B=feat; wait -p B; git push origin $B',
+      'B=feat; jobs -x read B; git push origin $B',
       'B=feat; trap "B=main" DEBUG; git push origin $B',
     ]) {
       assert.match(pushCommand(line), /~\$/, line);
