@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { TEST_SYSTEMS, testSystems } from '../ci/change-kind.ts';
 import { parseProfiles, profileFor, readProfiles, repoSlugs, slugOf } from './repos.ts';
 import { DIST } from './ship-commits.ts';
 import { TEAMRIG_RELEASE_MANIFEST, TEAMRIG_VERSION_FILES } from './version-bump.ts';
@@ -155,9 +156,12 @@ test('the shipped repos.json still lists every job a teamrig pull request runs, 
   for (const job of jobs) assert.ok(teamrig.checks.includes(job), `ci.yml job "${job}" is missing from repos.json, so a CI merge would not wait for it`);
   const tests = teamrig.checks.filter(check => check.startsWith('test ('));
   assert.deepEqual(tests, ['ubuntu-latest', 'windows-latest', 'macos-latest'].map(os => `test (${os}, node 22)`));
-  const matrix = (key: string): string[] => (new RegExp(`^ {8}${key}: \\[([^\\]]+)\\]$`, 'm').exec(workflow)?.[1] ?? '').split(',').map(item => item.trim());
-  const run = matrix('os').flatMap(os => matrix('node').map(node => `test (${os}, node ${node})`));
-  assert.deepEqual(tests, run, 'repos.json must wait for exactly the test runs ci.yml\'s matrix makes');
+  const nodes = (/^ {8}node: \[([^\]]+)\]$/m.exec(workflow)?.[1] ?? '').split(',').map(item => item.trim());
+  const leg = (os: string): string[] => nodes.map(node => `test (${os}, node ${node})`);
+  assert.match(workflow, /^ {8}os: \$\{\{ fromJSON\(needs\.changes\.outputs\.systems\) \}\}$/m, 'the matrix runs the systems change-kind-cli.ts names');
+  assert.deepEqual(tests, TEST_SYSTEMS.flatMap(leg), 'repos.json must wait for exactly the test runs ci.yml\'s matrix makes for a code change');
+  const leftOut = TEST_SYSTEMS.filter(os => !testSystems('docs').includes(os)).flatMap(leg);
+  assert.deepEqual(teamrig.conditional, leftOut, 'a docs run leaves these legs out, so a merge must not wait for them once the summary passed');
   assert.equal(teamrig.checks.length, jobs.length + tests.length);
 });
 

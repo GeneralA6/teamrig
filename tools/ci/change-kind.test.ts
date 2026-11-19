@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeGit } from '../lib/fake-git.ts';
 import { GitError } from '../lib/git.ts';
-import { changeKindOf, classifyChange, describeChange } from './change-kind.ts';
+import { TEST_SYSTEMS, changeKindOf, classifyChange, describeChange, testSystems } from './change-kind.ts';
 
 const DIFF = 'diff --name-only --no-renames -z base...head';
 
@@ -27,6 +27,14 @@ describe('changeKindOf', () => {
 
   it('is code for no file at all, so an empty diff never skips a check', () => {
     assert.equal(changeKindOf([]), 'code');
+  });
+});
+
+describe('testSystems', () => {
+  it('tests a code change on every runner, and a docs or design change on ubuntu alone', () => {
+    assert.deepEqual(testSystems('code'), TEST_SYSTEMS);
+    assert.deepEqual(testSystems('docs'), ['ubuntu-latest']);
+    assert.deepEqual(testSystems('design'), ['ubuntu-latest']);
   });
 });
 

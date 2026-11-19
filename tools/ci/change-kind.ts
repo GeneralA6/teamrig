@@ -23,6 +23,18 @@ export function changeKindOf(files: readonly string[]): ChangeKind {
   return 'code';
 }
 
+/**
+ * The runners of ci.yml's test matrix for a code change: paths, renames and hook launch differ by OS. ci.yml reads the
+ * run's list from change-kind-cli.ts, and the specs holding the docs and the ship's repos.json to the matrix read it here.
+ */
+export const TEST_SYSTEMS = ['ubuntu-latest', 'windows-latest', 'macos-latest'] as const;
+export type TestSystem = (typeof TEST_SYSTEMS)[number];
+
+/** The runners a change of `kind` is tested on: a docs or design change changes no code, so ubuntu alone. */
+export function testSystems(kind: ChangeKind): readonly TestSystem[] {
+  return kind === 'code' ? TEST_SYSTEMS : ['ubuntu-latest'];
+}
+
 /** A change's kind and the files that decided it; no files when there was no base to compare with. */
 export interface ChangeReport {
   readonly kind: ChangeKind;

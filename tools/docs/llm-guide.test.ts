@@ -7,6 +7,7 @@ import { formatSnapshot, parseSnapshot } from '../../src/budget/snapshot.ts';
 import { HELP_FLAGS } from '../../src/cli/args.ts';
 import { COMMAND_FLAGS, COMMAND_SWITCHES, HELP, VERSION } from '../../src/cli/run.ts';
 import { DEFAULT_LEAD_LAUNCH } from '../../src/config/defaults.ts';
+import { TEST_SYSTEMS } from '../ci/change-kind.ts';
 import { headingAnchors, type DocFile } from './doc-check.ts';
 
 /**
@@ -286,7 +287,7 @@ describe('the requirements in the guide', () => {
     const ci = read('.github/workflows/ci.yml');
     const list = (key: string): string[] =>
       (new RegExp(`^\\s*${key}: \\[([^\\]]+)\\]`, 'm').exec(ci)?.[1] ?? '').split(',').map((item) => item.trim().replace(/-latest$/, ''));
-    const systems = list('os');
+    const systems = TEST_SYSTEMS.map((system) => system.replace(/-latest$/, ''));
     const nodes = list('node');
     assert.ok(systems.length > 1 && nodes.length > 0, 'ci.yml has an os and node matrix');
     assert.ok(requirements.includes(`CI runs the tests on ${systems.slice(0, -1).join(', ')} and ${systems.at(-1) ?? ''}`), `requirements.md names ${systems.join(', ')}`);

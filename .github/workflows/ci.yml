@@ -36,6 +36,7 @@ jobs:
     timeout-minutes: 20
     outputs:
       kind: ${{ steps.kind.outputs.kind }}
+      systems: ${{ steps.kind.outputs.systems }}
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -143,15 +144,16 @@ jobs:
 
   test:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})
-    # Each run tests all three OSes, since paths, renames and hook launch differ by OS (macOS minutes
+    # A code change is tested on all three OSes, since paths, renames and hook launch differ by OS (macOS minutes
     # bill at 10x, Windows at 2x). Node 22 only, to ease the shared free GitHub runners. A docs or design change
-    # changes no code, so it runs on ubuntu alone, only the steps its kind names (change kind above).
+    # changes no code, so it runs on ubuntu alone, only the steps its kind names; the runners come from change kind
+    # above (TEST_SYSTEMS in tools/ci/change-kind.ts).
     needs: changes
     if: ${{ !github.event.repository.private }}
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(needs.changes.outputs.kind == 'code' && '["ubuntu-latest", "windows-latest", "macos-latest"]' || '["ubuntu-latest"]') }}
+        os: ${{ fromJSON(needs.changes.outputs.systems) }}
         node: [22]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20

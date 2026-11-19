@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { COMMAND_EFFECTS } from '../../src/cli/run.ts';
+import { TEST_SYSTEMS, type TestSystem } from '../ci/change-kind.ts';
 
 /**
  * docs/features.md held to the CLI: it names every command a person or a session runs, as `teamrig <command>` or
@@ -14,17 +15,19 @@ const FEATURES = readFileSync(fileURLToPath(new URL('../../docs/features.md', im
 const CI = readFileSync(fileURLToPath(new URL('../../.github/workflows/ci.yml', import.meta.url)), 'utf8');
 
 /** How the features page names each runner of the test matrix. */
-const SYSTEMS: Readonly<Record<string, string>> = { 'ubuntu-latest': 'Linux', 'windows-latest': 'Windows', 'macos-latest': 'macOS' };
+const SYSTEMS: Readonly<Record<TestSystem, string>> = { 'ubuntu-latest': 'Linux', 'windows-latest': 'Windows', 'macos-latest': 'macOS' };
 
-/** The systems and Node versions of the CI `test` job's matrix, as its one-line lists give them. */
-function testMatrix(): { readonly os: readonly string[]; readonly node: readonly string[] } {
+/**
+ * The systems a code change is tested on (the matrix reads them from change-kind-cli.ts) and the Node versions of the
+ * CI `test` job's matrix, as its one-line list gives them.
+ */
+function testMatrix(): { readonly os: readonly TestSystem[]; readonly node: readonly string[] } {
   const job = CI.slice(CI.indexOf('\n  test:\n'));
-  const list = (key: string): string[] =>
-    (new RegExp(`\\n\\s+${key}: \\[([^\\]]*)\\]`).exec(job)?.[1] ?? '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter((item) => item !== '');
-  return { os: list('os'), node: list('node') };
+  const node = (/\n\s+node: \[([^\]]*)\]/.exec(job)?.[1] ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item !== '');
+  return { os: TEST_SYSTEMS, node };
 }
 /** A command word: lower-case words joined by hyphens (`deploy-status`), none of them a regular-expression character. */
 const WORD = /^[a-z]+(-[a-z]+)*$/;
@@ -63,7 +66,7 @@ describe('docs/features.md', () => {
     const matrix = testMatrix();
     assert.ok(matrix.os.length > 0 && matrix.node.length > 0, 'the test job has a matrix');
     for (const os of matrix.os) {
-      assert.ok(row.includes(SYSTEMS[os] ?? os), `${os}: ${row}`);
+      assert.ok(row.includes(SYSTEMS[os]), `${os}: ${row}`);
     }
     assert.ok(row.includes(`Node ${matrix.node.join(' and ')}`), row);
     assert.match(row, /merges only when every check passed/);

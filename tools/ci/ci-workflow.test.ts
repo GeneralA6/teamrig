@@ -138,7 +138,7 @@ describe('ci.yml', () => {
     assert.equal(checks[0], CHANGES, 'the summary needs it first, as every gated job does');
     const changes = jobs.get(CHANGES) ?? '';
     assert.match(changes, /^ {4}name: change kind$/m);
-    assert.match(changes, /^ {4}outputs:\n {6}kind: \$\{\{ steps\.kind\.outputs\.kind \}\}$/m);
+    assert.match(changes, /^ {4}outputs:\n {6}kind: \$\{\{ steps\.kind\.outputs\.kind \}\}\n {6}systems: \$\{\{ steps\.kind\.outputs\.systems \}\}$/m);
     assert.match(changes, /^ {10}fetch-depth: 0$/m, "a pull request's base must be in the checkout to compare with");
     assert.match(changes, /^ {6}- id: kind\n {8}run: node tools\/ci\/change-kind-cli\.ts --github$/m);
   });
@@ -164,10 +164,7 @@ describe('ci.yml', () => {
 
   it('tests a code change on every OS, and a docs or design change on ubuntu alone with only its own steps', () => {
     const test = jobs.get('test') ?? '';
-    assert.match(
-      test,
-      /^ {8}os: \$\{\{ fromJSON\(needs\.changes\.outputs\.kind == 'code' && '\["ubuntu-latest", "windows-latest", "macos-latest"\]' \|\| '\["ubuntu-latest"\]'\) \}\}$/m,
-    );
+    assert.match(test, /^ {8}os: \$\{\{ fromJSON\(needs\.changes\.outputs\.systems\) \}\}$/m, 'the runners change-kind-cli.ts names (testSystems)');
     assert.deepEqual(stepsOf(test), [
       { does: 'actions/checkout', when: undefined },
       { does: 'actions/setup-node', when: undefined },
