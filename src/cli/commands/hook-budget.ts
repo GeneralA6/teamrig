@@ -24,7 +24,8 @@ import { WarnStore } from '../../budget/warn-store.ts';
 import { wSince } from '../../budget/week.ts';
 import { cachedWork, WORK_CACHE_FILE } from '../../budget/work.ts';
 import { postLine } from '../../inbox/inbox.ts';
-import { holdBack } from '../../hooks/permission.ts';
+import { heldBack } from '../../hooks/permission.ts';
+import type { HookReply } from '../../ports/host/index.ts';
 import { helperLaunchReminder } from '../../rules/helper-default.ts';
 import { accountWeekOn, otherTeamsOnAccount } from '../account-teams.ts';
 import { transcriptsOf, usageOf } from '../host.ts';
@@ -277,12 +278,12 @@ async function budgetGateOf(runtime: CliRuntime, scope: BudgetScope, transcript:
 }
 
 /**
- * The PreToolUse output at each helper launch: rule 8's helper default as model context (`helperLaunchReminder`),
- * plus the budget's ask or refusal when it holds the launch back (an ask is a refusal under `prompts.hookAsks: refuse`).
+ * The reply at each helper launch: rule 8's helper default as model context (`helperLaunchReminder`), plus the
+ * budget's refusal when it holds the launch back (what it would have asked a person about is refused too, see
+ * `heldBack`).
  */
-export async function helperGateOutput(runtime: CliRuntime, scope: BudgetScope, transcript: string | undefined): Promise<string> {
+export async function helperGateReply(runtime: CliRuntime, scope: BudgetScope, transcript: string | undefined): Promise<HookReply> {
   const gate = await budgetGateOf(runtime, scope, transcript);
-  const decision = gate.kind === 'allow' ? {} : holdBack(gate.kind, gate.reason);
-  const additionalContext = helperLaunchReminder(scope.config.budget.subagentWeight);
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', ...decision, additionalContext } });
+  const context = helperLaunchReminder(scope.config.budget.subagentWeight);
+  return gate.kind === 'allow' ? { context } : { ...heldBack(gate.kind, gate.reason), context };
 }
