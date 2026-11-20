@@ -35,9 +35,37 @@ export {
   type Toggle,
 } from '../features/registry.ts';
 export type { CredentialRead, CredentialStore } from '../core/credentials.ts';
+// What a connector reads an API's answer with: outside JSON is narrowed, never cast.
+export { isRecord, isStringArray, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 export type { Env } from '../core/home.ts';
 export type { HttpClient, HttpMethod, HttpRequest, HttpResult } from '../core/http.ts';
-export type { CodeHost, Tracker } from '../issues/host.ts';
+// The footer of a text a connector posts: taken off a text already stamped, and its parts for a tool with no Markdown.
+export { stampCredit, withoutStampFooter, type StampCredit } from '../core/stamp.ts';
+// Whether a comment's text is a claim line: a tracker matches it as it reads the comment, and drops the text.
+export { isClaim } from '../issues/claim.ts';
+export type {
+  CloseReason,
+  CodeHost,
+  HostAssignee,
+  HostComments,
+  HostEnd,
+  HostIssueId,
+  HostIssueLabels,
+  HostLabel,
+  HostLinks,
+  HostList,
+  HostOpen,
+  HostReach,
+  HostUse,
+  HostViewer,
+  HostWatch,
+  IssueDraft,
+  IssueTarget,
+  LabelSpec,
+  Tracker,
+  WatchMarks,
+} from '../issues/host.ts';
+export type { HostIssue, IssueComment, ReadComment } from '../issues/issue.ts';
 export type { ProgramRequest, ProgramResult, ProgramRunner } from '../core/program-runner.ts';
 export type { SecretScanner } from '../core/secrets.ts';
 export type { ShellEnd } from '../core/shell-end.ts';
