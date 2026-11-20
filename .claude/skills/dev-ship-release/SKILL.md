@@ -9,9 +9,8 @@ The `release` workflow (`.github/workflows/release.yml`) keeps one release pull 
 it raises the version in `plugins/teamrig/.claude-plugin/plugin.json` and `src/core/version.ts` and adds the notes to
 `CHANGELOG.md`. `tools/ship/repos.json` names its branch and changelog under the repository's `release` key.
 teamrig-pane's release pull request (its own release-please, component `teamrig-pane`) merges the same way, with the
-pane's main checkout as `<repo dir>`: it raises `plugins/teamrig-pane/.claude-plugin/plugin.json` and the
-`.release-please-manifest.json`, and the release check reads any `plugins/<name>/.claude-plugin/plugin.json` as a
-version file (T4821).
+pane's main checkout as `<repo dir>`: it raises the pane's plugin manifest and its release-please manifest, and the
+release check reads any `plugins/<name>/.claude-plugin/plugin.json` as a version file (T4821).
 
 1. Add a release task for the session that ships releases, saying which version it ships, and read the pull
    request's head: `git fetch origin` and `git rev-parse origin/<release head>`, the head `repos.json` names.
