@@ -911,7 +911,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       backup, or NO BACKUP; works before a team exists; it only reads
   config get [<key>] [--json]   every key of the team config, or those at and under <key>: its value
       against its default, and read-only with why (the roster, an owner gate, a folder, a map, a key off
-      the lead's list); --json for a screen
+      the lead's list); <key> may name a key under a map entry the file holds
+      (delivery.repos.<name>.shipTool), read-only; --json for a screen
   config set <key> <value> | config set <key> --unset [--yes] [--session <id|name>]   the lead only:
       changes one key config get marks editable, the value read by the key's type (a list as JSON or
       a,b); --unset removes it to read its default; without --yes it shows the change; the whole new

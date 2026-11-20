@@ -79,6 +79,7 @@ const ROSTER_KEYS: ReadonlySet<string> = new Set(['team', 'sessions', 'names', '
 const ROSTER_NOTE = 'the roster: changed only by teamrig hire, retire, rename, promote and demote';
 const VERSION_NOTE = 'the config format: teamrig config migrate writes it';
 const STRUCTURE_NOTE = 'a list of records or a map: edit it in config.json or with its own command';
+const ENTRY_NOTE = 'an entry of a map: edit it in config.json or with its own command';
 const SKIPPED_KEYS: ReadonlySet<string> = new Set(['$schema']);
 
 /**
@@ -121,6 +122,55 @@ export function rowsUnder(rows: readonly SettingRow[], path: string): readonly S
   return rows.filter((row) => row.path === path || row.path.startsWith(`${path}.`));
 }
 
+/**
+ * The rows at `path` or under it when the path runs through an entry of a map the team's file holds, such as
+ * `delivery.repos.<name>.shipTool`: settingRows lists such a map as one row, so its entries' keys are found only here.
+ * Empty for an entry the file does not hold, a path with no map entry in it, or a key the schema does not describe.
+ * The rows are read-only: an entry is edited in config.json or with its own command.
+ */
+export function entryRows(schema: JsonRecord, raw: JsonRecord, issues: readonly ConfigIssue[], path: string): readonly SettingRow[] {
+  const definitions = isRecord(schema['$defs']) ? schema['$defs'] : {};
+  const parts = path.split('.');
+  const group = parts[0] ?? path;
+  let node: JsonRecord | undefined = { type: 'object', properties: isRecord(schema['properties']) ? schema['properties'] : {} };
+  let value: unknown = raw;
+  let throughEntry = false;
+  for (const part of parts) {
+    const properties = node !== undefined && isRecord(node['properties']) ? node['properties'] : {};
+    const entry = node === undefined ? undefined : node['additionalProperties'];
+    const values = isRecord(value) ? value : {};
+    if (Object.hasOwn(properties, part)) {
+      node = resolve(properties[part], definitions);
+    } else if (isRecord(entry) && Object.hasOwn(values, part)) {
+      node = resolve(entry, definitions);
+      throughEntry = true;
+    } else {
+      return [];
+    }
+    value = values[part];
+  }
+  if (!throughEntry || node === undefined) {
+    return [];
+  }
+  const rows: SettingRow[] = [];
+  const walk = (at: string, here: JsonRecord, written: unknown): void => {
+    const nested = isRecord(here['properties']) ? here['properties'] : undefined;
+    if (here['type'] !== 'object' || nested === undefined || Object.keys(nested).length === 0) {
+      rows.push(rowOf(at, group, here, written, issues, new Set(), ENTRY_NOTE));
+      return;
+    }
+    const values = isRecord(written) ? written : {};
+    for (const [key, child] of Object.entries(nested)) {
+      const resolved = resolve(child, definitions);
+      if (resolved !== undefined) {
+        walk(`${at}.${key}`, resolved, values[key]);
+      }
+    }
+  };
+  walk(path, node, value);
+  return rows;
+}
+
 function rowOf(
   path: string,
   group: string,
@@ -128,6 +178,7 @@ function rowOf(
   written: unknown,
   issues: readonly ConfigIssue[],
   leadKeys: ReadonlySet<string>,
+  unlisted: string = UNLISTED_NOTE,
 ): SettingRow {
   const fallback = node['default'];
   const value = written === undefined ? fallback : written;
@@ -138,7 +189,7 @@ function rowOf(
   const readOnly =
     gatedBy !== undefined && !ROSTER_KEYS.has(group)
       ? `owner gate: ${gatedBy}`
-      : (readOnlyNote(path, group, type, items) ?? (leadKeys.has(path) ? undefined : UNLISTED_NOTE));
+      : (readOnlyNote(path, group, type, items) ?? (leadKeys.has(path) ? undefined : unlisted));
   const problem = issues.find((issue) => isAtOrUnder(issue.path, path));
   return {
     path,

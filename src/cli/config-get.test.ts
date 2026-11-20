@@ -72,6 +72,18 @@ describe('config get', () => {
     assert.equal(rowsOf(result.stdout)[0]?.['value'], 20);
   });
 
+  it('reads a key under a map entry the file holds, and refuses one under an entry it does not', async () => {
+    const team: JsonRecord = { ...CURRENT_TEAM, delivery: { repos: { example: { mainCheckout: 'repo', shipTool: 'tools/ship' } } } };
+    const held = await (await teamWithSchema(team)).run(['config', 'get', 'delivery.repos.example.shipTool'], { self: SELF });
+    assert.equal(held.code, EXIT.ok);
+    assert.deepEqual(held.stdout, ['delivery.repos.example.shipTool "tools/ship"  (read-only: owner gate: permissions)']);
+    const entry = await (await teamWithSchema(team)).run(['config', 'get', 'delivery.repos.example', '--json'], { self: SELF });
+    assert.ok(rowsOf(entry.stdout).some((row) => row['path'] === 'delivery.repos.example.mainCheckout' && row['value'] === 'repo'));
+    const missing = await (await teamWithSchema(team)).run(['config', 'get', 'delivery.repos.other.shipTool'], { self: SELF });
+    assert.equal(missing.code, EXIT.refused);
+    assert.match(missing.stdout[0] ?? '', /the config has no key delivery\.repos\.other\.shipTool; teamrig config get lists them$/);
+  });
+
   it('refuses an unknown key, a second key, a config it cannot read and a missing schema', async () => {
     const unknown = await (await teamWithSchema()).run(['config', 'get', 'message'], { self: SELF });
     assert.equal(unknown.code, EXIT.refused);

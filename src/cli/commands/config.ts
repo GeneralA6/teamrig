@@ -2,7 +2,7 @@ import { extname, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { migrationBackupName, type ConfigLoad } from '../../config/load.ts';
 import { settingAt, settingValueOf, withSetting } from '../../config/setting-edit.ts';
-import { rowsUnder, settingRows, type SettingRow } from '../../config/settings.ts';
+import { entryRows, rowsUnder, settingRows, type SettingRow } from '../../config/settings.ts';
 import { isRecord, type JsonRecord } from '../../core/guards.ts';
 import { clientRootOf } from '../../exec/client-integrity.ts';
 import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
@@ -35,7 +35,7 @@ export async function get(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   if (load.status === 'unreadable') {
     throw new RefusedError(`${load.path} cannot be read: ${issueText(load.issue)}; teamrig config validate shows it`);
   }
-  const all = await settingRowsOf(runtime, load);
+  const all = await settingRowsOf(runtime, load, key);
   const rows = key === undefined ? all : rowsUnder(all, key);
   if (rows.length === 0) {
     throw new RefusedError(`the config has no key ${key ?? ''}; teamrig config get lists them`);
@@ -50,8 +50,11 @@ export async function get(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
 
 type LoadedConfig = Extract<ConfigLoad, { readonly status: 'loaded' }>;
 
-/** Every key the schema beside this CLI describes, read against the team's file. */
-async function settingRowsOf(runtime: CliRuntime, load: LoadedConfig): Promise<readonly SettingRow[]> {
+/**
+ * Every key the schema beside this CLI describes, read against the team's file; with `key` under an entry of a map the
+ * file holds (`delivery.repos.<name>.shipTool`), that entry's rows, which the full list shows only as the map.
+ */
+async function settingRowsOf(runtime: CliRuntime, load: LoadedConfig, key?: string): Promise<readonly SettingRow[]> {
   const schemaPath = configSchemaPathOf(runtime.self.script);
   const schema = parsedRecord(await runtime.files.read(schemaPath));
   if (schema === undefined) {
@@ -60,7 +63,8 @@ async function settingRowsOf(runtime: CliRuntime, load: LoadedConfig): Promise<r
   // The file as written, so a row shows what the team set, not the parsed value; an older format is read migrated, as
   // every command reads it.
   const raw = load.pending?.migrated ?? parsedRecord(await runtime.files.read(load.path)) ?? {};
-  return settingRows(schema, raw, load.issues);
+  const rows = settingRows(schema, raw, load.issues);
+  return key === undefined || rowsUnder(rows, key).length > 0 ? rows : entryRows(schema, raw, load.issues, key);
 }
 
 export const SET_BACKUP_NAME = 'config.set';

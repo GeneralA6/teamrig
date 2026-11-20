@@ -4436,7 +4436,9 @@ every guard (each `<name>Guard`), `alerts`, `refresh.endCommand`, `register.owne
 `open.idle`). The lead may set only the keys on teamrig's list of lead keys, so a key a new release adds stays the
 owner's until that list names it. Three listed keys rest on the lead's judgment: `register.review.mode` and
 `register.review.requireOn` (what a bug's review needs) and `github.repos` (the repositories teamrig writes issues
-to). A value `config validate` finds wrong is named with its problem, read as its default meanwhile.
+to). A value `config validate` finds wrong is named with its problem, read as its default meanwhile. A map lists as
+one key; `<key>` may name a key under one of its entries the file holds (`delivery.repos.<name>.shipTool`,
+`delivery.repos.<name>`), read-only, so a setup script can read back what it wrote.
 
 Flags:
 
@@ -4457,7 +4459,8 @@ messages.maxLines 12  (default 10)
 messages.coldAfterMinutes 60
 ```
 
-It refuses a key the config does not have, and a config it cannot read.
+It refuses a key the config does not have, a key under a map entry the file does not hold, and a config it cannot
+read.
 
 ### teamrig config set
 
