@@ -48,7 +48,7 @@ metered, and no line wakes a session: each session reads its own inbox.
 1. Put the `teamrig` command on the path: clone the repository and add `plugins/teamrig/bin` to `PATH` (Node 22 or
    newer). The plugin's commands work as they do under Claude Code.
 2. Describe the team in `~/.teamrig/teams/<team>/config.json` and tie the project to it with `.teamrig.json`, as in
-   [Set up a team by hand](setup-by-hand.md).
+   [Set up a team by hand](../setup-by-hand.md).
 3. Give each Codex session its name: start it as `TEAMRIG_SESSION=<name> codex` (in PowerShell, set
    `$env:TEAMRIG_SESSION` first). Codex puts its own thread id in every shell it runs, as `CODEX_THREAD_ID`
    (`protocol/src/shell_environment.rs`), but teamrig does not read it yet.
@@ -237,7 +237,7 @@ S under 200, M 200 to 600, L over 600.
 | 5 | Budget per host | first a read-only pass: per-chat `total_token_usage` and `last_token_usage`, and the rate-limit snapshot as its own reading per account, no transcript text read; then discover, weights and the week reading for Codex, two meters, a budget block per host | L |
 | 6 | Sessions | launch, resume, process finder, child environment, wake by `codex queue`, refresh by restart | M |
 | 7 | Install and setup | install and update per host, the path launcher, team skills in `~/.agents/skills`, agent types to TOML, the `/hooks` step in the guides | M |
-| 8 | Docs | a host column in [Features](features.md), the Codex setup guide | S |
+| 8 | Docs | a host column in [Features](../features.md), the Codex setup guide | S |
 
 Slices 1 and 2 meet #634's first acceptance checks; 3 meets its guard check. The rest can follow in any order, each
 gated on its proofs below.
