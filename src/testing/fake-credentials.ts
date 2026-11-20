@@ -1,5 +1,5 @@
 import type { CredentialRead, CredentialStore } from '../core/credentials.ts';
-import { tokenName } from '../github/tokens.ts';
+import { tokenName } from '../issues/token-names.ts';
 
 /** The repository owners the specs' GitHub teams list: `acme/web`, `globex/api`. */
 export const TEST_OWNERS: readonly string[] = ['acme', 'globex'];

@@ -1,4 +1,4 @@
-import { plainLine } from './issues.ts';
+import { plainLine } from '../core/printable.ts';
 
 /** Lines of a failed step's log a session is shown: its last ones, where the error is. */
 export const EXCERPT_LINES = 20;
