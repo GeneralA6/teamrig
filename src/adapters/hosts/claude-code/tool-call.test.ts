@@ -75,6 +75,19 @@ describe("Claude Code's other tools", () => {
     assert.deepEqual(call('SendMessage', message), { kind: 'message', name: 'SendMessage', input: message, to: 'lead', text: 'done' });
   });
 
+  it("name a message's receiver without the [ref] that tells two sessions of one name apart, and none for a blank name", () => {
+    const receiverOf = (to: unknown): unknown => {
+      const sent = call('SendMessage', { to });
+      return sent.kind === 'message' ? sent.to : 'no message';
+    };
+    assert.equal(receiverOf('app-alpha [uds:4f2a]'), 'app-alpha');
+    assert.equal(receiverOf(' app-alpha '), 'app-alpha');
+    assert.equal(receiverOf(' '), undefined);
+    assert.equal(receiverOf('[3fa9c1]'), undefined);
+    assert.equal(receiverOf(7), undefined);
+    assert.equal(call('SendMessage', { to: 'lead', notify_when_idle: true }).input['message'], undefined);
+  });
+
   it('are `other` when no row names them, a name every object has too', () => {
     assert.deepEqual(call('mcp__server__tool', { a: 1 }), { kind: 'other', name: 'mcp__server__tool', input: { a: 1 } });
     assert.deepEqual(call('toString', {}), { kind: 'other', name: 'toString', input: {} });
