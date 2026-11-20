@@ -1,8 +1,6 @@
 import { isEffortLevel, type EffortLevel, type KitConfig } from '../../config/types.ts';
-import { stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV, type TeamPaths } from '../../core/home.ts';
-import { payloadEffortOf } from '../../hooks/model-check.ts';
-import { sessionIdOf } from '../../inbox/inbox.ts';
+import type { HookEvent } from '../../ports/host/index.ts';
 import { noticeOf, type NoticeDecision, type StopContext } from '../../refresh/decide.ts';
 import { claudeProcessOf, restartMayAct } from '../../refresh/restart.ts';
 import type { ParkedRestart, RestartRequest, RestartTab } from '../../refresh/state.ts';
@@ -13,28 +11,25 @@ import { teamZone } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
 
-/** What the automatic restart needs from the Stop hook's payload and environment. */
+/** What the automatic restart needs from the turn end's hook event and environment. */
 export interface RestartTarget {
   readonly claudeSession: string;
   readonly transcript: string;
   readonly cwd: string | null;
   /** Where a new tab opens: Claude Code's project folder, else the session's working folder. */
   readonly project: string;
-  /** The effort level the turn ran at (`payloadEffortOf`); null when the payload names none teamrig knows. */
+  /** The effort level the turn ran at; null when the event names none teamrig knows. */
   readonly effort: EffortLevel | null;
 }
 
-/** The restart's target; undefined when Claude Code did not give its session, its transcript or a folder. */
-export function restartTargetOf(runtime: CliRuntime, payload: JsonRecord): RestartTarget | undefined {
-  const claudeSession = sessionIdOf(payload);
-  const transcript = stringField(payload, 'transcript_path');
-  const cwd = stringField(payload, 'cwd');
+/** The restart's target; undefined when the event names no session, no transcript or no folder. */
+export function restartTargetOf(runtime: CliRuntime, event: Pick<HookEvent, 'session' | 'transcript' | 'cwd' | 'effort'>): RestartTarget | undefined {
+  const { session, transcript, cwd, effort } = event;
   const project = runtime.env[ENV.claudeProjectDir] ?? cwd;
-  if (claudeSession === null || transcript === undefined || project === undefined) {
+  if (session === undefined || transcript === undefined || project === undefined) {
     return undefined;
   }
-  const effort = payloadEffortOf(payload);
-  return { claudeSession, transcript, cwd: cwd ?? null, project, effort: isEffortLevel(effort) ? effort : null };
+  return { claudeSession: session, transcript, cwd: cwd ?? null, project, effort: isEffortLevel(effort) ? effort : null };
 }
 
 /** The session a restart is armed for. */

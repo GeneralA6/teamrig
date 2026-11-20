@@ -1,8 +1,6 @@
 import type { KitConfig } from '../../config/types.ts';
-import { stringField, type JsonRecord } from '../../core/guards.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { sessionIdOf } from '../../inbox/inbox.ts';
 import type { HookEvent } from '../../ports/host/index.ts';
 import { cappedText, type TurnLogEntry, type TurnLogKind } from '../../turn-log/entry.ts';
 import { REPLY_TAIL_BYTES, replyOf, type Reply } from '../../turn-log/reply.ts';
@@ -69,8 +67,8 @@ interface ReplyText {
 }
 
 /**
- * The turn's reply from the transcript, ending with the message Claude Code gives the Stop hook
- * (`last_assistant_message`) when the transcript does not hold it yet; undefined when the turn wrote no text.
+ * The turn's reply from the transcript, ending with the last reply the turn end's hook event names when the
+ * transcript does not hold it yet; undefined when the turn wrote no text.
  * A reply of that message alone keeps `after`, the last entry an earlier reply took.
  */
 function replyWithLast(reply: Reply | undefined, last: string | undefined, after: string | undefined): ReplyText | undefined {
@@ -83,23 +81,21 @@ function replyWithLast(reply: Reply | undefined, last: string | undefined, after
 }
 
 /**
- * Stop: the reply the person saw since the last one logged. A stop that a hook sent back (`stop_hook_active`)
- * ends part of a turn, so a later stop of the same turn starts after the last entry this one took (`upTo`). On a
- * host whose transcript teamrig cannot read, the reply is the Stop hook's last message alone.
+ * A turn's end: the reply the person saw since the last one logged. A stop that a hook sent back ends part of
+ * a turn, so a later stop of the same turn starts after the last entry this one took (`upTo`). On a host whose
+ * transcript teamrig cannot read, the reply is the last reply the event names alone.
  */
-export async function logReply(runtime: CliRuntime, scope: TurnLogScope, payload: JsonRecord): Promise<void> {
-  const claude = sessionIdOf(payload);
-  if (!scope.config.turnLog.enabled || claude === null) {
+export async function logReply(runtime: CliRuntime, scope: TurnLogScope, { session: claude, transcript, lastReply }: Pick<HookEvent, 'session' | 'transcript' | 'lastReply'>): Promise<void> {
+  if (!scope.config.turnLog.enabled || claude === undefined) {
     return;
   }
   const log = logOf(runtime, scope);
   const last = await log.last(scope.id);
   const after = last?.kind === 'reply' && last.claude === claude ? last.upTo : undefined;
   const reader = transcriptsIfKept(runtime);
-  const transcript = reader === undefined ? undefined : stringField(payload, 'transcript_path');
-  const tail = transcript === undefined ? undefined : await runtime.files.readTail(transcript, REPLY_TAIL_BYTES);
+  const tail = reader === undefined || transcript === undefined ? undefined : await runtime.files.readTail(transcript, REPLY_TAIL_BYTES);
   const fromTranscript = reader === undefined || tail === undefined ? undefined : replyOf(reader, tail, after, Buffer.byteLength(tail, 'utf8') < REPLY_TAIL_BYTES);
-  const reply = replyWithLast(fromTranscript, stringField(payload, 'last_assistant_message'), after);
+  const reply = replyWithLast(fromTranscript, lastReply, after);
   if (reply === undefined) {
     return;
   }
