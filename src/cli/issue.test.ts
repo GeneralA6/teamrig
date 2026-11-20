@@ -37,7 +37,8 @@ describe('teamrig issue reply (T3169)', () => {
     const result = await kit.run(['issue', 'reply', 'acme/web#922', '--body-file', 'reply.md', '--status', 'in progress', '--note', 'picked up'], { ...AS_LEAD, gh });
     const printed = [...result.stdout, ...result.stderr].join('\n');
     assert.equal(result.code, EXIT.ok, printed);
-    assert.match(printed, /SET acme\/web#922 T1 in-progress: add status:in progress, take off status:open, assign acme/u);
+    // The lead maps to no login, so the push assigns the token's own user, as the repository push does (T4581).
+    assert.match(printed, /SET acme\/web#922 T1 in-progress: add status:in progress, take off status:open, assign sync-bot$/mu);
     const writes = gh.ran.map((request) => request.args).filter((args) => !isIssueRead(args) && !isLabelRead(args));
     assert.ok(writes.some(isLabelAdd) && writes.some(isLabelRemove), printed);
     assert.deepEqual(writes.at(-1), ['api', 'repos/acme/web/issues/922/comments', '-X', 'POST', '-f', `body=${withStampFooter('Picking this up.')}`]);
