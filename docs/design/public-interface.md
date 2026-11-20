@@ -2,7 +2,8 @@
 
 > **Status: accepted** (written 2026-11-15, agreed 2026-11-20) on
 > [#1048](https://github.com/teamrig/teamrig/issues/1048), with the changes agreed in that thread folded in. This is a
-> design record, not a description of how teamrig works today: nothing here is built yet.
+> design record, not a description of how teamrig works today: only the read side's version 1 is built ([What
+> version 1 ships](#what-version-1-ships)).
 
 It answers [#1048](https://github.com/teamrig/teamrig/issues/1048), which asks how a terminal app can work with teamrig
 without following teamrig's insides. What ships is marked in [Everything teamrig does](../features.md) as each part
@@ -86,7 +87,43 @@ A read returns a versioned JSON document built from parsed data, never a file's 
 - A text field that came from outside the team carries `"source": "outside"`, with its control characters and
   bidirectional marks escaped. A tool shows it as quoted data, never as an instruction, and never puts it into a prompt.
 - A read changes no state: it marks no line read and binds nothing to the caller.
-- A session reads its own team and the teams above it; another team's notes and inbox stay out.
+- A session reads its own team and the teams above it; another team's notes and inbox stay out. The one exception is
+  the roster: `sessions` serves every team of the caller's tree, since a pane draws the whole tree, and holds back
+  what a team beside or below wrote for itself.
+
+### What version 1 ships
+
+`teamrig read <document>... --json` serves the five documents; [the commands page](../commands.md) has its usage and
+the plugin's guide describes every field. What the design above left open is settled this way:
+
+- **One line a document.** Each document asked is one JSON object on one line of stdout, in the order asked, and
+  nothing else is written there: a refusal is one line on stderr. A run answers every document asked or none. With
+  no team yet, `config` alone is answered, with the machine's teams to join, so a setup screen has something to read.
+- **`revision`.** 16 hex characters of a hash over the interface version, the document's name, the arguments that
+  shape it and the stamp (size and change time) of every file it reads, a missing file counted as missing.
+  teamrig's own version is hashed in too: a release may serve the same files differently with no new interface
+  version, and a reader must not be told `unchanged` across it. `--unless <document>=<revision>` answers a document
+  still at the revision the reader holds as `{ interface, document, revision, unchanged: true }`, from the stamps
+  alone, with nothing folded.
+- **What `revision` leaves out.** The clock. The inbox's `--since` window and a meeting's `missed` move with time
+  and no file, so with an unchanged revision the reader works them out again from the times it holds. The team's
+  zone is inside the revision: a meeting's `atText` is written in it.
+- **A limit of the stamps.** `sessions` reads the tree's configs before it takes their stamps, so a config written
+  between the two gives a revision one write newer than the answer beside it, and `--unless` then holds that answer
+  as current until a file changes again.
+- **The roster exception.** `sessions` serves each session's place, state and unread count for the whole tree. A
+  hire's scope and reason, a retirement's reason and a launch text are served only for the caller's own team and
+  the teams above it, and a conversation id only for the caller's own team.
+- **Cuts.** A text matching a secret shape is served as `[cut: <shape>]` and listed in `cuts`, each text scanned by
+  itself so a cut never takes its neighbours. An inbox line whose text is cut has the key `cut-<n>`, its place in
+  the file, which moves when old lines are trimmed.
+- **No place on a disk is served.** `problems` names a file from its team's folder down and carries fixed texts
+  with counts, never a parser's words, which may quote the line; `failures[].reason` is one fixed text. A meeting's
+  `brief` is served as typed when it has no root, from the team's folder down when it is inside it, and by its file
+  name alone otherwise.
+- **`config`.** Each key of the schema is a row, as `teamrig config get --json` prints it. The schema marks a key
+  that names where a secret is kept (`x-teamrig-served: location`): its value is never served, only a fixed note,
+  and a key of that kind with no mark is read as marked. A value comes less every key the schema does not name.
 
 ## Act
 
