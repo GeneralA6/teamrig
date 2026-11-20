@@ -6,6 +6,7 @@ import { formatAddress } from '../core/address.ts';
 import { ENV, KIT_NAME } from '../core/home.ts';
 import { isReservedName, RESERVED_RULE } from '../core/ids.ts';
 import type { Rename } from '../names/rename.ts';
+import type { HookReply } from '../ports/host/index.ts';
 import { CONTEXT_MAX_CHARS, renderCorePack, renderLeadRules, teamRulesPart, type KeptRule, type RulesClock, type TeamRules } from '../rules/pack.ts';
 
 /**
@@ -232,12 +233,10 @@ export function sessionStartContext(input: SessionStartInput): string {
 }
 
 /**
- * The hook's stdout: Claude Code adds `additionalContext` to the session's context and shows the
- * notices, when there are any, to the user as one `systemMessage`: the user alone can change the model
- * or the effort, or install what teamrig lacks.
+ * The start hook's reply: the context goes to the session, and the notices, when there are any, to the human as
+ * one notice, a line each: the human alone can change the model or the effort, or install what teamrig lacks.
  */
-export function sessionStartOutput(context: string, notices: readonly (string | undefined)[] = []): string {
-  const hookSpecificOutput = { hookEventName: 'SessionStart', additionalContext: context };
+export function sessionStartReply(context: string, notices: readonly (string | undefined)[] = []): HookReply {
   const shown = notices.filter((notice): notice is string => notice !== undefined);
-  return JSON.stringify(shown.length === 0 ? { hookSpecificOutput } : { systemMessage: shown.join('\n'), hookSpecificOutput });
+  return { context, notice: shown.length === 0 ? undefined : shown.join('\n') };
 }

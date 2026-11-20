@@ -26,9 +26,10 @@ describe('runCli: a hand-started tab binds itself by its Claude Code title (T302
     await kit.run(['inbox', 'add', '--to', 'alpha', '--text', 'T7 is yours', '--session', 'lead']);
     const result = await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ session_title: 'alpha' }) });
     assert.equal(result.code, EXIT.ok);
-    assert.equal(result.stdout[0], 'teamrig: this tab is now the `alpha` session of team app (name `app-alpha`), from its Claude Code title; nothing was marked read.');
-    assert.match(result.stdout[1] ?? '', /^INBOX alpha, new in .*\n- 2030-01-08 10:00 UTC lead: T7 is yours$/);
-    assert.equal(result.stdout.length, 2);
+    const [bound, lines, ...rest] = (result.stdout[0] ?? '').split('\nINBOX ');
+    assert.equal(bound, 'teamrig: this tab is now the `alpha` session of team app (name `app-alpha`), from its Claude Code title; nothing was marked read.');
+    assert.match(lines ?? '', /^alpha, new in .*\n- 2030-01-08 10:00 UTC lead: T7 is yours$/);
+    assert.deepEqual([rest.length, result.stdout.length], [0, 1], 'one reply: the bind line, then the inbox lines');
     assert.equal(await kit.files.read(RENAMES_PATH), undefined);
     assert.match((await kit.run(['inbox', 'status', '--session', 'alpha'])).stdout[0] ?? '', /^alpha 1 unread .*\(read to line 0 of 1 at 01-08 10:00 UTC\)$/);
 
@@ -259,7 +260,7 @@ describe('runCli: the prompt hook archives its dedup records older than a week (
     await kit.files.write(SHOWN_PATH, old);
     await kit.run(['inbox', 'add', '--to', 'alpha', '--text', 'T7 is yours', '--session', 'lead']);
     const shown = await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ session_title: 'alpha' }) });
-    assert.match(shown.stdout[1] ?? '', /lead: T7 is yours$/);
+    assert.match(shown.stdout[0] ?? '', /lead: T7 is yours$/);
     assert.equal(await kit.files.read(archiveOf('inbox-shown')), old);
     const live = (await kit.files.read(SHOWN_PATH)) ?? '';
     assert.deepEqual([live.includes(ENDED_TAB), live.includes(CLAUDE_SESSION)], [false, true]);
