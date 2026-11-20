@@ -4,10 +4,9 @@ import { join } from 'node:path';
 import type { HostSource } from '../composition/host-ports.ts';
 import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import { unsupported } from '../ports/host/index.ts';
 import { APP, CLAUDE_SESSION, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
-import { SHIPPED_HOST } from '../testing/host.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { promptLine, replyLine, resultsLine, transcript, type FixtureTool } from '../testing/transcript-lines.ts';
 
@@ -40,9 +39,6 @@ function afterTool(kit: CliHarness, tool: FixtureTool, env: Readonly<Record<stri
   });
   return kit.run(['hook', 'loop-nudge'], { stdin, env, ...(files === undefined ? {} : { files }), ...(host === undefined ? {} : { host }) });
 }
-
-/** The shipped host, telling none of its folders: its transcript is still read. */
-const NO_PATHS_HOST: HostSource = (given) => ({ ...SHIPPED_HOST(given), paths: unsupported('no folder of the host is known') });
 
 describe('the lead boundary hooks', () => {
   it('hand the lead one line at its first edit outside its own files, and nothing to another session', async () => {
