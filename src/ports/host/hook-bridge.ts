@@ -64,6 +64,8 @@ export interface HookEvent {
   readonly stopActive: boolean;
   /** Why the session started: new, resumed, cleared or compacted, in the host's word. */
   readonly source: string | undefined;
+  /** Why the session ended, in the host's word, on `session-end`. */
+  readonly reason: string | undefined;
   /** What started a compaction, in the host's word. */
   readonly trigger: string | undefined;
   readonly model: string | undefined;
