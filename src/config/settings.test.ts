@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { LEAD_KEYS } from './lead-keys.ts';
 import { OWNER_GATED_KEYS } from './owner-gated.ts';
-import { rowsUnder, settingRows, type SettingRow } from './settings.ts';
+import { definitionsOf, resolvedNode, rowsUnder, settingNodes, settingRows, type SettingRow } from './settings.ts';
 
 const SCHEMA: JsonRecord = {
   $defs: { sessionName: { description: 'A session id.', type: 'string', pattern: '^[a-z]+$' } },
@@ -148,6 +148,27 @@ describe('settingRows', () => {
     assert.deepEqual(rowsUnder(rows, 'messages').map((row) => row.path), ['messages.maxLines', 'messages.mode', 'messages.tags']);
     assert.deepEqual(rowsUnder(rows, 'messages.mode').map((row) => row.path), ['messages.mode']);
     assert.deepEqual(rowsUnder(rows, 'message'), []);
+  });
+});
+
+describe('settingNodes', () => {
+  const nodes = settingNodes(SCHEMA);
+
+  it('names a node for every row and for nothing else, in the rows\' order', () => {
+    assert.deepEqual([...nodes.keys()], settingRows(SCHEMA, RAW, []).map((row) => row.path));
+  });
+
+  it('gives a key its own node, a shared type resolved with the key\'s own words kept', () => {
+    assert.deepEqual(nodes.get('register.aliases'), { description: 'Names by alias.', type: 'object', additionalProperties: { type: 'string' } });
+    assert.deepEqual(nodes.get('roles.lead'), { description: 'The lead.', type: 'string', pattern: '^[a-z]+$', $ref: '#/$defs/sessionName' });
+  });
+
+  it('resolves a shared type by the schema\'s own definitions, an unknown one left as written', () => {
+    const definitions = definitionsOf(SCHEMA);
+    assert.deepEqual(resolvedNode({ $ref: '#/$defs/sessionName' }, definitions), { description: 'A session id.', type: 'string', pattern: '^[a-z]+$', $ref: '#/$defs/sessionName' });
+    assert.deepEqual(resolvedNode({ $ref: '#/$defs/gone' }, definitions), { $ref: '#/$defs/gone' });
+    assert.equal(resolvedNode('a text', definitions), undefined);
+    assert.deepEqual(definitionsOf({ properties: {} }), {});
   });
 });
 
