@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { hookEventOf, SHIPPED_HOST, testHooks } from './host.ts';
+import { hookEventOf, replyText, SHIPPED_HOST, testHooks } from './host.ts';
 import { quietWorld } from './quiet-world.ts';
 
 const SHELL_START = { hook_event_name: 'PreToolUse', cwd: '/repo', tool_name: 'Bash', tool_input: { command: 'echo a\\\\b' } };
@@ -24,6 +24,11 @@ describe('the spec helpers of the shipped host', () => {
 
   it('give the bridge that words a reply', () => {
     assert.equal(testHooks().reply('prompt', { context: 'one line' }), 'one line');
+  });
+
+  it('word a reply as the host reads it, and no reply as nothing', () => {
+    assert.equal(replyText('prompt', { context: 'one line' }), 'one line');
+    assert.equal(replyText('tool-start', undefined), '');
   });
 
   it('share the host the quiet world runs with', () => {
