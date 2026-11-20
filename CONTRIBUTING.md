@@ -62,7 +62,7 @@ The author builds to these and the reviewer checks each one:
 - **The architecture and the decisions already taken**: the change fits [how it works](docs/how-it-works.md), the
   design issues marked `Agreed:` and the design docs, or it says which one it changes and why.
 - **Extensibility weighed early**: ask what a later, more mature architecture would need (another AI CLI, another
-  issue tracker, another UI over the [public interface](docs/public-interface.md)). Do now what is cheap now and
+  issue tracker, another UI over the [public interface](docs/design/public-interface.md)). Do now what is cheap now and
   costly later, such as a port, a config key in place of a constant, or data in place of a branch in code. Build
   no hook for a need no one has named. A design lists these early steps.
 - **Risks named**: every design, issue and pull request says what could go wrong (a break for a caller, a security
