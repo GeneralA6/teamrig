@@ -13,7 +13,6 @@ import {
   lineOnClock,
   postLine,
   readInbox,
-  sessionIdOf,
   unseenLinesOf,
   type InboxDeps,
 } from './inbox.ts';
@@ -177,15 +176,5 @@ describe('postLine', () => {
     assert.match((await post('bravo', ['pass', 'word=', 'x'].join(''))) ?? '', /secret/);
     const token = ['xoxb', '-', '1'.repeat(12), '-abc'].join('');
     assert.equal(await post('bravo', `bot token ${token}`), 'the line looks like it holds a secret (Slack token); refer to where it is kept instead');
-  });
-});
-
-describe('sessionIdOf', () => {
-  it('reads a well-formed session id from hook input', () => {
-    assert.equal(sessionIdOf({ session_id: SESSION, prompt: 'hi' }), SESSION);
-    assert.equal(sessionIdOf({ session_id: 'not-an-id' }), null);
-    assert.equal(sessionIdOf({ session_id: 7 }), null);
-    assert.equal(sessionIdOf(undefined), null);
-    assert.equal(sessionIdOf([SESSION]), null);
   });
 });
