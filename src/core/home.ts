@@ -78,7 +78,7 @@ export function claudeTempDir(env: Env, systemTemp: string): string {
 /**
  * Folders a team may move in the config: `paths`, and `refresh.handoverDir` for the handover. A
  * relative path is resolved against the team home; unset, state, inbox and handover stay under the
- * team home and skills is the Claude Code skills folder.
+ * team home and skills is the host's skills folder (`teamPaths`).
  */
 export interface PathOverrides {
   readonly state?: string;
@@ -142,7 +142,7 @@ export interface TeamPaths {
   /** The append-only log of session renames, so every name a session has had still finds it. */
   readonly renames: string;
   readonly renamesLock: string;
-  /** The Claude Code skills folder the skills lint and `--skill` checks read. */
+  /** The skills folder the skills lint and `--skill` checks read: the host's own, unless the config moves it. */
   readonly skills: string;
   /** Each session's context-refresh state, one small file per session. */
   readonly refresh: string;
@@ -299,8 +299,16 @@ export function tasksFolder(kitHome: string, team: string): string {
   return join(teamHome(kitHome, team), TASKS_FOLDER);
 }
 
-/** The team's paths; `claudeDir` is Claude Code's own folder (`claudeConfigDir`), whose `skills` is the default skills folder. */
-export function teamPaths(kitHome: string, team: string, claudeDir: string, overrides: PathOverrides = {}): TeamPaths {
+/** A team's config file, which tells the rest of its paths: found with no other path of the team known. */
+export function teamConfigFile(kitHome: string, team: string): string {
+  return join(teamHome(kitHome, team), 'config.json');
+}
+
+/**
+ * The team's paths. `hostSkills` is the folder the run's host loads a person's skills from, the default skills
+ * folder; with none known, the team keeps its skills in its own folder.
+ */
+export function teamPaths(kitHome: string, team: string, hostSkills: string | undefined, overrides: PathOverrides = {}): TeamPaths {
   const home = teamHome(kitHome, team);
   const inHome = (path: string | undefined): string | undefined =>
     path === undefined || isAbsolute(path) ? path : join(home, path);
@@ -309,7 +317,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     kitHome,
     team,
     home,
-    config: join(home, 'config.json'),
+    config: teamConfigFile(kitHome, team),
     teamRules: join(home, 'rules.md'),
     backups: join(home, 'backups'),
     state,
@@ -336,7 +344,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     ruleVerdicts: join(state, 'rule-verdicts.json'),
     renames: join(state, 'renames.jsonl'),
     renamesLock: join(state, 'renames.lock'),
-    skills: inHome(overrides.skills) ?? join(claudeDir, 'skills'),
+    skills: inHome(overrides.skills) ?? hostSkills ?? join(home, 'skills'),
     refresh: join(state, 'refresh'),
     handover: inHome(overrides.handover) ?? join(home, 'handover'),
     tasks: join(home, TASKS_FOLDER),

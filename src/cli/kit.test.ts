@@ -6,12 +6,16 @@ import { Roster } from '../config/roster.ts';
 import { parseConfigText } from '../config/text.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { teamPaths } from '../core/home.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import { CliHarness, POINTER, TEAM } from '../testing/cli-harness.ts';
-import { checkedNextConfig, configWarnings, findTeam, foundTeamOf, leadOrDeliveryOwnerOnly, loadedConfig, lookForTeam, type Kit } from './kit.ts';
+import { pathsIfKnown } from './host.ts';
+import { checkedNextConfig, configWarnings, findTeam, foundTeamOf, leadOrDeliveryOwnerOnly, loadedConfig, lookForTeam, openKit, type Kit, type KitReader } from './kit.ts';
 import { RefusedError } from './runtime.ts';
 
-const CONFIG_FILE = join('/', 'kit', 'teams', 'app', 'config.json');
-const PATHS = teamPaths(join('/', 'kit'), 'app', join('/', 'claude'));
+/** The team a new `CliHarness` holds. */
+const TEAM_ID = 'app';
+const CONFIG_FILE = join('/', 'kit', 'teams', TEAM_ID, 'config.json');
+const PATHS = teamPaths(join('/', 'kit'), TEAM_ID, join('/', 'claude', 'skills'));
 
 /** The kit of team `app` whose config file holds `json`. */
 function kitOf(json: JsonRecord): Kit {
@@ -84,6 +88,25 @@ describe('configWarnings', () => {
     assert.equal(warnings[0], `${CONFIG_FILE} is config version 99, from a newer teamrig; update teamrig; reading it best-effort`);
     assert.match(warnings[1] ?? '', /^config: 1 problem\(s\), defaults used \(first: roles\.lead/);
     assert.equal(warnings.length, 2);
+  });
+});
+
+describe("openKit: the team's default skills folder", () => {
+  it("is the folder the run's host loads a person's skills from", async () => {
+    const runtime = new CliHarness().runtime();
+    const hostSkills = pathsIfKnown(runtime)?.skills(runtime.userHome);
+    assert.notEqual(hostSkills, undefined);
+    assert.equal((await openKit(runtime, TEAM_ID)).paths.skills, hostSkills);
+  });
+
+  it("is the team's own for a reader that names no host, or a host that tells no folder", async () => {
+    const { env, userHome, files, clock, platform } = new CliHarness().runtime();
+    const hostless: KitReader = { env, userHome, files, clock };
+    const kit = await openKit(hostless, TEAM_ID);
+    assert.equal(kit.load.status, 'loaded');
+    assert.equal(kit.paths.skills, join(kit.paths.home, 'skills'));
+    assert.equal((await openKit({ ...hostless, host: () => bareHost() }, TEAM_ID)).paths.skills, join(kit.paths.home, 'skills'), 'a host with no platform is none');
+    assert.equal((await openKit({ ...hostless, host: () => bareHost(), platform }, TEAM_ID)).paths.skills, join(kit.paths.home, 'skills'));
   });
 });
 

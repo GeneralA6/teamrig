@@ -10,7 +10,7 @@ import { Roster } from '../config/roster.ts';
 import { parseConfigText } from '../config/text.ts';
 import type { KitConfig } from '../config/types.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
-import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths, type Env, type PathOverrides, type TeamPaths } from '../core/home.ts';
+import { ENV, KIT_NAME, resolveKitHome, teamConfigFile, teamPaths, type Env, type PathOverrides, type TeamPaths } from '../core/home.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 import { resolveTeam, TEAM_POINTER, type TeamResolution } from '../core/team.ts';
 import { TimeZone } from '../core/zone.ts';
@@ -19,6 +19,7 @@ import type { RenameDeps } from '../names/record.ts';
 import type { RulesClock } from '../rules/pack.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 import { fileLockOf } from './file-locks.ts';
+import { pathsIfKnown } from './host.ts';
 
 export interface Kit {
   readonly paths: TeamPaths;
@@ -30,9 +31,17 @@ export interface Kit {
 
 /**
  * What reading a team's config, roster and register takes, with the clock that tells whether a rush runs: a tool
- * outside the CLI (tools/ship) builds one from its own process without a whole `CliRuntime`.
+ * outside the CLI (tools/ship) builds one from its own process without a whole `CliRuntime`. A reader that names its
+ * host opens a team with that host's skills folder as the default one; one that names none, as that tool does since
+ * it reads no skill, opens it with the team's own (`teamPaths`).
  */
-export type KitReader = Pick<CliRuntime, 'env' | 'userHome' | 'files' | 'configFormat' | 'clock'>;
+export type KitReader = Pick<CliRuntime, 'env' | 'userHome' | 'files' | 'configFormat' | 'clock'> & Partial<Pick<CliRuntime, 'host' | 'platform'>>;
+
+/** The folder the reader's host loads a person's skills from: none for a reader with no host, or a host that tells no folder. */
+function hostSkillsOf(reader: KitReader): string | undefined {
+  const { host, platform, env, userHome } = reader;
+  return host === undefined || platform === undefined ? undefined : pathsIfKnown({ host, platform, env })?.skills(userHome);
+}
 
 /** The lock every change to the team's config is read and written under (config-lock.ts). */
 export function configLockOf(runtime: CliRuntime, kit: Kit, config: KitConfig): ConfigLock {
@@ -124,9 +133,8 @@ function overridesOf(config: KitConfig): PathOverrides {
  */
 export async function openKit(runtime: KitReader, team: string): Promise<Kit> {
   const kitHome = resolveKitHome(runtime.env, runtime.userHome);
-  const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
   const load = await teamConfigOf(runtime, team, []);
-  const paths = teamPaths(kitHome, team, claudeDir, load.status === 'loaded' ? overridesOf(load.config) : {});
+  const paths = teamPaths(kitHome, team, hostSkillsOf(runtime), load.status === 'loaded' ? overridesOf(load.config) : {});
   if (load.status !== 'loaded') {
     return { load, paths };
   }
@@ -147,7 +155,7 @@ export function reloadTeamConfig(runtime: KitReader, kit: Kit): Promise<ConfigLo
  */
 async function teamConfigOf(runtime: KitReader, team: string, below: readonly string[]): Promise<ConfigLoad> {
   const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;
-  const path = teamPaths(resolveKitHome(runtime.env, runtime.userHome), team, claudeConfigDir(runtime.env, runtime.userHome)).config;
+  const path = teamConfigFile(resolveKitHome(runtime.env, runtime.userHome), team);
   const chain = [...below, team];
   return loadConfig(runtime.files, path, format.migrations, format.version, async (own) => {
     const parent = own.team?.parent;
