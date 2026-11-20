@@ -31,15 +31,21 @@ describe('ghCallOf: reads (T3002)', () => {
   });
 
   it('reads a gh api GET with no body and a GraphQL query, wherever it points', () => {
-    for (const line of ['api repos/a/b/pulls/3', 'api -X GET repos/a/b/issues -f state=open', 'api user', 'api', 'api $URL', 'api graphql -f query={viewer{login}}', 'api https://api.github.com/graphql -f query={viewer{login}}']) {
+    for (const line of ['api repos/a/b/pulls/3', 'api -X GET repos/a/b/issues -f state=open', 'api user', 'api', 'api graphql -f query={viewer{login}}', 'api https://api.github.com/graphql -f query={viewer{login}}']) {
       assert.deepEqual(callOf(line), READ, line);
     }
   });
 
-  it('reads a group only known when it runs only with a command every group reads with', () => {
-    assert.deepEqual(callOf('$G view 3'), READ);
-    assert.deepEqual(callOf('$G close 3'), { kind: 'unplaced', what: 'gh $G close', why: 'its command is only known when it runs' });
-    assert.deepEqual(callOf('$G'), { kind: 'unplaced', what: 'gh $G', why: 'its command is only known when it runs' });
+  it('reads a command past -R/--repo flags before it, and a help flag there, as gh does', () => {
+    for (const line of ['pr -R acme/web view 3', 'pr --repo=acme/web list', 'issue -Racme/web status', 'pr --help merge 3', 'issue -h']) {
+      assert.deepEqual(callOf(line), READ, line);
+    }
+  });
+
+  it('cannot place any call whose group is only known when it runs, a read command too (R4)', () => {
+    for (const line of ['$G list', '$G view 3', '$G close 3', '$G']) {
+      assert.deepEqual(callOf(line), { kind: 'unplaced', what: 'gh $G', why: 'its group is only known when it runs' }, line);
+    }
   });
 });
 
@@ -64,6 +70,20 @@ describe('ghCallOf: writes placed on a repository (T3002)', () => {
     assert.deepEqual(callOf('pr merge 3 -Racme/web --repo https://github.com/acme/api.git'), write('gh pr merge', ['acme/web', 'acme/api'], false));
   });
 
+  it('places a write on a -R/--repo given before its command, in each of gh’s spellings (R1)', () => {
+    for (const line of ['pr --repo=acme/web merge 5', 'pr -Racme/web merge 5', 'pr -R acme/web merge 5', 'pr --repo acme/web merge 5']) {
+      assert.deepEqual(callOf(line), write('gh pr merge', ['acme/web'], false), line);
+    }
+    assert.deepEqual(callOf('issue -R acme/web --repo=acme/api close 7'), write('gh issue close', ['acme/web', 'acme/api'], false));
+  });
+
+  it('cannot read the command past another flag, or a word only known when it runs, before it (R1)', () => {
+    assert.deepEqual(callOf('pr --verbose merge 5'), { kind: 'unplaced', what: 'gh pr', why: '`--verbose` before its command may hide which command it is' });
+    for (const line of ['pr -R $R view 3', 'pr --repo=$R list']) {
+      assert.deepEqual(callOf(line), { kind: 'unplaced', what: 'gh pr', why: 'a word only known when it runs, before its command, may change which command it is' }, line);
+    }
+  });
+
   it('adds each repository a word names: a URL in place of a number, a repository positional, a transfer’s target', () => {
     assert.deepEqual(callOf('pr merge https://github.com/acme/web/pull/3'), write('gh pr merge', ['acme/web'], true));
     assert.deepEqual(callOf('repo delete acme/old --yes'), write('gh repo delete', ['acme/old'], true));
@@ -80,7 +100,11 @@ describe('ghCallOf: writes placed on a repository (T3002)', () => {
       assert.deepEqual(callOf(line), write(what, [repo], false), line);
     }
     assert.deepEqual(callOf('api repos/{owner}/{repo}/issues/7/comments -f body=hi'), write('gh api POST repos/{owner}/{repo}/issues/7/comments', [], true));
-    assert.deepEqual(callOf('api -X $M repos/a/b/issues/7'), write('gh api repos/a/b/issues/7', ['a/b'], false));
+  });
+
+  it('places gh’s :owner/:repo placeholders on the folder’s repository, mixed with {owner}/{repo} too (R2)', () => {
+    assert.deepEqual(callOf('api -X PUT repos/:owner/:repo/pulls/5/merge'), write('gh api PUT repos/:owner/:repo/pulls/5/merge', [], true));
+    assert.deepEqual(callOf('api -X PUT repos/{owner}/:repo/pulls/5/merge'), write('gh api PUT repos/{owner}/:repo/pulls/5/merge', [], true));
   });
 });
 
@@ -114,7 +138,30 @@ describe('ghCallOf: writes it cannot place (T3002)', () => {
     }
     assert.deepEqual(callOf('api -X PUT user/following/x'), { kind: 'unplaced', what: 'gh api PUT user/following/x', why: 'its endpoint is no `repos/<owner>/<name>` path, so it writes outside any one repository' });
     assert.deepEqual(callOf('api repos/{owner}/x/issues -f a=b'), { kind: 'unplaced', what: 'gh api POST repos/{owner}/x/issues', why: 'its endpoint is no `repos/<owner>/<name>` path, so it writes outside any one repository' });
-    assert.deepEqual(callOf('api $URL -f body=hi'), { kind: 'unplaced', what: 'gh api POST $URL', why: 'its endpoint is only known when it runs' });
+  });
+
+  it('cannot place a gh api endpoint with any other placeholder-shaped owner or name (R2)', () => {
+    for (const endpoint of ['repos/{owner}/x/issues', 'repos/:owner/x/issues', 'repos/x/:repo/issues', 'repos/:org/:repo/issues', 'repos/{branch}/{repo}/issues']) {
+      assert.deepEqual(callOf(`api ${endpoint} -f a=b`), { kind: 'unplaced', what: `gh api POST ${endpoint}`, why: 'its endpoint is no `repos/<owner>/<name>` path, so it writes outside any one repository' }, endpoint);
+    }
+  });
+
+  it('cannot place a gh api call with any word only known when it runs, a read-looking one too (R3)', () => {
+    const why = 'a word only known when it runs may set its method or its endpoint';
+    assert.deepEqual(callOf('api "$M" repos/acme/web/pulls/5/merge'), { kind: 'unplaced', what: 'gh api "$M"', why });
+    assert.deepEqual(callOf('api $E'), { kind: 'unplaced', what: 'gh api $E', why });
+    assert.deepEqual(callOf('api $URL -f body=hi'), { kind: 'unplaced', what: 'gh api $URL', why });
+    assert.deepEqual(callOf('api -X $M repos/a/b/issues/7'), { kind: 'unplaced', what: 'gh api repos/a/b/issues/7', why });
+    for (const line of ['api repos/acme/web/pulls -q $Q', 'api repos/acme/web/pulls -H $H', 'api repos/acme/web/pulls/$N']) {
+      assert.deepEqual(callOf(line), { kind: 'unplaced', what: `gh api ${line.split(' ')[1] ?? ''}`, why }, line);
+    }
+  });
+
+  it('cannot place a gh api write whose path has a `.`, `..` or `%` segment (N1)', () => {
+    for (const endpoint of ['repos/x/y/../../acme/web/pulls/5/merge', 'repos/./acme/web/issues', 'repos/acme%2fweb/x/issues', 'repos/acme/web/issues/%2e%2e']) {
+      assert.deepEqual(callOf(`api -X POST ${endpoint}`), { kind: 'unplaced', what: `gh api POST ${endpoint}`, why: 'its endpoint has a `.`, `..` or `%` segment, which may reach another path' }, endpoint);
+    }
+    assert.deepEqual(callOf('api repos/x/y/../../acme/web/pulls'), READ);
   });
 });
 
@@ -158,5 +205,16 @@ describe('remoteReposOf (T3002)', () => {
     const listing = ['origin\thttps://github.com/Acme/Web.git (fetch)', 'origin\thttps://github.com/Acme/Web.git (push)', 'fork\thttps://github.com/someone/web (fetch)', 'mirror\thttps://gitlab.example.com/acme/web.git (fetch)', ''].join('\r\n');
     assert.deepEqual(remoteReposOf(listing), ['acme/web', 'someone/web']);
     assert.deepEqual(remoteReposOf(''), []);
+  });
+
+  it('reads remotes plainly off GitHub as naming none: another host, a folder, a file URL (R5)', () => {
+    const listing = ['a\tgit@gitlab.example.com:acme/web.git (fetch)', 'b\t/srv/git/web.git (fetch)', 'c\tC:/repos/web (fetch)', 'd\tfile:///srv/web (fetch)', 'e\t../web (fetch)', 'f\thttps://github.com/acme/web (push)'].join('\n');
+    assert.deepEqual(remoteReposOf(listing), ['acme/web']);
+  });
+
+  it('cannot tell a folder’s repositories when a remote may reach GitHub in a form it cannot read (R5)', () => {
+    for (const url of ['git@work-gh:acme/web.git', 'ssh://git@github.com:22/acme/web.git', 'https://www.github.com/acme/web', 'git@github.com-work:acme/web.git', 'ext::ssh', 'localhost:acme/web']) {
+      assert.equal(remoteReposOf(`origin\thttps://github.com/someone/web (fetch)\nwork\t${url} (fetch)`), undefined, url);
+    }
   });
 });

@@ -1,5 +1,5 @@
 import type { ShellWord } from '../push-guard/tokenizer.ts';
-import { apiEndpointOf, endpointPath } from './gh-writes.ts';
+import { apiEndpointOf, endpointPath, ghCommandSlotOf } from './gh-writes.ts';
 
 /**
  * The teamrig command that does what a raw `gh` write on one of the team's repositories meant to do (T4819), named
@@ -43,7 +43,7 @@ const API_ROUTES: readonly (readonly [RegExp, string])[] = [
 
 /** The teamrig command to run in place of a raw gh write, from its words after `gh`; `ASK_LEAD` when none does it. */
 export function ghRouteOf(words: readonly ShellWord[]): string {
-  const [group, command] = words;
+  const [group] = words;
   if (group === undefined || group.dynamic) {
     return ASK_LEAD;
   }
@@ -52,8 +52,9 @@ export function ghRouteOf(words: readonly ShellWord[]): string {
     const path = endpoint === undefined || endpoint.dynamic ? undefined : endpointPath(endpoint.text);
     return API_ROUTES.find(([pattern]) => path !== undefined && pattern.test(path))?.[1] ?? ASK_LEAD;
   }
-  if (command === undefined || command.dynamic) {
+  const slot = ghCommandSlotOf(words.slice(1));
+  if (slot.kind !== 'command' || slot.command === undefined || slot.command.dynamic) {
     return ASK_LEAD;
   }
-  return GH_WRITE_ROUTES.get(`${group.text} ${command.text}`) ?? ASK_LEAD;
+  return GH_WRITE_ROUTES.get(`${group.text} ${slot.command.text}`) ?? ASK_LEAD;
 }

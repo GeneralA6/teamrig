@@ -52,9 +52,6 @@ export const GH_READS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
 /** The groups every command of which only reads: `co` is gh's own name for `pr checkout`. */
 const READ_GROUPS: ReadonlySet<string> = setOf('search', 'status', 'browse', 'attestation', 'completion', 'help', 'version', 'co');
 
-/** The commands that read in any group, for a group only known when it runs. */
-const READ_IN_ANY_GROUP: ReadonlySet<string> = setOf('list', 'view', 'status', 'diff', 'checks');
-
 /** The groups whose commands act on one repository: `-R`, else the folder's repository or `GH_REPO`. */
 const REPO_GROUPS: ReadonlySet<string> = setOf('issue', 'pr', 'repo', 'release', 'run', 'workflow', 'label', 'cache', 'ruleset', 'secret', 'variable');
 
@@ -109,43 +106,38 @@ interface ApiCall {
   readonly endpoint: ShellWord | undefined;
   /** The method `-X` names, upper-cased; undefined when it names none. */
   readonly method: string | undefined;
-  /** True when a word only known when it runs may name the method or change it. */
+  /** True when a `-X` has no value to name the method. */
   readonly methodUnknown: boolean;
   /** The request body's values: every field, and `@file` for `--input`. */
-  readonly body: readonly ShellWord[];
+  readonly body: readonly string[];
 }
 
-/** Reads a `gh api` call's words after `api`. */
+/** Reads a `gh api` call's words after `api`, all known before it runs. */
 function apiCallOf(words: readonly ShellWord[]): ApiCall {
   let endpoint: ShellWord | undefined;
   let method: string | undefined;
   let methodUnknown = false;
-  const body: ShellWord[] = [];
+  const body: string[] = [];
   for (let index = 0; index < words.length; index += 1) {
     const word = words[index];
     if (word === undefined) {
       break;
     }
     if (!word.text.startsWith('-')) {
-      if (endpoint === undefined) {
-        endpoint = word;
-      } else {
-        methodUnknown ||= word.dynamic;
-      }
+      endpoint ??= word;
       continue;
     }
     const flag = flagOf(word.text);
     if (!API_VALUE_FLAGS.has(flag.name)) {
-      methodUnknown ||= word.dynamic;
       continue;
     }
-    const value: ShellWord | undefined = flag.value === undefined ? words[index + 1] : { text: flag.value, dynamic: word.dynamic };
+    const value = flag.value ?? words[index + 1]?.text;
     index += flag.value === undefined ? 1 : 0;
     if (flag.name === '-X' || flag.name === '--method') {
-      methodUnknown ||= value === undefined || value.dynamic;
-      method = value?.text.toUpperCase();
+      methodUnknown = value === undefined;
+      method = value?.toUpperCase();
     } else if (API_BODY_FLAGS.has(flag.name) && value !== undefined) {
-      body.push(flag.name === '--input' ? { text: `@${value.text}`, dynamic: value.dynamic } : value);
+      body.push(flag.name === '--input' ? `@${value}` : value);
     }
   }
   return { endpoint, method, methodUnknown, body };
@@ -156,32 +148,52 @@ export function apiEndpointOf(words: readonly ShellWord[]): ShellWord | undefine
   return apiCallOf(words).endpoint;
 }
 
-/** True when a GraphQL call's body may hold a mutation: one names it, or comes from a file or a word only known when it runs. */
-function mayMutate(body: readonly ShellWord[]): boolean {
-  return body.some((value) => value.dynamic || value.text.startsWith('@') || value.text.includes('=@') || /mutation/i.test(value.text));
+/** True when a GraphQL call's body may hold a mutation: one names it, or comes from a file. */
+function mayMutate(body: readonly string[]): boolean {
+  return body.some((value) => value.startsWith('@') || value.includes('=@') || /mutation/i.test(value));
 }
 
-/** The repository a `repos/<owner>/<name>/...` endpoint path names; `folder` for gh's `{owner}/{repo}`, which it fills from the folder or `GH_REPO`. */
+/** gh's placeholders for the owner and the name of the folder's repository (or `GH_REPO`), in both its spellings. */
+const FOLDER_OWNER: ReadonlySet<string> = setOf('{owner}', ':owner');
+const FOLDER_NAME: ReadonlySet<string> = setOf('{repo}', ':repo');
+
+/**
+ * The repository a `repos/<owner>/<name>/...` endpoint path names; `folder` for gh's `{owner}/{repo}` or
+ * `:owner/:repo`, which it fills from the folder or `GH_REPO`; undefined for any other path, or a part shaped like a
+ * placeholder, which no GitHub owner or name can hold.
+ */
 function apiRepoOf(path: string): string | 'folder' | undefined {
   const [first, owner, name] = path.split('/');
   if (first !== 'repos' || owner === undefined || name === undefined || owner === '' || name === '') {
     return undefined;
   }
-  if (owner === '{owner}' && name === '{repo}') {
+  if (FOLDER_OWNER.has(owner) && FOLDER_NAME.has(name)) {
     return 'folder';
   }
-  return owner.includes('{') || name.includes('{') ? undefined : `${owner}/${name}`;
+  return /[{}:]/u.test(owner) || /[{}:]/u.test(name) ? undefined : `${owner}/${name}`;
 }
 
-/** A `gh api` call: a read when it is a GET with no body or a GraphQL query, else a write placed by its endpoint. */
+/** True when a path has a `.` or `..` segment, or a `%`-escape, which GitHub's front end may resolve to another path. */
+function mayResolveElsewhere(path: string): boolean {
+  return path.split('/').some((segment) => segment === '.' || segment === '..' || segment.includes('%'));
+}
+
+/**
+ * A `gh api` call: a read when it is a GET with no body or a GraphQL query, else a write placed by its endpoint. A
+ * word only known when it runs may be a flag that sets the method (`"$M"` holding `-XPUT`), or split into several
+ * that move the endpoint, so it makes the call unplaced, a read too.
+ */
 function apiCallKind(words: readonly ShellWord[]): GhCall {
   const call = apiCallOf(words);
   const endpoint = call.endpoint;
+  if (words.some((word) => word.dynamic)) {
+    return { kind: 'unplaced', what: endpoint === undefined ? 'gh api' : `gh api ${endpoint.text}`, why: 'a word only known when it runs may set its method or its endpoint' };
+  }
   if (endpoint === undefined) {
     return { kind: 'read' };
   }
-  const path = endpoint.dynamic ? undefined : endpointPath(endpoint.text);
-  if (path !== undefined && isGraphqlPath(path)) {
+  const path = endpointPath(endpoint.text);
+  if (isGraphqlPath(path)) {
     return call.methodUnknown || mayMutate(call.body) ? { kind: 'unplaced', what: `gh api ${endpoint.text}`, why: 'a GraphQL mutation can reach any repository the login reaches' } : { kind: 'read' };
   }
   const writes = call.methodUnknown || (call.method === undefined ? call.body.length > 0 : call.method !== 'GET');
@@ -189,8 +201,8 @@ function apiCallKind(words: readonly ShellWord[]): GhCall {
     return { kind: 'read' };
   }
   const what = call.methodUnknown ? `gh api ${endpoint.text}` : `gh api ${call.method ?? 'POST'} ${endpoint.text}`;
-  if (path === undefined) {
-    return { kind: 'unplaced', what, why: 'its endpoint is only known when it runs' };
+  if (mayResolveElsewhere(path)) {
+    return { kind: 'unplaced', what, why: 'its endpoint has a `.`, `..` or `%` segment, which may reach another path' };
   }
   const repo = apiRepoOf(path);
   if (repo === undefined) {
@@ -275,26 +287,54 @@ function repoWriteOf(group: string, what: string, words: readonly ShellWord[]): 
   return { kind: 'write', what, target: { repos: [...new Set([...flags.repos, ...named])], folder: !flags.given } };
 }
 
+/** A group's command, found past the flags gh takes before it; or why the guard cannot tell which command it is. */
+export type GhCommandSlot =
+  /** `rest` is the group's other words, the flags before the command among them. */
+  | { readonly kind: 'command'; readonly command: ShellWord | undefined; readonly rest: readonly ShellWord[] }
+  /** A help flag before the command: gh prints its help and runs nothing. */
+  | { readonly kind: 'help' }
+  | { readonly kind: 'unread'; readonly why: string };
+
+/**
+ * A group's command from its words after the group. gh takes `-R`/`--repo` before the command as well as after it
+ * (`gh pr --repo=o/n merge 5`), so the command is the first word past them; any other flag there, or a word only known
+ * when it runs, which may split into a command and more, leaves the command unread.
+ */
+export function ghCommandSlotOf(afterGroup: readonly ShellWord[]): GhCommandSlot {
+  let index = 0;
+  for (let word = afterGroup[index]; word?.text.startsWith('-') === true; word = afterGroup[index]) {
+    const flag = flagOf(word.text);
+    if (flag.name === '-h' || flag.name === '--help') {
+      return { kind: 'help' };
+    }
+    if (flag.name !== '-R' && flag.name !== '--repo') {
+      return { kind: 'unread', why: `\`${word.text}\` before its command may hide which command it is` };
+    }
+    index += flag.value === undefined ? 2 : 1;
+  }
+  const before = afterGroup.slice(0, index);
+  if (before.some((word) => word.dynamic)) {
+    return { kind: 'unread', why: 'a word only known when it runs, before its command, may change which command it is' };
+  }
+  return { kind: 'command', command: afterGroup[index], rest: [...before, ...afterGroup.slice(index + 1)] };
+}
+
 /**
  * What a gh call's words (after `gh`) do: `gh pr view 3`, `gh api repos/o/n/pulls` and a GraphQL query read; `gh issue
  * close 7 -R o/n` writes on o/n, `gh pr create` on the folder's repository; `gh gist create`, a GraphQL mutation and an
- * alias or extension are unplaced. A word only known when it runs makes a write unplaced, or a group only known when
- * it runs reads only with a command every group reads with.
+ * alias or extension are unplaced. A word only known when it runs makes a write unplaced, and a group only known when
+ * it runs any call, since it may split into a group and a write (`$G list` with `G='issue close 5 -c'`).
  */
 export function ghCallOf(words: readonly ShellWord[]): GhCall {
-  const [group, command] = words;
+  const [group] = words;
   if (group === undefined) {
     return { kind: 'read' };
   }
-  const what = `gh ${words
-    .slice(0, 2)
-    .map((word) => word.text)
-    .join(' ')}`;
   if (group.dynamic) {
-    return command !== undefined && !command.dynamic && READ_IN_ANY_GROUP.has(command.text) ? { kind: 'read' } : { kind: 'unplaced', what, why: 'its command is only known when it runs' };
+    return { kind: 'unplaced', what: `gh ${group.text}`, why: 'its group is only known when it runs' };
   }
   if (group.text.startsWith('-')) {
-    return group.text === '--version' || group.text === '--help' || group.text === '-h' ? { kind: 'read' } : { kind: 'unplaced', what, why: 'gh takes no flag before its command' };
+    return group.text === '--version' || group.text === '--help' || group.text === '-h' ? { kind: 'read' } : { kind: 'unplaced', what: `gh ${words.slice(0, 2).map((word) => word.text).join(' ')}`, why: 'gh takes no flag before its command' };
   }
   if (group.text === 'api') {
     return apiCallKind(words.slice(1));
@@ -305,9 +345,18 @@ export function ghCallOf(words: readonly ShellWord[]): GhCall {
   if (!GH_GROUPS.has(group.text)) {
     return { kind: 'unplaced', what: `gh ${group.text}`, why: 'gh runs it as an alias or an extension, which the guard cannot read' };
   }
+  const slot = ghCommandSlotOf(words.slice(1));
+  if (slot.kind === 'help') {
+    return { kind: 'read' };
+  }
+  if (slot.kind === 'unread') {
+    return { kind: 'unplaced', what: `gh ${group.text}`, why: slot.why };
+  }
+  const { command, rest } = slot;
   if (command === undefined) {
     return { kind: 'read' };
   }
+  const what = `gh ${group.text} ${command.text}`;
   if (command.dynamic) {
     return { kind: 'unplaced', what, why: 'its command is only known when it runs' };
   }
@@ -315,7 +364,7 @@ export function ghCallOf(words: readonly ShellWord[]): GhCall {
     return { kind: 'read' };
   }
   if (REPO_GROUPS.has(group.text)) {
-    return repoWriteOf(group.text, what, words.slice(2));
+    return repoWriteOf(group.text, what, rest);
   }
   if (ACCOUNT_GROUPS.has(group.text)) {
     return { kind: 'unplaced', what, why: 'it writes on the GitHub account, outside any one repository' };
@@ -329,12 +378,47 @@ export function mayBeGhCall(words: readonly ShellWord[]): boolean {
   return group !== undefined && !group.dynamic && GH_GROUPS.has(group.text);
 }
 
-/** The GitHub repositories (`owner/name`, lowercase) a `git remote -v` listing names; a remote off github.com names none. */
-export function remoteReposOf(listing: string): string[] {
-  const repos = listing.split(/\r?\n/u).flatMap((line) => {
+/** The host a remote URL reaches: `scheme://[user@]host`, else scp-like `[user@]host:path`; '' for a folder on this machine. */
+function remoteHostOf(url: string): string {
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]*@)?([^/:]*)/iu.exec(url);
+  if (withScheme !== null) {
+    return (withScheme[1] ?? '').toLowerCase();
+  }
+  const scpLike = /^[a-z]:[\\/]/iu.test(url) ? null : /^(?:[^@/]*@)?([^/:]+):/u.exec(url);
+  return (scpLike?.[1] ?? '').toLowerCase();
+}
+
+/**
+ * True when a remote URL plainly reaches no GitHub host: a folder on this machine, or a host with a dot and no
+ * `github` in it. A host with no dot may be an SSH alias (`git@work-gh:o/n.git`), which gh resolves to github.com,
+ * and a remote helper (`ext::<command>`) may run anything.
+ */
+function plainlyOffGithub(url: string): boolean {
+  if (url.includes('::')) {
+    return false;
+  }
+  const host = remoteHostOf(url);
+  return host === '' || (host.includes('.') && !host.includes('github'));
+}
+
+/**
+ * The GitHub repositories (`owner/name`, lowercase) a `git remote -v` listing names; undefined when a remote names
+ * none the guard can read yet may reach GitHub, such as through an SSH host alias or a port, so a write there fails
+ * closed. A remote plainly off GitHub names none.
+ */
+export function remoteReposOf(listing: string): string[] | undefined {
+  const repos = new Set<string>();
+  for (const line of listing.split(/\r?\n/u)) {
     const url = line.split(/\s+/u)[1];
-    const repo = url === undefined ? undefined : githubRepoOf(url);
-    return repo === undefined ? [] : [repo];
-  });
-  return [...new Set(repos)];
+    if (url === undefined || url === '') {
+      continue;
+    }
+    const repo = githubRepoOf(url);
+    if (repo !== undefined) {
+      repos.add(repo);
+    } else if (!plainlyOffGithub(url)) {
+      return undefined;
+    }
+  }
+  return [...repos];
 }
