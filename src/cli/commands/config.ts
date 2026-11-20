@@ -1,13 +1,24 @@
 import { extname, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { migrationBackupName, type ConfigLoad } from '../../config/load.ts';
+import { migrationBackupName } from '../../config/load.ts';
 import { settingAt, settingValueOf, withSetting } from '../../config/setting-edit.ts';
 import { rowsUnder, settingRows, type SettingRow } from '../../config/settings.ts';
 import { isRecord, type JsonRecord } from '../../core/guards.ts';
 import { clientRootOf } from '../../exec/client-integrity.ts';
 import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { checkedNextConfig, configFileJson, configLockOf, issueText, leadOnly, openTeamKit, reloadTeamConfig, requireConfig, rosterOf } from '../kit.ts';
+import {
+  checkedNextConfig,
+  configFileJson,
+  configLockOf,
+  issueText,
+  leadOnly,
+  openTeamKit,
+  reloadTeamConfig,
+  requireConfig,
+  rosterOf,
+  type LoadedConfig,
+} from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /**
@@ -48,19 +59,35 @@ export async function get(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   return EXIT.ok;
 }
 
-type LoadedConfig = Extract<ConfigLoad, { readonly status: 'loaded' }>;
+/** The config schema beside this CLI, and every key it describes read against the team's file. */
+export interface SchemaSettings {
+  readonly schema: JsonRecord;
+  readonly rows: readonly SettingRow[];
+}
 
-/** Every key the schema beside this CLI describes, read against the team's file. */
-async function settingRowsOf(runtime: CliRuntime, load: LoadedConfig): Promise<readonly SettingRow[]> {
-  const schemaPath = configSchemaPathOf(runtime.self.script);
-  const schema = parsedRecord(await runtime.files.read(schemaPath));
+/**
+ * The schema and its rows for a loaded config; undefined when the schema file is missing or holds no JSON object.
+ * It names no path and refuses nothing, so a caller that must never serve a place on the disk (`teamrig read`) tells
+ * the lack in its own words.
+ */
+export async function schemaSettingsOf(runtime: CliRuntime, load: LoadedConfig): Promise<SchemaSettings | undefined> {
+  const schema = parsedRecord(await runtime.files.read(configSchemaPathOf(runtime.self.script)));
   if (schema === undefined) {
-    throw new RefusedError(`no config schema at ${schemaPath}; reinstall teamrig`);
+    return undefined;
   }
   // The file as written, so a row shows what the team set, not the parsed value; an older format is read migrated, as
   // every command reads it.
   const raw = load.pending?.migrated ?? parsedRecord(await runtime.files.read(load.path)) ?? {};
-  return settingRows(schema, raw, load.issues);
+  return { schema, rows: settingRows(schema, raw, load.issues) };
+}
+
+/** The rows of {@link schemaSettingsOf} for `config get` and `config set`, which refuse without a schema. */
+async function settingRowsOf(runtime: CliRuntime, load: LoadedConfig): Promise<readonly SettingRow[]> {
+  const settings = await schemaSettingsOf(runtime, load);
+  if (settings === undefined) {
+    throw new RefusedError(`no config schema at ${configSchemaPathOf(runtime.self.script)}; reinstall teamrig`);
+  }
+  return settings.rows;
 }
 
 export const SET_BACKUP_NAME = 'config.set';
