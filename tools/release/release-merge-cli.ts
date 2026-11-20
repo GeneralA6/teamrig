@@ -2,7 +2,7 @@ import { gitSyncIn } from '../lib/git.ts';
 import { runMain } from '../lib/run-main.ts';
 import { readProfiles } from '../ship/repos.ts';
 import { mergeRelease, releaseGate } from './release-merge.ts';
-import { gateCommand, mergeCommand } from './release-merge-commands.ts';
+import { epochSeconds, gateCommand, mergeCommand } from './release-merge-commands.ts';
 
 /**
  * Run by .github/workflows/release-merge.yml in a checkout of main (T4712): `gate` or `merge`
@@ -14,18 +14,13 @@ async function main(): Promise<number> {
   const [command, ...rest] = process.argv.slice(2);
   if (rest.length > 0) throw new Error('takes one argument: gate or merge');
   if (command === 'gate') {
-    return gateCommand(process.env, { git: gitSyncIn(process.cwd()), profiles: readProfiles(), gate: releaseGate, fetchFn: fetch, out: (text) => process.stdout.write(text) });
+    return gateCommand(process.env, { git: gitSyncIn(process.cwd()), profiles: readProfiles(), gate: releaseGate, fetchFn: fetch, out: console.log });
   }
   if (command === 'merge') {
-    return mergeCommand(process.env, {
-      merge: mergeRelease,
-      fetchFn: fetch,
-      nowSeconds: () => Math.floor(Date.now() / 1000),
-      out: (line) => console.log(line),
-      err: (line) => console.error(line),
-    });
+    return mergeCommand(process.env, { merge: mergeRelease, fetchFn: fetch, nowSeconds: epochSeconds, out: console.log, err: console.error });
   }
   throw new Error('takes one argument: gate or merge');
 }
 
-process.exitCode = await runMain('release-merge', main, (line) => console.error(line));
+// console's methods are bound to it, so they pass as plain functions; the CLI keeps no function of its own but main.
+process.exitCode = await runMain('release-merge', main, console.error);
