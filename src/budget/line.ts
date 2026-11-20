@@ -1,8 +1,7 @@
 import { stringField, type JsonRecord } from '../core/guards.ts';
 import { BLOCK_START_WORDS, isBlockStartLine } from '../core/work-block.ts';
-import type { EntryKind, HookNoteEntry, InputEntry, ReplyEntry, TranscriptReader } from '../ports/host/index.ts';
+import type { CallUsage, EntryKind, HookNoteEntry, InputEntry, ReplyEntry, TranscriptReader } from '../ports/host/index.ts';
 import { isPushedPrompt, isStopFeedback } from './turn-origin.ts';
-import type { Usage } from './weights.ts';
 
 /** A tool the model called in a reply: its id, its name and, for a shell, the command line. */
 export interface ToolUse {
@@ -40,7 +39,7 @@ export interface CallLine {
   readonly at: number | undefined;
   /** False for a subagent's reply (a sidechain) and for a line that does not say. */
   readonly mainThread: boolean;
-  readonly usage: Usage;
+  readonly usage: CallUsage;
   readonly tools: readonly ToolUse[];
   /** The model that wrote the reply, when the line names it. */
   readonly model?: string;

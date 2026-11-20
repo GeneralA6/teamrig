@@ -1,18 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { contextTokens, modelWeightOf, weightOf } from './weights.ts';
-
-describe('contextTokens and weightOf', () => {
-  const usage = { input: 4, cacheWrite5m: 8, cacheWrite1h: 10, cacheWriteUnsplit: 20, cacheRead: 1_000, output: 30 };
-
-  it('adds everything the call read', () => {
-    assert.equal(contextTokens(usage), 1_042);
-  });
-
-  it('prices each kind against a plain input token', () => {
-    assert.equal(weightOf(usage), 4 + 8 * 1.25 + 10 * 2 + 20 * 2 + 1_000 * 0.1 + 30 * 5);
-  });
-});
+import { modelWeightOf } from './weights.ts';
 
 describe('modelWeightOf (T2454)', () => {
   const weights = [
