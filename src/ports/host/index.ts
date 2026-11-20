@@ -15,6 +15,7 @@ export {
   SHELL_DIALECTS,
   TOOL_KINDS,
   isToolKind,
+  type AskCall,
   type EditCall,
   type HelperCall,
   type MessageCall,

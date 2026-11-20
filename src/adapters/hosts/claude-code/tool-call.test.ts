@@ -83,12 +83,24 @@ describe("Claude Code's other tools", () => {
 
   it('load a skill, ask the human, schedule and message', () => {
     assert.deepEqual(call('Skill', { skill: 'dev-ship-change' }), { kind: 'skill', name: 'Skill', input: { skill: 'dev-ship-change' }, skill: 'dev-ship-change' });
-    assert.deepEqual(call('AskUserQuestion', { questions: [] }), { kind: 'ask', name: 'AskUserQuestion', input: { questions: [] } });
-    assert.deepEqual(call('ExitPlanMode', {}), { kind: 'ask', name: 'ExitPlanMode', input: {} });
+    assert.deepEqual(call('AskUserQuestion', { questions: [] }), { kind: 'ask', name: 'AskUserQuestion', input: { questions: [] }, asks: 'question', question: undefined });
+    assert.deepEqual(call('ExitPlanMode', {}), { kind: 'ask', name: 'ExitPlanMode', input: {}, asks: 'plan', question: undefined });
     assert.deepEqual(call('CronCreate', { cron: '* * * * *' }), { kind: 'schedule', name: 'CronCreate', input: { cron: '* * * * *' } });
     assert.deepEqual(call('ScheduleWakeup', { delaySeconds: 60 }), { kind: 'schedule', name: 'ScheduleWakeup', input: { delaySeconds: 60 } });
     const message = { to: 'lead', message: 'done' };
     assert.deepEqual(call('SendMessage', message), { kind: 'message', name: 'SendMessage', input: message, to: 'lead', text: 'done' });
+  });
+
+  it('give an ask its first question as written, and none where the input lists no question', () => {
+    const questionOf = (name: string, input: JsonRecord): unknown => {
+      const asked = call(name, input);
+      return asked.kind === 'ask' ? asked.question : 'not an ask';
+    };
+    assert.equal(questionOf('AskUserQuestion', { questions: ['not a question', { question: 'Which base? ' }, { question: 'And then?' }] }), 'Which base? ');
+    assert.equal(questionOf('AskUserQuestion', { questions: [{ header: 'Base' }, { question: 'And then?' }] }), undefined, 'only the first question is read');
+    assert.equal(questionOf('AskUserQuestion', { questions: 'Which base?' }), undefined);
+    assert.equal(questionOf('ExitPlanMode', { plan: 'the plan' }), undefined);
+    assert.equal(questionOf('Bash', { questions: [{ question: 'Which base?' }] }), 'not an ask');
   });
 
   it("name a message's receiver without the [ref] that tells two sessions of one name apart, and none for a blank name", () => {

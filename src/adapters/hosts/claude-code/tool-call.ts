@@ -1,6 +1,7 @@
 import {
   isRecord,
   stringField,
+  type AskCall,
   type JsonRecord,
   type ShellDialect,
   type TextChange,
@@ -77,9 +78,19 @@ function edit(changeOf: ChangeReader): Reader {
   };
 }
 
-function plain(kind: 'ask' | 'schedule'): Reader {
-  return (name, input) => ({ kind, name, input });
+/** The first question an asking tool's input lists, as written; undefined when it lists none. */
+function firstQuestionOf(input: JsonRecord): string | undefined {
+  const questions: unknown = input['questions'];
+  const first = Array.isArray(questions) ? questions.find(isRecord) : undefined;
+  return first === undefined ? undefined : stringField(first, 'question');
 }
+
+/** A tool that stops the turn for the human: the question picker asks a question, plan mode's exit a yes to its plan. */
+function ask(asks: AskCall['asks']): Reader {
+  return (name, input) => ({ kind: 'ask', name, input, asks, question: firstQuestionOf(input) });
+}
+
+const schedule: Reader = (name, input) => ({ kind: 'schedule', name, input });
 
 const helper: Reader = (name, input) => ({ kind: 'helper', name, input, type: stringField(input, 'subagent_type') });
 
@@ -117,10 +128,10 @@ const READERS: Readonly<Record<string, Reader>> = {
   Agent: helper,
   Task: helper,
   Skill: (name, input) => ({ kind: 'skill', name, input, skill: stringField(input, 'skill') }),
-  AskUserQuestion: plain('ask'),
-  ExitPlanMode: plain('ask'),
-  CronCreate: plain('schedule'),
-  ScheduleWakeup: plain('schedule'),
+  AskUserQuestion: ask('question'),
+  ExitPlanMode: ask('plan'),
+  CronCreate: schedule,
+  ScheduleWakeup: schedule,
   SendMessage: (name, input) => ({ kind: 'message', name, input, to: receiverOf(input), text: stringField(input, 'message') }),
 };
 
