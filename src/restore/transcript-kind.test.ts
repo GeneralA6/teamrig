@@ -16,34 +16,34 @@ const metadata = [line({ type: 'custom-title', customTitle: 'po' }), line({ type
 
 describe('transcriptKindOf', () => {
   it("reads a tab's transcript as a tab that was not continued anywhere", () => {
-    assert.deepEqual(transcriptKindOf(reader,[tabTurn, ...metadata, ''].join('\n')), { background: false, continuedIn: undefined });
+    assert.deepEqual(transcriptKindOf(reader, [tabTurn, ...metadata, ''].join('\n')), { background: false, continuedIn: undefined });
   });
 
   it('reads a background job by its last turn, past the metadata after it', () => {
-    assert.deepEqual(transcriptKindOf(reader,[tabTurn, jobTurn, ...metadata].join('\n')), { background: true, continuedIn: undefined });
+    assert.deepEqual(transcriptKindOf(reader, [tabTurn, jobTurn, ...metadata].join('\n')), { background: true, continuedIn: undefined });
   });
 
   it('reads a tab sent to the background by its last turn, and one brought back to a tab', () => {
-    assert.equal(transcriptKindOf(reader,[tabTurn, jobTurn].join('\n')).background, true);
-    assert.equal(transcriptKindOf(reader,[jobTurn, tabTurn].join('\n')).background, false);
+    assert.equal(transcriptKindOf(reader, [tabTurn, jobTurn].join('\n')).background, true);
+    assert.equal(transcriptKindOf(reader, [jobTurn, tabTurn].join('\n')).background, false);
   });
 
   it('names the session a transcript was continued in after its last turn, the latest when there are two', () => {
     const later = line({ type: 'continued-in', sessionId: OLD, continuedInSessionId: 'later-session' });
-    assert.deepEqual(transcriptKindOf(reader,[tabTurn, continued, ...metadata].join('\n')), { background: false, continuedIn: JOB });
-    assert.equal(transcriptKindOf(reader,[tabTurn, continued, later].join('\n')).continuedIn, 'later-session');
+    assert.deepEqual(transcriptKindOf(reader, [tabTurn, continued, ...metadata].join('\n')), { background: false, continuedIn: JOB });
+    assert.equal(transcriptKindOf(reader, [tabTurn, continued, later].join('\n')).continuedIn, 'later-session');
   });
 
   it('drops a continuation the session had a turn after: it was resumed and runs here again', () => {
-    assert.deepEqual(transcriptKindOf(reader,[tabTurn, continued, tabTurn].join('\n')), { background: false, continuedIn: undefined });
+    assert.deepEqual(transcriptKindOf(reader, [tabTurn, continued, tabTurn].join('\n')), { background: false, continuedIn: undefined });
   });
 
   it('skips a torn first line and a message that only mentions a continuation, and reads an empty tail as a tab', () => {
     const torn = jobTurn.slice(20);
     const mention = line({ type: 'user', entrypoint: 'cli', message: { role: 'user', content: 'the continued-in record' } });
-    assert.deepEqual(transcriptKindOf(reader,[torn, tabTurn].join('\n')), { background: false, continuedIn: undefined });
-    assert.deepEqual(transcriptKindOf(reader,[torn, continued].join('\n')), { background: false, continuedIn: JOB });
-    assert.deepEqual(transcriptKindOf(reader,mention), { background: false, continuedIn: undefined });
-    assert.deepEqual(transcriptKindOf(reader,''), { background: false, continuedIn: undefined });
+    assert.deepEqual(transcriptKindOf(reader, [torn, tabTurn].join('\n')), { background: false, continuedIn: undefined });
+    assert.deepEqual(transcriptKindOf(reader, [torn, continued].join('\n')), { background: false, continuedIn: JOB });
+    assert.deepEqual(transcriptKindOf(reader, mention), { background: false, continuedIn: undefined });
+    assert.deepEqual(transcriptKindOf(reader, ''), { background: false, continuedIn: undefined });
   });
 });

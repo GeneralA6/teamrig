@@ -22,7 +22,7 @@ function call(...tools: FixtureTool[]): string[] {
 }
 
 function chain(lines: readonly string[]): Chain {
-  return chainOf(reader,transcript(lines), false, undefined);
+  return chainOf(reader, transcript(lines), false, undefined);
 }
 
 const read = (): FixtureTool => tool('Read');
@@ -67,21 +67,21 @@ describe('chainOf', () => {
   it('counts the tool the hook fires for when its reply is not written yet, once', () => {
     const lines = [promptLine(AT), ...call(read()), ...call(read())];
     const current = { id: 'tNew', name: 'Grep', command: undefined };
-    assert.deepEqual(chainOf(reader,transcript(lines), false, current), { length: 3, editThenTest: false, context: CONTEXT });
+    assert.deepEqual(chainOf(reader, transcript(lines), false, current), { length: 3, editThenTest: false, context: CONTEXT });
     const written = read();
     const withReply = [...lines, ...call(written)];
-    assert.equal(chainOf(reader,transcript(withReply), false, { id: written.id, name: 'Read', command: undefined }).length, 3);
+    assert.equal(chainOf(reader, transcript(withReply), false, { id: written.id, name: 'Read', command: undefined }).length, 3);
   });
 
   it('skips the first line of a cut tail, which may start mid-line', () => {
     const lines = [promptLine(AT), ...call(read()), ...call(read())];
     const text = transcript(lines);
-    assert.equal(chainOf(reader,text.slice(10), true, undefined).length, 2);
-    assert.equal(chainOf(reader,transcript([...call(read()), ...lines.slice(1)]), true, undefined).length, 2);
+    assert.equal(chainOf(reader, text.slice(10), true, undefined).length, 2);
+    assert.equal(chainOf(reader, transcript([...call(read()), ...lines.slice(1)]), true, undefined).length, 2);
   });
 
   it('is empty for a turn with no calls, with context 0', () => {
-    assert.deepEqual(chainOf(reader,'', false, undefined), { length: 0, editThenTest: false, context: 0 });
+    assert.deepEqual(chainOf(reader, '', false, undefined), { length: 0, editThenTest: false, context: 0 });
   });
 });
 

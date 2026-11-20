@@ -31,14 +31,14 @@ const TRANSCRIPT = '/t/session.jsonl';
 describe('contextTokensOf', () => {
   it("adds the last main-thread reply's input, cache-creation and cache-read tokens", () => {
     const older = reply({ input_tokens: 5, cache_read_input_tokens: 10 });
-    assert.equal(contextTokensOf(reader,[older, PROMPT, MAIN, PROMPT].join('\n'), false), 99_140);
+    assert.equal(contextTokensOf(reader, [older, PROMPT, MAIN, PROMPT].join('\n'), false), 99_140);
   });
 
   it("skips a subagent's reply, a damaged line and a line that only mentions usage", () => {
     const sidechain = reply({ input_tokens: 1, cache_read_input_tokens: 400_000 }, true);
     const damaged = MAIN.slice(0, -2);
     const mention = JSON.stringify({ type: 'user', isSidechain: false, message: { content: '"usage" is in the text' } });
-    assert.equal(contextTokensOf(reader,[MAIN, sidechain, damaged, mention, '{"usage": ['].join('\n'), false), 99_140);
+    assert.equal(contextTokensOf(reader, [MAIN, sidechain, damaged, mention, '{"usage": ['].join('\n'), false), 99_140);
   });
 
   it('skips a reply without usage, with damaged numbers, or that read nothing', () => {
@@ -51,26 +51,26 @@ describe('contextTokensOf', () => {
       reply({ input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }),
       JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 9 } } }),
     ];
-    assert.equal(contextTokensOf(reader,lines.join('\n'), false), 99_140);
+    assert.equal(contextTokensOf(reader, lines.join('\n'), false), 99_140);
   });
 
   it('counts a missing cache field as 0', () => {
-    assert.equal(contextTokensOf(reader,reply({ input_tokens: 1_234 }), false), 1_234);
+    assert.equal(contextTokensOf(reader, reply({ input_tokens: 1_234 }), false), 1_234);
   });
 
   it('skips the first line of a cut tail, which may be the end of a longer line', () => {
     const tail = `${reply({ input_tokens: 7 })}\n${PROMPT}`;
-    assert.equal(contextTokensOf(reader,tail, false), 7);
-    assert.equal(contextTokensOf(reader,tail, true), undefined);
+    assert.equal(contextTokensOf(reader, tail, false), 7);
+    assert.equal(contextTokensOf(reader, tail, true), undefined);
   });
 
   it('is unknown when no line tells', () => {
-    assert.equal(contextTokensOf(reader,'', false), undefined);
-    assert.equal(contextTokensOf(reader,PROMPT, false), undefined);
+    assert.equal(contextTokensOf(reader, '', false), undefined);
+    assert.equal(contextTokensOf(reader, PROMPT, false), undefined);
   });
 
   it('reads Windows line ends', () => {
-    assert.equal(contextTokensOf(reader,`${PROMPT}\r\n${MAIN}\r\n`, false), 99_140);
+    assert.equal(contextTokensOf(reader, `${PROMPT}\r\n${MAIN}\r\n`, false), 99_140);
   });
 });
 
@@ -114,19 +114,19 @@ describe('contextEstimateOf', () => {
   it("adds the last main-thread reply and every line after it, a byte share each, to that reply's context", () => {
     const result = userLine(30_000);
     assert.equal(ESTIMATE_BYTES_PER_TOKEN, 3);
-    assert.equal(contextEstimateOf(reader,[PROMPT, MAIN, result].join('\n'), false), estimate(`${MAIN}\n${result}`));
+    assert.equal(contextEstimateOf(reader, [PROMPT, MAIN, result].join('\n'), false), estimate(`${MAIN}\n${result}`));
     assert.equal(estimate(`${MAIN}\n${result}`) > 99_140 + 10_000, true, 'a 30,000-byte result adds at least 10,000');
-    assert.equal(contextEstimateOf(reader,MAIN, false), estimate(MAIN), 'the reply alone');
+    assert.equal(contextEstimateOf(reader, MAIN, false), estimate(MAIN), 'the reply alone');
   });
 
   it("counts a subagent's reply after it as bytes, never as the context", () => {
     const sidechain = reply({ input_tokens: 1, cache_read_input_tokens: 400_000 }, true);
-    assert.equal(contextEstimateOf(reader,[MAIN, sidechain].join('\n'), false), estimate(`${MAIN}\n${sidechain}`));
+    assert.equal(contextEstimateOf(reader, [MAIN, sidechain].join('\n'), false), estimate(`${MAIN}\n${sidechain}`));
   });
 
   it('is unknown when no line tells, the first line of a cut tail included', () => {
-    assert.equal(contextEstimateOf(reader,PROMPT, false), undefined);
-    assert.equal(contextEstimateOf(reader,`${MAIN}\n${PROMPT}`, true), undefined);
+    assert.equal(contextEstimateOf(reader, PROMPT, false), undefined);
+    assert.equal(contextEstimateOf(reader, `${MAIN}\n${PROMPT}`, true), undefined);
   });
 });
 

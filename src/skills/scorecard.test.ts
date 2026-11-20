@@ -60,7 +60,7 @@ function fold(lines: readonly string[], skills: ScorecardSkills = SKILLS): { tal
   const tally = new ScorecardTally({});
   const thread = new ThreadFold(newThread(0, 0, START), tally, skills);
   for (const raw of lines) {
-    const line = transcriptLineOf(reader,raw);
+    const line = transcriptLineOf(reader, raw);
     if (line !== undefined) {
       thread.line(line);
     }
@@ -195,7 +195,7 @@ describe('ThreadFold', () => {
     const untimed = replyLine({ id: 'm', usage: { input: 1 }, tools: [{ id: 's', name: 'Skill', skill: 'alpha-ship' }] });
     const tally = new ScorecardTally({});
     const thread = new ThreadFold(newThread(0, 0, Date.parse('2030-01-07T23:00:00Z')), tally, SKILLS);
-    const line = transcriptLineOf(reader,untimed);
+    const line = transcriptLineOf(reader, untimed);
     assert.ok(line !== undefined);
     thread.line(line);
     assert.equal(dayOf(tally, 'alpha-ship', '2030-01-07')?.loads, 1);
@@ -208,14 +208,14 @@ describe('ThreadFold', () => {
     const tally = new ScorecardTally({});
     const thread = new ThreadFold(newThread(0, 0, START), tally, SKILLS);
     for (const raw of first) {
-      const line = transcriptLineOf(reader,raw);
+      const line = transcriptLineOf(reader, raw);
       if (line !== undefined) {
         thread.line(line);
       }
     }
     const resumed = new ThreadFold(thread.cursor(10, 10), tally, SKILLS);
     for (const raw of next) {
-      const line = transcriptLineOf(reader,raw);
+      const line = transcriptLineOf(reader, raw);
       if (line !== undefined) {
         resumed.line(line);
       }
