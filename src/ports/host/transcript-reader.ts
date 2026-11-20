@@ -172,6 +172,13 @@ export interface ScheduledCarryEntry extends EntryBase {
   readonly jobs: readonly ScheduledJob[];
 }
 
+/** What the host told the session of the machine and folders it runs in. */
+export interface EnvironmentEntry extends EntryBase {
+  readonly kind: 'environment';
+  /** The folder the host gave the session for its temporary files; undefined when the note names none. */
+  readonly scratchpad: string | undefined;
+}
+
 /**
  * A prompt the host put in the session's queue: one typed while a turn ran, a notification, or the prompt of a
  * scheduled job or a wake-up that came due.
@@ -188,7 +195,7 @@ export interface OtherEntry extends EntryBase {
   readonly type: string | undefined;
 }
 
-export type TranscriptEntry = InputEntry | ReplyEntry | CompactEntry | TurnEndEntry | ContinuedEntry | HookNoteEntry | ScheduledCarryEntry | QueuedPromptEntry | OtherEntry;
+export type TranscriptEntry = InputEntry | ReplyEntry | CompactEntry | TurnEndEntry | ContinuedEntry | HookNoteEntry | ScheduledCarryEntry | EnvironmentEntry | QueuedPromptEntry | OtherEntry;
 export type EntryKind = TranscriptEntry['kind'];
 
 /** A line that is no entry: damaged or torn text, or JSON that is not an object. It is said, never skipped. */

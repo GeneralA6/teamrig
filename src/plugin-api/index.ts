@@ -80,6 +80,7 @@ export {
   type ContinuedEntry,
   type EntryKind,
   type EntryThread,
+  type EnvironmentEntry,
   type HookNoteEntry,
   type HostPorts,
   type InputEntry,

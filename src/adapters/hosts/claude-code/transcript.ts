@@ -7,6 +7,7 @@ import {
   type BackgroundMark,
   type CallUsage,
   type EntryKind,
+  type EnvironmentEntry,
   type HookNoteEntry,
   type InputEntry,
   type InputOrigin,
@@ -41,6 +42,7 @@ const KIND_WORDS = {
   continued: '"type":"continued-in"',
   'hook-note': '"hook_additional_context"',
   'scheduled-carry': '"session_cron_carry"',
+  environment: '"type":"environment"',
   'queued-prompt': '"type":"queue-operation"',
   other: undefined,
 } as const satisfies Readonly<Record<EntryKind, string | undefined>>;
@@ -288,16 +290,28 @@ function scheduledCarryOf(base: Base, attachment: JsonRecord): ScheduledCarryEnt
   return { ...base, kind: 'scheduled-carry', jobs: [...scheduledJobsOf(attachment['tasks']), ...scheduledJobsOf(attachment['otherArmed'])] };
 }
 
-/** An `attachment` line teamrig has a kind for: a hook's added context, or the scheduled jobs live at a compaction; undefined for any other. */
+/** What Claude Code told the session of its machine, an `environment` attachment: its `snapshot` names the scratchpad folder. */
+function environmentOf(base: Base, attachment: JsonRecord): EnvironmentEntry {
+  const snapshot = recordField(attachment, 'snapshot');
+  return { ...base, kind: 'environment', scratchpad: snapshot === undefined ? undefined : stringField(snapshot, 'scratchpadDirectory') };
+}
+
+/**
+ * An `attachment` line teamrig has a kind for: a hook's added context, the scheduled jobs live at a compaction, or
+ * what the session was told of its machine; undefined for any other.
+ */
 function attachmentOf(base: Base, entry: JsonRecord): TranscriptEntry | undefined {
   const attachment = recordField(entry, 'attachment');
-  if (attachment === undefined) {
-    return undefined;
+  switch (attachment?.['type']) {
+    case 'hook_additional_context':
+      return hookNoteOf(base, attachment);
+    case 'session_cron_carry':
+      return scheduledCarryOf(base, attachment);
+    case 'environment':
+      return environmentOf(base, attachment);
+    default:
+      return undefined;
   }
-  if (attachment['type'] === 'hook_additional_context') {
-    return hookNoteOf(base, attachment);
-  }
-  return attachment['type'] === 'session_cron_carry' ? scheduledCarryOf(base, attachment) : undefined;
 }
 
 /** A `system` line teamrig has a kind for: a compaction boundary, or a turn's end; undefined for any other. */
