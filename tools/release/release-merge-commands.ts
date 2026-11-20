@@ -32,13 +32,19 @@ const DIGITS = /^\d+$/;
 const FULL_SHA = /^[0-9a-f]{40}$/;
 const HTTPS_URL = /^https:\/\/\S+$/;
 
+/** The clock the App token is signed by, in whole seconds since the epoch. */
+export function epochSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
 export interface GateCommandDeps {
   /** Git in the checkout of main the job runs in. */
   readonly git: GitText;
   readonly profiles: ReadonlyMap<string, RepoProfile>;
   readonly gate: (target: GateTarget, deps: GateDeps) => Promise<GateOutcome>;
   readonly fetchFn: Fetch;
-  readonly out: (text: string) => void;
+  /** Prints one line, without its line end. */
+  readonly out: (line: string) => void;
 }
 
 export interface MergeCommandDeps {
@@ -89,7 +95,7 @@ export async function gateCommand(env: Env, deps: GateCommandDeps): Promise<numb
   );
   const summary = gateSummary(outcome);
   appendFileSync(summaryFile, summary);
-  deps.out(summary);
+  deps.out(summary.trimEnd());
   if (outcome.kind !== 'pass') {
     appendFileSync(output, 'pass=false\n');
     return outcome.kind === 'stale' ? EXIT_CLEAN : EXIT_FINDINGS;
