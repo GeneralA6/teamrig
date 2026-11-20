@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { formatConfig } from '../../config/load.ts';
-import { isRecord, isStringArray, recordField, type JsonRecord } from '../../core/guards.ts';
+import { isRecord, recordField, type JsonRecord } from '../../core/guards.ts';
 import { toJsonlLine } from '../../core/jsonl.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { HiringLog } from '../../hiring/log.ts';
@@ -12,9 +12,10 @@ import { layoutPaths } from '../../register/layout.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
 import { formatSessionRecord } from '../../sessions/record.ts';
 import { formatTabNeed } from '../../tabs/need.ts';
-import { CliHarness, CONFIG_PATH, EVENTS_PATH, TEAM, TEAM_HOME, type CliResult } from '../../testing/cli-harness.ts';
+import { CliHarness, CONFIG_PATH, EVENTS_PATH, TEAM, TEAM_HOME } from '../../testing/cli-harness.ts';
 import { rotateRegister } from '../../testing/rotation.ts';
 import { normalisePath } from '../../testing/memory-files.ts';
+import { answersOf, problemsOf, rowsOf, served } from '../../testing/read-answers.ts';
 import { teamConfigOf, teamHomeOf, teamInboxOf, treeHarness } from '../../testing/team-tree.ts';
 import { WatchedFiles } from '../../testing/watched-files.ts';
 import { EXIT } from '../runtime.ts';
@@ -31,46 +32,12 @@ const REVISION = /^[0-9a-f]{16}$/;
 /** A text one of teamrig's own secret shapes matches, built from parts so this file holds none. */
 const SECRET = ['pass', 'word', '=', 'hunter2'].join('');
 
-/** Every stdout line as the JSON object it must be: `read` writes nothing else there. */
-function answersOf(result: CliResult): JsonRecord[] {
-  return result.stdout.map((line) => {
-    const parsed: unknown = JSON.parse(line);
-    if (!isRecord(parsed)) {
-      throw new Error(`stdout holds a line that is no JSON object: ${line}`);
-    }
-    return parsed;
-  });
-}
-
-/** The one document a run that asked for one was answered with, after a clean exit. */
-function served(result: CliResult): JsonRecord {
-  assert.deepEqual([result.code, result.stderr], [EXIT.ok, []]);
-  const answers = answersOf(result);
-  const [answer] = answers;
-  if (answer === undefined || answers.length !== 1) {
-    throw new Error(`one answer was asked and ${answers.length} came`);
-  }
-  return answer;
-}
-
 function tasksOf(answer: JsonRecord): JsonRecord[] {
-  const tasks = answer['tasks'];
-  if (!Array.isArray(tasks)) {
-    throw new Error('the answer has no tasks list');
-  }
-  return tasks.filter(isRecord);
+  return rowsOf(answer, 'tasks');
 }
 
 function titlesOf(answer: JsonRecord): unknown[] {
   return tasksOf(answer).map((task) => recordField(task, 'title')?.['text']);
-}
-
-function problemsOf(answer: JsonRecord): readonly string[] {
-  const problems = answer['problems'];
-  if (!isStringArray(problems)) {
-    throw new Error('the answer has no problems list');
-  }
-  return problems;
 }
 
 async function add(kit: CliHarness, title: string, owner: string, env: Readonly<Record<string, string>> = {}): Promise<void> {
@@ -103,11 +70,7 @@ async function markRead(kit: CliHarness): Promise<void> {
 }
 
 function linesOf(answer: JsonRecord): JsonRecord[] {
-  const lines = answer['lines'];
-  if (!Array.isArray(lines)) {
-    throw new Error('the answer has no lines list');
-  }
-  return lines.filter(isRecord);
+  return rowsOf(answer, 'lines');
 }
 
 /** Each served line as its words and whether it is unread. */
@@ -116,11 +79,7 @@ function wordsOf(answer: JsonRecord): unknown[][] {
 }
 
 function sessionsOf(answer: JsonRecord): JsonRecord[] {
-  const sessions = answer['sessions'];
-  if (!Array.isArray(sessions)) {
-    throw new Error('the answer has no sessions list');
-  }
-  return sessions.filter(isRecord);
+  return rowsOf(answer, 'sessions');
 }
 
 function sessionOf(answer: JsonRecord, team: string, id: string): JsonRecord {
