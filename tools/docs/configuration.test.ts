@@ -123,6 +123,26 @@ describe('renderConfigReference', () => {
     assert.deepEqual(headings(page).at(-1), 'Shared types');
   });
 
+  it('ends the words of a key served as a location with what teamrig read does, and refuses a mark that is neither', () => {
+    const page = renderConfigReference({
+      type: 'object',
+      properties: {
+        file: { type: 'string', description: 'Where it is kept.', 'x-teamrig-served': 'location' },
+        bare: { type: 'string', 'x-teamrig-served': 'location' },
+        env: { type: 'string', description: 'Its variable.', 'x-teamrig-served': 'value' },
+      },
+    });
+    assert.deepEqual(rows(page, 'Top level'), [
+      '| `file` | string |  | Where it is kept. `teamrig read` serves this key without its value. |',
+      '| `bare` | string |  | `teamrig read` serves this key without its value. |',
+      '| `env` | string |  | Its variable. |',
+    ]);
+    assert.throws(
+      () => renderConfigReference({ type: 'object', properties: { file: { type: 'string', 'x-teamrig-served': 'hidden' } } }),
+      /x-teamrig-served at file is none of value, location/,
+    );
+  });
+
   it('refuses a schema it cannot draw in full', () => {
     const draw = (properties: Record<string, unknown>) => () => renderConfigReference({ type: 'object', properties });
     assert.throws(draw({ n: { type: 'integer', exclusiveMinimum: 0 } }), /the schema keyword exclusiveMinimum at n is not drawn/);

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { isRecord, isStringArray, numberField, recordField, stringField, type JsonRecord } from '../../src/core/guards.ts';
+import { SERVED_MARK, SERVED_MARKS, statedMarkOf } from '../../src/config/served-mark.ts';
 import { headingAnchors } from './doc-check.ts';
 
 /**
@@ -26,8 +27,10 @@ const DEF_REF = /^#\/\$defs\/([A-Za-z][A-Za-z0-9]*)$/;
 const KEYWORDS: ReadonlySet<string> = new Set([
   '$schema', '$id', 'title', 'description', 'type', 'required', 'properties', '$defs', '$ref', 'anyOf', 'enum', 'default',
   'minimum', 'maximum', 'minLength', 'maxLength', 'pattern', 'items', 'minItems', 'maxItems', 'uniqueItems',
-  'additionalProperties', 'propertyNames', 'maxProperties',
+  'additionalProperties', 'propertyNames', 'maxProperties', SERVED_MARK,
 ]);
+/** What a key's words end with when `teamrig read` leaves its value out (the served mark `location`). */
+const LOCATION_NOTE = '`teamrig read` serves this key without its value.';
 
 /** An object that lists keys, drawn as one section. */
 interface Section {
@@ -123,7 +126,8 @@ function renderSection(section: Section, context: Context): string {
   const rows = properties(section.node).map(([key, node]) => {
     const name = `${code(key)}${required.has(key) ? ' (required)' : ''}`;
     const fallback = 'default' in node ? code(JSON.stringify(node['default'])) : '';
-    return tableRow([name, typeText(node, keyPath(section.path, key), context), fallback, prose(stringField(node, 'description') ?? '')]);
+    const path = keyPath(section.path, key);
+    return tableRow([name, typeText(node, path, context), fallback, prose(describedOf(node, path))]);
   });
   const words = section.description === undefined ? [] : [prose(section.description)];
   return [`## ${section.heading}`, ...words, [...TABLE_HEAD, ...rows].join('\n')].join('\n\n');
@@ -202,6 +206,15 @@ function rangeText(min: number | undefined, max: number | undefined, unit: strin
 function withLimits(name: string, limits: readonly (string | undefined)[]): string {
   const set = limits.filter((limit): limit is string => limit !== undefined);
   return set.length === 0 ? name : `${name} (${set.join(', ')})`;
+}
+
+/** A key's words, ending with what its served mark says of it; a mark that is neither of the two is refused. */
+function describedOf(node: JsonRecord, path: string): string {
+  const description = stringField(node, 'description') ?? '';
+  if (!(SERVED_MARK in node)) return description;
+  const mark = statedMarkOf(node);
+  if (mark === undefined) throw new Error(`config reference: ${SERVED_MARK} at ${label(path)} is none of ${SERVED_MARKS.join(', ')}`);
+  return mark === 'location' ? `${description} ${LOCATION_NOTE}`.trim() : description;
 }
 
 function properties(node: JsonRecord): [string, JsonRecord][] {
