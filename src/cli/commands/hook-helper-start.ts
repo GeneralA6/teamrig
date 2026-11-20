@@ -8,15 +8,15 @@ import { openKit, rulesClockOf, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { keptRulesAboveOf, readTeamRules } from '../team-rules.ts';
 import { loadTree } from '../tree.ts';
-import { envSession, parseJson, sessionTeam, startSessionOf } from './hook-input.ts';
+import { envSession, readHookInput, sessionTeam, startSessionOf } from './hook-input.ts';
 
 /**
  * A helper's start context, read-only: the rename log, the rules.md of its team and of each team above
  * it, and the session that started it, found as that session's own start finds it (`$TEAMRIG_SESSION`, else the area its Claude Code
  * session read its inbox as: a helper's hooks carry the session's id). It binds no tab, renames nothing
- * and starts no refresh: those belong to the session.
+ * and starts no refresh: those belong to the session. `hostSession` is that id, as the hook event names it.
  */
-export async function helperContextOf(runtime: CliRuntime, kit: Kit, payload: unknown, agentType: string | undefined): Promise<string> {
+export async function helperContextOf(runtime: CliRuntime, kit: Kit, hostSession: string | undefined, agentType: string | undefined): Promise<string> {
   const base = { team: kit.paths.team, agentType, platform: runtime.platform, clock: rulesClockOf(runtime), command: KIT_NAME };
   const { load } = kit;
   if (load.status !== 'loaded') {
@@ -32,7 +32,7 @@ export async function helperContextOf(runtime: CliRuntime, kit: Kit, payload: un
     teamRules: await readTeamRules(runtime, kit, kitTree),
     keptRulesAbove: keptRulesAboveOf(kit, kitTree),
     renames,
-    session: fromEnv ?? (await startSessionOf(runtime, kit, roster, payload)),
+    session: fromEnv ?? (await startSessionOf(runtime, kit, roster, hostSession)),
     sessionInEnv: fromEnv !== undefined,
   };
   return helperStartContext(input);
@@ -46,8 +46,8 @@ export async function helperContextOf(runtime: CliRuntime, kit: Kit, payload: un
  */
 export async function subagentStart(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  const found = await sessionTeam(payload, runtime);
+  const { payload, event } = await readHookInput(runtime);
+  const found = await sessionTeam(event?.cwd, runtime);
   switch (found.kind) {
     case 'none':
       return EXIT.ok;
@@ -58,7 +58,7 @@ export async function subagentStart(args: ParsedArgs, runtime: CliRuntime): Prom
       break;
   }
   const context = await openKit(runtime, found.team)
-    .then((kit) => helperContextOf(runtime, kit, payload, helperOf(payload)?.agentType))
+    .then((kit) => helperContextOf(runtime, kit, event?.session, helperOf(payload)?.agentType))
     .catch((error: unknown) => `${KIT_NAME} could not load the rules of team ${found.team}: ${errorMessage(error)}`);
   runtime.out.stdout(subagentStartOutput(context));
   return EXIT.ok;

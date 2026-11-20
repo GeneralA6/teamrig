@@ -12,7 +12,7 @@ import { transcriptsIfKept } from '../host.ts';
 import { checkedNextConfig, configFileJson, configLockOf, requireConfig, teamZone } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { leadAboveOf } from '../tree.ts';
-import { hookScopeOf, parseJson, type SessionScope } from './hook-input.ts';
+import { hookScopeOf, readHookInput, type SessionScope } from './hook-input.ts';
 
 /** The backup name of a config before a typed `/effort` of session `id` was written to it. */
 export function effortBackupName(id: string): string {
@@ -131,9 +131,9 @@ export async function effortWritebackOf(runtime: CliRuntime, scope: SessionScope
  */
 export async function effortWritebackHook(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  if (isRecord(payload)) {
-    const scope = await hookScopeOf(runtime, payload).catch(() => undefined);
+  const { payload, event } = await readHookInput(runtime);
+  if (isRecord(payload) && event !== undefined) {
+    const scope = await hookScopeOf(runtime, event).catch(() => undefined);
     if (scope !== undefined) {
       await effortWritebackOf(runtime, scope, payload).catch(() => undefined);
     }

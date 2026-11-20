@@ -1,8 +1,8 @@
-import { stringField, type JsonRecord } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { LockBusyError } from '../../core/lock.ts';
 import { injectFor } from '../../inbox/inject.ts';
 import { seenLinesOf, unseenLinesOf } from '../../inbox/inbox.ts';
+import type { HookEvent } from '../../ports/host/index.ts';
 import { asksNowOf, WakeAsks } from '../../wake/asks.ts';
 import { WakeStore } from '../../wake/store.ts';
 import { teamZone } from '../kit.ts';
@@ -21,12 +21,12 @@ import { fileLockOf } from '../file-locks.ts';
  * the next tool end looks again. Undefined when no ask is due, at a helper's tool end, outside a team session or with
  * `wake.enabled` false, which posts no asks.
  */
-export async function askedLinesOf(runtime: CliRuntime, payload: JsonRecord): Promise<string | undefined> {
-  // A helper's tool call carries the helper's id (`agent_id`); its context is not the session's.
-  if (stringField(payload, 'agent_id') !== undefined) {
+export async function askedLinesOf(runtime: CliRuntime, event: HookEvent): Promise<string | undefined> {
+  // A helper's tool call carries the helper's id; its context is not the session's.
+  if (event.helper?.id !== undefined) {
     return undefined;
   }
-  const scope = await wakeScopeOf(runtime, payload, true);
+  const scope = await wakeScopeOf(runtime, event, true);
   if (scope.kind === 'off') {
     return undefined;
   }

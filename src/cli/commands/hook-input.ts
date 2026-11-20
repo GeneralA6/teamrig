@@ -4,11 +4,9 @@ import type { ToolUse } from '../../budget/line.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress } from '../../core/address.ts';
-import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir, claudeTempDir, ENV } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import { OwnPaths, tasksSearched, TeamFolders, type LeadPaths, type SubTeamPlace } from '../../hooks/lead-boundary.ts';
-import { sessionIdOf } from '../../inbox/inbox.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import type { HookEvent, HookEventName, HookReply } from '../../ports/host/index.ts';
 import { JsonlEventLog } from '../../register/store.ts';
@@ -49,15 +47,18 @@ export function writeReply(runtime: Pick<CliRuntime, 'out' | 'host' | 'env' | 'p
   }
 }
 
+/** Where a hook's call comes from, as its event names it: the folder it runs in and the host's session it runs for. */
+export type HookOrigin = Pick<HookEvent, 'cwd' | 'session'>;
+
 /**
  * The team a session's hooks run for: `$TEAMRIG_TEAM`, else the nearest pointer above the folder the
- * session started in (`$CLAUDE_PROJECT_DIR`), then the payload's folder. The payload's `cwd` follows
+ * session started in (the project folder the host names in the environment), then above `folder`, the one the hook
+ * event names, undefined when the input named none. That folder follows
  * a `cd`, so walking it first would let a tab that moved into another team's project read, and bind
  * to, that team's sessions. The push guard keeps `hookTeam`: a push belongs to the folder it runs in.
  */
-export function sessionTeam(payload: unknown, runtime: CliRuntime): Promise<TeamResolution> {
-  const cwd = isRecord(payload) ? stringField(payload, 'cwd') : undefined;
-  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.env[ENV.claudeProjectDir], cwd, runtime.cwd]));
+export function sessionTeam(folder: string | undefined, runtime: CliRuntime): Promise<TeamResolution> {
+  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.env[ENV.claudeProjectDir], folder, runtime.cwd]));
 }
 
 /** `$TEAMRIG_SESSION` as Claude Code passed it to the hook; undefined when unset or blank. */
@@ -95,11 +96,12 @@ export async function markedSessionOf(runtime: CliRuntime, kit: Kit, roster: Ros
 
 /**
  * `markedSessionOf` for a start's context (a session's or its helper's), which must always load: a failed
- * read means no session. A helper's hooks carry the session id of the session that started it.
+ * read means no session. A helper's hooks carry the session id of the session that started it (`hostSession`, as
+ * the hook event names it).
  */
-export async function startSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, payload: unknown): Promise<string | undefined> {
+export async function startSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, hostSession: string | undefined): Promise<string | undefined> {
   try {
-    return await markedSessionOf(runtime, kit, roster, sessionIdOf(payload));
+    return await markedSessionOf(runtime, kit, roster, hostSession ?? null);
   } catch {
     return undefined;
   }
@@ -117,9 +119,9 @@ export interface SessionScope extends TeamScope {
   readonly id: string;
 }
 
-/** The hook payload's team; undefined outside a team or without a loaded config. */
-export async function teamScopeOf(runtime: CliRuntime, payload: JsonRecord): Promise<TeamScope | undefined> {
-  const found = await sessionTeam(payload, runtime);
+/** The team of a hook call in `folder` (see `sessionTeam`); undefined outside a team or without a loaded config. */
+export async function teamScopeOf(runtime: CliRuntime, folder: string | undefined): Promise<TeamScope | undefined> {
+  const found = await sessionTeam(folder, runtime);
   if (found.kind !== 'team') {
     return undefined;
   }
@@ -127,17 +129,17 @@ export async function teamScopeOf(runtime: CliRuntime, payload: JsonRecord): Pro
   return kit.load.status === 'loaded' ? { kit, config: kit.load.config } : undefined;
 }
 
-/** The team session of a payload in `team`; undefined when the tab is no session of it. */
-export async function sessionScopeOf(runtime: CliRuntime, team: TeamScope, payload: JsonRecord): Promise<SessionScope | undefined> {
+/** The team session in `team` of the host session a hook event names; undefined when the tab is no session of it. */
+export async function sessionScopeOf(runtime: CliRuntime, team: TeamScope, hostSession: string | undefined): Promise<SessionScope | undefined> {
   const roster = await rosterOf(runtime, team.kit, team.config);
-  const id = await teamSessionOf(runtime, team.kit, roster, sessionIdOf(payload));
+  const id = await teamSessionOf(runtime, team.kit, roster, hostSession ?? null);
   return id === undefined ? undefined : { ...team, roster, id };
 }
 
-/** The hook payload's team session (Stop, helper gate, the mod's refresh checks); undefined outside a team, without a loaded config or without a session. */
-export async function hookScopeOf(runtime: CliRuntime, payload: JsonRecord): Promise<SessionScope | undefined> {
-  const team = await teamScopeOf(runtime, payload);
-  return team === undefined ? undefined : sessionScopeOf(runtime, team, payload);
+/** The team session a hook call comes from (Stop, helper gate, the mod's refresh checks); undefined outside a team, without a loaded config or without a session. */
+export async function hookScopeOf(runtime: CliRuntime, origin: HookOrigin): Promise<SessionScope | undefined> {
+  const team = await teamScopeOf(runtime, origin.cwd);
+  return team === undefined ? undefined : sessionScopeOf(runtime, team, origin.session);
 }
 
 /**
