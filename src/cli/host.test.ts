@@ -113,7 +113,7 @@ describe('pathsIfKnown', () => {
   it('gives the paths of a host that tells them, built from the environment of the run, and nothing for a host that tells none', () => {
     const world = quietWorld();
     const moved = { CLAUDE_CODE_TMPDIR: join('/', 'scratch') };
-    assert.equal(pathsIfKnown({ host: world.host, env: moved, platform: world.platform })?.temp(join('/', 'tmp')), join('/', 'scratch'));
+    assert.equal(pathsIfKnown({ host: world.host, env: moved, platform: world.platform })?.scratchpads(join('/', 'tmp')), join('/', 'scratch', 'claude', '*', '*', 'scratchpad'));
     assert.equal(pathsIfKnown({ host: bare, env: moved, platform: 'linux' }), undefined);
   });
 });
