@@ -1,4 +1,4 @@
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, posix, win32 } from 'node:path';
 import type { HostDeps, HostPaths } from '../../../plugin-api/index.ts';
 
 /** Moves Claude Code's own folder (settings, plugins, transcripts) away from `~/.claude`. */
@@ -6,19 +6,53 @@ const CONFIG_DIR = 'CLAUDE_CONFIG_DIR';
 /** Moves Claude Code's temporary files, session scratchpads among them, away from the system's temporary folder. */
 const TEMP_DIR = 'CLAUDE_CODE_TMPDIR';
 
+/** The folder Claude Code keeps a project's own files in, under the project folder or one of its worktrees. */
+const PROJECT_DIR = '.claude';
+/** The settings files in that folder, in the order Claude Code reads them, with whose each one is. */
+const FOLDER_SETTINGS = [
+  ['settings.json', 'shared'],
+  ['settings.local.json', 'local'],
+] as const;
+
 /** The variable's value, or undefined when it is unset or blank: a blank one moves nothing. */
 function setIn(env: HostDeps['env'], name: string): string | undefined {
   const value = env[name]?.trim();
   return value ? value : undefined;
 }
 
-/** Where Claude Code keeps its files, in the environment of one run. */
-export function hostPaths(env: HostDeps['env']): HostPaths {
+/** Platforms whose default filesystems (NTFS, APFS) ignore case, so a folder's name matches there in any case. */
+const CASE_BLIND: ReadonlySet<HostDeps['platform']> = new Set(['win32', 'darwin']);
+/** One of Claude Code's worktrees in a path, `<project>/.claude/worktrees/<name>`, with either separator. */
+const WORKTREE = /[\\/]\.claude[\\/]worktrees[\\/][^\\/]+/;
+const WORKTREE_ANY_CASE = new RegExp(WORKTREE.source, 'i');
+
+/**
+ * For a path at or below a worktree Claude Code made (`<project>/.claude/worktrees/<name>[/<rest>]`, by EnterWorktree
+ * or `claude --worktree`), the same place in the project's folder (`<project>[/<rest>]`); undefined for any other
+ * path. A project at a root stays a root: the root keeps its separator.
+ */
+function worktreeRepoOf(path: string, platform: HostDeps['platform']): string | undefined {
+  const match = (CASE_BLIND.has(platform) ? WORKTREE_ANY_CASE : WORKTREE).exec(path);
+  if (match === null) {
+    return undefined;
+  }
+  const head = path.slice(0, match.index);
+  const tail = path.slice(match.index + match[0].length);
+  const atRoot = tail === '' && (head === '' || head.endsWith(':'));
+  return atRoot ? `${head}${(platform === 'win32' ? win32 : posix).sep}` : `${head}${tail}`;
+}
+
+/** Where Claude Code keeps its files, in the environment of one run on `platform`. */
+export function hostPaths(env: HostDeps['env'], platform: HostDeps['platform']): HostPaths {
   const home = (userHome: string): string => setIn(env, CONFIG_DIR) ?? join(userHome, '.claude');
   /** Its temporary files: a session's scratchpad is `<it>/<project folder>/<session>/scratchpad`. */
   const temp = (systemTemp: string): string => join(setIn(env, TEMP_DIR) ?? systemTemp, 'claude');
   return {
     home,
+    userSettings: (userHome) => join(home(userHome), 'settings.json'),
+    folderSettings: (folder) => FOLDER_SETTINGS.map(([name, kind]) => ({ path: join(folder, PROJECT_DIR, name), kind })),
+    worktrees: (project) => join(project, PROJECT_DIR, 'worktrees'),
+    worktreeRepo: (path) => worktreeRepoOf(path, platform),
     skills: (userHome) => join(home(userHome), 'skills'),
     memoryFolders: (userHome) => join(home(userHome), 'projects', '*', 'memory'),
     scratchpads: (systemTemp) => join(temp(systemTemp), '*', '*', 'scratchpad'),

@@ -1,6 +1,6 @@
 import { loadHostPorts, type HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import { isUnsupported, unsupported, type HookBridge, type HookEvent, type HookEventName, type HookReply, type ShellCall } from '../ports/host/index.ts';
+import { isUnsupported, unsupported, type HookBridge, type HookEvent, type HookEventName, type HookReply, type HostPaths, type ShellCall } from '../ports/host/index.ts';
 import { hostDeps } from './adapter-deps.ts';
 import { bareHost } from './bare-host.ts';
 
@@ -25,6 +25,13 @@ export const HOOKS_ONLY_HOST: HostSource = (given) => {
  * with no place of the host known, while its hooks, transcript and usage are still read.
  */
 export const NO_PATHS_HOST: HostSource = (given) => ({ ...SHIPPED_HOST(given), paths: unsupported('no folder of the host is known') });
+
+/** The shipped host's paths in the environment `env` on `platform`: where a spec's files are, as a run would be told them. */
+export function testPaths(env: Readonly<Record<string, string | undefined>> = {}, platform: NodeJS.Platform = 'linux'): HostPaths {
+  const { paths } = SHIPPED_HOST({ env, platform });
+  if (isUnsupported(paths)) throw new Error(`the shipped host tells none of its folders: ${paths.notice}`);
+  return paths;
+}
 
 /** The shipped host's hook bridge on `platform`. */
 export function testHooks(platform: NodeJS.Platform = 'linux'): HookBridge {

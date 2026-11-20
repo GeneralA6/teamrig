@@ -15,6 +15,6 @@ export default defineHost({
   declaration,
   create: (deps) => {
     const toolCall = toolCallShape(deps.platform);
-    return { hooks: hookBridge(toolCall), toolCall, transcripts: transcriptReader, usage: usageMeter, statusLine, paths: hostPaths(deps.env) };
+    return { hooks: hookBridge(toolCall), toolCall, transcripts: transcriptReader, usage: usageMeter, statusLine, paths: hostPaths(deps.env, deps.platform) };
   },
 });

@@ -89,15 +89,20 @@ export function pathsIfKnown(runtime: Pick<CliRuntime, 'host' | 'env' | 'platfor
 }
 
 /**
- * The host's own folder for the person of this run. A host whose folders teamrig does not know refuses with its own
- * reason: for a command whose whole work is in that folder, such as one that edits the host's settings.
+ * Where the run's host keeps its files. A host whose folders teamrig does not know refuses with its own reason: for
+ * a command whose whole work is in the host's own files, such as one that edits its settings.
  */
-export function hostHomeOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform' | 'userHome'>): string {
+export function pathsOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): HostPaths {
   const { paths } = hostOf(runtime);
   if (isUnsupported(paths)) {
     throw new RefusedError(paths.notice);
   }
-  return paths.home(runtime.userHome);
+  return paths;
+}
+
+/** The host's own folder for the person of this run. A host whose folders teamrig does not know refuses, as `pathsOf` does. */
+export function hostHomeOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform' | 'userHome'>): string {
+  return pathsOf(runtime).home(runtime.userHome);
 }
 
 /** The host's own folder for the person of this run, or undefined on a host whose folders teamrig does not know. */
