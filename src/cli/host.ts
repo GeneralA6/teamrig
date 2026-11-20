@@ -1,4 +1,4 @@
-import { isUnsupported, type HookBridge, type HostPorts, type StatusLine, type TranscriptReader, type UsageMeter } from '../ports/host/index.ts';
+import { isUnsupported, type HookBridge, type HostPaths, type HostPorts, type StatusLine, type TranscriptReader, type UsageMeter } from '../ports/host/index.ts';
 import type { ContextSource } from '../refresh/usage.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
@@ -77,4 +77,30 @@ export function usageOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>):
     throw new RefusedError(usage.notice);
   }
   return usage;
+}
+
+/**
+ * Where the run's host keeps its files, or undefined on a host whose folders teamrig does not know: for a caller that
+ * goes on without the host's own files, such as a hook that must never answer by a refusal.
+ */
+export function pathsIfKnown(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): HostPaths | undefined {
+  const { paths } = hostOf(runtime);
+  return isUnsupported(paths) ? undefined : paths;
+}
+
+/**
+ * The host's own folder for the person of this run. A host whose folders teamrig does not know refuses with its own
+ * reason: for a command whose whole work is in that folder, such as one that edits the host's settings.
+ */
+export function hostHomeOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform' | 'userHome'>): string {
+  const { paths } = hostOf(runtime);
+  if (isUnsupported(paths)) {
+    throw new RefusedError(paths.notice);
+  }
+  return paths.home(runtime.userHome);
+}
+
+/** The host's own folder for the person of this run, or undefined on a host whose folders teamrig does not know. */
+export function hostHomeIfKnown(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform' | 'userHome'>): string | undefined {
+  return pathsIfKnown(runtime)?.home(runtime.userHome);
 }
