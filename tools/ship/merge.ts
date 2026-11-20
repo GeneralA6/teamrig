@@ -70,17 +70,24 @@ const rerunWhy = (outcomes: readonly CheckOutcome[]): string =>
   outcomes.some(outcome => outcome.state === 'flaky') ? 'failed on a check listed as flaky (repos.json), so the same sha goes once more' : 'cancelled before any step ran (no runner came)';
 
 /**
- * The required checks of `sha`, or the error of a read GitHub gave no answer to (a 5xx, a timeout, a reset: T2988),
- * which the wait reads once more at its next poll, so one bad read does not end a wait of up to 45 minutes. GitHub's
- * own refusal (a 4xx) and a second bad read in a row throw.
+ * How many check reads in a row GitHub may give no answer to before the wait ends (#1234): a network blip often
+ * outlasts one poll, and ending the wait costs the rebased head a fresh approval and a new run.
  */
-function readOnceMore(read: () => CheckOutcome[], failedBefore: boolean, log: (line: string) => void): CheckOutcome[] | Error {
+export const CHECK_READ_TRIES = 4;
+
+/**
+ * The required checks of `sha`, or the error of a read GitHub gave no answer to (a 5xx, a timeout, a reset: T2988),
+ * which the wait reads again at its next poll, so a short outage does not end a wait of up to 45 minutes. GitHub's
+ * own refusal (a 4xx) throws at once, and so does the CHECK_READ_TRIES-th bad read in a row (`failedInRow` before it).
+ */
+function readAgain(read: () => CheckOutcome[], failedInRow: number, log: (line: string) => void): CheckOutcome[] | Error {
   try {
     return read();
   } catch (error) {
     const message = messageOf(error);
-    if (failedBefore || REFUSAL.test(message)) throw error;
-    log(`reading the checks got no answer from GitHub (${message}): reading them once more at the next poll`);
+    const tries = failedInRow + 1;
+    if (tries >= CHECK_READ_TRIES || REFUSAL.test(message)) throw error;
+    log(`reading the checks got no answer from GitHub (${message}): no answer ${tries} of ${CHECK_READ_TRIES} in a row, reading them again at the next poll`);
     return error instanceof Error ? error : new Error(message);
   }
 }
@@ -89,7 +96,7 @@ function readOnceMore(read: () => CheckOutcome[], failedBefore: boolean, log: (l
  * Polls the required checks until they pass, one fails, or the deadline. A run whose required jobs GitHub cancelled
  * before any step ran (no runner came), or whose only failures are checks listed as flaky (T2532, T2988), is re-run
  * once, then waited on again; `evaluate` fails the same in a later attempt, and a run already re-run here is not
- * re-run again while GitHub starts the new attempt. A read with no answer from GitHub is tried once more (readOnceMore).
+ * re-run again while GitHub starts the new attempt. A read with no answer from GitHub is tried again (readAgain).
  */
 export async function waitForChecks(
   gh: Gh,
@@ -103,10 +110,10 @@ export async function waitForChecks(
 ): Promise<ChecksResult> {
   const deadline = waiter.now() + polling.timeoutMs;
   const rerun = new Set<number>();
-  let readFailed = false;
+  let readsFailed = 0;
   for (;;) {
-    const read = readOnceMore(() => readChecks(gh, repo, sha, branch, required), readFailed, log);
-    readFailed = read instanceof Error;
+    const read = readAgain(() => readChecks(gh, repo, sha, branch, required), readsFailed, log);
+    readsFailed = read instanceof Error ? readsFailed + 1 : 0;
     if (read instanceof Error) {
       if (waiter.now() >= deadline) throw read;
       await waiter.sleep(Math.min(polling.intervalMs, Math.max(deadline - waiter.now(), 0)));

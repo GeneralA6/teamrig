@@ -6,7 +6,7 @@ import type { CatchUp } from './catch-up.ts';
 import type { Gh, RequiredChecks } from './github.ts';
 import type { Credential } from './keychain.ts';
 import type { GateDeps } from './local-gate.ts';
-import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, MERGE_ATTEMPTS, ciProof,mainBranchOf, mergeBranch, mergeCommand, mergeRun, mergeThroughPull, parseArgs, pullBody, realMergeDeps, runMerge, missingSections, stepShareOf, waitForChecks } from './merge.ts';
+import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, CHECK_READ_TRIES, MERGE_ATTEMPTS, ciProof,mainBranchOf, mergeBranch, mergeCommand, mergeRun, mergeThroughPull, parseArgs, pullBody, realMergeDeps, runMerge, missingSections, stepShareOf, waitForChecks } from './merge.ts';
 import { parseProfiles } from './repos.ts';
 import type { Supersede } from './superseded.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
@@ -1280,7 +1280,7 @@ test('a flaky check failing in the first attempt is re-run once on the same sha 
   assert.equal(notFlaky.writes.length, 0, 'a check not listed as flaky is never re-run');
 });
 
-test('a check read GitHub gives no answer to is read once more at the next poll; a second in a row, or a 4xx, ends the wait (T2988)', async () => {
+test('a check read GitHub gives no answer to is read again at each poll up to CHECK_READ_TRIES in a row; that many, or a 4xx, end the wait (T2988, #1234)', async () => {
   const failingReads = (failures: readonly (string | undefined)[], rounds: readonly (readonly JobState[])[] = [green]): { gh: Gh; reads: () => number } => {
     const { gh } = fakeGitHub({ rounds });
     let reads = 0;
@@ -1296,22 +1296,26 @@ test('a check read GitHub gives no answer to is read once more at the next poll;
       reads: () => reads,
     };
   };
-  const once = failingReads(['HTTP 502: Bad Gateway']);
+  // Two in a row (a connect timeout, then a reset), then an answer: the wait goes on to the checks' verdict.
+  const twice = failingReads(['connect ETIMEDOUT', 'read ECONNRESET']);
   const waiter = fakeWaiter();
   const log: string[] = [];
-  assert.equal((await waitForChecks(once.gh, REPO, SHA, HEAD, CHECKS, waiter, POLLING, line => log.push(line))).verdict, 'passed');
-  assert.deepEqual(waiter.slept, [MINUTE]);
-  assert.match(log[0] ?? '', /^reading the checks got no answer from GitHub \(gh api repos\/Owner\/repo\/actions\/runs\?head_sha=abc1234def&per_page=100: HTTP 502: Bad Gateway\): reading them once more at the next poll$/);
+  assert.equal((await waitForChecks(twice.gh, REPO, SHA, HEAD, CHECKS, waiter, POLLING, line => log.push(line))).verdict, 'passed');
+  assert.deepEqual(waiter.slept, [MINUTE, MINUTE]);
+  assert.equal(twice.reads(), 3);
+  assert.match(log[0] ?? '', new RegExp(`^reading the checks got no answer from GitHub \\(gh api repos/Owner/repo/actions/runs\\?head_sha=abc1234def&per_page=100: connect ETIMEDOUT\\): no answer 1 of ${CHECK_READ_TRIES} in a row, reading them again at the next poll$`));
+  assert.match(log[1] ?? '', new RegExp(`\\(gh api .*: read ECONNRESET\\): no answer 2 of ${CHECK_READ_TRIES} in a row, reading them again at the next poll$`));
 
-  const twice = failingReads(['HTTP 502: Bad Gateway', 'timeout awaiting response headers']);
-  await assert.rejects(waitForChecks(twice.gh, REPO, SHA, HEAD, CHECKS, fakeWaiter(), POLLING), /timeout awaiting response headers/);
-  assert.equal(twice.reads(), 2);
+  // Every read with no answer: the wait ends at the last try, with that try's error.
+  const never = failingReads(Array.from({ length: CHECK_READ_TRIES }, (_, index) => `connect ETIMEDOUT try ${index + 1}`));
+  await assert.rejects(waitForChecks(never.gh, REPO, SHA, HEAD, CHECKS, fakeWaiter(), POLLING), new RegExp(`connect ETIMEDOUT try ${CHECK_READ_TRIES}$`));
+  assert.equal(never.reads(), CHECK_READ_TRIES);
 
   const refused = failingReads(['HTTP 404: Not Found']);
   await assert.rejects(waitForChecks(refused.gh, REPO, SHA, HEAD, CHECKS, fakeWaiter(), POLLING), /HTTP 404/);
   assert.equal(refused.reads(), 1);
 
-  // Bad reads with a good one between are each read once more: only two in a row end the wait.
+  // Bad reads with a good one between start the count again: only CHECK_READ_TRIES in a row end the wait.
   const apart = failingReads(['HTTP 503', undefined, 'HTTP 503'], [[['gates', 'queued', null]], green]);
   assert.equal((await waitForChecks(apart.gh, REPO, SHA, HEAD, CHECKS, fakeWaiter(), POLLING)).verdict, 'passed');
   assert.equal(apart.reads(), 4);
