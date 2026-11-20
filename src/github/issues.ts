@@ -1,7 +1,8 @@
 import { errorCode, errorMessage, isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { plainLine } from '../core/printable.ts';
 import { exitText } from '../open/processes.ts';
-import { GH_TIMEOUT_MS, GhOutputCapError, type GhResult, type GhRunner } from './gh.ts';
+import { CONNECTOR_RUN_TIMEOUT_MS, ProgramOutputCapError } from '../plugin-api/index.ts';
+import type { GhResult, GhRunner } from './gh.ts';
 import type { HostIssue, IssueComment, LabelEvent, ReadComment } from '../issues/issue.ts';
 import { isClaim } from '../issues/claim.ts';
 import { closedPageArgs, openPageArgs, type PageVariables } from './queries.ts';
@@ -177,7 +178,7 @@ export async function runRead(gh: GhRunner, access: RepoAccess, repo: string, ar
 
 /** Why gh did not start (most often it is not installed), or why it was stopped for printing too much. */
 export function startFailureText(error: unknown): string {
-  if (error instanceof GhOutputCapError) {
+  if (error instanceof ProgramOutputCapError) {
     return error.message;
   }
   return errorCode(error) === 'ENOENT'
@@ -192,7 +193,7 @@ export function startFailureText(error: unknown): string {
 export function failureText(repo: string, result: GhResult, access: RepoAccess, kind: ReadKind): string {
   const { noun, permission, command } = kind;
   if (result.end.kind === 'signal') {
-    return `gh was stopped (${result.end.signal}) before it listed the ${noun} of ${repo}; it gets ${GH_TIMEOUT_MS / 1000} s`;
+    return `gh was stopped (${result.end.signal}) before it listed the ${noun} of ${repo}; it gets ${CONNECTOR_RUN_TIMEOUT_MS / 1000} s`;
   }
   const token = `the token saved as ${access.credential}`;
   switch (ghFailureKind(result.end.code, result.stderr)) {
