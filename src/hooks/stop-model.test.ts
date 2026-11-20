@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { ModelNoticeStore } from './model-notices.ts';
 import { stopModelNotices, type StopModelInput } from './stop-model.ts';
 
+const reader = shippedTranscripts();
 const FOLDER = join('/', 'team', 'state', 'model-notices');
 const TRANSCRIPT = join('/', 'projects', 'app', 'session.jsonl');
 const LEAD: StopModelInput = {
@@ -35,40 +37,48 @@ describe('stopModelNotices', () => {
   it('says nothing, and writes nothing, when the session runs as configured', async () => {
     const { files, store } = setup();
     await files.write(TRANSCRIPT, '{"type":"assistant","isSidechain":false,"message":{"model":"claude-opus-5-5"}}\n');
-    assert.deepEqual(await stopModelNotices(files, store, LEAD), []);
-    assert.deepEqual(await stopModelNotices(files, store, { ...LEAD, effort: undefined, transcript: undefined }), []);
+    assert.deepEqual(await stopModelNotices(reader, files, store, LEAD), []);
+    assert.deepEqual(await stopModelNotices(reader, files, store, { ...LEAD, effort: undefined, transcript: undefined }), []);
     assert.equal(files.paths().length, 1, 'only the transcript');
   });
 
   it('tells a session at another effort once per Claude Code session, and again for another level', async () => {
     const { files, store } = setup();
     const low = { ...LEAD, effort: 'low' };
-    assert.deepEqual(await stopModelNotices(files, store, low), [EFFORT_LINE]);
-    assert.deepEqual(await stopModelNotices(files, store, low), []);
-    assert.deepEqual(await stopModelNotices(files, store, { ...low, effort: 'high' }), [EFFORT_LINE.replace('low', 'high')]);
-    assert.deepEqual(await stopModelNotices(files, store, { ...low, claude: 'claude-session-2' }), [EFFORT_LINE]);
+    assert.deepEqual(await stopModelNotices(reader, files, store, low), [EFFORT_LINE]);
+    assert.deepEqual(await stopModelNotices(reader, files, store, low), []);
+    assert.deepEqual(await stopModelNotices(reader, files, store, { ...low, effort: 'high' }), [EFFORT_LINE.replace('low', 'high')]);
+    assert.deepEqual(await stopModelNotices(reader, files, store, { ...low, claude: 'claude-session-2' }), [EFFORT_LINE]);
   });
 
   it('never checks the effort of a session whose launch entry leaves it unset', async () => {
     const { files, store } = setup();
-    assert.deepEqual(await stopModelNotices(files, store, { ...LEAD, launch: {}, effort: 'low' }), []);
+    assert.deepEqual(await stopModelNotices(reader, files, store, { ...LEAD, launch: {}, effort: 'low' }), []);
   });
 
   it('tells any session once of each model switch, with the command back to its team model', async () => {
     const { files, store } = setup();
     await files.write(TRANSCRIPT, switched());
-    assert.deepEqual(await stopModelNotices(files, store, LEAD), [FALLBACK_LINE]);
-    assert.deepEqual(await stopModelNotices(files, store, LEAD), []);
+    assert.deepEqual(await stopModelNotices(reader, files, store, LEAD), [FALLBACK_LINE]);
+    assert.deepEqual(await stopModelNotices(reader, files, store, LEAD), []);
     await files.append(TRANSCRIPT, switched('switch-2'));
-    assert.deepEqual(await stopModelNotices(files, store, { ...LEAD, effort: 'low' }), [EFFORT_LINE, FALLBACK_LINE]);
+    assert.deepEqual(await stopModelNotices(reader, files, store, { ...LEAD, effort: 'low' }), [EFFORT_LINE, FALLBACK_LINE]);
     const alpha = { ...LEAD, id: 'alpha', name: 'app-alpha', launch: {} };
-    assert.deepEqual(await stopModelNotices(files, store, alpha), [FALLBACK_LINE.replace('app-lead', 'app-alpha').replace('/model opus', '/model claude-opus-5-5')]);
+    assert.deepEqual(await stopModelNotices(reader, files, store, alpha), [FALLBACK_LINE.replace('app-lead', 'app-alpha').replace('/model opus', '/model claude-opus-5-5')]);
+  });
+
+  it('knows no switch on a host that keeps no transcript, and still tells the effort', async () => {
+    const { files, store } = setup();
+    await files.write(TRANSCRIPT, switched());
+    assert.deepEqual(await stopModelNotices(undefined, files, store, LEAD), []);
+    assert.deepEqual(await stopModelNotices(undefined, files, store, { ...LEAD, effort: 'low' }), [EFFORT_LINE]);
+    assert.deepEqual(await stopModelNotices(reader, files, store, LEAD), [FALLBACK_LINE], 'the switch was never recorded as told');
   });
 
   it('shows nothing when it cannot record what it showed, so a broken store never repeats a line', async () => {
     const { files, store } = setup();
     const faulty = new FaultyFiles(files).fail('write', join(FOLDER, 'lead.json'), systemError('EACCES'));
-    await assert.rejects(stopModelNotices(faulty, new ModelNoticeStore(faulty, FOLDER), { ...LEAD, effort: 'low' }), /EACCES/);
-    assert.deepEqual(await stopModelNotices(files, store, { ...LEAD, effort: 'low' }), [EFFORT_LINE]);
+    await assert.rejects(stopModelNotices(reader, faulty, new ModelNoticeStore(faulty, FOLDER), { ...LEAD, effort: 'low' }), /EACCES/);
+    assert.deepEqual(await stopModelNotices(reader, files, store, { ...LEAD, effort: 'low' }), [EFFORT_LINE]);
   });
 });

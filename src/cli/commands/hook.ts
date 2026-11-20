@@ -802,7 +802,7 @@ async function modelNoticesOf(runtime: CliRuntime, scope: SessionScope, payload:
     return [];
   }
   const { kit, config, roster, id } = scope;
-  return stopModelNotices(runtime.files, new ModelNoticeStore(runtime.files, kit.paths.modelNotices), {
+  return stopModelNotices(transcriptsIfKept(runtime), runtime.files, new ModelNoticeStore(runtime.files, kit.paths.modelNotices), {
     id,
     name: roster.nameOf(id) ?? id,
     launch: launchOf(config, id),
