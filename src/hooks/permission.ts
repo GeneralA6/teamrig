@@ -49,13 +49,3 @@ export function refusal(reason: string): HookReply {
 export function heldBack(decision: HoldBack, reason: string): HookReply {
   return refusal(holdBack(decision, reason).permissionDecisionReason);
 }
-
-/** The PreToolUse output of a call a hook refuses with its reason as given. */
-export function refusalOutput(reason: string): string {
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } });
-}
-
-/** The PreToolUse output of a call a hook holds back (see `holdBack`). */
-export function holdBackOutput(decision: HoldBack, reason: string): string {
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', ...holdBack(decision, reason) } });
-}

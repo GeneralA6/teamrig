@@ -22,12 +22,11 @@ export function preToolUseRouteOf(route: SanctionedRoute | undefined): Sanctione
 }
 
 /**
- * True when every guard let the call go: each answer is a guard's reply, none when it passes, or the output of a guard
- * that still words its own, '' when it passes. A guard that asks, refuses or notes answers the call through its own
- * hook, and the allow stays out of its way (Q7.1).
+ * True when every guard let the call go: each answer is a guard's reply, none when it passes. A guard that refuses or
+ * notes answers the call through its own hook, and the allow stays out of its way (Q7.1).
  */
-export function guardsPassed(answers: readonly (HookReply | string | undefined)[]): boolean {
-  return answers.every((answer) => answer === undefined || answer === '');
+export function guardsPassed(answers: readonly (HookReply | undefined)[]): boolean {
+  return answers.every((answer) => answer === undefined);
 }
 
 /** The hook's reply: an allow that runs the route's line with no permission check, naming the route. */
