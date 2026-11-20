@@ -1,4 +1,4 @@
-import { describeLargeCommits, largeCommits, type CommitLog, type CommitSizeRule } from '../../src/push-guard/commit-size.ts';
+import { describeLargeCommits, largeCommits, unreadRange, type CommitLog, type CommitSizeRule } from '../../src/push-guard/commit-size.ts';
 import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
 import type { Revisions } from './github-range.ts';
 
@@ -21,10 +21,11 @@ export function checkCommitSizes(ends: Revisions, deps: SizeRuleDeps): number {
     return EXIT_CLEAN;
   }
   const range = `${ends.base}..${ends.head}`;
-  const commits = deps.commitLog.between(deps.dir, ends.base, ends.head);
-  if (commits === undefined) {
-    throw new Error(`git cannot list the commits in ${range}`);
+  const read = deps.commitLog.between(deps.dir, ends.base, ends.head);
+  if (read.kind !== 'listed') {
+    throw new Error(unreadRange(read, `the commits in ${range}`));
   }
+  const { commits } = read;
   const large = largeCommits(commits, deps.rule);
   if (large.length > 0) {
     deps.out(`size-rule: ${describeLargeCommits(large, deps.rule)}`);

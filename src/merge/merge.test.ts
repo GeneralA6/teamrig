@@ -160,7 +160,7 @@ class World {
       reviewHolds: this.reviewHolds,
       gateHolds: this.gateHolds,
       merges: this.merges,
-      commitLog: { between: () => this.commits },
+      commitLog: { between: () => (this.commits === undefined ? { kind: 'refused' } : { kind: 'listed', commits: this.commits }) },
       taskOf: async (id) => this.tasks.get(id),
       clock: this.clock,
       sleep: this.clock.sleep,

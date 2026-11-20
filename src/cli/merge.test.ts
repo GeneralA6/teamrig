@@ -288,7 +288,7 @@ describe('teamrig merge under pushToProtected gated (T858)', () => {
     const { kit, git, steps } = await gatedWorld();
     const pass = { tree: 'tree-rebased', commit: 'rebased', checks: ['unit'], passedAt: '2030-01-08T09:30:00.000Z', node: 'v24.0.0' };
     await kit.files.write(passRecordPath(WORKTREE, `${MAIN_CHECKOUT}/.git`, pass.tree), JSON.stringify(pass));
-    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, commitLog: { between: () => COMMITS } });
+    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, commitLog: { between: () => ({ kind: 'listed', commits: COMMITS }) } });
     assert.equal(result.code, 0, result.stdout.join('\n'));
     assert.ok(result.stdout.includes('2030-01-08 10:00:02 UTC self-merge gates of t1-feat: every gate holds, so it merges with no approval'), result.stdout.join('\n'));
     const [row, ...more] = (kit.files.get(join(DEPLOYS, 'merges.jsonl')) ?? '').split('\n').filter((line) => line !== '');
@@ -298,7 +298,7 @@ describe('teamrig merge under pushToProtected gated (T858)', () => {
 
   it('holds a change with no pass record for the lead and pushes nothing', async () => {
     const { kit, git, steps } = await gatedWorld();
-    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, commitLog: { between: () => COMMITS } });
+    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, commitLog: { between: () => ({ kind: 'listed', commits: COMMITS }) } });
     assert.equal(result.code, 2);
     assert.match(result.stdout.at(-1) ?? '', /^REFUSED gate hold G\w+ keeps t1-feat \(base\.\.rebased\) off the default branch: pass: .* --waits approval:lead /);
     assert.match(kit.files.get(join(DEPLOYS, 'gate-holds', 'app~t1-feat.json')) ?? '', /"task":\s*"T1",\s*"session":\s*"alpha",\s*"reviewer":\s*"lead"/);

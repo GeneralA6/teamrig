@@ -8,7 +8,7 @@ const commit = (sha: string, subject: string): CommitStat => ({ sha, subject, bo
 
 /** A log that answers one range only, so a test sees which range the check asked for. */
 function logOf(base: string, head: string, commits: readonly CommitStat[]): CommitLog {
-  return { between: (_dir, from, to) => (from === base && to === head ? commits : undefined) };
+  return { between: (_dir, from, to) => (from === base && to === head ? { kind: 'listed', commits } : { kind: 'refused' }) };
 }
 
 function run(base: string | undefined, head: string, log: CommitLog): { code: number; lines: string[] } {
@@ -59,5 +59,12 @@ describe('checkCommitSubjects', () => {
 
   it('stops when git cannot list the range', () => {
     assert.throws(() => run('nope', 'HEAD', logOf('main', 'HEAD', [])), /git cannot list the commits in nope\.\.HEAD/);
+  });
+
+  it('stops naming no answer, not an unlistable range, when the log run was stopped (#1523)', () => {
+    const stopped: CommitLog = { between: () => ({ kind: 'unanswered', reason: 'stopped by SIGTERM' }) };
+    assert.throws(() => run('main', 'HEAD', stopped), {
+      message: 'git gave no answer listing the commits in main..HEAD (stopped by SIGTERM); run it again once git answers',
+    });
   });
 });

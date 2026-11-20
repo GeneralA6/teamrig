@@ -42,7 +42,7 @@ describe('runCli: commits check', () => {
     const commitLog = {
       between: (dir: string, base: string, tip: string) => {
         ranges.push(`${dir} ${base}..${tip}`);
-        return [stat('a', 10), stat('b', 900, 'Large-commit: generated')];
+        return { kind: 'listed', commits: [stat('a', 10), stat('b', 900, 'Large-commit: generated')] } as const;
       },
     };
     const result = await kit.run(['commits', 'check', '--base', 'origin/main'], { commitLog });
@@ -53,16 +53,19 @@ describe('runCli: commits check', () => {
 
   it("refuses a range with a large commit, by the team's bounds", async () => {
     const kit = new CliHarness({ ...TEAM, commits: { maxLines: 100 } });
-    const result = await kit.run(['commits', 'check', '--base', 'main', '--tip', 'feature'], { commitLog: { between: () => [stat('c', 101)] } });
+    const result = await kit.run(['commits', 'check', '--base', 'main', '--tip', 'feature'], { commitLog: { between: () => ({ kind: 'listed', commits: [stat('c', 101)] }) } });
     assert.equal(result.code, EXIT.refused);
     assert.match(result.stdout.join('\n'), /^REFUSED 1 commit\(s\) go over 100 changed non-test lines .*ccccccc "Change c" \(101 line\(s\), 1 file\(s\)\)/);
   });
 
   it('fails when git cannot list the range, and needs --base', async () => {
     const kit = new CliHarness();
-    const failed = await kit.run(['commits', 'check', '--base', 'nope'], { commitLog: { between: () => undefined } });
+    const failed = await kit.run(['commits', 'check', '--base', 'nope'], { commitLog: { between: () => ({ kind: 'refused' }) } });
     assert.equal(failed.code, EXIT.failed);
     assert.match(failed.stderr.join('\n'), /git cannot list the commits in nope\.\.HEAD/);
+    const slow = await kit.run(['commits', 'check', '--base', 'main'], { commitLog: { between: () => ({ kind: 'unanswered', reason: 'stopped by SIGTERM' }) } });
+    assert.equal(slow.code, EXIT.failed);
+    assert.match(slow.stderr.join('\n'), /git gave no answer listing the commits in main\.\.HEAD from .* \(stopped by SIGTERM\); run it again once git answers/);
     assert.equal((await kit.run(['commits', 'check'])).code, EXIT.usage);
   });
 });

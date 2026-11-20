@@ -1,4 +1,4 @@
-import { describeLargeCommits, largeCommits } from '../../push-guard/commit-size.ts';
+import { describeLargeCommits, largeCommits, unreadRange } from '../../push-guard/commit-size.ts';
 import { noPositionals, requiredFlag, type ParsedArgs } from '../args.ts';
 import { openTeamKit, requireConfig } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -12,10 +12,11 @@ export async function check(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const base = requiredFlag(args.flags, 'base');
   const tip = args.flags.get('tip') ?? 'HEAD';
   const rule = requireConfig(await openTeamKit(runtime), runtime, 'read').commits;
-  const commits = runtime.commitLog.between(runtime.cwd, base, tip);
-  if (commits === undefined) {
-    throw new Error(`git cannot list the commits in ${base}..${tip} from ${runtime.cwd}`);
+  const range = runtime.commitLog.between(runtime.cwd, base, tip);
+  if (range.kind !== 'listed') {
+    throw new Error(unreadRange(range, `the commits in ${base}..${tip} from ${runtime.cwd}`));
   }
+  const { commits } = range;
   const large = largeCommits(commits, rule);
   if (large.length > 0) {
     throw new RefusedError(describeLargeCommits(large, rule));

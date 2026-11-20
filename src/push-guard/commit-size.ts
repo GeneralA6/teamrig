@@ -14,10 +14,30 @@ export interface CommitStat {
   readonly files: readonly FileChange[];
 }
 
+/**
+ * What git gave for a range: its commits, newest first; `refused` when git said it cannot tell (an unknown ref, no
+ * repository); or `unanswered` when git gave no answer of its own (#1523): stopped by its time limit, not started, or
+ * died starting. A loaded host causes the last, so a reader says git gave no answer, never that the range is unknown.
+ */
+export type CommitRange =
+  | { readonly kind: 'listed'; readonly commits: readonly CommitStat[] }
+  | { readonly kind: 'refused' }
+  | { readonly kind: 'unanswered'; readonly reason: string };
+
 /** What the commit-size rule reads from a repository; the hook asks git, tests pass a fake. */
 export interface CommitLog {
-  /** The commits reachable from `tip` and not from `base`, newest first; undefined when git cannot tell (an unknown ref, no repository). */
-  between(dir: string, base: string, tip: string): readonly CommitStat[] | undefined;
+  /** The commits reachable from `tip` and not from `base`. */
+  between(dir: string, base: string, tip: string): CommitRange;
+}
+
+/** Why a range git did not list could not be read: git's no answer apart from git's own refusal. */
+export function unreadRange(range: Exclude<CommitRange, { readonly kind: 'listed' }>, what: string): string {
+  switch (range.kind) {
+    case 'refused':
+      return `git cannot list ${what}`;
+    case 'unanswered':
+      return `git gave no answer listing ${what} (${range.reason}); run it again once git answers`;
+  }
 }
 
 /** What a commit weighs against the rule: the changed lines and files that are not tests. */

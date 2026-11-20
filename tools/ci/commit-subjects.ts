@@ -1,4 +1,4 @@
-import type { CommitLog } from '../../src/push-guard/commit-size.ts';
+import { unreadRange, type CommitLog } from '../../src/push-guard/commit-size.ts';
 import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
 import type { Revisions } from './github-range.ts';
 
@@ -41,8 +41,9 @@ export interface CommitSubjectsDeps {
 export function checkCommitSubjects(ends: Revisions, deps: CommitSubjectsDeps): number {
   const base = ends.base ?? `${ends.head}~1`;
   const range = `${base}..${ends.head}`;
-  const commits = deps.commitLog.between(deps.dir, base, ends.head);
-  if (commits === undefined) throw new Error(`git cannot list the commits in ${range}`);
+  const read = deps.commitLog.between(deps.dir, base, ends.head);
+  if (read.kind !== 'listed') throw new Error(unreadRange(read, `the commits in ${range}`));
+  const { commits } = read;
   const wrong = commits.flatMap((commit) => {
     const problem = subjectProblem(commit.subject);
     return problem === null ? [] : [`  ${commit.sha.slice(0, 9)} "${commit.subject}": ${problem}`];

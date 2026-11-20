@@ -88,14 +88,15 @@ export function skipHooksReason(skips: readonly HookSkip[]): string {
   );
 }
 
-/** The large commits the updates would send, each once. A range git cannot list adds none, so a broken log never blocks a push. */
+/** The large commits the updates would send, each once. A range git cannot list or gave no answer for adds none, so a broken or slow log never blocks a push. */
 function largeCommitsIn(updates: readonly ProtectedUpdate[], env: PushGuardEnv): LargeCommit[] {
   if (env.commits.gate === 'off') {
     return [];
   }
   const commits = new Map<string, CommitStat>();
   for (const update of updates) {
-    for (const commit of env.commitLog.between(update.dir, update.base, update.source) ?? []) {
+    const read = env.commitLog.between(update.dir, update.base, update.source);
+    for (const commit of read.kind === 'listed' ? read.commits : []) {
       commits.set(commit.sha, commit);
     }
   }

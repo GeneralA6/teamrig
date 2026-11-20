@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { DEFAULT_COMMITS } from '../config/defaults.ts';
 import type { CommitGate, PushToProtected, SkipHooks } from '../config/types.ts';
 import { isRecord } from '../core/guards.ts';
-import type { CommitStat } from '../push-guard/commit-size.ts';
+import type { CommitRange, CommitStat } from '../push-guard/commit-size.ts';
 import type { ConfigValue } from '../push-guard/invocations.ts';
 import { leasedReason, type RepoState } from '../push-guard/push.ts';
 import { ASK_REFUSED_NOTE } from './permission.ts';
@@ -40,7 +40,7 @@ function env(branch = 'feature') {
     protectedBranches: ['main'],
     pushToProtected: 'ask',
     commits: DEFAULT_COMMITS,
-    commitLog: { between: () => [] },
+    commitLog: { between: () => ({ kind: 'listed', commits: [] }) },
     skipHooks: 'deny',
     clearance: async () => assert.fail('read the clearance outside pushToProtected: lead'),
     platform: 'linux',
@@ -224,7 +224,7 @@ describe('pushGuardOutput: pushToProtected lead (T684)', () => {
 
   it('lists large commits in the note under the warn gate, and refuses them under refuse before reading the clearance', async () => {
     const big = { sha: 'b'.repeat(40), subject: 'Rewrite the store', body: '', files: [{ path: 'src/store.ts', added: 900, deleted: 0 }] };
-    const sending = (gate: CommitGate) => ({ ...lead({ kind: 'lead', lead: 'boss' }), commits: { ...DEFAULT_COMMITS, gate }, commitLog: { between: () => [big] } });
+    const sending = (gate: CommitGate) => ({ ...lead({ kind: 'lead', lead: 'boss' }), commits: { ...DEFAULT_COMMITS, gate }, commitLog: { between: () => ({ kind: 'listed', commits: [big] }) } } satisfies PushGuardEnv);
     assert.match(noteOf(await pushGuardOutput(payload('git push origin HEAD:main'), sending('warn'))), /pushes unasked \[pushGuard\.pushToProtected: lead\]\. 1 commit\(s\) go over/);
     const refusing = sending('refuse');
     assert.match(hookOutput(await pushGuardOutput(payload('git push origin HEAD:main'), refusing)).reason, /^This push to a protected branch \(main\) is refused: 1 commit\(s\) go over/);
@@ -280,9 +280,11 @@ describe('pushGuardOutput: the commits gate', () => {
   const big = { sha: 'b'.repeat(40), subject: 'Rewrite the store', body: '', files: [{ path: 'src/store.ts', added: 900, deleted: 0 }] };
   const small = { sha: 's'.repeat(40), subject: 'Fix a typo', body: '', files: [{ path: 'src/a.ts', added: 1, deleted: 1 }] };
 
-  /** `unknown`: git cannot list the range. */
-  function gated(gate: CommitGate, commits: readonly CommitStat[] | 'unknown' = [big, small]) {
-    const between = mock.fn((_dir: string, _base: string, _tip: string): readonly CommitStat[] | undefined => (commits === 'unknown' ? undefined : commits));
+  /** `unknown`: git cannot list the range; `unanswered`: git gave no answer for it. */
+  function gated(gate: CommitGate, commits: readonly CommitStat[] | 'unknown' | 'unanswered' = [big, small]) {
+    const range: CommitRange =
+      commits === 'unknown' ? { kind: 'refused' } : commits === 'unanswered' ? { kind: 'unanswered', reason: 'stopped by SIGTERM' } : { kind: 'listed', commits };
+    const between = mock.fn((_dir: string, _base: string, _tip: string): CommitRange => range);
     return { env: { ...env(), commits: { ...DEFAULT_COMMITS, gate }, commitLog: { between } } satisfies PushGuardEnv, between };
   }
 
@@ -337,10 +339,12 @@ describe('pushGuardOutput: the commits gate', () => {
     }
   });
 
-  it('asks as usual when git cannot list the commits', async () => {
-    const { decision, reason } = hookOutput(await pushGuardOutput(payload('git push origin HEAD:main'), gated('refuse', 'unknown').env));
-    assert.equal(decision, 'deny');
-    assert.doesNotMatch(reason, /commit\(s\) go over/);
+  it('asks as usual when git cannot list the commits or gives no answer for them (#1523)', async () => {
+    for (const commits of ['unknown', 'unanswered'] as const) {
+      const { decision, reason } = hookOutput(await pushGuardOutput(payload('git push origin HEAD:main'), gated('refuse', commits).env));
+      assert.equal(decision, 'deny', commits);
+      assert.doesNotMatch(reason, /commit\(s\) go over/);
+    }
   });
 });
 

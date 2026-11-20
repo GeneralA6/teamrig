@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_COMMITS } from '../../src/config/defaults.ts';
-import type { CommitLog, CommitStat } from '../../src/push-guard/commit-size.ts';
+import type { CommitLog, CommitRange, CommitStat } from '../../src/push-guard/commit-size.ts';
 import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
 import { checkCommitSizes } from './size-rule.ts';
 
@@ -13,13 +13,13 @@ function commitOf(path: string, lines: number, body = ''): CommitStat {
 }
 
 /** A commit log that answers base..tip with `commits` and records each range it was asked for. */
-function fakeLog(commits: readonly CommitStat[] | undefined): CommitLog & { readonly asked: string[] } {
+function fakeLog(range: CommitRange | readonly CommitStat[]): CommitLog & { readonly asked: string[] } {
   const asked: string[] = [];
   return {
     asked,
     between: (dir, base, tip) => {
       asked.push(`${dir} ${base}..${tip}`);
-      return commits;
+      return 'kind' in range ? range : { kind: 'listed', commits: range };
     },
   };
 }
@@ -38,7 +38,13 @@ describe('checkCommitSizes', () => {
   });
 
   it('throws when git cannot list the range', () => {
-    assert.throws(() => run('main', fakeLog(undefined)), { message: 'git cannot list the commits in main..HEAD' });
+    assert.throws(() => run('main', fakeLog({ kind: 'refused' })), { message: 'git cannot list the commits in main..HEAD' });
+  });
+
+  it('throws naming no answer, not an unlistable range, when the log run was stopped (#1523)', () => {
+    assert.throws(() => run('main', fakeLog({ kind: 'unanswered', reason: 'stopped by SIGTERM' })), {
+      message: 'git gave no answer listing the commits in main..HEAD (stopped by SIGTERM); run it again once git answers',
+    });
   });
 
   it('passes commits within the rule and counts them', () => {

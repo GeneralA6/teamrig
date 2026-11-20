@@ -51,7 +51,7 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
   return {
     git: { branch: () => branch, head: () => undefined, pushTarget: () => undefined, config: () => ({ kind: 'unset' }) },
     pointerGit: { state: () => ({ kind: 'no-git' }) },
-    commitLog: { between: () => [] },
+    commitLog: { between: () => ({ kind: 'listed', commits: [] }) },
     secretsGit: { root: () => undefined, staged: () => undefined, isCommit: () => false, commits: () => undefined, tagMessages: () => undefined, hooksDir: () => undefined, blob: () => undefined },
     readStdin: async () => stdin,
     platform: 'linux',
