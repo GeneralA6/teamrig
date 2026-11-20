@@ -71,7 +71,7 @@ import { ownerBatchOf, type BatchedTeam } from '../owner-batch.ts';
 import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
 import { splitUnowned } from '../unowned.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { addIssuePlan } from '../../github/issue-at-add.ts';
+import { addIssuePlan } from '../../sync/issue-at-add.ts';
 import { ADD_ISSUE_FLAGS, addIssueAskOf, addIssueHost, addWithIssue } from './add-issue.ts';
 import { loadTree, skillOwnersElsewhere, type KitTree, type TreeTeam } from '../tree.ts';
 import { readBursts } from '../burst-reading.ts';
@@ -213,7 +213,7 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
 }
 
 /**
- * A task of the caller's own team, owned by `--owner`, else by the caller. Its issue flags (github/issue-at-add.ts)
+ * A task of the caller's own team, owned by `--owner`, else by the caller. Its issue flags (sync/issue-at-add.ts)
  * are judged first, so a refused one writes nothing; a local task is written with its reason as its ref, and a task
  * with its issue is written only once the issue opened, its ref pointing at it (add-issue.ts).
  */

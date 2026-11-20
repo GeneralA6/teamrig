@@ -15,7 +15,7 @@ import {
   type LastRead,
   type ProbeRound,
   type WatchLease,
-} from '../../github/watch.ts';
+} from '../../sync/watch.ts';
 import { GITHUB_REPOS_HOST, type WatchMarks } from '../../issues/host.ts';
 import { runsClaude } from '../../open/session-processes.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';
@@ -30,7 +30,7 @@ import { issueSync } from './issue-sync.ts';
 /**
  * `issue watch`: the team's one watch on its GitHub repositories, started hidden by the hooks (`ensureWatch`). Every
  * `github.probeSeconds` it asks GitHub whether each repository changed (IssueEvents.watch: conditional reads, free when
- * nothing changed) and runs `issue sync --auto` in this process only when one did (github/watch.ts readDue). It holds
+ * nothing changed) and runs `issue sync --auto` in this process only when one did (sync/watch.ts readDue). It holds
  * a lease file with its pid and a beat, so one runs per team; it stops when the lease is another's, when the config
  * lists no repository or sets 0 seconds, under TEAMRIG_GITHUB=off, once no team session ran for 10 minutes, and once
  * it ran 24 hours. A hook of a newer kit takes over an older watch's lease, so an update reaches the watch at once.

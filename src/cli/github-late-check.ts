@@ -1,6 +1,6 @@
 import type { Files } from '../core/files.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { dueAt, isLate, lateGroupText, newestLate, parseClocks } from '../github/clock.ts';
+import { dueAt, isLate, lateGroupText, newestLate, parseClocks } from '../sync/clock.ts';
 import { parseUnownedNotices, UNOWNED_SEEN_REFRESH_MS, type ToldWarnings } from './unowned-notices.ts';
 import type { UnownedWarning } from './unowned.ts';
 
