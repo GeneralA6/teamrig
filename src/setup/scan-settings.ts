@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import { formatCount } from '../budget/format.ts';
 import { clipEnd } from '../core/clip.ts';
 import type { Files } from '../core/files.ts';
@@ -73,9 +72,10 @@ function fileFindings(path: string, settings: JsonRecord, hooks: HookOutputs, se
  * The settings findings of the Claude Code settings files in `scope`: per file, the allow rules a `permissions trim`
  * removes (counted by class, never printed), prompts turned off, and the context hooks `hooks` (the transcripts read)
  * show printing into the context, with what they printed, the same finding in a file's worktree copies folded into its
- * first, with their count; then one finding when no file denies anything. It only reads.
+ * first, with their count; then one finding when no file denies anything, on `userSettings`, the person's own settings
+ * file, where a deny rule holds in every project. It only reads.
  */
-export async function scanSettings(files: Files, claudeDir: string, scope: readonly SettingsFile[], keep: KeepList, secrets: SecretScanner, hooks: HookOutputs): Promise<SettingsFinding[]> {
+export async function scanSettings(files: Files, userSettings: string, scope: readonly SettingsFile[], keep: KeepList, secrets: SecretScanner, hooks: HookOutputs): Promise<SettingsFinding[]> {
   /** Keyed by the file (a worktree's copy as the project folder's own), the kind and the words. */
   const found = new Map<string, SettingsFinding>();
   let denies = false;
@@ -94,7 +94,7 @@ export async function scanSettings(files: Files, claudeDir: string, scope: reado
   }
   const grouped = [...found.values()];
   if (!denies) {
-    grouped.push({ kind: 'no-deny', path: join(claudeDir, 'settings.json'), what: 'no settings file has a permissions.deny rule, so nothing is refused outright (secret files, force pushes)', copies: 0 });
+    grouped.push({ kind: 'no-deny', path: userSettings, what: 'no settings file has a permissions.deny rule, so nothing is refused outright (secret files, force pushes)', copies: 0 });
   }
   return grouped;
 }
