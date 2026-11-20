@@ -8,7 +8,7 @@ const TRACKER_ROWS: Readonly<Record<string, Support['kind']>> = {
   'tracker.issue-import': 'partial',
   'tracker.accept-label': 'unsupported',
   'tracker.watch': 'partial',
-  'tracker.issue-open': 'unsupported',
+  'tracker.issue-open': 'partial',
   'tracker.comment': 'partial',
   'tracker.edit-body': 'partial',
   'tracker.close': 'partial',
@@ -61,9 +61,17 @@ describe('the Jira declaration', () => {
   });
 
   it('gives a method that is not built yet the line its row carries', () => {
-    assert.equal(noticeOf('tracker.issue-open'), NOT_BUILT.open);
     assert.equal(noticeOf('tracker.links'), NOT_BUILT.links);
-    assert.equal(NOT_BUILT.open, 'the Jira connector does not open issues yet');
+    assert.deepEqual(NOT_BUILT, { links: 'the Jira connector does not read or write issue links yet' });
+  });
+
+  it('says an issue opens as a Task or the first type that can stand alone, its body as plain text (T4754)', () => {
+    assert.deepEqual(declaration.manifest['tracker.issue-open'], {
+      kind: 'partial',
+      missing: 'Markdown, and a chosen issue type',
+      notice: "an issue opens in Jira as a Task, or as the project's first type that is no sub-task when it has no Task, its body as plain paragraphs: its Markdown marks show as typed",
+      proofs: [],
+    });
   });
 
   it('says a close keeps its reason only where the workflow names it, and links no duplicate (T4754)', () => {

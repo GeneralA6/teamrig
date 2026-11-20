@@ -21,6 +21,7 @@ import {
   type HostViewer,
   type HostWatch,
   type IssueComment,
+  type IssueDraft,
   type IssueTarget,
   type JsonRecord,
   type LabelSpec,
@@ -31,6 +32,7 @@ import {
 import { adfText, textAdf, type AdfDoc } from './adf.ts';
 import type { JiraAnswer, JiraClient } from './client.ts';
 import { NOT_BUILT } from './declaration.ts';
+import { openingType } from './issue-type.ts';
 import { stateReasonOf } from './resolution.ts';
 import { browseUrl, credentialName, issueKey, issueNumber, parseProject, projectProblem, type JiraProject } from './site.ts';
 import { closingStep, isDoneStatus } from './transitions.ts';
@@ -215,6 +217,8 @@ export class JiraTracker implements Tracker {
   readonly name = 'Jira';
   private readonly client: JiraClient;
   private readonly stamp: boolean;
+  /** The id of the type a new issue opens as, by project (`<site>/<KEY>`). */
+  private readonly openingTypes = new Map<string, string>();
 
   constructor(client: JiraClient, stamp: boolean) {
     this.client = client;
@@ -281,8 +285,41 @@ export class JiraTracker implements Tracker {
     };
   }
 
-  open(): Promise<HostOpen> {
-    return Promise.resolve(failed(NOT_BUILT.open));
+  /**
+   * Opens one issue of the project: the title its summary, the body its description as plain paragraphs (left out when
+   * it holds no line), the labels as given. Its type is the one issue-type.ts picks of the project's own. A blank
+   * title, or a label Jira cannot hold, is refused before anything is asked.
+   */
+  async open(draft: IssueDraft): Promise<HostOpen> {
+    const project = parseProject(draft.repo);
+    if (project === undefined) {
+      return failed(projectProblem(draft.repo));
+    }
+    const [problem] = [...(draft.title.trim() === '' ? ['an issue with no title is not opened'] : []), ...draft.labels.flatMap((label) => labelProblem(label) ?? [])];
+    if (problem !== undefined) {
+      return failed(problem);
+    }
+    const type = await this.openingTypeOf(project);
+    if (type.kind === 'failed') {
+      return type;
+    }
+    const description = this.document(draft.body);
+    const fields = {
+      project: { key: project.key },
+      summary: draft.title,
+      issuetype: { id: type.id },
+      ...(draft.labels.length === 0 ? {} : { labels: draft.labels }),
+      ...(description.content.length === 0 ? {} : { description }),
+    };
+    const answer = await this.client.post(project.site, '/issue', { fields });
+    if (answer.kind !== 'ok') {
+      return answer.kind === 'missing' ? failed(this.noProject(project)) : answer;
+    }
+    const key = isRecord(answer.body) ? stringField(answer.body, 'key') : undefined;
+    const number = key === undefined ? undefined : issueNumber(project, key);
+    return number === undefined
+      ? failed(`Jira opened an issue of ${draft.repo} and its answer names no issue of ${project.key}: find it on the site before opening another`)
+      : { kind: 'opened', target: { repo: draft.repo, number } };
   }
 
   /** Replaces the description with `body` as plain paragraphs. */
@@ -416,7 +453,7 @@ export class JiraTracker implements Tracker {
     if (project === undefined) {
       return failed(projectProblem(repo));
     }
-    return await this.assignable(project.site, `project=${project.key}`, login, `Jira has no project ${project.key} on ${project.site}, or the sign-in may not see it`);
+    return await this.assignable(project.site, `project=${project.key}`, login, this.noProject(project));
   }
 
   /** The account the site's sign-in belongs to, by its account id: Jira's users have no login, and the id is what an assign names. */
@@ -553,6 +590,32 @@ export class JiraTracker implements Tracker {
       return failed(`Jira's answer on who may be assigned on ${site} did not read as a list of accounts`);
     }
     return answer.body.some((user: unknown) => isRecord(user) && accountId(user) === login) ? { kind: 'found', login } : { kind: 'missing' };
+  }
+
+  /**
+   * The type a new issue of `project` opens as: one read of the types the project lets the sign-in create, kept for
+   * the tracker's life so a run that opens several issues asks once. A failed read is not kept.
+   */
+  private async openingTypeOf(project: JiraProject): Promise<{ readonly kind: 'type'; readonly id: string } | Failed> {
+    const name = `${project.site}/${project.key}`;
+    const kept = this.openingTypes.get(name);
+    if (kept !== undefined) {
+      return { kind: 'type', id: kept };
+    }
+    const answer = await this.client.get(project.site, `/issue/createmeta/${project.key}/issuetypes`);
+    if (answer.kind !== 'ok') {
+      return answer.kind === 'missing' ? failed(this.noProject(project)) : answer;
+    }
+    const id = openingType(answer.body);
+    if (id === undefined) {
+      return failed(`Jira names no issue type the sign-in may open an issue of ${project.key} as`);
+    }
+    this.openingTypes.set(name, id);
+    return { kind: 'type', id };
+  }
+
+  private noProject(project: JiraProject): string {
+    return `Jira has no project ${project.key} on ${project.site}, or the sign-in may not see it`;
   }
 
   /** The issue `target` names, or the failure of a `repo` that names no project. */

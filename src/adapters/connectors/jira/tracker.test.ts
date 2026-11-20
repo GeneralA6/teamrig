@@ -684,10 +684,84 @@ describe('who holds a Jira issue (T4754)', () => {
   });
 });
 
+describe('opening a Jira issue (T4754)', () => {
+  const TYPES = `${API}/issue/createmeta/ENG/issuetypes`;
+  const CREATE = `${API}/issue`;
+  const PROJECT_TYPES = JSON.stringify({ issueTypes: [{ id: '10000', name: 'Epic', subtask: false }, { id: '10002', name: 'Task', subtask: false }] });
+  const OPENED = '{"id":"10042","key":"ENG-24","self":"https://acme.atlassian.net/rest/api/3/issue/10042"}';
+  const DRAFT = { repo: REPO, title: 'Fix the list', body: 'First line\n\nSecond paragraph', labels: ['bug', 'status:open'] };
+  const BARE = { repo: REPO, title: 'Fix the list', body: '', labels: [] };
+  const BARE_FIELDS = { project: { key: 'ENG' }, summary: 'Fix the list', issuetype: { id: '10002' } };
+  const NO_PROJECT = failed('Jira has no project ENG on acme, or the sign-in may not see it');
+
+  it("opens the issue as the project's Task, its body as plain paragraphs, and names it by its number", async () => {
+    const { tracker, http } = kit();
+    http.answers('GET', TYPES, 200, PROJECT_TYPES).answers('POST', CREATE, 201, OPENED);
+    assert.deepEqual(await tracker.open(DRAFT), { kind: 'opened', target: { repo: REPO, number: 24 } });
+    const paragraphs = ['First line', 'Second paragraph'].map((text) => ({ type: 'paragraph', content: [{ type: 'text', text }] }));
+    const description = { type: 'doc', version: 1, content: paragraphs };
+    assert.deepEqual(sent(http), [
+      ['GET', '/issue/createmeta/ENG/issuetypes'],
+      ['POST', '/issue', { fields: { ...BARE_FIELDS, labels: ['bug', 'status:open'], description } }],
+    ]);
+  });
+
+  it('leaves out a description with no line and labels when there are none, and stamps one when the stamp is on', async () => {
+    const plain = kit();
+    plain.http.answers('GET', TYPES, 200, PROJECT_TYPES).answers('POST', CREATE, 201, OPENED);
+    assert.deepEqual(await plain.tracker.open(BARE), { kind: 'opened', target: { repo: REPO, number: 24 } });
+    assert.deepEqual(sent(plain.http)[1], ['POST', '/issue', { fields: BARE_FIELDS }]);
+    const stamped = kit(true);
+    stamped.http.answers('GET', TYPES, 200, PROJECT_TYPES).answers('POST', CREATE, 201, OPENED);
+    await stamped.tracker.open(BARE);
+    assert.deepEqual(sent(stamped.http)[1], ['POST', '/issue', { fields: { ...BARE_FIELDS, description: { type: 'doc', version: 1, content: [CREDIT_PARAGRAPH] } } }]);
+  });
+
+  it("asks a project's types once for all the issues one tracker opens, and again after a read that failed", async () => {
+    const { tracker, http } = kit();
+    http.answers('GET', TYPES, 500).answers('GET', TYPES, 200, PROJECT_TYPES);
+    http.answers('POST', CREATE, 201, OPENED);
+    assert.deepEqual(await tracker.open(BARE), failed('Jira answered 500'));
+    await tracker.open(BARE);
+    await tracker.open(BARE);
+    assert.deepEqual(sent(http).map(([method]) => method), ['GET', 'GET', 'POST', 'POST']);
+  });
+
+  it('refuses, asking nothing, a place that is no project, a blank title and a label Jira cannot hold', async () => {
+    const { tracker, http } = kit();
+    assert.deepEqual(await tracker.open({ ...BARE, repo: 'acme' }), failed(NOT_A_PROJECT));
+    assert.deepEqual(await tracker.open({ ...BARE, title: ' \t' }), failed('an issue with no title is not opened'));
+    assert.deepEqual(await tracker.open({ ...BARE, labels: ['bug', 'needs info'] }), failed('"needs info" cannot be a Jira label: one holds no space'));
+    assert.deepEqual(http.requests, []);
+  });
+
+  it('opens nothing when the project does not show or names no type an issue can open as', async () => {
+    const { tracker, http } = kit();
+    http.answers('GET', TYPES, 404).answers('GET', TYPES, 200, '{"issueTypes":[{"id":"10003","name":"Sub-task","subtask":true}]}');
+    assert.deepEqual(await tracker.open(BARE), NO_PROJECT);
+    assert.deepEqual(await tracker.open(BARE), failed('Jira names no issue type the sign-in may open an issue of ENG as'));
+    assert.equal(http.requests.length, 2);
+  });
+
+  it('passes on why Jira opened none, and fails on an answer that names no issue of the project', async () => {
+    const { tracker, http } = kit();
+    http.answers('GET', TYPES, 200, PROJECT_TYPES);
+    http
+      .answers('POST', CREATE, 400, '{"errorMessages":[],"errors":{"summary":"Summary must be less than 255 characters."}}')
+      .answers('POST', CREATE, 404)
+      .answers('POST', CREATE, 201, '{"id":"10042","key":"OPS-3"}')
+      .answers('POST', CREATE, 201);
+    const unnamed = failed('Jira opened an issue of acme/eng and its answer names no issue of ENG: find it on the site before opening another');
+    assert.deepEqual(await tracker.open(BARE), failed('Jira answered 400: summary: Summary must be less than 255 characters.'));
+    assert.deepEqual(await tracker.open(BARE), NO_PROJECT);
+    assert.deepEqual(await tracker.open(BARE), unnamed);
+    assert.deepEqual(await tracker.open(BARE), unnamed);
+  });
+});
+
 describe('what the Jira tracker does not do yet', () => {
   it('answers each method of a later slice with its line, and sends nothing', async () => {
     const { tracker, http } = kit();
-    assert.deepEqual(await tracker.open(), failed(NOT_BUILT.open));
     assert.deepEqual(await tracker.links(), failed(NOT_BUILT.links));
     assert.deepEqual(await tracker.addSubIssue(), failed(NOT_BUILT.links));
     assert.deepEqual(await tracker.addBlockedBy(), failed(NOT_BUILT.links));

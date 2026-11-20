@@ -8,7 +8,6 @@ import type { ConnectorDeclaration, Support } from '../../../plugin-api/index.ts
 
 /** What a tracker method that is not built yet answers; its row says the same. */
 export const NOT_BUILT = {
-  open: 'the Jira connector does not open issues yet',
   links: 'the Jira connector does not read or write issue links yet',
 } as const;
 
@@ -42,7 +41,10 @@ export const declaration: ConnectorDeclaration = {
     ),
     'tracker.accept-label': unsupported('the Jira connector does not read who put a label on an issue yet, so the accept label takes no issue'),
     'tracker.watch': partial('a free look for a change', 'each look for a change is one Jira search, which counts against the site\'s rate limit'),
-    'tracker.issue-open': unsupported(NOT_BUILT.open),
+    'tracker.issue-open': partial(
+      'Markdown, and a chosen issue type',
+      "an issue opens in Jira as a Task, or as the project's first type that is no sub-task when it has no Task, its body as plain paragraphs: its Markdown marks show as typed",
+    ),
     'tracker.comment': partial('Markdown', 'a comment is posted to Jira as plain paragraphs: its Markdown marks show as typed'),
     'tracker.edit-body': partial('Markdown', 'a description is written to Jira as plain paragraphs: its Markdown marks show as typed'),
     'tracker.close': partial(
