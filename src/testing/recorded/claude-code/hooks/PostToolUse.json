@@ -1,0 +1,272 @@
+[
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "{{cwd}}/notes.txt",
+      "content": "alpha\n"
+    },
+    "tool_response": {
+      "type": "create",
+      "filePath": "{{cwd}}/notes.txt",
+      "content": "alpha\n",
+      "structuredPatch": [],
+      "originalFile": null,
+      "userModified": false
+    },
+    "tool_use_id": "toolu_recorded0001",
+    "duration_ms": 20
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Read",
+    "tool_input": {
+      "file_path": "{{cwd}}/notes.txt"
+    },
+    "tool_response": {
+      "type": "text",
+      "file": {
+        "filePath": "{{cwd}}/notes.txt",
+        "content": "alpha\n",
+        "numLines": 2,
+        "startLine": 1,
+        "totalLines": 2
+      }
+    },
+    "tool_use_id": "toolu_recorded0002",
+    "duration_ms": 11
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "{{cwd}}/notes.txt",
+      "old_string": "alpha",
+      "new_string": "beta",
+      "replace_all": false
+    },
+    "tool_response": {
+      "filePath": "{{cwd}}/notes.txt",
+      "oldString": "alpha",
+      "newString": "beta",
+      "originalFile": "alpha\n",
+      "structuredPatch": [
+        {
+          "oldStart": 1,
+          "oldLines": 1,
+          "newStart": 1,
+          "newLines": 1,
+          "lines": [
+            "-alpha",
+            "+beta"
+          ]
+        }
+      ],
+      "userModified": false,
+      "replaceAll": false
+    },
+    "tool_use_id": "toolu_recorded0003",
+    "duration_ms": 13
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Grep",
+    "tool_input": {
+      "pattern": "beta",
+      "path": "{{cwd}}/notes.txt",
+      "output_mode": "content"
+    },
+    "tool_response": {
+      "mode": "content",
+      "numFiles": 0,
+      "filenames": [],
+      "content": "1:beta",
+      "numLines": 1,
+      "totalLines": 1
+    },
+    "tool_use_id": "toolu_recorded0004",
+    "duration_ms": 56
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Glob",
+    "tool_input": {
+      "pattern": "*.txt",
+      "path": "{{cwd}}"
+    },
+    "tool_response": {
+      "filenames": [
+        "notes.txt"
+      ],
+      "durationMs": 93,
+      "numFiles": 1,
+      "truncated": false,
+      "totalMatches": 1,
+      "countIsComplete": true
+    },
+    "tool_use_id": "toolu_recorded0005",
+    "duration_ms": 95
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "echo recorded-bash",
+      "description": "Echo recorded-bash"
+    },
+    "tool_response": {
+      "stdout": "recorded-bash",
+      "stderr": "\nShell cwd was reset to {{cwd}}",
+      "interrupted": false,
+      "isImage": false,
+      "noOutputExpected": false
+    },
+    "tool_use_id": "toolu_recorded0006",
+    "duration_ms": 703
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PostToolUse",
+    "tool_name": "PowerShell",
+    "tool_input": {
+      "command": "Write-Output recorded-powershell",
+      "description": "Write recorded-powershell to output"
+    },
+    "tool_response": {
+      "stdout": "recorded-powershell",
+      "stderr": "",
+      "interrupted": false,
+      "isImage": false
+    },
+    "tool_use_id": "toolu_recorded0007",
+    "duration_ms": 1527
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Agent",
+    "tool_input": {
+      "description": "Helper reply",
+      "prompt": "Reply with the word helper.",
+      "run_in_background": false
+    },
+    "tool_response": {
+      "status": "completed",
+      "prompt": "Reply with the word helper.",
+      "agentId": "ac1085422add60ab6",
+      "agentType": "general-purpose",
+      "harnessNoteCount": 0,
+      "harnessTailCount": 0,
+      "harnessSectionHash": "11046011f7e567fb",
+      "content": [
+        {
+          "type": "text",
+          "text": "helper"
+        }
+      ],
+      "resolvedModel": "claude-haiku-5-5",
+      "totalDurationMs": 926,
+      "totalTokens": 17315,
+      "totalToolUseCount": 0,
+      "usage": {
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 3042,
+        "cache_read_input_tokens": 14267,
+        "output_tokens": 4,
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 3042
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 4,
+            "cache_read_input_tokens": 14267,
+            "cache_creation_input_tokens": 3042,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 3042,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "canContinueAgent": true
+    },
+    "tool_use_id": "toolu_recorded0010",
+    "duration_ms": 928
+  }
+]

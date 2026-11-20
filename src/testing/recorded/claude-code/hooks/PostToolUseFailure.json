@@ -1,0 +1,41 @@
+[
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PostToolUseFailure",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "exit 3",
+      "description": "Run command that exits with status 3"
+    },
+    "tool_use_id": "toolu_recorded0008",
+    "error": "Exit code 3",
+    "is_interrupt": false,
+    "duration_ms": 106
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PostToolUseFailure",
+    "tool_name": "Read",
+    "tool_input": {
+      "file_path": "{{cwd}}/missing.txt"
+    },
+    "tool_use_id": "toolu_recorded0009",
+    "error": "File does not exist. Note: your current working directory is {{cwd}}.",
+    "is_interrupt": false,
+    "duration_ms": 4
+  }
+]

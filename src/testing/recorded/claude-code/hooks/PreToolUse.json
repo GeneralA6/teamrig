@@ -1,0 +1,174 @@
+[
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "{{cwd}}/notes.txt",
+      "content": "alpha\n"
+    },
+    "tool_use_id": "toolu_recorded0001"
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Read",
+    "tool_input": {
+      "file_path": "{{cwd}}/notes.txt"
+    },
+    "tool_use_id": "toolu_recorded0002"
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "{{cwd}}/notes.txt",
+      "old_string": "alpha",
+      "new_string": "beta",
+      "replace_all": false
+    },
+    "tool_use_id": "toolu_recorded0003"
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Grep",
+    "tool_input": {
+      "pattern": "beta",
+      "path": "{{cwd}}/notes.txt",
+      "output_mode": "content"
+    },
+    "tool_use_id": "toolu_recorded0004"
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Glob",
+    "tool_input": {
+      "pattern": "*.txt",
+      "path": "{{cwd}}"
+    },
+    "tool_use_id": "toolu_recorded0005"
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "echo recorded-bash",
+      "description": "Echo recorded-bash"
+    },
+    "tool_use_id": "toolu_recorded0006"
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PreToolUse",
+    "tool_name": "PowerShell",
+    "tool_input": {
+      "command": "Write-Output recorded-powershell",
+      "description": "Write recorded-powershell to output"
+    },
+    "tool_use_id": "toolu_recorded0007"
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "exit 3",
+      "description": "Run command that exits with status 3"
+    },
+    "tool_use_id": "toolu_recorded0008"
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Read",
+    "tool_input": {
+      "file_path": "{{cwd}}/missing.txt"
+    },
+    "tool_use_id": "toolu_recorded0009"
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_input": {
+      "description": "Helper reply",
+      "prompt": "Reply with the word helper.",
+      "run_in_background": false
+    },
+    "tool_use_id": "toolu_recorded0010"
+  }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "Stop",
+    "stop_hook_active": false,
+    "last_assistant_message": "done",
+    "background_tasks": [],
+    "session_crons": []
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000003",
+    "permission_mode": "default",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "Stop",
+    "stop_hook_active": false,
+    "last_assistant_message": "again",
+    "background_tasks": [],
+    "session_crons": []
+  }
+]
