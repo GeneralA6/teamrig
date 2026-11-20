@@ -1,0 +1,73 @@
+import type { ConnectorDeclaration, Support } from '../../../plugin-api/index.ts';
+
+/**
+ * What the Jira Cloud connector says of itself. A row says what this adapter does today, not what Jira could do: a
+ * method not built yet is unsupported, with the line its call answers. No row holds a proof until a run on a real
+ * site made one.
+ */
+
+/** What a tracker method that is not built yet answers; its row says the same. */
+export const NOT_BUILT = {
+  open: 'the Jira connector does not open issues yet',
+  close: 'the Jira connector does not close issues yet',
+  assign: 'the Jira connector does not assign issues yet',
+  links: 'the Jira connector does not read or write issue links yet',
+} as const;
+
+/** Built, with no live proof yet. */
+const UNPROVED: Support = { kind: 'supported', proofs: [] };
+
+/** Jira holds issues and no code. */
+const NOT_A_CODE_HOST: Support = { kind: 'unsupported', notice: 'Jira is a tracker: pull requests, their checks and their reviews need a code host connector' };
+
+function partial(missing: string, notice: string): Support {
+  return { kind: 'partial', missing, notice, proofs: [] };
+}
+
+function unsupported(notice: string): Support {
+  return { kind: 'unsupported', notice };
+}
+
+export const declaration: ConnectorDeclaration = {
+  apiVersion: '0.1.0',
+  id: 'jira',
+  name: 'Jira',
+  kinds: ['tracker'],
+  refPrefix: 'jira:',
+  manifest: {
+    'tracker.issue-import': partial(
+      "a description's formatting, and the reporter's tie to the project",
+      'a Jira description is read as plain text, and Jira names no tie between a reporter and the project: every issue is read as an outsider\'s',
+    ),
+    'tracker.accept-label': unsupported('the Jira connector does not read who put a label on an issue yet, so the accept label takes no issue'),
+    'tracker.watch': partial('a free look for a change', 'each look for a change is one Jira search, which counts against the site\'s rate limit'),
+    'tracker.issue-open': unsupported(NOT_BUILT.open),
+    'tracker.comment': partial('Markdown', 'a comment is posted to Jira as plain paragraphs: its Markdown marks show as typed'),
+    'tracker.edit-body': partial('Markdown', 'a description is written to Jira as plain paragraphs: its Markdown marks show as typed'),
+    'tracker.close': unsupported(NOT_BUILT.close),
+    'tracker.labels': partial(
+      'a label made with a colour and a description, and a name holding a space',
+      'a Jira label has no colour and no description, holds no space, and exists once an issue carries it',
+    ),
+    'tracker.status-push': partial(
+      'the assignee, and the two status labels whose names hold a space',
+      'the Jira connector sets no assignee yet, and a Jira label holds no space: the status labels with one are refused',
+    ),
+    'tracker.assign': unsupported(NOT_BUILT.assign),
+    'tracker.claims': unsupported('the Jira connector does not assign issues yet, so a claim line takes no issue'),
+    'tracker.clocks': partial("a commenter's tie to the project", 'Jira names no tie between a commenter and the project: every comment is read as an outsider\'s'),
+    'tracker.mentions': unsupported('the Jira connector does not read comments for a mention yet'),
+    'tracker.follow': UNPROVED,
+    'tracker.links': unsupported(NOT_BUILT.links),
+    'tracker.fields': unsupported('the Jira connector does not write an issue\'s priority or type yet'),
+    'tracker.similar': UNPROVED,
+    'tracker.security-alert': UNPROVED,
+    'tracker.stamp': UNPROVED,
+    'tracker.hidden-mark': unsupported('the Jira connector keeps no hidden mark on an issue yet'),
+    'codehost.pull-news': NOT_A_CODE_HOST,
+    'codehost.ci-excerpt': NOT_A_CODE_HOST,
+    'codehost.pr-conflicts': NOT_A_CODE_HOST,
+    'codehost.review-posts': NOT_A_CODE_HOST,
+    'codehost.linked-pulls': NOT_A_CODE_HOST,
+  },
+};
