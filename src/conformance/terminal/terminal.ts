@@ -11,6 +11,7 @@ export interface ShownPane {
   readonly title: string;
   readonly folder: string;
   readonly argv: readonly string[];
+  /** The named window it is in; undefined when it opened in none teamrig named. */
   readonly window: string | undefined;
 }
 
@@ -77,9 +78,21 @@ const OPEN_SHOWS_THE_PANE: TerminalCase = {
   title: 'opens a pane with the title, folder and command it is given, and answers its id of it',
   features: ['pane.open'],
   run: async (subject) => {
-    const pane = await opened(subject, { window: 'crew' });
+    const pane = await opened(subject);
     assert.notEqual(pane, '');
-    assert.deepEqual(await subject.world.panes(), [{ pane, title: 'worker', folder: '/work/repo', argv: ['claude', '--resume'], window: 'crew' }]);
+    assert.deepEqual(await subject.world.panes(), [{ pane, title: 'worker', folder: '/work/repo', argv: ['claude', '--resume'], window: undefined }]);
+  },
+};
+
+const OPEN_IN_THE_NAMED_WINDOW: TerminalCase = {
+  id: 'terminal.open-in-the-named-window',
+  title: 'opens each pane in the window it is given the name of, two of one name in the same window',
+  features: ['pane.window'],
+  run: async (subject) => {
+    await opened(subject, { window: 'crew' });
+    await opened(subject, { title: 'reviewer', wakeToken: 'token-of-reviewer', window: 'crew' });
+    await opened(subject, { title: 'guest', wakeToken: 'token-of-guest', window: 'visitors' });
+    assert.deepEqual((await subject.world.panes()).map((shown) => shown.window), ['crew', 'crew', 'visitors']);
   },
 };
 
@@ -319,6 +332,7 @@ export const TERMINAL_CONTRACT: Contract<TerminalPort, TerminalWorld, 'terminal'
     OPEN_SHOWS_THE_PANE,
     OPEN_IDS_DIFFER,
     SAYS_WHAT_IT_SERVES,
+    OPEN_IN_THE_NAMED_WINDOW,
     FOCUS_BRINGS_FORWARD,
     FOCUS_OF_A_GONE_PANE,
     CLOSE_ENDS_THE_PANE,
