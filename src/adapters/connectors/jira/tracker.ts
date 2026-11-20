@@ -17,12 +17,14 @@ import {
   type HostList,
   type HostOpen,
   type HostReach,
+  type HostThread,
   type HostUse,
   type HostViewer,
   type HostWatch,
   type IssueComment,
   type IssueDraft,
   type IssueTarget,
+  type IssueThread,
   type JsonRecord,
   type LabelSpec,
   type ReadComment,
@@ -56,6 +58,9 @@ export const COMMENT_PAGE = 100;
 
 /** The fields a list asks of each issue: what a HostIssue is made of, and nothing else. */
 const LIST_FIELDS = ['summary', 'description', 'status', 'resolution', 'labels', 'assignee', 'reporter', 'updated', 'created', 'resolutiondate', 'statuscategorychangedate', 'comment'] as const;
+
+/** The fields a read of one issue as it is now asks for: what an IssueThread is made of, and nothing else. */
+const THREAD_FIELDS = ['description', 'status', 'labels', 'assignee'] as const;
 
 /** The one mark a watch keeps: the issue changed last, and when. */
 const NEWEST = 'newest';
@@ -192,6 +197,28 @@ function hostIssue(repo: string, project: JiraProject, value: unknown): HostIssu
     createdAt: isoTime(fields['created']),
     comments: listedComments(fields),
     linkedPulls: 0,
+  };
+}
+
+/**
+ * One issue as a read of it alone gives it, or undefined when the answer does not read as one: a write is matched to
+ * this state, so an answer with no status or no list of labels is no issue here, never an open one with no label.
+ * A Jira issue is never a pull request.
+ */
+function issueThread(body: unknown): IssueThread | undefined {
+  const fields = isRecord(body) ? recordField(body, 'fields') : undefined;
+  const status = fields === undefined ? undefined : recordField(fields, 'status');
+  const labels: unknown = fields?.['labels'];
+  if (fields === undefined || status === undefined || !isStringArray(labels)) {
+    return undefined;
+  }
+  const assignee = accountId(recordField(fields, 'assignee'));
+  return {
+    state: isDoneStatus(status) ? 'closed' : 'open',
+    labels,
+    assignees: assignee === '' ? [] : [assignee],
+    pull: false,
+    body: adfText(fields['description']),
   };
 }
 
@@ -371,6 +398,23 @@ export class JiraTracker implements Tracker {
     }
     const id = isRecord(answer.body) ? stringField(answer.body, 'id') : undefined;
     return id !== undefined && ISSUE_ID.test(id) ? { kind: 'found', id: Number(id) } : failed(`Jira's answer for ${place.key} names no id for the issue`);
+  }
+
+  /**
+   * The issue as it is now, by one read of it: its state by its status, its labels, the account holding it and its
+   * description as plain text. An issue Jira does not show is missing, as for its id.
+   */
+  async thread(target: IssueTarget): Promise<HostThread> {
+    const place = this.place(target);
+    if (place.kind === 'failed') {
+      return place;
+    }
+    const answer = await this.client.get(place.project.site, `/issue/${place.key}?fields=${THREAD_FIELDS.join(',')}`);
+    if (answer.kind !== 'ok') {
+      return answer;
+    }
+    const thread = issueThread(answer.body);
+    return thread === undefined ? failed(`Jira's answer for ${place.key} did not read as an issue`) : { kind: 'read', thread };
   }
 
   /** Posts `body` as one comment of plain paragraphs. A text with no line is refused here: Jira takes no empty comment. */

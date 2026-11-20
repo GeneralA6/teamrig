@@ -56,6 +56,7 @@ export type {
   HostList,
   HostOpen,
   HostReach,
+  HostThread,
   HostUse,
   HostViewer,
   HostWatch,
@@ -65,7 +66,7 @@ export type {
   Tracker,
   WatchMarks,
 } from '../issues/host.ts';
-export type { HostIssue, IssueComment, ReadComment } from '../issues/issue.ts';
+export type { HostIssue, IssueComment, IssueThread, ReadComment } from '../issues/issue.ts';
 export type { ProgramRequest, ProgramResult, ProgramRunner } from '../core/program-runner.ts';
 export type { SecretScanner } from '../core/secrets.ts';
 export type { ShellEnd } from '../core/shell-end.ts';
