@@ -18,6 +18,28 @@ export {
   type ConnectorPorts,
 } from './connector.ts';
 export {
+  PANE_STATES,
+  TERMINAL_REQUESTS,
+  isPaneState,
+  isTerminalRequest,
+  type DeliverAnswer,
+  type HeldWhy,
+  type IdleAnswer,
+  type ListAnswer,
+  type ListedPane,
+  type OpenAnswer,
+  type PaneAnswer,
+  type PaneIdentity,
+  type PaneOpen,
+  type PaneState,
+  type TerminalCapabilities,
+  type TerminalFailure,
+  type TerminalPort,
+  type TerminalRequest,
+  type Unserved,
+  type Wake,
+} from './terminal.ts';
+export {
   CONNECTOR_FEATURES,
   CONNECTOR_KINDS,
   HOST_FEATURES,
