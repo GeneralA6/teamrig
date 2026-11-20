@@ -10,11 +10,12 @@ import { decodePrompt, meetAsk, meetPrompt } from '../open/prompt.ts';
 import { SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
-import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { ok } from '../testing/hired-team.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { rotateRegister } from '../testing/rotation.ts';
 import { askVerdictOf, asksNowOf, WakeAsks } from '../wake/asks.ts';
 import { EXIT } from './runtime.ts';
 
@@ -79,6 +80,15 @@ describe('teamrig meet --cards', () => {
     assert.equal(lines[0], 'MEET app-alpha (session alpha): 1 card(s) waiting on owner');
     assert.ok(lines.some((line) => line.startsWith('  T1 waiting, Improvements, score 3.33, p1, owner alpha | Pick the pricing tier')), lines.join('\n'));
     assert.ok(lines.some((line) => line.startsWith('  Record each answer in the same turn: teamrig set <id> ')), lines.join('\n'));
+  });
+
+  it("prints a card's what and why from the history once a compaction left its description out of the snapshot (T4781)", async () => {
+    const kit = await alphaWithACard();
+    kit.clock.advance(72 * HOUR_MS);
+    await rotateRegister(kit.files, EVENTS_PATH, { now: new Date(kit.clock.now()) });
+    const lines = ok(await kit.run(['meet', '--cards', '--session', 'alpha'])).stdout;
+    const card = lines.findIndex((line) => line.startsWith('  T1 waiting, '));
+    assert.equal(lines[card + 1], '    what and why: which tier ships first', lines.join('\n'));
   });
 
   it('refuses a session with no card due, naming those the owner put off, and takes no <id|name>', async () => {
