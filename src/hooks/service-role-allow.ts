@@ -2,7 +2,8 @@ import type { JsonRecord } from '../core/guards.ts';
 import { parseJsonl } from '../core/jsonl.ts';
 import { isCappedCommand } from '../permissions/service-commands.ts';
 import type { RoleCall } from '../permissions/service-role-call.ts';
-import { holdBackOutput } from './permission.ts';
+import type { HookReply } from '../ports/host/index.ts';
+import { heldBack } from './permission.ts';
 
 /**
  * The service-role allow (T2984, the owner's option A): a session holding a role runs the role's teamrig commands with no
@@ -69,25 +70,19 @@ export function roleAllowRecord(facts: RoleAllowFacts): JsonRecord {
   };
 }
 
-/** The hook's stdout for a role's call: an allow naming the role, the command and the issue or branch. */
-export function roleAllowOutput(role: string, call: RoleTarget): string {
-  return JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: 'PreToolUse',
-      permissionDecision: 'allow',
-      permissionDecisionReason: `teamrig: the service role ${role} lets this session run ${call.command} on ${call.target}`,
-    },
-  });
+/** The hook's reply to a role's call: an allow naming the role, the command and the issue or branch. */
+export function roleAllowReply(role: string, call: RoleTarget): HookReply {
+  return { verdict: { kind: 'allow', reason: `teamrig: the service role ${role} lets this session run ${call.command} on ${call.target}` } };
 }
 
 /**
- * The hook's stdout once the role has no room left in 24 hours for a call weighing `weight` (a migrate's issue rows): a
+ * The hook's reply once the role has no room left in 24 hours for a call weighing `weight` (a migrate's issue rows): a
  * refusal, saying when the role runs again, and for a migrate that a file past the whole cap must be split.
  */
-export function roleCapOutput(role: string, cap: number, weight = 1): string {
+export function roleCapReply(role: string, cap: number, weight = 1): HookReply {
   const ran = weight > 1 ? `has less room than this run's ${weight} issue rows left of its ${cap} calls` : `ran its ${cap} calls`;
   const split = weight > cap ? ' A rows file holding more issue rows than the cap never runs under the role: split it.' : '';
-  return holdBackOutput(
+  return heldBack(
     'ask',
     `teamrig: the service role ${role} ${ran} of the last 24 hours (prompts.serviceRoleDailyCap), so this one is refused. ` +
       `The role runs again once its oldest call of the window is 24 hours old; only the owner raises the cap.${split}`,

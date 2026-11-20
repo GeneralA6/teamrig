@@ -1,4 +1,4 @@
-import { toolCommandReadings } from '../core/bash-tool-readings.ts';
+import type { ShellCall } from '../ports/host/index.ts';
 import { parseIssueTarget, targetText } from '../issues/host.ts';
 import { readable } from '../slash/plan.ts';
 import type { ParsedArgs } from '../cli/args.ts';
@@ -153,11 +153,10 @@ async function migrateCallOf(words: readonly string[], parsed: ParsedArgs, conte
 }
 
 /**
- * The role call a Bash tool call runs; undefined for any other tool or line. A call only when its shell may run one
- * text (`toolCommandReadings`): a second reading comes only from a backslash run, which no role call holds.
+ * The role call a bash call runs; undefined for any other shell or line. A call only when its shell may run one text
+ * (the call's `readings`): a second reading comes only from a backslash run, which no role call holds.
  */
-export async function toolRoleCallOf(tool: string | undefined, line: string, platform: NodeJS.Platform, context: RoleCallContext): Promise<RoleCall | undefined> {
-  const readings = toolCommandReadings(tool, line, platform);
-  const [only] = readings;
-  return tool !== 'Bash' || readings.length !== 1 || only === undefined ? undefined : roleCallOf(only, context);
+export async function shellRoleCallOf(call: ShellCall, context: RoleCallContext): Promise<RoleCall | undefined> {
+  const [only] = call.readings;
+  return call.dialect !== 'bash' || call.readings.length !== 1 || only === undefined ? undefined : roleCallOf(only, context);
 }
