@@ -249,17 +249,9 @@ export function rulesClockOf(runtime: Pick<CliRuntime, 'clock' | 'timeZone'>): R
  * best-effort and never written through.
  */
 export function requireConfig(kit: Kit, runtime: CliRuntime, access: Access): KitConfig {
-  const { load } = kit;
-  switch (load.status) {
-    case 'missing':
-      throw new RefusedError(`no team config at ${load.path}; create it with: ${KIT_NAME} team create ${kit.paths.team} --sessions <id,id>`);
-    case 'unreadable':
-      throw new RefusedError(`the team config at ${load.path} cannot be read: ${issueText(load.issue)}`);
-    case 'loaded':
-      break;
-  }
+  const load = loadedConfig(kit);
   const [first] = load.issues;
-  const newer = load.newerVersion === undefined ? undefined : `${load.path} is config version ${load.newerVersion}, from a newer teamrig; update teamrig`;
+  const newer = newerConfigText(load);
   if (access === 'write') {
     if (newer !== undefined) {
       throw new RefusedError(`${newer} before writing`);
@@ -268,13 +260,45 @@ export function requireConfig(kit: Kit, runtime: CliRuntime, access: Access): Ki
       throw new RefusedError(`the team config has ${load.issues.length} problem(s) (first: ${issueText(first)}); run: teamrig config validate`);
     }
   }
-  if (newer !== undefined) {
-    runtime.out.stderr(`WARN ${newer}; reading it best-effort`);
-  }
-  if (first !== undefined) {
-    runtime.out.stderr(`WARN config: ${load.issues.length} problem(s), defaults used (first: ${issueText(first)}); run: teamrig config validate`);
+  for (const warning of configWarnings(load)) {
+    runtime.out.stderr(`WARN ${warning}`);
   }
   return load.config;
+}
+
+/** A team config that could be read, with the path it was read from. */
+export type LoadedConfig = Extract<ConfigLoad, { readonly status: 'loaded' }>;
+
+/** The kit's config as it loaded; refused when the team has none, or it cannot be read at all. */
+export function loadedConfig(kit: Kit): LoadedConfig {
+  const { load } = kit;
+  switch (load.status) {
+    case 'missing':
+      throw new RefusedError(`no team config at ${load.path}; create it with: ${KIT_NAME} team create ${kit.paths.team} --sessions <id,id>`);
+    case 'unreadable':
+      throw new RefusedError(`the team config at ${load.path} cannot be read: ${issueText(load.issue)}`);
+    case 'loaded':
+      return load;
+  }
+}
+
+/**
+ * What a read through `load` must tell its reader, one line each: the file is from a newer teamrig, some fields are
+ * on their defaults. A command printing for a person writes them as `WARN` lines (`requireConfig`); one answering
+ * as data carries them in its answer, so its output stays data.
+ */
+export function configWarnings(load: LoadedConfig): string[] {
+  const [first] = load.issues;
+  const newer = newerConfigText(load);
+  return [
+    ...(newer === undefined ? [] : [`${newer}; reading it best-effort`]),
+    ...(first === undefined ? [] : [`config: ${load.issues.length} problem(s), defaults used (first: ${issueText(first)}); run: teamrig config validate`]),
+  ];
+}
+
+/** What to say of a config a newer teamrig wrote, or undefined for one this teamrig knows whole. */
+function newerConfigText(load: LoadedConfig): string | undefined {
+  return load.newerVersion === undefined ? undefined : `${load.path} is config version ${load.newerVersion}, from a newer teamrig; update teamrig`;
 }
 
 /** The config file's own JSON, not the copy migrated in memory, so nothing else in it changes, its version included. */
