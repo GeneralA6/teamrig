@@ -110,7 +110,7 @@ export function tasksBody(input: TasksInput): TasksBody {
 }
 
 function servedTask(task: Task, served: ServedText, input: Pick<TasksInput, 'connectors' | 'names'>): ServedTask {
-  const source = sourceOf(task.source, input.names);
+  const source = sourceOf(served, task.id, task.source, input.names);
   // A tracker's import carries its author's words: only the title and the description hold them, the rest is the team's.
   const wrote = source.kind === 'connector' ? 'outside' : 'team';
   return {
