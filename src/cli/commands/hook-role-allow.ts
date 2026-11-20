@@ -1,11 +1,12 @@
 import type { KitConfig } from '../../config/types.ts';
 import { recordField, stringField, type JsonRecord } from '../../core/guards.ts';
 import { toJsonlLine } from '../../core/jsonl.ts';
-import { ROLE_CAP_WINDOW_MS, roleAllowOutput, roleAllowRecord, roleAllowsSince, roleCapOutput } from '../../hooks/service-role-allow.ts';
+import { anyRoleShips, ROLE_CAP_WINDOW_MS, roleAllowOutput, roleAllowRecord, roleAllowsSince, roleCapOutput, shipNearMissOutput } from '../../hooks/service-role-allow.ts';
 import { roleHolding } from '../../permissions/service-roles.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { isCappedCommand, MIGRATE_COMMAND } from '../../permissions/service-commands.ts';
-import { toolRoleCallOf } from '../../permissions/service-role-call.ts';
+import { toolRoleCallOf, toolShipNearMissOf } from '../../permissions/service-role-call.ts';
+import type { ShipCallContext } from '../../permissions/ship-role-call.ts';
 import { migrateRowsFileOf, migrateWeightOf } from '../migrate-role-check.ts';
 import { shipBranchOf, shipToolTest } from '../ship-role-check.ts';
 import type { CommandTable } from '../../slash/plan.ts';
@@ -23,6 +24,18 @@ import { kitContextOf } from './hook-route-context.ts';
 async function holderOf(runtime: CliRuntime, kit: Kit, config: KitConfig, claudeSession: string, caller: string): Promise<string | undefined> {
   const roster = await rosterOf(runtime, kit, config);
   return tabSessionOf(runtime.files, kit.paths.inboxMarks, roster, claudeSession, caller);
+}
+
+/**
+ * The hint for a line that is no role call but a queued ship or merge of the team's ship tool off the role call's form
+ * (#1468), when some role gives a ship or merge: context naming each failed condition, no decision; else ''.
+ */
+async function shipNearMissOf(runtime: CliRuntime, payload: JsonRecord, command: string, config: KitConfig, context: ShipCallContext): Promise<string> {
+  if (!anyRoleShips(config.serviceRoles)) {
+    return '';
+  }
+  const failed = await toolShipNearMissOf(stringField(payload, 'tool_name'), command, runtime.platform, context, stringField(payload, 'cwd'));
+  return failed.length === 0 ? '' : shipNearMissOutput(failed);
 }
 
 /**
@@ -47,6 +60,9 @@ export async function roleAllowOutputOf(runtime: CliRuntime, kit: Kit, payload: 
   }
   const context = { ...kitContextOf(runtime, payload, cli), repos: config.github.repos, isShipTool: shipToolTest(kit, config) };
   const call = await toolRoleCallOf(stringField(payload, 'tool_name'), command, runtime.platform, context);
+  if (call === undefined) {
+    return shipNearMissOf(runtime, payload, command, config, context);
+  }
   const holder = call === undefined ? undefined : await holderOf(runtime, kit, config, claudeSession, call.session);
   const role = call === undefined || holder === undefined ? undefined : roleHolding(config.serviceRoles, call.command, holder);
   if (call === undefined || holder === undefined || role === undefined) {

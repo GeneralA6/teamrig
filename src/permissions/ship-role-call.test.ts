@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { COMMAND_TABLE } from '../cli/run.ts';
 import { readable } from '../slash/plan.ts';
-import { shipCallOf, shipRunOf, type ShipCallContext } from './ship-role-call.ts';
+import { shipCallOf, shipNearMissOf, shipRunOf, type ShipCallContext } from './ship-role-call.ts';
 
 const TOOL = '/repo/.ship/tools/ship/ship.ts';
 const WORKTREE = '/repo/.worktrees/t7-fix';
@@ -137,5 +137,50 @@ describe('ship role call: the queue line (T2984)', () => {
     const test = readable(['test', '--', 'node', TOOL, WORKTREE, PLAN], COMMAND_TABLE);
     assert.ok(test !== undefined);
     assert.equal(await shipCallOf('teamrig', test, CONTEXT), undefined, 'another command that takes a line');
+  });
+});
+
+/** The failed conditions of `<program> queue <queue> -- <rest>`, read from the folder `cwd`. */
+async function missOf(queue: string, rest: string, cwd = '/repo', program = 'teamrig'): Promise<readonly string[]> {
+  const words = [...queue.split(' ').filter((word) => word !== ''), '--', ...rest.split(' ')];
+  const parsed = readable(words, COMMAND_TABLE);
+  assert.ok(parsed !== undefined, `${queue} -- ${rest}`);
+  return shipNearMissOf(program, parsed, CONTEXT, cwd);
+}
+
+const NAMED = 'queue --kind test --session alpha';
+const NO_SESSION = 'no --session: a role call names the session it runs as';
+
+describe('ship role call: a near miss names the condition it failed (#1468)', () => {
+  it('names a missing --session, a relative tool path, an extra queue flag, a kind that does not fit and an extra tool word', async () => {
+    assert.deepEqual(await missOf('queue --kind test', `node ${TOOL} ${WORKTREE} ${PLAN}`), [NO_SESSION]);
+    assert.deepEqual(await missOf(NAMED, `node .ship/tools/ship/ship.ts ${WORKTREE} ${PLAN}`), [`the ship tool path .ship/tools/ship/ship.ts is relative: name it absolute, ${TOOL}`]);
+    assert.deepEqual(await missOf(`${NAMED} --exclusive`, `node ${TOOL} ${WORKTREE} ${PLAN}`), ['the queue flag --exclusive is not one a ship call takes']);
+    assert.deepEqual(await missOf('queue --kind ship --session alpha', `node ${TOOL} ${WORKTREE} ${PLAN}`), [
+      '--kind ship does not fit the run: a merge runs under ship or merge, a ship without --merge under test',
+    ]);
+    assert.deepEqual(await missOf(NAMED, `node ${TOOL} ${WORKTREE} ${PLAN} --base main`), [
+      "the ship tool's words are not its ship or merge form: an extra word or flag, or a worktree, plan or note path that is not absolute",
+    ]);
+    assert.deepEqual(await missOf('queue --kind merge --small', `node .ship/tools/ship/ship.ts merge ${WORKTREE}`), [
+      `the ship tool path .ship/tools/ship/ship.ts is relative: name it absolute, ${TOOL}`,
+      NO_SESSION,
+      'the queue flag --small is not one a ship call takes',
+    ]);
+  });
+
+  it('names nothing for the documented form, another tool or program, another launcher, or a relative path off the tool', async () => {
+    const rest = `node ${TOOL} ${WORKTREE} ${PLAN}`;
+    assert.deepEqual(await missOf(QUEUE, rest), []);
+    assert.deepEqual(await missOf('queue --kind test', `node /repo/tools/other.ts ${WORKTREE} ${PLAN}`), []);
+    assert.deepEqual(await missOf('queue --kind test', `npx ${TOOL} ${WORKTREE} ${PLAN}`), []);
+    assert.deepEqual(await missOf('queue --kind test', rest, '/repo', './teamrig'), []);
+    assert.deepEqual(await missOf(NAMED, `node .ship/tools/ship/ship.ts ${WORKTREE} ${PLAN}`, '/elsewhere'), []);
+    const relative = readable([...NAMED.split(' '), '--', 'node', '.ship/tools/ship/ship.ts', WORKTREE, PLAN], COMMAND_TABLE);
+    assert.ok(relative !== undefined);
+    assert.deepEqual(await shipNearMissOf('teamrig', relative, CONTEXT, undefined), [], 'a relative path with no folder to read it from');
+    const test = readable(['test', '--', 'node', TOOL, WORKTREE, PLAN], COMMAND_TABLE);
+    assert.ok(test !== undefined);
+    assert.deepEqual(await shipNearMissOf('teamrig', test, CONTEXT, '/repo'), [], 'another command that takes a line');
   });
 });

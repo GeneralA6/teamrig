@@ -67,9 +67,10 @@ async function routeAllowOutputOf(runtime: CliRuntime, payload: JsonRecord, deps
  * run with no permission check, once the push, package, secret, exec, db-write and pass-record guards all passed it; logs each
  * allow to `state/prompt-answers.jsonl` by its route, never its command. With the switch on, whatever asks say, it also
  * lets a service role's call run for the tab bound to a holder of the role, up to the role's daily cap, then asks
- * (T2984, hook-role-allow.ts). Outside a team, with the switch off or the config missing or broken, for any other line
- * or tool, when a guard asks or refuses, for input that is not a hook payload or on any error, it prints nothing, so
- * the guards and Claude Code's own permission check decide: it fails closed.
+ * (T2984, hook-role-allow.ts); a queued ship or merge of the team's ship tool off the role call's form gets context
+ * naming what it failed, with no decision (#1468). Outside a team, with the switch off or the config missing or broken,
+ * for any other line or tool, when a guard asks or refuses, for input that is not a hook payload or on any error, it
+ * prints nothing, so the guards and Claude Code's own permission check decide: it fails closed.
  */
 export function routeAllow(deps: RouteAllowDeps): (args: ParsedArgs, runtime: CliRuntime) => Promise<ExitCode> {
   return async (args, runtime) => {

@@ -187,11 +187,14 @@ describe('hook route-allow: the ship role (T2984)', () => {
       SHIP.replace(SHIP_WORKTREE, '/w/feat'),
       SHIP.replace(SHIP_TOOL, '/repo/app/tools/ship/ship.ts'),
     ];
+    // A kind that does not fit the run gets the near-miss hint (#1468), which decides nothing; the rest get no word.
     for (const line of lines) {
-      assert.deepEqual(await kit.run(HOOK, { stdin: call(line), env: ALPHA, mergeGit: git }), NOTHING, line);
+      const result = await kit.run(HOOK, { stdin: call(line), env: ALPHA, mergeGit: git });
+      assert.deepEqual([result.code, decisionOf(result)], [EXIT.ok, undefined], line);
     }
     assert.deepEqual(await kit.run(HOOK, { stdin: call(SHIP.replace('--session alpha', '--session bravo')), env: ALPHA, mergeGit: git }), NOTHING, "alpha's tab running as bravo");
-    assert.deepEqual(await kit.run(HOOK, { stdin: call(SHIP.replace(' --session alpha', '')), env: ALPHA, mergeGit: git }), NOTHING, 'no --session, whatever the environment says (N1)');
+    const unnamed = await kit.run(HOOK, { stdin: call(SHIP.replace(' --session alpha', '')), env: ALPHA, mergeGit: git });
+    assert.deepEqual([unnamed.code, decisionOf(unnamed)], [EXIT.ok, undefined], 'no --session, whatever the environment says (N1)');
     const bravos = await shipKit();
     assert.equal((await bravos.kit.run(['add', '--title', 'Ship the API', '--description', 'what and why', '--priority', 'p1', '--owner', 'bravo', '--session', 'lead'])).code, EXIT.ok);
     bravos.git.checkouts.set(SHIP_WORKTREE, { top: SHIP_WORKTREE, branch: 't2-api', mainCheckout: MAIN_CHECKOUT, linked: true });
@@ -332,5 +335,41 @@ describe('hook route-allow: the migrate role (T4606)', () => {
 
     const big = await migrateKit(4, { prompts: { serviceRoleDailyCap: 3 } });
     assert.match((await big.run(HOOK, { stdin: call(MIGRATE), env: ALPHA })).stdout.join(''), /more issue rows than the cap never runs under the role: split it/, 'a file past the whole cap');
+  });
+});
+
+/** The context a hook result hands back, with its decision, if any. */
+function contextOf(result: CliResult): { context: unknown; decision: unknown } {
+  const [line] = result.stdout;
+  const parsed: unknown = line === undefined ? undefined : JSON.parse(line);
+  const output = isRecord(parsed) ? recordField(parsed, 'hookSpecificOutput') : undefined;
+  return { context: output?.['additionalContext'], decision: output?.['permissionDecision'] };
+}
+
+describe('hook route-allow: a near-miss ship names the condition it failed (#1468)', () => {
+  it('hands back each failed condition as context with no decision, and logs nothing', async () => {
+    const { kit, git } = await shipKit();
+    const unnamed = await kit.run(HOOK, { stdin: call(MERGE.replace(' --session alpha', '')), env: ALPHA, mergeGit: git });
+    assert.equal(unnamed.code, EXIT.ok);
+    const { context, decision } = contextOf(unnamed);
+    assert.equal(decision, undefined);
+    assert.match(String(context), /^teamrig: this queued ship or merge runs the team's ship tool but is not the form a service role allows, so no role allow: no --session: /);
+    const relative = SHIP.replace(SHIP_TOOL, 'tools/ship/ship.ts');
+    const fromShip = contextOf(await kit.run(HOOK, { stdin: call(relative, { cwd: '/repo/ship' }), env: ALPHA, mergeGit: git }));
+    assert.match(String(fromShip.context), /the ship tool path tools\/ship\/ship\.ts is relative: name it absolute, \/repo\/ship\/tools\/ship\/ship\.ts/);
+    assert.equal(fromShip.decision, undefined);
+    const flagged = contextOf(await kit.run(HOOK, { stdin: call(SHIP.replace('--kind test', '--kind test --exclusive')), env: ALPHA, mergeGit: git }));
+    assert.match(String(flagged.context), /the queue flag --exclusive is not one a ship call takes/);
+    assert.deepEqual(await answersOf(kit), []);
+  });
+
+  it('still allows the documented form with no hint, and hints nothing where no role ships or the line names another tool', async () => {
+    const { kit, git } = await shipKit();
+    const allowed = contextOf(await kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: git }));
+    assert.deepEqual(allowed, { context: undefined, decision: 'allow' });
+    const other = SHIP.replace(SHIP_TOOL, '/repo/ship/tools/other.ts').replace(' --session alpha', '');
+    assert.deepEqual(await kit.run(HOOK, { stdin: call(other), env: ALPHA, mergeGit: git }), NOTHING);
+    const noShipRole = await shipKit({ serviceRoles: { github: { holders: ['alpha'], commands: ['issue close'] } } });
+    assert.deepEqual(await noShipRole.kit.run(HOOK, { stdin: call(SHIP.replace(' --session alpha', '')), env: ALPHA, mergeGit: noShipRole.git }), NOTHING);
   });
 });

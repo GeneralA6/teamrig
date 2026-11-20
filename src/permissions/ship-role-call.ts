@@ -1,3 +1,4 @@
+import { posix, win32 } from 'node:path';
 import type { ParsedArgs } from '../cli/args.ts';
 import { ABSOLUTE, type KitContext } from './route-kit.ts';
 
@@ -143,4 +144,61 @@ export async function shipCallOf(program: string, parsed: ParsedArgs, context: S
     return undefined;
   }
   return (await context.ownClient(program)) ? run : undefined;
+}
+
+/** `word` read from the folder `cwd`, in that folder's own path style, so a reading never depends on this host's. */
+function placeOf(cwd: string, word: string): string {
+  return ABSOLUTE.test(cwd) && !cwd.startsWith('/') ? win32.resolve(cwd, word) : posix.resolve(cwd, word);
+}
+
+/**
+ * Why a `teamrig queue` line through this install's own launcher that runs the team's ship tool (`isShipTool`, a
+ * relative path read from the call's folder `cwd`) is no ship call: each condition it failed, in plain words, for the
+ * route-allow hook to hand back as context (#1468). Empty for a line in the ship call's form with its `--session`, and
+ * for any line that names no ship tool: only a near miss gets a hint. It decides nothing: the allow reads the line
+ * through shipCallOf alone.
+ */
+export async function shipNearMissOf(program: string, parsed: ParsedArgs, context: ShipCallContext, cwd: string | undefined): Promise<readonly string[]> {
+  if (parsed.command !== 'queue' || parsed.help || !(await context.ownClient(program))) {
+    return [];
+  }
+  const [runner, ...after] = parsed.rest;
+  const at = after[0] === NODE_FLAG ? 2 : 1;
+  const tool = parsed.rest[at];
+  if (runner !== 'node' || tool === undefined) {
+    return [];
+  }
+  const relative = !isPathWord(tool);
+  const place = relative ? (cwd === undefined ? undefined : placeOf(cwd, tool)) : tool;
+  if (place === undefined || !context.isShipTool(place)) {
+    return [];
+  }
+  const session = parsed.flags.get('session');
+  if (!relative && session !== undefined && (await shipCallOf(program, parsed, context)) !== undefined) {
+    return [];
+  }
+  const failed: string[] = [];
+  if (relative) {
+    failed.push(`the ship tool path ${tool} is relative: name it absolute, ${place}`);
+  }
+  if (session === undefined) {
+    failed.push('no --session: a role call names the session it runs as');
+  }
+  for (const name of [...parsed.flags.keys(), ...parsed.switches].filter((option) => !QUEUE_OPTIONS.has(option))) {
+    failed.push(`the queue flag --${name} is not one a ship call takes`);
+  }
+  if (parsed.positionals.length > 0) {
+    failed.push(`the word ${parsed.positionals[0] ?? ''} before -- is not one a ship call takes`);
+  }
+  const kind = parsed.flags.get('kind');
+  const rest = parsed.rest.map((word, index) => (index === at ? place : word));
+  const run = shipRunOf(rest, context.isShipTool, parsed.flags.get('task'));
+  if (run === undefined) {
+    failed.push("the ship tool's words are not its ship or merge form: an extra word or flag, or a worktree, plan or note path that is not absolute");
+  } else if (kind === undefined) {
+    failed.push('no --kind: a ship runs under test, a merge under ship or merge');
+  } else if (run.merges !== MERGE_KINDS.has(kind) || (!MERGE_KINDS.has(kind) && kind !== REVIEW_KIND)) {
+    failed.push(`--kind ${kind} does not fit the run: a merge runs under ship or merge, a ship without --merge under test`);
+  }
+  return failed;
 }

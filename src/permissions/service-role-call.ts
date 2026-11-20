@@ -5,7 +5,7 @@ import type { ParsedArgs } from '../cli/args.ts';
 import { ABSOLUTE, matchesKit, type KitShape } from './route-kit.ts';
 import { plainWordsOf } from './route-line.ts';
 import { isIssueCommand, MIGRATE_COMMAND, type IssueCommand, type MigrateCommand, type ShipCommand } from './service-commands.ts';
-import { shipCallOf, type ShipCallContext, type ShipRun } from './ship-role-call.ts';
+import { shipCallOf, shipNearMissOf, type ShipCallContext, type ShipRun } from './ship-role-call.ts';
 
 /**
  * The call shapes a service role lets run (T2984, design 1): each table command as the CLI's own parser reads it, with
@@ -160,4 +160,22 @@ export async function toolRoleCallOf(tool: string | undefined, line: string, pla
   const readings = toolCommandReadings(tool, line, platform);
   const [only] = readings;
   return tool !== 'Bash' || readings.length !== 1 || only === undefined ? undefined : roleCallOf(only, context);
+}
+
+/**
+ * The conditions a Bash call's queued ship or merge failed when it runs the team's ship tool but is no role call, read
+ * through the same mask and parser as toolRoleCallOf, a relative tool path from the call's folder `cwd`; empty for any
+ * other tool or line (shipNearMissOf, #1468).
+ */
+export async function toolShipNearMissOf(tool: string | undefined, line: string, platform: NodeJS.Platform, context: ShipCallContext, cwd: string | undefined): Promise<readonly string[]> {
+  const readings = toolCommandReadings(tool, line, platform);
+  const [only] = readings;
+  if (tool !== 'Bash' || readings.length !== 1 || only === undefined) {
+    return [];
+  }
+  const scanned = roleScanTextOf(only);
+  const words = scanned === undefined ? undefined : plainWordsOf(only, scanned);
+  const parsed = words === undefined ? undefined : readable(words.slice(1), context.cli);
+  const [program] = words ?? [];
+  return program === undefined || parsed === undefined ? [] : shipNearMissOf(program, parsed, context, cwd);
 }

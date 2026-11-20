@@ -947,6 +947,14 @@ takes the allow away without a release. A permission rule or another hook that d
 Code applies a deny over any hook's allow. Anything else, a role call it does not allow included, goes on to the
 permission check.
 
+A near miss gets a hint: when some role gives `queue ship` or `queue merge` and a `teamrig queue` line runs the
+team's ship tool (a relative path read from the call's folder) but is off the form above, the hook hands the model
+context naming each condition it failed (no `--session`, a relative tool path, a queue flag or word the form does not
+take, a `--kind` that does not fit the run, an extra word in the tool's part), such as "teamrig: this queued ship or
+merge runs the team's ship tool but is not the form a service role allows, so no role allow: no --session: a role
+call names the session it runs as. ...". The hint decides nothing and logs nothing: the permission check answers the
+line as it would have.
+
 ## Before a shell command: the read-only allow
 
 Claude Code asks before a shell line its settings do not allow, reads included, and a settings rule matches only a
