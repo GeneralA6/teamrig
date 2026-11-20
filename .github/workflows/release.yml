@@ -24,9 +24,10 @@ jobs:
   release-please:
     name: release pull request
     # release-please keeps one pull request open that raises the version in plugin.json and src/core/version.ts
-    # (release-please-config.json) and writes the notes from the commits since the last release. It merges like any
-    # pull request, through tools/ship: `ship.ts merge --release` on the lead's approval of a release task at its head,
-    # refusing anything but the version raises and the notes. Once it merged, the next run tags main's commit teamrig-v<version>,
+    # (release-please-config.json) and writes the notes from the commits since the last release. release-merge.yml
+    # merges it once ci passed on its head; else it merges like any pull request, through tools/ship: `ship.ts merge
+    # --release` on the lead's approval of a release task at its head. Both refuse anything but the version raises and
+    # the notes. Once it merged, the next run tags main's commit teamrig-v<version>,
     # publishes the notes as a GitHub release, and the jobs below build and publish the plugin.
     if: ${{ !github.event.repository.private && github.ref == 'refs/heads/main' && !inputs.main-as-is }}
     runs-on: ubuntu-latest
