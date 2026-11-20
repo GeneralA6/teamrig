@@ -4,7 +4,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import { commentNode, FakeGh, ghIssue, labeledEvent, renamedEvent } from '../testing/fake-gh.ts';
 import { GhOutputCapError, isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
 import type { HostIssue } from '../issues/issue.ts';
-import { issuePageArgs, listIssues, parseIssuePage, plainLine, readCommentsIn, startFailureText, type IssueListRequest } from './issues.ts';
+import { issuePageArgs, listIssues, parseIssuePage, readCommentsIn, startFailureText, type IssueListRequest } from './issues.ts';
 import { closedPageArgs, openPageArgs } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
@@ -342,12 +342,6 @@ describe('parseIssuePage', () => {
 
   it('gives no next cursor on the last page', () => {
     assert.deepEqual(parseIssuePage(pageText([], { hasNextPage: false, endCursor: 'Y3Vyc29y' }), OPEN), { kind: 'page', issues: [], unreadable: 0, items: 0, next: undefined });
-  });
-});
-
-describe('plainLine', () => {
-  it('turns control and format characters into spaces, so outside text stays one plain line', () => {
-    assert.equal(plainLine('  Fix\u001b[2J the‮ login\r\nnow\t '), 'Fix [2J the login now');
   });
 });
 

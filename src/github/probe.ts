@@ -1,5 +1,5 @@
 import { ENTITY_TAG, type GhResult } from './gh.ts';
-import { plainLine } from './issues.ts';
+import { plainLine } from '../core/printable.ts';
 import { exitText } from '../open/processes.ts';
 
 /**

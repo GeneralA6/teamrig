@@ -1,8 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeGh, restComment, restIssue, restReview, restReviewComment } from '../testing/fake-gh.ts';
-import { isMentionRead, isReviewRead, MENTION_PAGE_SIZE, MENTION_PAGES_MAX } from './gh.ts';
-import { postOf, readPosts, REVIEW_READS_MAX, reviewOf } from './posts.ts';
+import { MENTION_PAGE_SIZE, MENTION_PAGES_MAX, REVIEW_READS_MAX } from '../issues/scan-caps.ts';
+import { isMentionRead, isReviewRead } from './gh.ts';
+import { postOf, readPosts, reviewOf } from './posts.ts';
 import type { RepoAccess } from './tokens.ts';
 
 const TOKEN: RepoAccess = { env: { HOME: '/u', GH_TOKEN: 'read-token' }, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme' };
