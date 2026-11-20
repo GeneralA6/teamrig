@@ -65,10 +65,17 @@ describe('.github issue forms, labels and pull request template', () => {
   });
 
   it('links the repository under its organization, not the account it left (T4326)', () => {
+    let links = 0;
     for (const file of [...forms, 'config.yml']) {
-      const owners = [...read(`ISSUE_TEMPLATE/${file}`).matchAll(/github\.com\/([\w.-]+)\/teamrig\b/g)].map(([, owner]) => owner);
+      // Each link is parsed as a URL and its host compared whole, so a look-alike host cannot pass for github.com.
+      const owners = [...read(`ISSUE_TEMPLATE/${file}`).matchAll(/https:\/\/[^\s'"()]+/g)]
+        .map(([link]) => new URL(link))
+        .filter((url) => url.hostname === 'github.com' && url.pathname.split('/')[2] === 'teamrig')
+        .map((url) => url.pathname.split('/')[1]);
+      links += owners.length;
       assert.deepEqual(owners.filter((owner) => owner !== 'teamrig'), [], `${file} links another owner's teamrig`);
     }
+    assert.ok(links > 0, 'the templates link no teamrig repository');
   });
 
   it('lists every label the forms, the format checks and the import use', () => {
