@@ -22,6 +22,7 @@ import { formatMeeting, type Meeting } from '../meeting/state.ts';
 import { APP, CliHarness, EVENTS_PATH, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { bareHost } from '../testing/bare-host.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { shippedStatusSource } from '../testing/shipped-status-line.ts';
 import { SUB_TEAMS, teamConfigOf, teamHomeOf, treeHarness } from '../testing/team-tree.ts';
@@ -265,6 +266,16 @@ describe('teamrig budget', () => {
     await kit.files.write(teamConfigOf('web'), formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' } }));
     await recordConfigDir(kit.files, join(teamHomeOf('web'), 'state', 'usage', 'claude-config-dir.json'), join(USER_HOME, '.claude'));
     assert.deepEqual(ok(await run(['budget'])).slice(3, 4), ['  the team    2.5%    6.2%  25.00M      3']);
+  });
+
+  it("splits with no team recorded in another host's folder when its own host tells none of its folders", async () => {
+    const { kit, run } = await world({ ...TEAM, budget: { weeklyLimitW: 1_000_000_000, account: 'work' } });
+    await kit.files.write(teamConfigOf('web'), formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' } }));
+    await recordConfigDir(kit.files, join(teamHomeOf('web'), 'state', 'usage', 'claude-config-dir.json'), join(USER_HOME, '.claude'));
+    assert.deepEqual(ok(await run(['budget'], { host: NO_PATHS_HOST })).slice(3, 4), ['  the team    2.5%   12.4%  25.00M      3']);
+    const unrecorded = await world({ ...TEAM, budget: { weeklyLimitW: 1_000_000_000, account: 'work' } });
+    await unrecorded.kit.files.write(teamConfigOf('web'), formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' } }));
+    assert.deepEqual(ok(await unrecorded.run(['budget'], { host: NO_PATHS_HOST })).slice(3, 4), ['  the team    2.5%    6.2%  25.00M      3'], 'a team with no folder recorded is on its login');
   });
 
   it('reads the week from the newest snapshot of any team on the account, never of a team on another account', async () => {
