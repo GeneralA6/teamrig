@@ -3,7 +3,7 @@ import type { KitConfig } from '../config/types.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import type { HostIssue } from '../issues/issue.ts';
 import { refOf } from '../issues/ref.ts';
-import { plainLine } from './issues.ts';
+import { plainLine } from '../core/printable.ts';
 
 /** The priority of an issue with no priority label of the team's: p2, or the team's least urgent level when it has no p2. */
 export const ISSUE_PRIORITY = 2;

@@ -2,10 +2,9 @@ import type { SecretScanner } from '../core/secrets.ts';
 import type { HostIssue } from '../issues/issue.ts';
 import type { HostPost } from '../issues/post.ts';
 import type { HostPull } from '../issues/pull.ts';
-import { MENTION_PAGE_SIZE, MENTION_PAGES_MAX } from './gh.ts';
+import { MENTION_PAGE_SIZE, MENTION_PAGES_MAX, REVIEW_READS_MAX } from '../issues/scan-caps.ts';
 import { areaOwnerOf, issueRef, type ImportRules } from './map.ts';
 import { mentionsOf } from './mentions.ts';
-import { REVIEW_READS_MAX } from './posts.ts';
 import { ownBranchTask } from './pull-news.ts';
 import type { OurLogins } from './trust.ts';
 

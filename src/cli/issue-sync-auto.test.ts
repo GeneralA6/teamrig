@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseSyncState, SYNC_STATE_FORMAT } from '../github/auto.ts';
 import { formatFollows } from '../github/follows.ts';
-import { REVIEW_READS_MAX } from '../github/posts.ts';
+import { REVIEW_READS_MAX } from '../issues/scan-caps.ts';
 import { isIssueQuery } from '../github/gh.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { SECURITY_ALERTS_PER_RUN } from '../github/security-alert.ts';
