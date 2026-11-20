@@ -3,7 +3,7 @@ import type { RuleConflict } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import type { SecretScanner } from '../core/secrets.ts';
-import type { HostPermissions, TranscriptReader } from '../ports/host/index.ts';
+import type { HostPaths, HostPermissions, TranscriptReader } from '../ports/host/index.ts';
 import { readSessionLists, type SessionListKind, type SessionLists, type SessionListSource } from '../doctor/session-lists.ts';
 import type { KeepList } from '../permissions/allow-rules.ts';
 import type { SettingsFile } from '../permissions/settings-scope.ts';
@@ -42,8 +42,8 @@ export interface SetupScanPorts {
 }
 
 export interface SetupScanInput extends SessionContextLocations {
-  /** The host's paths: what a session loads at its start and the places a local rule lives in. */
-  readonly paths: SessionContextPaths & RulePlacePaths;
+  /** The host's paths: what a session loads at its start, the places a local rule lives in and the person's settings file. */
+  readonly paths: SessionContextPaths & RulePlacePaths & Pick<HostPaths, 'userSettings'>;
   /** The host's own folder, which holds its installed plugins (`scanPluginHooks`). */
   readonly claudeDir: string;
   /** Claude Code's transcripts folder (`claudeProjectsDir`). */
@@ -123,7 +123,7 @@ export async function scanSetup(ports: SetupScanPorts, at: SetupScanInput): Prom
     overrides: rules.candidates.filter((candidate) => !at.cleared(candidate)),
     recorded: rules.recorded.length,
     settings: [
-      ...(await scanSettings(ports.permissions, ports.files, at.claudeDir, at.settings, at.keep, at.secrets, usage.hooks)),
+      ...(await scanSettings(ports.permissions, ports.files, at.paths.userSettings(at.userHome), at.settings, at.keep, at.secrets, usage.hooks)),
       ...(await scanPluginHooks(ports.files, at, usage.hooks, at.secrets)),
     ],
     usage,
