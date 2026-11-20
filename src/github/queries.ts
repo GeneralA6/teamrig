@@ -16,7 +16,7 @@ export const TIMELINE_EVENTS = 30;
  */
 export const RAW_FIELD = '-f';
 
-/** Comments kept per issue, newest last: enough to see who spoke last for the response clock (src/github/clock.ts). */
+/** Comments kept per issue, newest last: enough to see who spoke last for the response clock (src/sync/clock.ts). */
 export const COMMENTS_READ = 20;
 
 /**
