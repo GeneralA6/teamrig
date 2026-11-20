@@ -4,7 +4,7 @@ import type { HostSource } from '../composition/host-ports.ts';
 import { isUnsupported, type HostPorts } from '../ports/host/index.ts';
 import { bareHost } from '../testing/bare-host.ts';
 import { quietWorld } from '../testing/quiet-world.ts';
-import { contextSourceIfTold, hostOf, transcriptsIfKept, transcriptsOf, usageIfMetered, usageOf } from './host.ts';
+import { contextSourceIfTold, hooksOf, hostOf, transcriptsIfKept, transcriptsOf, usageIfMetered, usageOf } from './host.ts';
 import { RefusedError } from './runtime.ts';
 
 /** One bare host, kept so a case can tell the very ports it handed in from a copy. */
@@ -29,6 +29,18 @@ describe('hostOf', () => {
     assert.equal(isUnsupported(transcripts), false);
     assert.deepEqual(!isUnsupported(transcripts) && transcripts.entry('not a transcript line'), { kind: 'unread', reason: 'damaged' });
     assert.equal(isUnsupported(usage), false);
+  });
+});
+
+describe('hooksOf', () => {
+  it('gives the bridge of the host the run is in', () => {
+    const world = quietWorld();
+    const hooks = hooksOf({ host: world.host, env: {}, platform: world.platform });
+    assert.equal(hooks.parse('{"prompt":"hello"}')?.prompt, 'hello');
+  });
+
+  it('refuses with the reason of a host that calls no hook', () => {
+    assert.throws(() => hooksOf({ host: bare, env: {}, platform: 'linux' }), (error) => error instanceof RefusedError && error.message === 'no hook is called');
   });
 });
 
