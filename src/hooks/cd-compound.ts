@@ -41,7 +41,7 @@ export function guardsCdCompound(enabled: boolean, event: HookEvent): boolean {
  * outside `place.cwd`. Undefined for any other line, and for one with no rerun form.
  */
 export function cdCompoundForm(command: string, place: SessionPlace): string | undefined {
-  const rerun = rerunOf('Bash', command);
+  const rerun = rerunOf('bash', command);
   if (rerun?.folder === undefined) {
     return undefined;
   }
