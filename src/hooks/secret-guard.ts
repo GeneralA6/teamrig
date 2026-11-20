@@ -179,7 +179,7 @@ export function secretPatternsOf(load: ConfigLoad | undefined): readonly string[
  * print a secret into the conversation, as `secretGuard.secretReads` says, or its command line or the text it writes
  * holds one, as `secretGuard.writes` says; a refusal when either refuses, naming only the findings a key does not
  * allow. Else none, so the normal permission flow decides. Under `hookAsks: refuse` the question is a refusal instead,
- * its reason saying what to do (see `holdBack`). A shell line is judged in each text its shell may run, naming each
+ * its reason saying what to do (see `heldBack`). A shell line is judged in each text its shell may run, naming each
  * finding once.
  */
 export function secretGuardReply(event: HookEvent, env: SecretGuardEnv): HookReply | undefined {

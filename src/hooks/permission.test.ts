@@ -3,15 +3,10 @@ import assert from 'node:assert/strict';
 import { DEFAULT_PROMPTS } from '../config/defaults.ts';
 import { testConfig } from '../testing/config.ts';
 import { replyText } from '../testing/host.ts';
-import { ASK_REFUSED_NOTE, heldBack, holdBack, hookAsksOf, refusal } from './permission.ts';
+import { ASK_REFUSED_NOTE, heldBack, hookAsksOf, refusal } from './permission.ts';
 
-describe('holdBack', () => {
-  it('never asks a person: what a guard would ask about is refused with the note, a refusal keeps its reason (T3356)', () => {
-    assert.deepEqual(holdBack('ask', 'Why.'), { permissionDecision: 'deny', permissionDecisionReason: `Why. ${ASK_REFUSED_NOTE}` });
-    assert.deepEqual(holdBack('deny', 'Why.'), { permissionDecision: 'deny', permissionDecisionReason: 'Why.' });
-  });
-
-  it('says why it never asks, the route to take, and how to ask for a rule change', () => {
+describe('ASK_REFUSED_NOTE', () => {
+  it('says why a guard never asks, the route to take, and how to ask for a rule change', () => {
     assert.match(ASK_REFUSED_NOTE, /^teamrig guards never ask a person, so this is refused; do not retry it or route around it\./);
     assert.match(ASK_REFUSED_NOTE, /Take the route the reason names; .*--status waiting --waits approval:owner.*take your next task\./);
     assert.match(ASK_REFUSED_NOTE, /If you think the rule is wrong, ask for a change as a task: `teamrig add --owner <your lead> --title "Rule change: /);
@@ -20,7 +15,7 @@ describe('holdBack', () => {
 });
 
 describe('refusal and heldBack', () => {
-  it('are a deny with the reason as given, and with the note when a guard would have asked', () => {
+  it('never ask a person: a deny with the reason as given, and with the note when a guard would have asked (T3356)', () => {
     assert.deepEqual(refusal('Why.'), { verdict: { kind: 'deny', reason: 'Why.' } });
     assert.deepEqual(heldBack('deny', 'Why.'), refusal('Why.'));
     assert.deepEqual(heldBack('ask', 'Why.'), refusal(`Why. ${ASK_REFUSED_NOTE}`));
