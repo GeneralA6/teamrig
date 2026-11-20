@@ -1,5 +1,6 @@
 import type { Env } from '../core/home.ts';
 import type { ProgramRunner } from '../core/program-runner.ts';
+import type { HostPorts } from '../ports/host/index.ts';
 import { adapterEntry, declarationProblems, type AdapterDeclaration } from './declaration.ts';
 
 /** What the adapter of an AI CLI says of itself. */
@@ -12,14 +13,17 @@ export interface HostDeps {
   readonly run: ProgramRunner;
 }
 
-/** The adapter of one AI CLI: its declaration, and the ports it builds once the loader has accepted it. */
-export interface HostAdapter<Ports extends object = object> {
+/**
+ * The adapter of one AI CLI: its declaration, and the ports it builds once the loader has accepted it. `create`
+ * answers for every host port, so the core gets each one typed and an adapter cannot leave one unnamed.
+ */
+export interface HostAdapter<Ports extends HostPorts = HostPorts> {
   readonly declaration: HostDeclaration;
   readonly create: (deps: HostDeps) => Ports;
 }
 
 /** The default export of a host adapter's entry. */
-export function defineHost<Ports extends object>(adapter: HostAdapter<Ports>): HostAdapter<Ports> {
+export function defineHost<Ports extends HostPorts>(adapter: HostAdapter<Ports>): HostAdapter<Ports> {
   return adapter;
 }
 

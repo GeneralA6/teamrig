@@ -4,6 +4,7 @@ import { API_VERSION, apiVersionNotice, featuresOf, hostAdapterProblems, hostDec
 import { hostDeps } from '../../../testing/adapter-deps.ts';
 import { declaration } from './declaration.ts';
 import adapter from './index.ts';
+import { transcriptReader } from './transcript.ts';
 
 describe('the Claude Code adapter', () => {
   it('declares a host built for the plugin API of this teamrig', () => {
@@ -27,9 +28,9 @@ describe('the Claude Code adapter', () => {
     assert.match(errors.kind === 'partial' ? errors.missing : '', /rate-limit hit.*context too long/);
   });
 
-  it('enters through defineHost with that declaration, and builds no port yet', () => {
+  it('enters through defineHost with that declaration, and builds every host port', () => {
     assert.equal(adapter.declaration, declaration);
     assert.deepEqual(hostAdapterProblems(adapter), []);
-    assert.deepEqual(adapter.create(hostDeps()), {});
+    assert.deepEqual(adapter.create(hostDeps()), { transcripts: transcriptReader });
   });
 });

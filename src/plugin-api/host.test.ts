@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { hostDeclarationData, manifestOf } from '../testing/manifests.ts';
+import { unsupported } from '../ports/host/index.ts';
 import { defineHost, hostAdapterProblems, hostDeclarationProblems, isHostAdapter, isHostDeclaration, type HostDeps } from './host.ts';
 
 const NOT_DEFINED = 'its entry is not made by defineHost: it needs a declaration and a create function';
@@ -23,9 +24,9 @@ describe('defineHost', () => {
   it('hands back the adapter it is given, whose create builds its ports from the deps', () => {
     const data = hostDeclarationData();
     assert.ok(isHostDeclaration(data));
-    const adapter = defineHost({ declaration: data, create: (deps: HostDeps) => ({ platform: deps.platform }) });
+    const adapter = defineHost({ declaration: data, create: (deps: HostDeps) => ({ transcripts: unsupported(`no session log on ${deps.platform}`) }) });
     assert.equal(adapter.declaration, data);
-    assert.deepEqual(adapter.create({ env: {}, platform: 'linux', run: () => Promise.reject(new Error('no program runs here')) }), { platform: 'linux' });
+    assert.deepEqual(adapter.create({ env: {}, platform: 'linux', run: () => Promise.reject(new Error('no program runs here')) }), { transcripts: { kind: 'unsupported', notice: 'no session log on linux' } });
     assert.equal(isHostAdapter(adapter), true);
   });
 });
