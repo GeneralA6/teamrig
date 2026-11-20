@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { HOOK_EVENTS, type HookEvent } from '../../../plugin-api/index.ts';
+import { resolve } from 'node:path';
+import { recordField, stringField, type JsonRecord } from '../../../core/guards.ts';
+import { HOOK_EVENTS, type HookEvent, type HookEventName, type ToolKind } from '../../../plugin-api/index.ts';
+import { FolderNames } from '../../../testing/folder-names.ts';
+import { inputsOf, loadRecording } from '../../../testing/recorded.ts';
 import { hookBridge } from './hook-bridge.ts';
 import { toolCallShape } from './tool-call.ts';
 
@@ -236,5 +240,168 @@ describe("a reply to Claude Code's hook", () => {
 
   it('lets the moment go on when a hook fails', () => {
     assert.equal(bridge.failureRule, 'passes');
+  });
+});
+
+/**
+ * The hook inputs a real session sent, read through the bridge: the cases above are payloads this spec wrote, and
+ * these are the ones the host wrote, so a field the host names otherwise than the bridge reads it shows here.
+ */
+describe('the recorded session read as hook events', () => {
+  const recording = loadRecording('claude-code', new FolderNames({ cwd: resolve('/', 'work', 'app'), temp: resolve('/', 'tmp'), home: resolve('/', 'u') }));
+  /** The bridge on the platform the session was recorded on: a shell call's readings follow the platform. */
+  const recorded = hookBridge(toolCallShape('win32'));
+
+  /** The name teamrig gives each event the session recorded. */
+  const NAMES: Readonly<Record<string, HookEventName>> = {
+    SessionStart: 'session-start',
+    UserPromptSubmit: 'prompt',
+    PreToolUse: 'tool-start',
+    PostToolUse: 'tool-end',
+    PostToolUseFailure: 'tool-failed',
+    Stop: 'stop',
+    SubagentStart: 'helper-start',
+    SubagentStop: 'helper-stop',
+    PreCompact: 'compact-start',
+    PostCompact: 'compact-end',
+    SessionEnd: 'session-end',
+  };
+
+  /** The kind of each tool the session called. */
+  const KINDS: Readonly<Record<string, ToolKind>> = {
+    Agent: 'helper',
+    Bash: 'shell',
+    Edit: 'edit',
+    Glob: 'search',
+    Grep: 'search',
+    PowerShell: 'shell',
+    Read: 'read',
+    Write: 'edit',
+  };
+
+  /** The fields every event carries whatever happened: the rest are what one event tells. */
+  const ALWAYS: ReadonlySet<string> = new Set(['name', 'hostName', 'session', 'cwd', 'transcript', 'stopActive']);
+
+  /** One recorded input beside the event the bridge reads out of it. */
+  interface Read {
+    readonly input: JsonRecord;
+    readonly event: HookEvent;
+  }
+
+  /** The recorded inputs of the host's event `fired`, or of every event, as the bridge reads them, in firing order. */
+  function read(fired?: string): readonly Read[] {
+    const inputs = fired === undefined ? recording.inputs : inputsOf(recording, fired);
+    return inputs.map(({ event: hostName, index, input }) => {
+      const event = recorded.parse(JSON.stringify(input));
+      if (event === undefined) {
+        throw new Error(`the bridge read no event out of ${hostName} ${index}`);
+      }
+      return { input, event };
+    });
+  }
+
+  /** The fields an event sets beyond those every event carries, sorted and joined. */
+  function toldBy(event: HookEvent): string {
+    return Object.entries(event)
+      .filter(([field, value]) => !ALWAYS.has(field) && value !== undefined)
+      .map(([field]) => field)
+      .sort()
+      .join(' ');
+  }
+
+  it('reads every recorded input as an event teamrig names, with its session, folder and transcript', () => {
+    assert.equal(recording.platform, 'win32');
+    const all = read();
+    for (const { input, event } of all) {
+      const fired = stringField(input, 'hook_event_name');
+      assert.equal(event.hostName, fired);
+      assert.notEqual(event.session, undefined, fired);
+      assert.equal(event.session, stringField(input, 'session_id'), fired);
+      assert.equal(event.cwd, stringField(input, 'cwd'), fired);
+      assert.equal(event.transcript, stringField(input, 'transcript_path'), fired);
+    }
+    assert.deepEqual(Object.fromEntries(all.map(({ event }) => [event.hostName ?? '', event.name])), NAMES);
+    assert.deepEqual(Object.keys(recording.recorded).sort(), Object.keys(NAMES).sort());
+  });
+
+  it('reads every recorded tool call by its kind, with its name, its id, its input and its answer as the host sent them', () => {
+    const calls = read().filter(({ input }) => stringField(input, 'tool_name') !== undefined);
+    assert.deepEqual([...new Set(calls.map(({ input }) => stringField(input, 'tool_name')))].sort(), Object.keys(KINDS).sort());
+    for (const { input, event } of calls) {
+      const { call } = event;
+      const tool = stringField(input, 'tool_name') ?? '';
+      assert.equal(call?.name, tool);
+      assert.equal(call?.kind, KINDS[tool], tool);
+      assert.equal(call?.id, stringField(input, 'tool_use_id'), tool);
+      assert.deepEqual(call?.input, recordField(input, 'tool_input'), tool);
+      assert.deepEqual(call?.response, input['tool_response'], tool);
+    }
+  });
+
+  it("reads each kind's own fields off the recorded calls", () => {
+    for (const { call } of read('PreToolUse').map(({ event }) => event)) {
+      switch (call?.kind) {
+        case 'shell':
+          assert.equal(call.dialect, call.name === 'Bash' ? 'bash' : 'powershell');
+          assert.equal(call.command, stringField(call.input, 'command'));
+          assert.equal(call.readings.includes(call.command ?? ''), true, call.name);
+          break;
+        case 'read':
+          assert.equal(call.path, stringField(call.input, 'file_path'));
+          break;
+        case 'edit':
+          assert.equal(call.path, stringField(call.input, 'file_path'));
+          assert.equal(call.change?.kind, call.name === 'Write' ? 'whole' : 'replacements');
+          break;
+        case 'search':
+          assert.equal(call.path, stringField(call.input, 'path'));
+          break;
+        case 'helper':
+          assert.equal(call.type, stringField(call.input, 'subagent_type'));
+          break;
+        default:
+          assert.fail(`the recorded call of ${call?.name ?? 'no tool'} reads as no kind this spec checks`);
+      }
+    }
+  });
+
+  it('reads out of each event what that event tells, and nothing it does not', () => {
+    const told = Object.fromEntries(Object.keys(NAMES).map((fired) => [fired, [...new Set(read(fired).map(({ event }) => toldBy(event)))]]));
+    assert.deepEqual(told, {
+      SessionStart: ['source', 'model source'],
+      UserPromptSubmit: ['prompt'],
+      PreToolUse: ['call effort'],
+      PostToolUse: ['call effort'],
+      PostToolUseFailure: ['call effort error'],
+      Stop: ['effort lastReply'],
+      SubagentStart: ['helper'],
+      SubagentStop: ['effort helper lastReply'],
+      PreCompact: ['trigger'],
+      PostCompact: ['trigger'],
+      SessionEnd: ['reason'],
+    });
+  });
+
+  it('reads the values the session recorded', () => {
+    const of = <T>(fired: string, pick: (event: HookEvent) => T): readonly T[] => read(fired).map(({ event }) => pick(event));
+    assert.deepEqual(of('SessionStart', ({ source }) => source), ['startup', 'resume', 'resume', 'compact']);
+    assert.deepEqual(of('SessionStart', ({ model }) => model), [undefined, undefined, undefined, 'claude-haiku-5-5']);
+    assert.deepEqual(of('SessionEnd', ({ reason }) => reason), ['other', 'other', 'other']);
+    assert.deepEqual(of('PreCompact', ({ trigger }) => trigger), ['manual']);
+    assert.deepEqual(of('PostCompact', ({ trigger }) => trigger), ['manual']);
+    assert.deepEqual(of('Stop', ({ effort }) => effort), ['medium', 'medium']);
+    assert.deepEqual(of('Stop', ({ stopActive }) => stopActive), [false, false]);
+    assert.equal(of('PostToolUseFailure', ({ error }) => error)[0], 'Exit code 3');
+    for (const { input, event } of [...read('Stop'), ...read('SubagentStop')]) {
+      assert.equal(event.lastReply, stringField(input, 'last_assistant_message'));
+    }
+    for (const { input, event } of read('UserPromptSubmit')) {
+      assert.equal(event.prompt, stringField(input, 'prompt'));
+    }
+    for (const { input, event } of [...read('SubagentStart'), ...read('SubagentStop')]) {
+      assert.equal(event.helper?.id, stringField(input, 'agent_id'));
+      assert.equal(event.helper?.type, stringField(input, 'agent_type'));
+      assert.equal(event.helper?.transcript, stringField(input, 'agent_transcript_path'));
+    }
   });
 });
