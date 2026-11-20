@@ -9,7 +9,7 @@ import { sessionIdOf } from '../../inbox/inbox.ts';
 import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { transcriptsOf } from '../host.ts';
+import { transcriptsOf, usageIfMetered } from '../host.ts';
 import { openKit, rosterOf, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { meterTabMidTurn } from './hook-budget.ts';
@@ -89,7 +89,9 @@ async function loopNudgeLines(payload: unknown, runtime: CliRuntime): Promise<re
   }
   const cut = Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES;
   const current = currentToolOf(payload);
-  const chain = at > 0 ? nudgeLine(chainOf(transcriptsOf(runtime), text, cut, current), at) : undefined;
+  // A host whose calls teamrig cannot price gets no chain nudge: the line is the price of the re-reads.
+  const usage = at > 0 ? usageIfMetered(runtime) : undefined;
+  const chain = usage === undefined ? undefined : nudgeLine(usage, chainOf(transcriptsOf(runtime), usage, text, cut, current), at);
   const boundary = lead && current !== undefined ? await leadBoundaryLine(runtime, kit, config, text, cut, current) : undefined;
   return [chain, boundary].filter((line): line is string => line !== undefined);
 }
