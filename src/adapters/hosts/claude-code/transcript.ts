@@ -145,9 +145,13 @@ function resultText(block: JsonRecord): string {
     : '';
 }
 
-function outcomesOf(blocks: readonly JsonRecord[]): readonly ToolOutcome[] {
+/**
+ * The line's tool results. Claude Code keeps a tool's structured answer once per line, as `toolUseResult`, and
+ * writes one result per line, so each result of the line carries it as its `data`.
+ */
+function outcomesOf(blocks: readonly JsonRecord[], data: JsonRecord | undefined): readonly ToolOutcome[] {
   return blocks.flatMap((block) =>
-    block['type'] === 'tool_result' ? [{ call: stringField(block, 'tool_use_id'), isError: block['is_error'] === true, text: resultText(block) }] : [],
+    block['type'] === 'tool_result' ? [{ call: stringField(block, 'tool_use_id'), isError: block['is_error'] === true, text: resultText(block), data }] : [],
   );
 }
 
@@ -184,7 +188,7 @@ function inputOf(base: Base, entry: JsonRecord, message: JsonRecord): InputEntry
     kind: 'input',
     text: typeof content === 'string' ? content : undefined,
     parts: textsOf(blocks),
-    results: outcomesOf(blocks),
+    results: outcomesOf(blocks, isRecord(result) ? result : undefined),
     origin: originOf(entry),
     turnOrigin: turnOriginOf(entry),
     continuation: entry['isCompactSummary'] === true,

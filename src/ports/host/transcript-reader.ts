@@ -54,6 +54,11 @@ export interface ToolOutcome {
   readonly isError: boolean;
   /** Its text: the string itself, or its text parts joined by newlines. */
   readonly text: string;
+  /**
+   * What the host kept of the answer beside its text, in the tool's own fields, as a call's input is; undefined
+   * when it kept none, or kept only text.
+   */
+  readonly data: JsonRecord | undefined;
 }
 
 /** What a tool's answer says of work left running after it, or stopped by it. */

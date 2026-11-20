@@ -77,9 +77,9 @@ describe("Claude Code's transcript lines as entries", () => {
       ...PLAIN_INPUT,
       parts: ['one', 'two'],
       results: [
-        { call: 'call-1', isError: false, text: 'done' },
-        { call: 'call-2', isError: true, text: 'a\n\nb' },
-        { call: undefined, isError: false, text: '' },
+        { call: 'call-1', isError: false, text: 'done', data: undefined },
+        { call: 'call-2', isError: true, text: 'a\n\nb', data: undefined },
+        { call: undefined, isError: false, text: '', data: undefined },
       ],
     });
     assert.deepEqual(transcriptReader.entry(resultsLine(AT, [{ id: 'call-3', text: 'out', isError: true }])), {
@@ -87,8 +87,26 @@ describe("Claude Code's transcript lines as entries", () => {
       ...PLAIN_INPUT,
       at: AT_MS,
       thread: 'main',
-      results: [{ call: 'call-3', isError: true, text: 'out' }],
+      results: [{ call: 'call-3', isError: true, text: 'out', data: undefined }],
     });
+  });
+
+  it('gives a tool result the structured answer its line keeps, and none for an answer kept as text', () => {
+    const content = [{ type: 'tool_result', tool_use_id: 'call-1', content: 'ok' }];
+    const answer = { id: 'j-1', humanSchedule: 'every day', recurring: true };
+    assert.deepEqual(transcriptReader.entry(userLine({ toolUseResult: answer }, content)), {
+      ...BARE,
+      ...PLAIN_INPUT,
+      fromTool: true,
+      results: [{ call: 'call-1', isError: false, text: 'ok', data: answer }],
+    });
+    for (const toolUseResult of ['Error: no such job', ['a'], null]) {
+      assert.deepEqual(
+        transcriptReader.entry(userLine({ toolUseResult }, content)),
+        { ...BARE, ...PLAIN_INPUT, fromTool: true, results: [{ call: 'call-1', isError: false, text: 'ok', data: undefined }] },
+        JSON.stringify(toolUseResult),
+      );
+    }
   });
 
   it('names the origin mark, a handback apart from a peer, and any mark it has no name for as unknown', () => {
