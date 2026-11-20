@@ -17,6 +17,18 @@ export interface ServedRef {
 }
 
 /**
+ * A tracker's page for an item, served only as an `https:` address and as the parser read it. A reader opens it, so
+ * a `javascript:` or `file:` address a tracker answered is served as no link at all.
+ */
+function pageOf(url: string | null): string | null {
+  if (url === null || !URL.canParse(url)) {
+    return null;
+  }
+  const page = new URL(url);
+  return page.protocol === 'https:' ? page.href : null;
+}
+
+/**
  * The ref of record `record` (a task's id), or null for a task with none. The first tracker that knows the ref
  * names it. A ref that matched a secret's shape is served as its cut alone: no tracker is asked, since an item's id
  * and page would repeat the text that was cut.
@@ -37,7 +49,7 @@ export function refOf(served: ServedText, record: string, ref: string | null, co
         connector: { id: connector.id, name: connector.name },
         id: item.id,
         label: served.marked(record, 'ref.label', item.id, 'outside'),
-        url: item.url,
+        url: pageOf(item.url),
       };
     }
   }
