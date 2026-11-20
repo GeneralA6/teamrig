@@ -3,6 +3,7 @@ import type { Files } from '../core/files.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import type { TimeZone } from '../core/zone.ts';
+import type { TranscriptReader } from '../ports/host/index.ts';
 import { ownerTurnsOf, type OwnerTurn } from './owner-turns.ts';
 import { REFRESH_FORMAT } from './state.ts';
 
@@ -285,6 +286,7 @@ export function scratchpadOf(transcript: string, tempDir: string): string {
  * `handoverPath` what the owner typed in it; undefined when the transcript is gone.
  */
 export async function readCarry(
+  reader: TranscriptReader,
   files: Files,
   transcript: string,
   now: number,
@@ -301,7 +303,7 @@ export async function readCarry(
   const entries = (await files.list(scratchpad)).length;
   const plan = found.planSlug === undefined ? undefined : join(places.claudeDir, 'plans', `${found.planSlug}.md`);
   const planText = plan === undefined ? undefined : await files.read(plan);
-  const owner = handoverPath === undefined ? {} : { ownerTurns: ownerTurnsOf(text, handoverPath, [...inherited.map((cron) => cron.prompt)]) };
+  const owner = handoverPath === undefined ? {} : { ownerTurns: ownerTurnsOf(reader, text, handoverPath,[...inherited.map((cron) => cron.prompt)]) };
   return { ...found, scratchpad: entries > 0 ? { path: scratchpad, entries } : undefined, plan: planText === undefined ? undefined : plan, ...owner };
 }
 

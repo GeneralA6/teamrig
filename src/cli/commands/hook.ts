@@ -551,10 +551,19 @@ interface CarryRead {
   readonly inherited: readonly CarriedCron[];
 }
 
+/**
+ * What the session of `transcript` leaves. On a host whose transcript teamrig cannot read there is none to read, so
+ * this is undefined as for a transcript that is gone, and the jobs on record stay as they were.
+ */
+async function carryOfTranscript(runtime: CliRuntime, transcript: string, now: number, inherited: readonly CarriedCron[], handoverPath?: string): Promise<Carry | undefined> {
+  const reader = transcriptsIfKept(runtime);
+  return reader === undefined ? undefined : readCarry(reader, runtime.files, transcript, now, carryPlaces(runtime), inherited, handoverPath);
+}
+
 async function carryFrom(runtime: CliRuntime, store: RefreshStore, id: string, transcript: string, now: number): Promise<CarryRead> {
   const record = await store.carried(id);
   const inherited = record?.transcript === transcript ? record.crons : [];
-  return { carry: await readCarry(runtime.files, transcript, now, carryPlaces(runtime), inherited, store.handoverPath(id)), inherited };
+  return { carry: await carryOfTranscript(runtime, transcript, now, inherited, store.handoverPath(id)), inherited };
 }
 
 /**
@@ -630,7 +639,7 @@ async function carryRecordAt(runtime: CliRuntime, store: RefreshStore, id: strin
     }
     const record = await store.carried(id);
     if (record !== undefined) {
-      const carry = await readCarry(runtime.files, record.transcript, runtime.clock.now(), carryPlaces(runtime), record.crons);
+      const carry = await carryOfTranscript(runtime, record.transcript, runtime.clock.now(), record.crons);
       await keepCarried(store, id, carry?.crons ?? record.crons, 'same-process', startTranscriptOf(payload));
     }
     return undefined;

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { TimeZone } from '../core/zone.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { VERSION_FIELD } from '../core/jsonl.ts';
 import { carryLines, carryOf, carryStartOf, formatCarriedJobs, parseCarriedJobs, readCarry, RECURRING_MAX_AGE_MS, scratchpadOf, toldScratchpadOf, type Carry } from './carry.ts';
@@ -10,6 +11,7 @@ import { REFRESH_FORMAT } from './state.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00.000Z');
 const MINUTE = 60_000;
+const reader = shippedTranscripts();
 const iso = (ms: number): string => new Date(ms).toISOString();
 const lines = (...entries: readonly object[]): string => `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`;
 
@@ -157,15 +159,15 @@ describe('readCarry', () => {
       [join(scratchpad, 'tools', 'a.cjs')]: 'a',
       [join(CLAUDE, 'plans', 'quiet-river-otter.md')]: '# plan',
     });
-    const carry = await readCarry(files, TRANSCRIPT, NOW, PLACES, []);
+    const carry = await readCarry(reader, files,TRANSCRIPT, NOW, PLACES, []);
     assert.deepEqual(carry?.scratchpad, { path: scratchpad, entries: 2 });
     assert.equal(carry?.plan, join(CLAUDE, 'plans', 'quiet-river-otter.md'));
   });
 
   it('leaves out an empty scratchpad and a missing plan, and reads nothing from a missing transcript', async () => {
     const files = new MemoryFiles({ [TRANSCRIPT]: lines({ type: 'assistant', slug: 'quiet-river-otter' }) });
-    assert.deepEqual(await readCarry(files, TRANSCRIPT, NOW, PLACES, []), { crons: [], wake: undefined, planSlug: 'quiet-river-otter', scratchpad: undefined, plan: undefined });
-    assert.equal(await readCarry(new MemoryFiles(), TRANSCRIPT, NOW, PLACES, []), undefined);
+    assert.deepEqual(await readCarry(reader, files,TRANSCRIPT, NOW, PLACES, []), { crons: [], wake: undefined, planSlug: 'quiet-river-otter', scratchpad: undefined, plan: undefined });
+    assert.equal(await readCarry(reader, new MemoryFiles(),TRANSCRIPT, NOW, PLACES, []), undefined);
   });
 
   it('names the scratchpad Claude Code last gave the session, though its transcript moved to another project folder', async () => {
@@ -179,7 +181,7 @@ describe('readCarry', () => {
       ),
       [join(told, 'notes.md')]: 'n',
     });
-    const carry = await readCarry(files, TRANSCRIPT, NOW, PLACES, []);
+    const carry = await readCarry(reader, files,TRANSCRIPT, NOW, PLACES, []);
     assert.deepEqual(carry?.scratchpad, { path: told, entries: 1 });
   });
 });

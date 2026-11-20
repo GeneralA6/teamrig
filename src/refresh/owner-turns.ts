@@ -1,8 +1,8 @@
-import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
-import { parseObject } from '../core/jsonl.ts';
+import { stringField } from '../core/guards.ts';
+import type { EntryKind, InputEntry, InputOrigin, ReplyEntry, TranscriptReader } from '../ports/host/index.ts';
 
 /**
- * What the owner (the person at the tab) typed in the session a refresh replaces The handover is the old
+ * What the owner (the person at the tab) typed in the session a refresh replaces. The handover is the old
  * session's own summary: a decision the owner gave after it was written, or one it never copied over, was lost with
  * the /clear. The fresh start writes the owner's prompts from the old transcript, newest kept, to a file beside the
  * handover and its note points at it, so nothing the owner said is lost; those after the last write of the handover
@@ -25,50 +25,41 @@ const REPEATED_AT = 3;
 const MACHINE_PREFIXES: readonly string[] = ['<', '/', 'You were started fresh after your context refresh', 'New work was handed to you while this tab was idle'];
 /** Tools whose call writes a file by its `file_path`. */
 const FILE_WRITERS: ReadonlySet<string> = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
-/** Claude Code's own `turnOrigin`s and `origin.kind`s for a turn nobody typed. */
-const MACHINE_ORIGINS: ReadonlySet<string> = new Set(['scheduled', 'task_notification', 'task-notification', 'peer']);
+/** Tools whose call schedules its `prompt` to be typed later. */
+const SCHEDULERS: ReadonlySet<string> = new Set(['CronCreate', 'ScheduleWakeup']);
+/** Where the host says a turn nobody typed came from. */
+const MACHINE_ORIGINS: ReadonlySet<InputOrigin> = new Set<InputOrigin>(['scheduled', 'notification', 'peer', 'handback']);
+/** The entries that can matter; the reader passes over the rest of a large transcript unparsed. */
+const KINDS: readonly EntryKind[] = ['input', 'reply', 'scheduled-carry'];
 
-function contentOf(entry: JsonRecord): unknown {
-  const message = entry['message'];
-  return isRecord(message) ? message['content'] : undefined;
+/** An input's typed text: its plain text, else its text parts joined; undefined for a tool's results or none. */
+function typedTextOf(input: InputEntry): string | undefined {
+  if (input.text !== undefined) {
+    return input.text;
+  }
+  return input.results.length > 0 || input.parts.length === 0 ? undefined : input.parts.join('\n');
 }
 
-/** A user entry's typed text: its string content, else its text blocks joined; undefined for a tool result or none. */
-function typedTextOf(entry: JsonRecord): string | undefined {
-  const content = contentOf(entry);
-  if (typeof content === 'string') {
-    return content;
-  }
-  if (!Array.isArray(content) || content.some((block) => isRecord(block) && block['type'] === 'tool_result')) {
-    return undefined;
-  }
-  const texts = content.filter(isRecord).flatMap((block) => (block['type'] === 'text' ? (stringField(block, 'text') ?? []) : []));
-  return texts.length === 0 ? undefined : texts.join('\n');
-}
-
-/** Claude Code marks this entry as a turn nobody typed: meta, a compaction's summary, a subagent's, scheduled, a notification or a peer's. */
-function machineEntry(entry: JsonRecord): boolean {
-  if (entry['isMeta'] === true || entry['isCompactSummary'] === true || entry['isSidechain'] === true || entry['toolUseResult'] !== undefined) {
+/** The host marks this input as a turn nobody typed: meta, a compaction's summary, a helper's, a tool's answer, scheduled, a notification or a peer's. */
+function machineInput(input: InputEntry): boolean {
+  if (input.meta || input.continuation || input.thread === 'helper' || input.fromTool) {
     return true;
   }
-  const origin = entry['origin'];
-  const kind = isRecord(origin) ? stringField(origin, 'kind') : undefined;
-  const turnOrigin = stringField(entry, 'turnOrigin');
-  return (kind !== undefined && MACHINE_ORIGINS.has(kind)) || (turnOrigin !== undefined && MACHINE_ORIGINS.has(turnOrigin));
+  return (input.origin !== undefined && MACHINE_ORIGINS.has(input.origin)) || (input.turnOrigin !== undefined && MACHINE_ORIGINS.has(input.turnOrigin));
 }
 
-/** Whether an assistant entry's tool call writes `handoverPath`: a file tool on it, or a shell command that names it. */
-function writesHandover(entry: JsonRecord, handoverPath: string): boolean {
-  const content = contentOf(entry);
-  if (!Array.isArray(content)) {
-    return false;
-  }
-  return content.filter(isRecord).some((block) => {
-    const input = block['input'];
-    if (block['type'] !== 'tool_use' || !isRecord(input)) {
+/** What the owner typed in this input; undefined for a turn nobody typed, an empty one, or a prompt teamrig types itself. */
+function ownerPromptOf(input: InputEntry): string | undefined {
+  const prompt = machineInput(input) ? undefined : typedTextOf(input)?.trim();
+  return prompt === undefined || prompt === '' || MACHINE_PREFIXES.some((prefix) => prompt.startsWith(prefix)) ? undefined : prompt;
+}
+
+/** Whether a reply's tool call writes `handoverPath`: a file tool on it, or a shell command that names it. */
+function writesHandover(reply: ReplyEntry, handoverPath: string): boolean {
+  return reply.calls.some(({ name, input }) => {
+    if (input === undefined) {
       return false;
     }
-    const name = stringField(block, 'name') ?? '';
     if (FILE_WRITERS.has(name)) {
       return stringField(input, 'file_path') === handoverPath || stringField(input, 'notebook_path') === handoverPath;
     }
@@ -76,31 +67,9 @@ function writesHandover(entry: JsonRecord, handoverPath: string): boolean {
   });
 }
 
-/** The prompts scheduled in this transcript (CronCreate, ScheduleWakeup, a compaction's job snapshot): their firing is no owner's. */
-function scheduledPromptsOf(entry: JsonRecord, into: Set<string>): void {
-  const attachment = entry['attachment'];
-  if (isRecord(attachment) && attachment['type'] === 'session_cron_carry') {
-    for (const key of ['tasks', 'otherArmed']) {
-      const tasks = attachment[key];
-      for (const task of Array.isArray(tasks) ? tasks.filter(isRecord) : []) {
-        const prompt = stringField(task, 'prompt');
-        if (prompt !== undefined) {
-          into.add(prompt.trim());
-        }
-      }
-    }
-  }
-  const content = contentOf(entry);
-  for (const block of Array.isArray(content) ? content.filter(isRecord) : []) {
-    const input = block['input'];
-    const name = stringField(block, 'name');
-    if (block['type'] === 'tool_use' && isRecord(input) && (name === 'CronCreate' || name === 'ScheduleWakeup')) {
-      const prompt = stringField(input, 'prompt');
-      if (prompt !== undefined) {
-        into.add(prompt.trim());
-      }
-    }
-  }
+/** The prompts a reply's tool calls schedule: their firing is no owner's. */
+function scheduledPromptsOf(reply: ReplyEntry): readonly string[] {
+  return reply.calls.flatMap(({ name, input }) => (input !== undefined && SCHEDULERS.has(name) ? (stringField(input, 'prompt') ?? []) : []));
 }
 
 /** A prompt as carried: within the cap, cut with a mark when longer. */
@@ -110,28 +79,31 @@ function clipped(text: string, max: number): string {
 
 /**
  * The owner's prompts in an old transcript, oldest first, newest kept within `OWNER_TURNS_MAX` and
- * `OWNER_TURNS_MAX_CHARS`: the user turns that are typed text, less those Claude Code marks as nobody's (meta, a
- * compaction's summary, a subagent's, scheduled, a notification, a peer's), the prompts teamrig types
- * itself, the firing of a job this transcript scheduled or the session `scheduled` before, and any prompt repeated
- * word for word `REPEATED_AT` times or more. A prompt said twice is carried once, at its last time. Those after the
- * last tool call that wrote `handoverPath` are marked `afterHandover`.
+ * `OWNER_TURNS_MAX_CHARS`: the inputs that are typed text, less those the host marks as nobody's (meta, a
+ * compaction's summary, a helper's, scheduled, a notification, a peer's), the prompts teamrig types
+ * itself, the firing of a job this transcript scheduled (by a tool call, or listed live at a compaction) or the
+ * session `scheduled` before, and any prompt repeated word for word `REPEATED_AT` times or more. A prompt said twice
+ * is carried once, at its last time. Those after the last tool call that wrote `handoverPath` are marked
+ * `afterHandover`.
  */
-export function ownerTurnsOf(text: string, handoverPath: string, scheduled: Iterable<string> = []): readonly OwnerTurn[] {
+export function ownerTurnsOf(reader: TranscriptReader, text: string, handoverPath: string, scheduled: Iterable<string> = []): readonly OwnerTurn[] {
   const skip = new Set([...scheduled].map((prompt) => prompt.trim()));
   const typed: { readonly text: string; readonly index: number }[] = [];
   let lastWrite = -1;
   for (const line of text.split('\n')) {
-    const entry = line.includes('"user"') || line.includes('"assistant"') || line.includes('session_cron_carry') ? parseObject(line.trim()) : undefined;
-    if (entry === undefined) {
-      continue;
-    }
-    scheduledPromptsOf(entry, skip);
-    if (entry['type'] === 'assistant' && writesHandover(entry, handoverPath)) {
-      lastWrite = typed.length;
-    }
-    const prompt = entry['type'] === 'user' && !machineEntry(entry) ? typedTextOf(entry)?.trim() : undefined;
-    if (prompt !== undefined && prompt !== '' && !MACHINE_PREFIXES.some((prefix) => prompt.startsWith(prefix))) {
-      typed.push({ text: prompt, index: typed.length });
+    const entry = reader.entry(line, KINDS);
+    if (entry?.kind === 'scheduled-carry') {
+      entry.jobs.forEach((job) => skip.add(job.prompt.trim()));
+    } else if (entry?.kind === 'reply') {
+      scheduledPromptsOf(entry).forEach((prompt) => skip.add(prompt.trim()));
+      if (writesHandover(entry, handoverPath)) {
+        lastWrite = typed.length;
+      }
+    } else if (entry?.kind === 'input') {
+      const prompt = ownerPromptOf(entry);
+      if (prompt !== undefined) {
+        typed.push({ text: prompt, index: typed.length });
+      }
     }
   }
   const counts = new Map<string, number>();
