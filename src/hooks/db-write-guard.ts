@@ -1,11 +1,10 @@
 import { DEFAULT_DB_WRITE_GUARD } from '../config/defaults.ts';
 import type { ConfigLoad } from '../config/load.ts';
 import type { DbWriteGuardConfig } from '../config/types.ts';
-import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import type { Files } from '../core/files.ts';
-import { isRecord, recordField, stringField } from '../core/guards.ts';
 import { dbWritesOf, describeDbWrite, type DbWrite } from '../db-write-guard/writes.ts';
-import { holdBackOutput } from './permission.ts';
+import type { HookEvent, HookReply } from '../ports/host/index.ts';
+import { heldBack } from './permission.ts';
 
 export interface DbWriteGuardEnv extends DbWriteGuardConfig {
   /** The folder to judge from when the payload names none. */
@@ -13,9 +12,6 @@ export interface DbWriteGuardEnv extends DbWriteGuardConfig {
   readonly home: string;
   /** Where the guard reads the scripts and files a line hands a database program or Node. */
   readonly files: Files;
-  /** Whether a call the guard would ask about raises the prompt or is refused with what to do instead. */
-  /** The host's platform: on Windows a Bash line is read as written and as bash receives it (core/bash-tool-readings.ts). */
-  readonly platform: NodeJS.Platform;
 }
 
 /** What a hand-run write gets. A missing or unreadable config keeps the default, so a broken config never switches the guard off. */
@@ -36,32 +32,27 @@ export function dbWriteReason(writes: readonly DbWrite[]): string {
 }
 
 /**
- * The PreToolUse output for a Bash or PowerShell call: a question (or a refusal, as `dbWriteGuard.writes` says) when
- * the line writes to a database by hand, through a built-in SQL client, a database program the team names, Node code
- * using a client module the team names, or a team entrypoint run with an apply flag; else nothing, so the normal
- * permission flow decides. Under `hookAsks: refuse` the question is a refusal instead, its reason saying what to do.
- * A Bash line on Windows is read in each text bash may run (`toolCommandReadings`), naming each write once.
+ * The reply to a shell call about to run: a question (or a refusal, as `dbWriteGuard.writes` says) when the line
+ * writes to a database by hand, through a built-in SQL client, a database program the team names, Node code using a
+ * client module the team names, or a team entrypoint run with an apply flag; else none, so the normal permission
+ * flow decides. Under `hookAsks: refuse` the question is a refusal instead, its reason saying what to do. The line is
+ * read in each text its shell may run (the call's `readings`), naming each write once.
  */
-export async function dbWriteGuardOutput(payload: unknown, env: DbWriteGuardEnv): Promise<string> {
+export async function dbWriteGuardReply(event: HookEvent, env: DbWriteGuardEnv): Promise<HookReply | undefined> {
   const decision = env.writes;
-  if (decision === 'allow' || !isRecord(payload)) {
-    return '';
+  const { call } = event;
+  if (decision === 'allow' || call?.kind !== 'shell' || call.command === undefined) {
+    return undefined;
   }
-  const command = stringField(recordField(payload, 'tool_input') ?? {}, 'command');
-  if (command === undefined) {
-    return '';
-  }
-  const tool = stringField(payload, 'tool_name');
   const context = {
-    cwd: stringField(payload, 'cwd') ?? env.cwd,
+    cwd: event.cwd ?? env.cwd,
     home: env.home,
-    dialect: tool === 'PowerShell' ? 'powershell' : 'bash',
+    dialect: call.dialect,
     files: env.files,
     rules: { entrypoints: env.entrypoints, programs: env.programs, nodeClients: env.nodeClients, clientReceivers: env.clientReceivers },
   } as const;
-  const readings = toolCommandReadings(tool, command, env.platform);
-  const writes = uniqueWrites((await Promise.all(readings.map((text) => dbWritesOf(text, context)))).flat());
-  return writes.length === 0 ? '' : holdBackOutput(decision, dbWriteReason(writes));
+  const writes = uniqueWrites((await Promise.all(call.readings.map((text) => dbWritesOf(text, context)))).flat());
+  return writes.length === 0 ? undefined : heldBack(decision, dbWriteReason(writes));
 }
 
 /** Each write once, in the order first found: a write both readings of a line make is named once. */
