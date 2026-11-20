@@ -19,10 +19,11 @@ import { FakeStarterWatch } from './fake-starter-watch.ts';
 import { FakeSteps } from './fake-steps.ts';
 import { MemoryTranscripts } from './memory-transcripts.ts';
 import { noWorktrees } from './fake-worktrees.ts';
+import { programOverGh } from './program-over-gh.ts';
 import { quietRestore } from './fake-restore.ts';
 
 /** The parts of a CLI run that reach outside the kit: git, the commit log, stdin and the operating system. */
-export type OutsideWorld = Pick<CliRuntime, 'git' | 'pointerGit' | 'commitLog' | 'secretsGit' | 'readStdin' | 'platform' | 'host' | 'processes' | 'sessionProcesses' | 'shell' | 'gh' | 'credentials' | 'http' | 'probe' | 'pluginStore' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'restore' | 'mergeGit' | 'pulls' | 'trees' | 'hooks' | 'packageRegistry' | 'exec' | 'webhook' | 'steps' | 'memory' | 'cpu' | 'starters' | 'newId'>;
+export type OutsideWorld = Pick<CliRuntime, 'git' | 'pointerGit' | 'commitLog' | 'secretsGit' | 'readStdin' | 'platform' | 'host' | 'processes' | 'sessionProcesses' | 'shell' | 'run' | 'credentials' | 'http' | 'probe' | 'pluginStore' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'restore' | 'mergeGit' | 'pulls' | 'trees' | 'hooks' | 'packageRegistry' | 'exec' | 'webhook' | 'steps' | 'memory' | 'cpu' | 'starters' | 'newId'>;
 
 /**
  * The MB free on a quiet host: over the default floor plus a heavy step's reserve, so no step waits on the memory
@@ -33,7 +34,7 @@ export const ROOMY_FREE_MB = 16_000;
 /**
  * The outside world when a run does not care about it: the repo on `branch` with no push target or config, a team pointer outside git, no commits in
  * any range, no repository the secret scan can read, `stdin` (default empty) on stdin, and a Linux host with no programs or folders and an empty plugin store,
- * so nothing starts and no session process runs, a shell command prints nothing and exits 0, gh sees no repository, a key is saved for each of TEST_OWNERS and no outside API answers; its requirements check finds
+ * so nothing starts and no session process runs, a shell command prints nothing and exits 0, the one program a connector's tool runner runs is gh, which sees no repository, a key is saved for each of TEST_OWNERS and no outside API answers; its requirements check finds
  * nothing missing, and there are no transcripts and no worktrees; merge finds only the fake repository at /w/feat
  * (testing/fake-merge-git.ts) and a pre-push check no repository, a queued step and each program a deploy runs exit 0 at once while the shell that started it
  * runs on, the host has room in memory for any queued step (`ROOMY_FREE_MB` free) and an idle CPU, the package registry holds no package, a privileged command `teamrig exec` runs exits 0 in a clean checkout of the
@@ -52,7 +53,7 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
     processes: { start: async () => ({ kind: 'missing' }), run: async () => ({ kind: 'missing' }), startHidden: async () => ({ kind: 'missing' }) },
     sessionProcesses: new FakeSessionProcesses(),
     shell: new FakeShell(),
-    gh: new FakeGh(),
+    run: programOverGh(new FakeGh()),
     credentials: new FakeCredentials().savesTokensFor(TEST_OWNERS),
     http: new FakeHttp(),
     probe: { kind: async () => 'none' },
