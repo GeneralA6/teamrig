@@ -1,5 +1,6 @@
 import type { Files } from '../core/files.ts';
 import { isRecord, stringField } from '../core/guards.ts';
+import { hostSessionOf } from '../core/host-session.ts';
 import { parseJsonl, toJsonlLine } from '../core/jsonl.ts';
 
 /**
@@ -51,7 +52,10 @@ export interface ColdSendLog {
   record(claudeSession: string, to: string, at: Date): Promise<void>;
 }
 
-/** `cold-sends.jsonl`: one `{"v":1,"claudeSession":"…","to":"…","at":"…"}` line per hold. */
+/**
+ * `cold-sends.jsonl`: one `{"v":1,"claudeSession":"…","to":"…","at":"…"}` line per hold. A later teamrig's line
+ * names the tab `hostSession`, and its hold counts here too: both share the log until every tab has reloaded.
+ */
 export class JsonlColdSendLog implements ColdSendLog {
   private readonly files: Files;
   private readonly path: string;
@@ -66,7 +70,7 @@ export class JsonlColdSendLog implements ColdSendLog {
     const { records } = parseJsonl((await this.files.readTail(this.path, COLD_SEND_TAIL_BYTES)) ?? '');
     return records.some((line) => {
       const at = Date.parse(stringField(line.record, 'at') ?? '');
-      return stringField(line.record, 'claudeSession') === claudeSession && stringField(line.record, 'to') === to && at >= since.getTime();
+      return hostSessionOf(line.record, 'claudeSession') === claudeSession && stringField(line.record, 'to') === to && at >= since.getTime();
     });
   }
 
