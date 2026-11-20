@@ -1,9 +1,16 @@
 import { isEffortLevel, type EffortLevel } from '../config/types.ts';
 import { isNonNegativeInteger, isRecord, stringField, type JsonRecord } from '../core/guards.ts';
+import { hostSessionOf } from '../core/host-session.ts';
 import { parseObject, recordVersion, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 
 /** The format of the refresh files this code reads and writes; a file in another format reads as absent. */
 export const REFRESH_FORMAT = 1;
+/**
+ * The format a later teamrig writes the two restart files in (the restart request and the parked restart), naming
+ * the tab `hostSession` (T4762, src/core/host-session.ts): read from now on and written by none yet, so every tab
+ * reads it before the first one writes it. The lead's request and the kept crons name no tab and stay exact.
+ */
+export const REFRESH_RESTART_NEXT_FORMAT = 2;
 
 /**
  * The format of the state file (`<id>.json`): 2 adds the `baseline` of a fresh start, 3 the `largeWindow` every phase
@@ -153,6 +160,13 @@ export interface ParkedRestart extends RestartTab {
 function recordOf(text: string): JsonRecord | undefined {
   const record = parseObject(text.trim());
   return record !== undefined && record[VERSION_FIELD] === REFRESH_FORMAT ? record : undefined;
+}
+
+/** A restart file as an object, in this format or the next; undefined for a damaged file or another format. */
+function restartRecordOf(text: string): JsonRecord | undefined {
+  const record = parseObject(text.trim());
+  const format = record?.[VERSION_FIELD];
+  return format === REFRESH_FORMAT || format === REFRESH_RESTART_NEXT_FORMAT ? record : undefined;
 }
 
 /** A state file's record: format 1 or 2; undefined for a damaged file or another format. */
@@ -312,9 +326,9 @@ function nullableString(record: JsonRecord, key: string): string | null | undefi
   return value === null || typeof value === 'string' ? value : undefined;
 }
 
-/** A restart file's content; undefined when it is damaged or from another format. */
+/** A restart file's content; undefined when it is damaged or from a format this code does not read. */
 export function parseRestartRequest(text: string): RestartRequest | undefined {
-  const record = recordOf(text);
+  const record = restartRecordOf(text);
   if (record === undefined) {
     return undefined;
   }
@@ -332,9 +346,9 @@ export function formatRestartRequest(request: RestartRequest): string {
   return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...request });
 }
 
-/** A parked restart file's content; undefined when it is damaged or from another format. */
+/** A parked restart file's content; undefined when it is damaged or from a format this code does not read. */
 export function parseParkedRestart(text: string): ParkedRestart | undefined {
-  const record = recordOf(text);
+  const record = restartRecordOf(text);
   if (record === undefined) {
     return undefined;
   }
@@ -349,7 +363,7 @@ export function formatParkedRestart(parked: ParkedRestart): string {
 
 /** The tab fields of a restart file; undefined when one is missing or of the wrong type. */
 function restartTabOf(record: JsonRecord): RestartTab | undefined {
-  const claudeSession = stringField(record, 'claudeSession');
+  const claudeSession = hostSessionOf(record, 'claudeSession');
   const transcript = nullableString(record, 'transcript');
   const cwd = nullableString(record, 'cwd');
   const supervised = record['supervised'];
