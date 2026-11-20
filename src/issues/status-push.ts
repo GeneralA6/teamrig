@@ -34,8 +34,9 @@ export const STATUS_LABELS: Readonly<Record<'open' | 'claimed' | 'in-progress' |
 
 /**
  * The status labels as the push makes them in a repository that lacks one: a new repository has none, and without
- * them every change would be held. Only these five can be made (github/gh.ts allows no other label create), so a
- * push never makes a label a person did not see in the docs. The colours read on light and dark backgrounds alike.
+ * them every change would be held. Only these five can be made (adapters/connectors/github/gh.ts allows no other
+ * label create), so a push never makes a label a person did not see in the docs. The colours read on light and dark
+ * backgrounds alike.
  */
 export const STATUS_LABEL_SPECS: readonly LabelSpec[] = [
   { name: STATUS_LABELS.open, color: 'ededed', description: 'Open to anyone: no one has taken it yet' },
