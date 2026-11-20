@@ -67,9 +67,14 @@ export type ServedFolder = Pick<TeamPaths, 'team' | 'home'>;
  * (`paths`) is named by its own name alone, which is teamrig's.
  */
 export function servedPathOf(folder: ServedFolder, path: string): string {
+  return [folder.team, ...(belowOf(folder, path) ?? ['(moved)', basename(path)])].join('/');
+}
+
+/** The folders and the file that lead from the team's folder down to `path`; undefined for a path not inside it. */
+export function belowOf(folder: ServedFolder, path: string): string[] | undefined {
   const below = relative(folder.home, path);
   const inside = below !== '' && !below.startsWith('..') && !isAbsolute(below);
-  return [folder.team, ...(inside ? below.split(sep) : ['(moved)', basename(path)])].join('/');
+  return inside ? below.split(sep) : undefined;
 }
 
 /**
