@@ -11,7 +11,7 @@ const run: ProgramRunner = () => Promise.reject(new Error('no program runs here'
 describe('loadHostPorts', () => {
   it('gives the shipped host adapter a filled transcript reader and usage meter', async () => {
     const ports = (await loadHostPorts(run))({ env: {}, platform: 'linux' });
-    assert.deepEqual(Object.keys(ports), ['transcripts', 'usage']);
+    assert.deepEqual(Object.keys(ports), ['hooks', 'toolCall', 'transcripts', 'usage']);
     assert.equal(isUnsupported(ports.transcripts), false);
     assert.equal(isUnsupported(ports.usage), false);
   });
