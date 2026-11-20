@@ -3801,7 +3801,9 @@ name, model and effort. You do not run it yourself; `open` writes it. When the a
 Claude Code for a fresh start, launch starts it again in the same tab, fresh, with a prompt to read its handover
 first. Claude Code starts without the credential variables (see [teamrig queue](#teamrig-queue)) but its own login
 (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`) and those [delivery.passEnv] names, as the
-session's tools run the team's code.
+session's tools run the team's code. Each plugin folder the team config names [pluginDirs] loads with
+`--plugin-dir`, for a teamrig or a plugin beside it that Claude Code has not installed; launch refuses to start while
+one holds no `.claude-plugin/plugin.json`.
 
 Flags:
 

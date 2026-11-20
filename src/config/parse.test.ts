@@ -1814,6 +1814,18 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(parseConfig({ ...ROSTER, open: { headroom: 5 } }).issues), ['open.headroom']);
   });
 
+  it('reads the plugin folders each session loads, refusing a path that is not an absolute folder on one line', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.pluginDirs, []);
+    const set = parseConfig({ ...ROSTER, pluginDirs: ['/opt/app/teamrig', 'C:/app/plugins/pane'] });
+    assert.deepEqual(set.issues, []);
+    assert.deepEqual(set.config.pluginDirs, ['/opt/app/teamrig', 'C:/app/plugins/pane']);
+    const bad = parseConfig({ ...ROSTER, pluginDirs: ['/opt/app/teamrig', 'plugins/teamrig', '/opt/a\nb', 7] });
+    assert.deepEqual(paths(bad.issues), ['pluginDirs[1]', 'pluginDirs[2]', 'pluginDirs[3]']);
+    assert.match(bad.issues[0]?.message ?? '', /expected an absolute folder path on one line/);
+    assert.deepEqual(bad.config.pluginDirs, ['/opt/app/teamrig']);
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, pluginDirs: '/opt/app/teamrig' }).issues), ['pluginDirs']);
+  });
+
   it('reads whether the idle pass runs and the sessions it keeps open, refusing a mode it does not know or a session not on the team', () => {
     // A team that sets nothing closes and reopens its idle sessions (T1409).
     // Only the tree's root lead is never closed unless set (T3387).

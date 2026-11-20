@@ -26,4 +26,5 @@ export const OWNER_GATED_KEYS: readonly (readonly string[])[] = [
   ['packageGuard'],
   ['dbWriteGuard'],
   ['commitGuard'],
+  ['pluginDirs'],
 ];

@@ -92,6 +92,13 @@
         "resource changes"
       ]
     },
+    "pluginDirs": {
+      "description": "Plugin folders each session's Claude Code loads with --plugin-dir: a teamrig, or a plugin beside it, that runs from a copy Claude Code has not installed, such as one bundled with another app or a checkout. Each is an absolute folder holding .claude-plugin/plugin.json; teamrig launch refuses to start while one does not. Set only here, never from the environment, so nothing a session's caller sets chooses the hooks every session runs; owner-gated: the config guard refuses a session's own edit of it, the owner sets it. Empty: the installed plugins only.",
+      "type": "array",
+      "maxItems": 8,
+      "items": { "type": "string" },
+      "default": []
+    },
     "securityGates": {
       "description": "The owner gates (each one of ownerGates) whose cards reach the owner only with the security reviewer's verdict on the card, recorded by teamrig audit --verdict. A card edited after the verdict waits for a new one. With the key absent, permissions where ownerGates names it.",
       "type": "array",

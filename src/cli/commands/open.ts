@@ -475,6 +475,21 @@ export function claudeExit(runtime: CliRuntime, command: string, result: RunOutc
 }
 
 /**
+ * `--plugin-dir <dir>` for each folder the team config's `pluginDirs` names, refusing a folder that holds no plugin: Claude Code
+ * would start without the hooks the team expects, and say nothing.
+ */
+export async function pluginDirArgs(config: KitConfig, runtime: CliRuntime): Promise<string[]> {
+  const args: string[] = [];
+  for (const dir of config.pluginDirs) {
+    if ((await runtime.probe.kind(`${dir}/.claude-plugin/plugin.json`)) !== 'file') {
+      throw new RefusedError(`pluginDirs names ${dir}, which holds no .claude-plugin/plugin.json`);
+    }
+    args.push('--plugin-dir', dir);
+  }
+  return args;
+}
+
+/**
  * `launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text> | --no-prompt] [--resume <session>] [--effort <level>]`:
  * what a tab that `open` started runs. It sets the session's variables and starts Claude Code under the
  * session's name, on its model and effort from the team config's `launch`, with its first prompt,
@@ -508,6 +523,7 @@ export async function launch(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     throw new RefusedError(`${id} is not a session of team ${team}`);
   }
   const { command, prefix } = await claudeProgramOf(runtime, claudeEnv);
+  const plugins = await pluginDirArgs(config, runtime);
   const name = roster.nameOf(id) ?? id;
   let settings = effort === undefined ? launchOf(config, id) : { ...launchOf(config, id), effort };
   const resumed = resume === undefined ? '' : `, resuming Claude Code session ${resume}`;
@@ -520,7 +536,7 @@ export async function launch(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   for (;;) {
     await refuseLiveRun(runtime, kit, roster, id, name);
     const resumeArgs = resuming === undefined ? [] : ['--resume', resuming];
-    const args = [...prefix, ...launchFlags(settings), ...listing.args, ...resumeArgs, '--name', name, ...(first === undefined ? [] : [first])];
+    const args = [...prefix, ...plugins, ...launchFlags(settings), ...listing.args, ...resumeArgs, '--name', name, ...(first === undefined ? [] : [first])];
     const startedAt = runtime.clock.now();
     const result = await runtime.processes.run({ command, args, cwd: project, env: claudeEnv });
     if (!(await restartTaken(store, id))) {

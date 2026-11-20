@@ -12,7 +12,7 @@ import { holdBackOutput, refusalOutput } from './permission.ts';
  * past every permission check, so who holds one is a permission, an owner gate. A session's `teamrig roles grant` or
  * `revoke` therefore always asks the owner, whatever `--yes` says (refused when asks are off), and the route allow
  * never lets one through, as it allows only what every guard passed. A session's own write of an owner-gated key
- * (OWNER_GATED_KEYS: `serviceRoles`, the roles, the guards and allow rules, the commands teamrig runs; T3083)
+ * (OWNER_GATED_KEYS: `serviceRoles`, the roles, the guards and allow rules, the commands teamrig runs, the plugin folders a launch loads; T3083)
  * is refused: a file tool whose result changes one in any team's config, or cannot be read, by any spelling that
  * reaches the file (T2984), and a shell line naming a team config file at all, since a shell line's writes cannot be
  * told from its reads (the Read tool stays open). The config's other keys stay a session's to edit. Like

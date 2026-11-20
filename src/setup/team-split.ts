@@ -72,6 +72,7 @@ const CHILD_TAKES: Readonly<Record<Exclude<keyof KitConfig, keyof typeof REWORKE
   paths: 'own',
   timeZone: 'copy',
   ownerGates: 'copy',
+  pluginDirs: 'copy',
   securityGates: 'copy',
   ruleConflicts: 'copy',
   messages: 'copy',

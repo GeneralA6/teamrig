@@ -284,6 +284,7 @@ describe('config guard: every owner-gated key (T3083)', () => {
       ['delivery.passEnv', changed((c) => ({ ...c, delivery: { ...c.delivery, passEnv: ['GH_TOKEN'] } }))],
       ['pushGuard', changed((c) => ({ ...c, pushGuard: { pushToProtected: 'allow' } }))],
       ['alerts', changed((c) => ({ ...c, alerts: { webhookEnv: 'X' } }))],
+      ['pluginDirs', changed((c) => ({ ...c, pluginDirs: ['/opt/mallory/hooks'] }))],
     ];
     for (const [key, content] of changes) {
       const output = decisionOf(await serviceRoleGuardOutput(call('Write', { file_path: CONFIG, content }), env({ text })));

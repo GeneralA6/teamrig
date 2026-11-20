@@ -372,6 +372,9 @@ export const DEFAULT_IDLE: IdleConfig = { mode: 'on', keepOpen: [], leaders: 'ro
 
 export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto', teamWindow: false, headroom: DEFAULT_HEADROOM, idle: DEFAULT_IDLE };
 
+/** No plugin folder beyond the installed plugins. */
+export const DEFAULT_PLUGIN_DIRS: readonly string[] = [];
+
 /** The status line shows the session's folder, its branch and the team's pace line, unless the team turns them off. */
 export const DEFAULT_STATUS_LINE: StatusLineConfig = { folder: true, branch: true, pace: true };
 
