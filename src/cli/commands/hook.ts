@@ -51,7 +51,7 @@ import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
-import { transcriptsOf } from '../host.ts';
+import { transcriptsIfKept, transcriptsOf } from '../host.ts';
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { keptRulesAboveOf, readTeamRules } from '../team-rules.ts';
@@ -702,9 +702,11 @@ async function stopFactsOf(runtime: CliRuntime, scope: SessionScope, store: Refr
   const { roster, id } = scope;
   const request = await store.request(id);
   const transcript = stringField(payload, 'transcript_path');
+  // A host that keeps no readable transcript tells no context size: the lead's request and the meeting still count.
+  const reader = transcriptsIfKept(runtime);
   return {
     requestedBy: request === undefined ? undefined : (roster.nameOf(request.by) ?? request.by),
-    tokens: transcript === undefined ? undefined : await readContextTokens(runtime.files, transcript),
+    tokens: transcript === undefined || reader === undefined ? undefined : await readContextTokens(reader, runtime.files, transcript),
     meeting: await inMeetingNow(runtime, scope),
     due: undefined,
   };

@@ -14,6 +14,7 @@ import { ghHostsDenyLine, secretDenyLines } from '../doctor/deny-lines.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import type { StoreFolders } from '../core/plugin-store.ts';
 import type { TranscriptSource } from '../budget/discover.ts';
+import type { HostSource } from '../composition/host-ports.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
 import type { RestorePorts } from '../restore/ports.ts';
@@ -153,6 +154,8 @@ export interface RunOptions {
   readonly requirements?: RequirementsCheck;
   /** The Claude Code transcripts `budget` measures; default none. */
   readonly transcripts?: TranscriptSource;
+  /** The host ports the run is given; default the shipped host's (the quiet world's). */
+  readonly host?: HostSource;
   /** The worktrees `worktree remove` sees; default none. */
   readonly worktrees?: WorktreePorts;
   /** The shutdown log and countdown `restore` sees; default no shutdown on record and a countdown that goes at once. */
@@ -249,6 +252,7 @@ export class CliHarness {
       ...(options.pluginStore === undefined ? {} : { pluginStore: options.pluginStore }),
       ...(options.requirements === undefined ? {} : { requirements: options.requirements }),
       ...(options.transcripts === undefined ? {} : { transcripts: options.transcripts }),
+      ...(options.host === undefined ? {} : { host: options.host }),
       ...(options.worktrees === undefined ? {} : { worktrees: options.worktrees }),
       ...(options.restore === undefined ? {} : { restore: options.restore }),
       ...(options.steps === undefined ? {} : { steps: options.steps }),

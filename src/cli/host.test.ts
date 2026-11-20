@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { HostSource } from '../composition/host-ports.ts';
 import { isUnsupported, unsupported, type HostPorts } from '../ports/host/index.ts';
 import { quietWorld } from '../testing/quiet-world.ts';
-import { hostOf, transcriptsOf } from './host.ts';
+import { hostOf, transcriptsIfKept, transcriptsOf } from './host.ts';
 import { RefusedError } from './runtime.ts';
 
 describe('hostOf', () => {
@@ -23,6 +23,15 @@ describe('hostOf', () => {
     const { transcripts } = hostOf({ host: world.host, env: {}, platform: world.platform });
     assert.equal(isUnsupported(transcripts), false);
     assert.deepEqual(!isUnsupported(transcripts) && transcripts.entry('not a transcript line'), { kind: 'unread', reason: 'damaged' });
+  });
+});
+
+describe('transcriptsIfKept', () => {
+  it('gives the reader of a host that has one, and nothing for a host that keeps no transcript', () => {
+    const world = quietWorld();
+    assert.deepEqual(transcriptsIfKept({ host: world.host, env: {}, platform: world.platform })?.entry('not a transcript line'), { kind: 'unread', reason: 'damaged' });
+    const host: HostSource = () => ({ transcripts: unsupported('no transcript is kept') });
+    assert.equal(transcriptsIfKept({ host, env: {}, platform: 'linux' }), undefined);
   });
 });
 
