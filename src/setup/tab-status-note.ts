@@ -13,8 +13,8 @@ export interface TabStatusFacts {
   readonly configPath: string;
   /** Whether Claude Code leaves the tab title to hooks (`CLAUDE_CODE_DISABLE_TERMINAL_TITLE`). */
   readonly titleLeft: boolean;
-  /** The Claude Code settings file whose `env` takes that switch. */
-  readonly settingsPath: string;
+  /** The settings file of the host whose `env` takes that switch; none where teamrig does not know the host's folders. */
+  readonly settingsPath: string | undefined;
 }
 
 /** One line: tab status on, or what the user does to see it. */
@@ -24,7 +24,10 @@ export function tabStatusLine(facts: TabStatusFacts): string {
     ...(facts.titleLeft
       ? []
       : [
-          `add "${ENV.claudeTitleOff}": "1" to "env" in ${facts.settingsPath} and restart Claude Code, so it stops writing its own title over the circle (tabs of projects outside teamrig then keep the terminal's title)`,
+          // With no settings file known, the note names the switch alone: a file teamrig only guessed would send the user to the wrong place.
+          facts.settingsPath === undefined
+            ? `set ${ENV.claudeTitleOff}=1 in the environment the team's sessions start in and restart them, so the host stops writing its own title over the circle`
+            : `add "${ENV.claudeTitleOff}": "1" to "env" in ${facts.settingsPath} and restart Claude Code, so it stops writing its own title over the circle (tabs of projects outside teamrig then keep the terminal's title)`,
         ]),
   ];
   if (missing.length === 0) {
