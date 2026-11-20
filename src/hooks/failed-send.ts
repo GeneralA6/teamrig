@@ -1,6 +1,7 @@
-import { isRecord, stringField } from '../core/guards.ts';
+import { stringField } from '../core/guards.ts';
 import { isReservedName, RESERVED_RULE } from '../core/ids.ts';
-import { sendTargetOf } from './cold-send.ts';
+import type { HookEvent } from '../ports/host/index.ts';
+import { sentMessageOf } from './cold-send.ts';
 import { toolResponseOf } from './post-tool-use.ts';
 
 /**
@@ -17,18 +18,15 @@ export interface FailedSend {
   readonly reason: string;
 }
 
-/** The failed send a PostToolUse payload reports; undefined for any other tool or a delivered message. */
-export function failedSendOf(payload: unknown): FailedSend | undefined {
-  const to = sendTargetOf(payload);
-  if (to === undefined || !isRecord(payload)) {
-    return undefined;
-  }
-  const response = toolResponseOf(payload['tool_response']);
-  if (response === undefined || response['success'] !== false) {
+/** The failed send the event of a finished call reports; undefined for a call of any other kind or a delivered message. */
+export function failedSendOf(event: HookEvent): FailedSend | undefined {
+  const sent = sentMessageOf(event);
+  const response = sent === undefined ? undefined : toolResponseOf(event.call?.response);
+  if (sent === undefined || response === undefined || response['success'] !== false) {
     return undefined;
   }
   const reason = stringField(response, 'message')?.split('\n')[0]?.trim();
-  return { to, reason: reason === undefined || reason === '' ? 'not delivered' : reason };
+  return { to: sent.to, reason: reason === undefined || reason === '' ? 'not delivered' : reason };
 }
 
 /**
