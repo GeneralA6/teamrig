@@ -12,7 +12,7 @@ import { layoutPaths } from '../../register/layout.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
 import { formatSessionRecord } from '../../sessions/record.ts';
 import { formatTabNeed } from '../../tabs/need.ts';
-import { CliHarness, CONFIG_PATH, EVENTS_PATH, TEAM, TEAM_HOME } from '../../testing/cli-harness.ts';
+import { CliHarness, CONFIG_PATH, EVENTS_PATH, TEAM, TEAM_HOME, type CliResult } from '../../testing/cli-harness.ts';
 import { rotateRegister } from '../../testing/rotation.ts';
 import { normalisePath } from '../../testing/memory-files.ts';
 import { answersOf, problemsOf, rowsOf, served } from '../../testing/read-answers.ts';
@@ -29,6 +29,10 @@ const ALPHA_INBOX = teamInboxOf('app', 'alpha');
 const INBOX_MARKS = join(TEAM_HOME, 'state', 'inbox-marks.jsonl');
 const HOUR_MS = 3_600_000;
 const REVISION = /^[0-9a-f]{16}$/;
+/** A revision of the shape `read` serves, which no document of these specs has. */
+const HELD = '0123456789abcdef';
+/** Every document of interface 1 in one run, the inbox being alpha's. */
+const READ_ALL = ['read', 'tasks', 'inbox', 'sessions', 'meetings', 'config', '--json', '--session', 'alpha'] as const;
 /** A text one of teamrig's own secret shapes matches, built from parts so this file holds none. */
 const SECRET = ['pass', 'word', '=', 'hunter2'].join('');
 
@@ -600,6 +604,15 @@ describe('teamrig read: what is asked', () => {
     ['a --since that is no count of hours', [...READ_INBOX, '--since', 'x'], /--since takes whole hours, such as 24; got "x"/],
     ['no --json', ['read', 'tasks'], /read answers only as JSON in interface 1: add --json/],
     ['a malformed --interface', [...READ_TASKS, '--interface', 'x'], /--interface takes <major\.minor>, such as 1\.0; got "x"/],
+    ['an --unless entry with no revision', [...READ_TASKS, '--unless', 'tasks'], /--unless takes <document>=<revision>.*; got "tasks"/],
+    ['an --unless entry left empty', [...READ_TASKS, '--unless', `tasks=${HELD},`], /--unless takes <document>=<revision>.*; got ""/],
+    ['an --unless revision that is a path', [...READ_TASKS, '--unless', 'tasks=../../config'], /--unless takes <document>=<revision>.*; got "tasks=\.\.\/\.\.\/config"/],
+    ['an --unless revision one character short', [...READ_TASKS, '--unless', `tasks=${HELD.slice(1)}`], /--unless takes <document>=<revision>/],
+    ['an --unless revision in capitals', [...READ_TASKS, '--unless', `tasks=${HELD.toUpperCase()}`], /--unless takes <document>=<revision>/],
+    ['an --unless revision with a second "="', [...READ_TASKS, '--unless', `tasks=${HELD}=x`], /--unless takes <document>=<revision>/],
+    ['an --unless document read does not have', [...READ_TASKS, '--unless', `goals=${HELD}`], /--unless names an unknown document "goals"; the documents are tasks, inbox/],
+    ['an --unless document the run does not ask', [...READ_TASKS, '--unless', `inbox=${HELD}`], /--unless names inbox, which this run does not ask for/],
+    ['an --unless document named twice', [...READ_TASKS, '--unless', `tasks=${HELD},tasks=${HELD}`], /--unless names tasks twice/],
   ];
 
   for (const [what, argv, message] of USAGE_ERRORS) {
@@ -621,6 +634,101 @@ describe('teamrig read: what is asked', () => {
       assert.match(result.stderr.join('\n'), /^REFUSED /);
     });
   }
+});
+
+/** A run's answers after a clean exit, however many documents it asked. */
+function allServed(result: CliResult): JsonRecord[] {
+  assert.deepEqual([result.code, result.stderr], [EXIT.ok, []]);
+  return answersOf(result);
+}
+
+/** What `--unless` takes to say the reader holds every one of these answers. */
+function heldOf(answers: readonly JsonRecord[]): string {
+  return answers.map((answer) => `${String(answer['document'])}=${String(answer['revision'])}`).join(',');
+}
+
+/** Each answer as its document and whether it came as unchanged. */
+function unchangedOf(answers: readonly JsonRecord[]): unknown[][] {
+  return answers.map((answer) => [answer['document'], answer['unchanged'] === true]);
+}
+
+/** The register files a call took the text of: what a fold of the working set reads. */
+function foldedOf(files: WatchedFiles): string[] {
+  return files.opened().filter((path) => /events|snapshot/.test(path));
+}
+
+describe('teamrig read --unless', () => {
+  it('answers a document the reader holds as unchanged and nothing more, in the order asked', async () => {
+    const kit = new CliHarness();
+    await add(kit, 'Ship the gate', 'alpha');
+    const first = allServed(await kit.run(READ_ALL));
+    const [tasks, , , meetings] = first;
+    assert.ok(tasks !== undefined && meetings !== undefined);
+    const again = allServed(await kit.run([...READ_ALL, '--unless', heldOf([meetings, tasks])]));
+    assert.deepEqual(unchangedOf(again), [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', false]]);
+    assert.deepEqual(again[0], { interface: '1.0', document: 'tasks', revision: tasks['revision'], unchanged: true });
+    assert.deepEqual(again.slice(1, 3), first.slice(1, 3));
+  });
+
+  it('folds no register file for an unchanged document, and folds it for a revision the document no longer has', async () => {
+    const kit = new CliHarness();
+    await add(kit, 'First', 'alpha');
+    const held = heldOf([served(await kit.run(READ_TASKS))]);
+    const unchanged = new WatchedFiles(kit.files);
+    assert.equal(served(await kit.run([...READ_TASKS, '--unless', held], { files: unchanged }))['unchanged'], true);
+    assert.deepEqual(foldedOf(unchanged), []);
+    await add(kit, 'Second', 'alpha');
+    const stale = new WatchedFiles(kit.files);
+    const answer = served(await kit.run([...READ_TASKS, '--unless', held], { files: stale }));
+    assert.deepEqual([titlesOf(answer), 'unchanged' in answer], [['First', 'Second'], false]);
+    assert.ok(foldedOf(stale).includes(normalisePath(EVENTS_PATH)));
+  });
+
+  it('answers in full again only the documents that read a file that changed', async () => {
+    const kit = new CliHarness();
+    await add(kit, 'Ship the gate', 'alpha');
+    const held = heldOf(allServed(await kit.run(READ_ALL)));
+    assert.deepEqual(unchangedOf(allServed(await kit.run([...READ_ALL, '--unless', held]))).map(([, unchanged]) => unchanged), [true, true, true, true, true]);
+    await post(kit, 'lead', 'alpha', 'the gate is merged');
+    assert.deepEqual(
+      unchangedOf(allServed(await kit.run([...READ_ALL, '--unless', held]))),
+      [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', true]],
+    );
+  });
+
+  it('answers config as unchanged to a run with no team', async () => {
+    const kit = new CliHarness(null, null);
+    const first = served(await kit.run(['read', 'config', '--json']));
+    assert.deepEqual(
+      served(await kit.run(['read', 'config', '--json', '--unless', heldOf([first])])),
+      { interface: '1.0', document: 'config', revision: first['revision'], unchanged: true },
+    );
+  });
+});
+
+describe('teamrig read: the store is left as it was', () => {
+  const STATE = `${normalisePath(join(TEAM_HOME, 'state'))}/`;
+
+  it('writes no byte and calls for no write over the five documents, served in full or as unchanged', async () => {
+    const kit = new CliHarness();
+    await add(kit, 'Ship the gate', 'alpha');
+    await post(kit, 'lead', 'alpha', 'the gate is merged');
+    const before = await storeOf(kit);
+    const files = new WatchedFiles(kit.files);
+    const held = heldOf(allServed(await kit.run(READ_ALL, { files })));
+    assert.deepEqual(unchangedOf(allServed(await kit.run([...READ_ALL, '--unless', held], { files }))).map(([, unchanged]) => unchanged), [true, true, true, true, true]);
+    assert.deepEqual([files.written(), await storeOf(kit)], [[], before]);
+  });
+
+  it('makes no file and no folder in a team that has no state folder yet', async () => {
+    const kit = new CliHarness();
+    assert.deepEqual(kit.files.paths().filter((path) => path.startsWith(STATE)), []);
+    const before = await storeOf(kit);
+    const files = new WatchedFiles(kit.files);
+    assert.equal(allServed(await kit.run(READ_ALL, { files })).length, READ_ALL.length - 4);
+    assert.deepEqual([files.written(), await storeOf(kit)], [[], before]);
+    assert.ok(files.touched().some((path) => path.startsWith(STATE)));
+  });
 });
 
 describe('teamrig read: what could not be read', () => {
