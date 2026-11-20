@@ -93,7 +93,7 @@ async function pickerGuardReplyOf(runtime: CliRuntime, payload: JsonRecord, even
   if (bash && compound === undefined) {
     return undefined;
   }
-  const found = await sessionTeam(payload, runtime);
+  const found = await sessionTeam(event.cwd, runtime);
   const kit = found.kind === 'team' ? await openKit(runtime, found.team) : undefined;
   if (kit?.load.status !== 'loaded') {
     return undefined;

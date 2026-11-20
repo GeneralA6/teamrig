@@ -10,7 +10,7 @@ import type { Kit } from '../kit.ts';
 import { subtreeOf } from '../roll-up.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
-import { parseJson } from './hook-input.ts';
+import { readHookInput } from './hook-input.ts';
 import { wakeScopeOf } from './hook-wake.ts';
 import { agendaRegisterOf, decidedByOf, decisionAgendaOf } from './meeting-registers.ts';
 
@@ -77,7 +77,7 @@ async function bookedPanel(runtime: CliRuntime, { kit, config, roster, id }: Pan
  */
 export async function meetingPanel(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const scope = await wakeScopeOf(runtime, parseJson(await runtime.readStdin()), false);
+  const scope = await wakeScopeOf(runtime, (await readHookInput(runtime)).event, false);
   if (scope.kind === 'off') {
     return answer(runtime, { ...scope, watch: [] });
   }

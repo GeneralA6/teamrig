@@ -61,12 +61,12 @@ async function leadBoundaryLine(runtime: CliRuntime, kit: Kit, config: KitConfig
  * The lines for this hook input: the chain nudge and, on the lead's tab, the lead-boundary nudge; none for a
  * helper's call, outside a loaded team or with both off.
  */
-async function loopNudgeLines({ payload, event }: HookInput, runtime: CliRuntime): Promise<readonly string[]> {
+async function loopNudgeLines({ event }: HookInput, runtime: CliRuntime): Promise<readonly string[]> {
   const transcript = event?.transcript;
   if (event === undefined || transcript === undefined || event.helper?.id !== undefined) {
     return [];
   }
-  const found = await sessionTeam(payload, runtime);
+  const found = await sessionTeam(event.cwd, runtime);
   const kit = found.kind === 'team' ? await openKit(runtime, found.team) : undefined;
   if (kit === undefined || kit.load.status !== 'loaded') {
     return [];

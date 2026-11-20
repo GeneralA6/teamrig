@@ -1,4 +1,3 @@
-import { isRecord } from '../../core/guards.ts';
 import { secretGuardOf, secretPatternsOf } from '../../hooks/secret-guard.ts';
 import { redactableResultOf, redactedLine, rotationText, rotatorOf } from '../../hooks/secret-redact.ts';
 import { EnvAssignments } from '../../secret-guard/env-assignments.ts';
@@ -19,14 +18,14 @@ import { fileRotations } from './secret-rotation.ts';
  */
 export async function secretRedact(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
+  const { event } = await readHookInput(runtime);
   const guard = await guardLoadOf(event?.cwd, runtime);
   if (guard === undefined) {
     return EXIT.ok;
   }
   const config = secretGuardOf(guard.load);
   const result = event === undefined ? undefined : redactableResultOf(event);
-  if (!config.redact || result === undefined || event === undefined || !isRecord(payload)) {
+  if (!config.redact || result === undefined || event === undefined) {
     return EXIT.ok;
   }
   const rules = secretRulesOf(config, runtime.userHome, runtime.platform, secretPatternsOf(guard.load));
@@ -34,7 +33,7 @@ export async function secretRedact(args: ParsedArgs, runtime: CliRuntime): Promi
   if (redaction.classes.length === 0) {
     return EXIT.ok;
   }
-  const rotations = await fileRotations(runtime, payload, event, { tool: result.tool, kinds: redaction.classes, accounts: redaction.accounts });
+  const rotations = await fileRotations(runtime, event, { tool: result.tool, kinds: redaction.classes, accounts: redaction.accounts });
   writeReply(runtime, 'tool-end', { toolOutput: redaction.response, context: redactedLine(redaction, rotationText(rotatorOf(guard.load), rotations)) });
   return EXIT.ok;
 }
