@@ -23,6 +23,8 @@ export {
   type ShellCall,
   type ShellDialect,
   type SkillCall,
+  type TextChange,
+  type TextReplacement,
   type ToolCall,
   type ToolCallShape,
   type ToolKind,

@@ -112,6 +112,8 @@ export {
   type ShellCall,
   type ShellDialect,
   type SkillCall,
+  type TextChange,
+  type TextReplacement,
   type TitleEntry,
   type TokenWeights,
   type ToolCall,
