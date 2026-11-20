@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { HostSource } from '../composition/host-ports.ts';
 import { isRecord } from '../core/guards.ts';
-import { bareHost } from '../testing/bare-host.ts';
+import { HOOKS_ONLY_HOST } from '../testing/host.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { APP, CLAUDE_SESSION, CliHarness, contextOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 
@@ -102,7 +102,7 @@ ${ALPHA_SWITCHED.replace('app-alpha', 'app-lead').replace('claude-fable-5-1 to',
   });
 
   it('tells no switch on a host that keeps no transcript, and still tells the effort', async () => {
-    const bare: HostSource = bareHost;
+    const bare: HostSource = HOOKS_ONLY_HOST;
     const kit = new CliHarness();
     await kit.files.write(TRANSCRIPT, switchedTranscript());
     const stop = async (session: string, stdin: string): Promise<CliResult> => kit.run(['hook', 'stop'], { stdin, env: { TEAMRIG_SESSION: session }, host: bare });

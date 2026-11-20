@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { MeetingSchedule } from '../meeting/schedule.ts';
-import { bareHost } from '../testing/bare-host.ts';
+import { HOOKS_ONLY_HOST } from '../testing/host.ts';
 import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { CONTEXT_MAX_CHARS } from '../rules/pack.ts';
@@ -507,7 +507,7 @@ describe('runCli: context refresh', () => {
     await handoverWritten(kit);
     await kit.files.append(TRANSCRIPT, `${JSON.stringify({ type: 'user', message: { role: 'user', content: 'Hold the migration until Monday' } })}\n`);
     stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }));
-    const bare: HostSource = bareHost;
+    const bare: HostSource = HOOKS_ONLY_HOST;
     const fresh = contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear'), host: bare }));
     assert.ok(fresh.includes('You were refreshed'), fresh);
     assert.ok(!fresh.includes('The owner typed') && !fresh.includes('could not read'), fresh);
