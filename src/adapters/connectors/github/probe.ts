@@ -1,6 +1,5 @@
 import { ENTITY_TAG, type GhResult } from './gh.ts';
-import { plainLine } from '../core/printable.ts';
-import { exitText } from '../open/processes.ts';
+import { exitText, plainLine } from '../../../plugin-api/index.ts';
 
 /**
  * What one watch probe (gh.ts isWatchProbe) was told: the answer changed since the tag it sent, with the new tag to

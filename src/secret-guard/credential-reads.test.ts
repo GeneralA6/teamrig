@@ -76,7 +76,7 @@ describe('credentialReadFindings', () => {
       'secret-tool store --label=x service svc',
       'cmdkey /add:host /user:u',
       'teamrig who --session teamrig-github',
-      'grep -rn tokenName src/github',
+      'grep -rn tokenName src/issues',
       'echo Credentials',
     ]) {
       assert.deepEqual(reads(line), [], line);

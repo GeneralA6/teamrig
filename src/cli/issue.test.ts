@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { withStampFooter } from '../core/stamp.ts';
-import { isAreaLabelCreate, isIssueAssign, isIssueAssigneeRead, isIssueBodyEdit, isIssueClose, isIssueComment, isIssueRead, isIssueUnassign, isLabelAdd, isLabelFileRead, isLabelRead, isLabelRemove, isUserRead, labelCreateArgs } from '../github/gh.ts';
+import { isAreaLabelCreate, isIssueAssign, isIssueAssigneeRead, isIssueBodyEdit, isIssueClose, isIssueComment, isIssueRead, isIssueUnassign, isLabelAdd, isLabelFileRead, isLabelRead, isLabelRemove, isUserRead, labelCreateArgs } from '../adapters/connectors/github/gh.ts';
 import { areaLabelSpec } from '../issues/managed-labels.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
