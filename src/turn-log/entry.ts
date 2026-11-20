@@ -1,8 +1,15 @@
 import { stringField, type JsonRecord } from '../core/guards.ts';
+import { hostSessionOf } from '../core/host-session.ts';
 import { recordVersion, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 
 /** The format version of a turn log line. */
 export const TURN_LOG_VERSION = 1;
+
+/**
+ * The version a later teamrig writes, naming the session `hostSession` (T4762, src/core/host-session.ts): read from
+ * now on and written by none yet.
+ */
+export const TURN_LOG_NEXT_VERSION = 2;
 
 /** The most text one entry keeps: a longer reply keeps its end, where the turn's answer is. */
 export const MAX_TEXT_CHARS = 64_000;
@@ -46,15 +53,16 @@ export function formatEntry(entry: TurnLogEntry): string {
   return toJsonlLine({ [VERSION_FIELD]: TURN_LOG_VERSION, ...entry });
 }
 
-/** A parsed line as an entry; undefined for a line of a newer version or one missing a field. */
+/** A parsed line as an entry; undefined for a line of a version past the next one, or one missing a field. */
 export function parseEntry(record: JsonRecord): TurnLogEntry | undefined {
-  if (recordVersion(record) !== TURN_LOG_VERSION) {
+  const version = recordVersion(record);
+  if (version !== TURN_LOG_VERSION && version !== TURN_LOG_NEXT_VERSION) {
     return undefined;
   }
   const at = stringField(record, 'at');
   const kind = stringField(record, 'kind');
   const text = stringField(record, 'text');
-  const claude = stringField(record, 'claude');
+  const claude = hostSessionOf(record, 'claude');
   if (at === undefined || !isKind(kind) || text === undefined || claude === undefined) {
     return undefined;
   }
