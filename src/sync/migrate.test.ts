@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
 import type { Task } from '../register/fold.ts';
 import { testTask } from '../testing/task.ts';
-import { MAX_TITLE, countsLine, createdNumber, parseMigrateRows, planMigration, previewMarkdown, rowLabels, type IssueRow, type MigrateRow, type RefJudge } from './migrate.ts';
+import { MAX_TITLE, countsLine, parseMigrateRows, planMigration, previewMarkdown, rowLabels, type IssueRow, type MigrateRow, type RefJudge } from './migrate.ts';
 
 const REPO = 'acme/tool';
 
@@ -185,18 +185,6 @@ describe('planMigration', () => {
   it('lists each live task no row names, and leaves out finished ones', () => {
     const tasks = tasksOf(testTask(), testTask({ id: 'T3', status: 'verifying' }), testTask({ id: 'T4', status: 'done' }), testTask({ id: 'T5', status: 'in-progress' }));
     assert.deepEqual(planMigration([issueRow()], tasks, [REPO], allow).unrowed, ['T3', 'T5']);
-  });
-});
-
-describe('createdNumber', () => {
-  it("reads the new issue's number from gh's JSON", () => {
-    assert.equal(createdNumber('{"number": 42, "url": "x"}'), 42);
-  });
-
-  it('is undefined for text, a missing or bad number', () => {
-    for (const stdout of ['', 'created', '{"url":"x"}', '{"number":"4"}', '{"number":0}', '{"number":1.5}', '[42]']) {
-      assert.equal(createdNumber(stdout), undefined, stdout);
-    }
   });
 });
 
