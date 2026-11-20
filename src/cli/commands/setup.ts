@@ -2,7 +2,7 @@ import { join, resolve } from 'node:path';
 import { launchOf } from '../../config/launch.ts';
 import { SHIPPED_CONFIG_FORMAT } from '../../config/migrate.ts';
 import type { KitConfig } from '../../config/types.ts';
-import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths } from '../../core/home.ts';
+import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamConfigFile } from '../../core/home.ts';
 import { describeRequirement } from '../../requirements/requirements.ts';
 import { applyIgnore, ignoreLines, ignoreStep, type IgnoreStep } from '../../setup/pointer-ignore.ts';
 import { applySetupTask, setupTaskDryLines, setupTaskLines, setupTaskStep } from '../../setup/setup-task.ts';
@@ -140,7 +140,7 @@ export async function teamCreate(args: ParsedArgs, runtime: CliRuntime): Promise
   }
   (await runtime.requirements.problems()).forEach((problem) => runtime.out.stdout(`WARN ${describeRequirement(problem, KIT_NAME)}`));
   const project = await projectOf(runtime, args.flags.get('project'));
-  const configPath = teamPaths(resolveKitHome(runtime.env, runtime.userHome), team, claudeConfigDir(runtime.env, runtime.userHome)).config;
+  const configPath = teamConfigFile(resolveKitHome(runtime.env, runtime.userHome), team);
   const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;
   const { tree } = await loadTree(runtime);
   const planned = await planTeamSetup(runtime.files, format, spec.value, configPath, project, tree);
