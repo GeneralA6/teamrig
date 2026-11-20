@@ -43,10 +43,12 @@ export {
   CONNECTOR_FEATURES,
   CONNECTOR_KINDS,
   HOST_FEATURES,
+  TERMINAL_FEATURES,
   featuresOf,
   isConnectorFeatureId,
   isConnectorKind,
   isHostFeatureId,
+  isTerminalFeatureId,
   type ConnectorFeatureId,
   type ConnectorKind,
   type FeatureId,
@@ -54,6 +56,7 @@ export {
   type FeatureRow,
   type FeatureSide,
   type HostFeatureId,
+  type TerminalFeatureId,
   type Toggle,
 } from '../features/registry.ts';
 export {

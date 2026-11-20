@@ -1,6 +1,6 @@
 import { CODEHOST_FEATURES } from './connector/codehost.ts';
 import { TRACKER_FEATURES } from './connector/tracker.ts';
-import type { ConnectorFeature, FeatureSide, HostFeature, Toggle } from './feature.ts';
+import type { ConnectorFeature, FeatureSide, HostFeature, TerminalFeature, Toggle } from './feature.ts';
 import { BUDGET_FEATURES } from './host/budget.ts';
 import { CONTEXT_FEATURES } from './host/context.ts';
 import { ERRORS_FEATURES } from './host/errors.ts';
@@ -15,8 +15,9 @@ import { SESSIONS_FEATURES } from './host/sessions.ts';
 import { SKILLS_FEATURES } from './host/skills.ts';
 import { TABS_FEATURES } from './host/tabs.ts';
 import { WAKE_FEATURES } from './host/wake.ts';
+import { PANE_FEATURES } from './terminal/pane.ts';
 
-export { CONNECTOR_KINDS, isConnectorKind, type ConnectorFeature, type ConnectorKind, type FeatureSide, type HostFeature, type Toggle } from './feature.ts';
+export { CONNECTOR_KINDS, isConnectorKind, type ConnectorFeature, type ConnectorKind, type FeatureSide, type HostFeature, type TerminalFeature, type Toggle } from './feature.ts';
 
 /**
  * Every feature an AI CLI's adapter must answer for. An id is `<group>.<name>` and never changes once shipped:
@@ -50,13 +51,23 @@ export const CONNECTOR_FEATURES = {
   ...CODEHOST_FEATURES,
 } as const satisfies Readonly<Record<string, ConnectorFeature>>;
 
+/**
+ * Every feature a terminal's adapter must answer for; an id is `<group>.<name>`. Each group's rows live in their own
+ * file under `terminal/`.
+ */
+export const TERMINAL_FEATURES = {
+  ...PANE_FEATURES,
+} as const satisfies Readonly<Record<string, TerminalFeature>>;
+
 export type HostFeatureId = keyof typeof HOST_FEATURES;
 export type ConnectorFeatureId = keyof typeof CONNECTOR_FEATURES;
-export type FeatureId = HostFeatureId | ConnectorFeatureId;
+export type TerminalFeatureId = keyof typeof TERMINAL_FEATURES;
+export type FeatureId = HostFeatureId | ConnectorFeatureId | TerminalFeatureId;
 
 interface FeatureIdBySide {
   readonly host: HostFeatureId;
   readonly connector: ConnectorFeatureId;
+  readonly terminal: TerminalFeatureId;
 }
 
 /** The feature ids of one side. */
@@ -70,7 +81,11 @@ export function isConnectorFeatureId(value: string): value is ConnectorFeatureId
   return Object.hasOwn(CONNECTOR_FEATURES, value);
 }
 
-/** One registry row as a reader takes it: of either side, or of the one side whose ids it is given. */
+export function isTerminalFeatureId(value: string): value is TerminalFeatureId {
+  return Object.hasOwn(TERMINAL_FEATURES, value);
+}
+
+/** One registry row as a reader takes it: of any side, or of the one side whose ids it is given. */
 export interface FeatureRow<Id extends FeatureId = FeatureId> {
   readonly id: Id;
   /** The part of the id before its dot: the heading its rows share on the parity page. */
@@ -91,7 +106,11 @@ const CONNECTOR_ROWS: readonly FeatureRow<ConnectorFeatureId>[] = Object.keys(CO
   .filter(isConnectorFeatureId)
   .map((id) => ({ id, group: CONNECTOR_FEATURES[id].kind, doc: CONNECTOR_FEATURES[id].doc, byDefault: CONNECTOR_FEATURES[id].byDefault }));
 
-const ROWS: { readonly [Side in FeatureSide]: readonly FeatureRow<FeatureIdOf<Side>>[] } = { host: HOST_ROWS, connector: CONNECTOR_ROWS };
+const TERMINAL_ROWS: readonly FeatureRow<TerminalFeatureId>[] = Object.keys(TERMINAL_FEATURES)
+  .filter(isTerminalFeatureId)
+  .map((id) => ({ id, group: groupOf(id), doc: TERMINAL_FEATURES[id].doc, byDefault: TERMINAL_FEATURES[id].byDefault }));
+
+const ROWS: { readonly [Side in FeatureSide]: readonly FeatureRow<FeatureIdOf<Side>>[] } = { host: HOST_ROWS, connector: CONNECTOR_ROWS, terminal: TERMINAL_ROWS };
 
 /** The rows of one side, in registry order. */
 export function featuresOf<Side extends FeatureSide>(side: Side): readonly FeatureRow<FeatureIdOf<Side>>[] {
