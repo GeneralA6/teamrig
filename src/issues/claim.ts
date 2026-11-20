@@ -2,7 +2,7 @@ import { isRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { DESIGN_LABEL } from './design-label.ts';
 import type { HostIssue, IssueComment, ReadComment } from './issue.ts';
-import { isLogin } from '../github/gh.ts';
+import { isLogin } from './login.ts';
 import { isInsider, issueTrust } from '../github/trust.ts';
 
 /**
