@@ -1,5 +1,5 @@
-import { isRecord } from '../core/guards.ts';
-import { sendTargetOf, sendTextOf } from './cold-send.ts';
+import type { HookEvent } from '../ports/host/index.ts';
+import { sentMessageOf } from './cold-send.ts';
 import { toolResponseOf } from './post-tool-use.ts';
 
 /**
@@ -14,12 +14,11 @@ export interface DeliveredSend {
   readonly text: string;
 }
 
-/** The delivered send a PostToolUse payload reports; undefined for any other tool, a send that failed or a result it cannot read. */
-export function deliveredSendOf(payload: unknown): DeliveredSend | undefined {
-  const to = sendTargetOf(payload);
-  if (to === undefined || !isRecord(payload)) {
+/** The delivered send the event of a finished call reports; undefined for a call of any other kind, a send that failed or a result it cannot read. */
+export function deliveredSendOf(event: HookEvent): DeliveredSend | undefined {
+  const sent = sentMessageOf(event);
+  if (sent === undefined) {
     return undefined;
   }
-  const response = toolResponseOf(payload['tool_response']);
-  return response?.['success'] === true ? { to, text: sendTextOf(payload) } : undefined;
+  return toolResponseOf(event.call?.response)?.['success'] === true ? { to: sent.to, text: sent.text } : undefined;
 }

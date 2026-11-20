@@ -1,9 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { HookEvent } from '../ports/host/index.ts';
+import { hookEventOf } from '../testing/host.ts';
 import { failedSendLine, failedSendOf } from './failed-send.ts';
 
-function result(toolResponse: unknown, to = 'team-lead', toolName = 'SendMessage'): unknown {
-  return { hook_event_name: 'PostToolUse', tool_name: toolName, tool_input: { to, message: 'the ask' }, tool_response: toolResponse };
+function result(toolResponse: unknown, to = 'team-lead', toolName = 'SendMessage'): HookEvent {
+  return hookEventOf({ hook_event_name: 'PostToolUse', tool_name: toolName, tool_input: { to, message: 'the ask' }, tool_response: toolResponse });
 }
 
 const NOT_REACHABLE = { success: false, message: "No agent named 'team-lead' is reachable.\nUse ListAgents to see everyone you can message." };
