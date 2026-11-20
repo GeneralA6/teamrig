@@ -271,6 +271,11 @@ export class GitHubIssueHost implements IssueHost {
     return id === undefined ? { kind: 'failed', reason: `gh printed no id for ${shown}` } : { kind: 'found', id };
   }
 
+  /** A label here takes any name, a space too, so each is held as it is. */
+  labelName(label: string): string {
+    return label;
+  }
+
   /**
    * Reads one issue or pull request through the same REST read as its id (an issue's path serves a pull request too):
    * read with its state, labels, assignees, kind and body; missing on Not Found; else failed with gh's own line, or

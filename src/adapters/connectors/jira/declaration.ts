@@ -47,12 +47,9 @@ export const declaration: ConnectorDeclaration = {
     'tracker.close': unsupported(NOT_BUILT.close),
     'tracker.labels': partial(
       'a label made with a colour and a description, and a name holding a space',
-      'a Jira label has no colour and no description, holds no space, and exists once an issue carries it',
+      'a Jira label has no colour and no description and exists once an issue carries it; it holds no space, so a name with one is held with a hyphen in its place',
     ),
-    'tracker.status-push': partial(
-      'the assignee, and the two status labels whose names hold a space',
-      'the Jira connector sets no assignee yet, and a Jira label holds no space: the status labels with one are refused',
-    ),
+    'tracker.status-push': partial('the assignee', 'the Jira connector sets no assignee yet'),
     'tracker.assign': unsupported(NOT_BUILT.assign),
     'tracker.claims': unsupported('the Jira connector does not assign issues yet, so a claim line takes no issue'),
     'tracker.clocks': partial("a commenter's tie to the project", 'Jira names no tie between a commenter and the project: every comment is read as an outsider\'s'),

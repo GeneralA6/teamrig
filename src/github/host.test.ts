@@ -344,6 +344,12 @@ describe('GitHubIssueHost', () => {
     assert.ok(odd.kind === 'failed' && !odd.reason.includes(secret) && odd.reason.startsWith('gh api to read the label "p1" of acme/web exited with code 1: gh: HTTP 502 [redacted'), JSON.stringify(odd));
   });
 
+  it('holds every label under its own name, with no request (T4754)', () => {
+    const gh = new FakeGh();
+    assert.equal(hostWith(gh).labelName('status:in progress'), 'status:in progress');
+    assert.deepEqual(gh.ran, []);
+  });
+
   it("reads an issue's id: found, missing on Not Found, else failed with gh's line redacted, or with no id printed", async () => {
     const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7)]);
     const host = hostWith(gh);

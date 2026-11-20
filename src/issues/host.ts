@@ -175,8 +175,18 @@ export interface Comments {
   newComments(target: IssueTarget, since: number): Promise<HostComments>;
 }
 
-/** A tracker's labels: a repository's read and made, an item's read, added and taken off. */
+/** A tracker's Labels.labelName, handed to code that plans or looks a label up with no tracker of its own. */
+export type LabelNaming = (label: string) => string;
+
+/** A tracker's labels: named as it holds them, a repository's read and made, an item's read, added and taken off. */
 export interface Labels {
+  /**
+   * The name this tracker holds `label` under: the label itself where a label takes any name, else the nearest name
+   * the tracker takes (a tracker whose labels hold no space gives one without). Every read gives a label back under
+   * that name, so a label teamrig knows by its own name (a status label, one a person typed) is named through this
+   * before it is looked for, made, added or taken off. Naming a name gives it back.
+   */
+  labelName(label: string): string;
   /** Whether `repo` has the label `label`, so a label is only added once the repository has it. */
   labelExists(repo: string, label: string): Promise<HostLabel>;
   /**

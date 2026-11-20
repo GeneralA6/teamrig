@@ -68,6 +68,14 @@ describe('the Jira declaration', () => {
     assert.equal(NOT_BUILT.open, 'the Jira connector does not open issues yet');
   });
 
+  it('holds a label name with a space under a hyphen, so the status push lacks only the assignee (T4754)', () => {
+    assert.deepEqual(declaration.manifest['tracker.status-push'], { kind: 'partial', missing: 'the assignee', notice: 'the Jira connector sets no assignee yet', proofs: [] });
+    assert.equal(
+      noticeOf('tracker.labels'),
+      'a Jira label has no colour and no description and exists once an issue carries it; it holds no space, so a name with one is held with a hyphen in its place',
+    );
+  });
+
   it('says a comment and a description go to Jira as plain text', () => {
     assert.deepEqual(declaration.manifest['tracker.comment'], { kind: 'partial', missing: 'Markdown', notice: 'a comment is posted to Jira as plain paragraphs: its Markdown marks show as typed', proofs: [] });
     assert.equal(noticeOf('tracker.edit-body'), 'a description is written to Jira as plain paragraphs: its Markdown marks show as typed');

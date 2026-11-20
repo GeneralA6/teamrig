@@ -421,6 +421,21 @@ describe('labels on a Jira issue', () => {
     assert.deepEqual(http.requests, []);
   });
 
+  it("names a label by what Jira can hold, each run of white space as one hyphen, so core's status labels are found and added (T4754)", async () => {
+    const { tracker, http } = kit();
+    assert.equal(tracker.labelName('status:in progress'), 'status:in-progress');
+    assert.equal(tracker.labelName('needs  more\tinfo'), 'needs-more-info');
+    assert.equal(tracker.labelName('bug'), 'bug');
+    const named = ['status:open', 'status:claimed', 'status:in progress', 'status:waiting', 'status:in review'].map((label) => tracker.labelName(label));
+    for (const label of named) {
+      assert.deepEqual(await tracker.labelExists(REPO, label), { kind: 'found' }, label);
+    }
+    http.answers('PUT', ISSUE, 204);
+    assert.deepEqual(await tracker.addLabels(TARGET, named), { kind: 'done' });
+    const held = ['status:open', 'status:claimed', 'status:in-progress', 'status:waiting', 'status:in-review'];
+    assert.deepEqual(sent(http), [['PUT', '/issue/ENG-12', { update: { labels: held.map((add) => ({ add })) } }]]);
+  });
+
   it('adds labels in one write, and takes one off', async () => {
     const { tracker, http } = kit();
     http.answers('PUT', ISSUE, 204);

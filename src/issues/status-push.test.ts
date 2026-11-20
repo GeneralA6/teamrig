@@ -112,6 +112,22 @@ describe('planPush (T2682)', () => {
     assert.equal(plan.unchanged, 1);
   });
 
+  it('plans a status label under the name the tracker holds it by, so one it renames is not added again on every run (T4754)', () => {
+    const hyphens = (label: string): string => label.replace(/\s+/gu, '-');
+    const tasks = [holding('T1', 7, { status: 'in-progress' })];
+    const planned = (labels: string[]): ReturnType<typeof planPush> => planPush(REPO, [testHostIssue(7, { labels })], tasks, SESSION_PUSH, undefined, new Set(), hyphens);
+    const held = planned(['status:in-progress']);
+    assert.deepEqual([held.changes, held.unchanged], [[], 1]);
+    assert.deepEqual(
+      planned([]).changes.map((change) => [change.add, change.remove]),
+      [[['status:in-progress'], []]],
+    );
+    assert.deepEqual(
+      planned(['status:in progress']).changes.map((change) => [change.add, change.remove]),
+      [[['status:in-progress'], ['status:in progress']]],
+    );
+  });
+
   it('closes the open issue of a done task as completed and of a dropped one as not planned, taking off its status labels', () => {
     const plan = planPush(
       REPO,
@@ -372,6 +388,21 @@ describe('planIssue (T3169)', () => {
     assert.deepEqual(planIssue(target, done, { state: 'open', labels: ['status:in progress'], assignees: ['outsider'] }), { kind: 'kept-open', why: { kind: 'taken', assignees: ['outsider'] }, wantsViewer: false });
     assert.deepEqual(planIssue(target, done, { state: 'open', labels: ['design'], assignees: [] }), { kind: 'kept-open', why: { kind: 'design' }, wantsViewer: false });
     assert.equal(planIssue(target, done, { state: 'open', labels: [], assignees: ['acme'] }).kind, 'change', 'the repository owner is the team');
+  });
+
+  it('plans the one issue status label under the name the tracker holds it by, as the repository push does (T4754)', () => {
+    const hyphens = (label: string): string => label.replace(/\s+/gu, '-');
+    const verifying = holding('T1', 922, { status: 'verifying' });
+    assert.deepEqual(planIssue(target, verifying, { state: 'open', labels: ['status:in-review'], assignees: ['x'] }, undefined, hyphens), { kind: 'unchanged', wantsViewer: false });
+    const who = pushAssignees(sessionLogins({}), viewerRead('sync-bot'));
+    assert.deepEqual(
+      issuePushPlan(target, verifying, { state: 'open', labels: [], assignees: ['x'] }, who, hyphens).changes.map((change) => change.add),
+      [['status:in-review']],
+    );
+    assert.deepEqual(
+      issuePushPlan(target, verifying, { state: 'open', labels: [], assignees: ['x'] }, who).changes.map((change) => change.add),
+      [['status:in review']],
+    );
   });
 });
 

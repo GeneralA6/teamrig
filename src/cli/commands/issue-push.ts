@@ -5,7 +5,7 @@ import { closedSince } from '../../github/sync.ts';
 import { GITHUB_REPOS_HOST, targetText, type PullRequests, type Tracker } from '../../issues/host.ts';
 import { applyPush } from '../../issues/push-apply.ts';
 import { planAssigned, viewerOf } from '../../issues/push-assignees.ts';
-import { changeLine, changeWrites, planPush, pushAssignees, SESSION_PUSH, sessionLogins, VIEWER_UNREAD, type PushLimits, type PushPlan, type SessionLogins } from '../../issues/status-push.ts';
+import { changeLine, changeWrites, planPush, pushAssignees, SESSION_PUSH, sessionLogins, VIEWER_UNREAD, type PushAssignees, type PushLimits, type PushPlan, type SessionLogins } from '../../issues/status-push.ts';
 import type { Task } from '../../register/fold.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
@@ -149,13 +149,14 @@ export async function pushRepos(run: PushRun, say: (line: string) => void): Prom
       viewers.set(reach.scope, reading);
       return reading;
     };
-    const assigned = await planAssigned(run.host, repo, (who) => planPush(repo, read.issues, tasks, limits, who), pushAssignees(run.logins, VIEWER_UNREAD), readViewer, say);
+    // Each status label is planned under the name the tracker holds it by, as the list above gave the issues' labels.
+    const planFor = (who: PushAssignees, openPulls?: ReadonlySet<number>): PushPlan => planPush(repo, read.issues, tasks, limits, who, openPulls, (label) => run.host.labelName(label));
+    const assigned = await planAssigned(run.host, repo, planFor, pushAssignees(run.logins, VIEWER_UNREAD), readViewer, say);
     if (assigned.kind === 'failed') {
       failures.push({ repo, reason: assigned.reason });
       continue;
     }
-    const plan =
-      assigned.plan.unlisted.length === 0 ? assigned.plan : planPush(repo, read.issues, tasks, limits, assigned.who, await openPullsOf(run.pulls, repo, say));
+    const plan = assigned.plan.unlisted.length === 0 ? assigned.plan : planFor(assigned.who, await openPullsOf(run.pulls, repo, say));
     planLines(plan).forEach(say);
     const planned = plan.changes.reduce((sum, change) => sum + changeWrites(change), 0);
     left -= planned;

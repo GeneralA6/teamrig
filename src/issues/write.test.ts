@@ -302,6 +302,28 @@ describe('labelIssue', () => {
     ]);
   });
 
+  it('names each label as the tracker holds it before it looks for it, makes it, adds it or takes it off (T4754)', async () => {
+    const hyphens = (name: string): string => name.replace(/\s+/gu, '-');
+    const host = new FakeIssueHost().namesLabels(hyphens).hasLabels('good-first-issue');
+    assert.deepEqual(await label(host, { add: ['good first issue'], remove: ['needs info'] }), {
+      done: true,
+      lines: ['ACCESS acme: writes as the test', 'LABELED acme/web#7: "good-first-issue"', 'UNLABELED acme/web#7: "needs-info"'],
+    });
+    assert.deepEqual(host.calls, [
+      { kind: 'label-add', target: TARGET, labels: ['good-first-issue'] },
+      { kind: 'label-remove', target: TARGET, label: 'needs-info' },
+    ]);
+    const lacking = new FakeIssueHost().namesLabels(hyphens);
+    assert.deepEqual((await label(lacking, { add: ['status:in progress'], remove: [] })).lines.slice(1), [
+      'MADE acme/web: the label "status:in-progress", one teamrig makes',
+      'LABELED acme/web#7: "status:in-progress"',
+    ]);
+    assert.deepEqual(lacking.calls[0], { kind: 'label-create', repo: 'acme/web', label: { name: 'status:in-progress', color: '8957e5', description: 'Work on it is under way' } });
+    const filed = new FakeIssueHost().namesLabels(hyphens).holdsLabelFile('acme/web', { kind: 'read', labels: [{ name: 'needs info', color: 'd876e3', description: 'More is needed' }] });
+    assert.equal((await label(filed, { add: ['needs info'], remove: [] })).done, true);
+    assert.deepEqual(filed.calls[0], { kind: 'label-create', repo: 'acme/web', label: { name: 'needs-info', color: 'd876e3', description: 'More is needed' } });
+  });
+
   it('reads the label file from the code host and writes the labels on the tracker, when they are two hosts (T4619)', async () => {
     const area = { name: 'area:cli', color: '1d76db', description: 'Area: the command line' };
     const tracker = new FakeIssueHost();

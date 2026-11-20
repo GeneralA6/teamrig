@@ -134,6 +134,23 @@ describe('issue reply (T3169)', () => {
       ['label-add', 'label-remove', 'assign', 'body', 'open', 'comment'],
     );
   });
+
+  it('plans its status label under the name the tracker holds it by, so an issue showing it under that name gets no label write (T4754)', async () => {
+    const hyphens = (label: string): string => label.replace(/\s+/gu, '-');
+    const shown = new FakeIssueHost().namesLabels(hyphens).holdsThread(922, { labels: ['status:in-review'], assignees: ['octocat'] });
+    const kept = await reply(shown, { target: TARGET, body: 'On it.', assign: [] });
+    assert.ok(kept.ok, kept.lines.join('\n'));
+    assert.deepEqual(
+      shown.calls.map((call) => call.kind),
+      ['comment'],
+    );
+    const stale = new FakeIssueHost().namesLabels(hyphens).hasLabels('status:in-review').holdsThread(922, { labels: ['status:open'], assignees: ['octocat'] });
+    const moved = await reply(stale, { target: TARGET, body: 'On it.', assign: [] });
+    assert.ok(moved.ok, moved.lines.join('\n'));
+    const added = stale.calls.find((call) => call.kind === 'label-add');
+    assert.ok(added?.kind === 'label-add');
+    assert.deepEqual(added.labels, ['status:in-review']);
+  });
 });
 
 describe('closesIssue (T3169)', () => {
