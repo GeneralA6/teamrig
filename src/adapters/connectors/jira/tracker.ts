@@ -104,6 +104,12 @@ function accountId(user: JsonRecord | undefined): string {
   return (user === undefined ? undefined : stringField(user, 'accountId')) ?? '';
 }
 
+/** The field `name` of one issue as a read of it answers, when the answer holds an object there. */
+function issueField(body: unknown, name: string): JsonRecord | undefined {
+  const fields = isRecord(body) ? recordField(body, 'fields') : undefined;
+  return fields === undefined ? undefined : recordField(fields, name);
+}
+
 /**
  * What kind of account a Jira user is, in the port's words: a person (a customer of a service desk is one) or an app.
  * Empty for any other, which core reads as no person.
@@ -298,7 +304,7 @@ export class JiraTracker implements Tracker {
     if (issue.kind === 'failed') {
       return issue;
     }
-    if (isDoneStatus(isRecord(issue.body) ? recordField(recordField(issue.body, 'fields') ?? {}, 'status') : undefined)) {
+    if (isDoneStatus(issueField(issue.body, 'status'))) {
       return { kind: 'done' };
     }
     const offered = await this.read(target, place, '/transitions?expand=transitions.fields');
