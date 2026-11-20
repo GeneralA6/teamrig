@@ -29,11 +29,11 @@ import { layoutPaths, MissingSegmentError, readWorkingSet, type LayoutPaths } fr
 import type { RegisterSnapshot } from '../../register/snapshot.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
 import { sessionRef } from '../inputs.ts';
-import { configWarnings, findTeam, loadedConfig, openKit, pastOrPresentIdOf, rosterOf } from '../kit.ts';
+import { findTeam, loadedConfig, openKit, pastOrPresentIdOf, rosterOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
 import { selfOf, sessionsSource } from './read-sessions.ts';
-import { skippedOf, stampsOf, type DocumentSource, type ReadScope } from './read-source.ts';
+import { configProblemsOf, servedPathOf, skippedOf, stampsOf, type DocumentSource, type ReadScope, type ServedFolder } from './read-source.ts';
 
 /** The trackers a document names a ref or a source by; a second one is one more entry here. */
 const CONNECTORS: readonly Connector[] = [GITHUB_CONNECTOR];
@@ -216,7 +216,7 @@ async function scopeOf(request: ReadRequest, runtime: CliRuntime): Promise<ReadS
     self,
     tree,
     sinceHours: request.sinceHours,
-    warnings: configWarnings(load),
+    warnings: configProblemsOf(kit.paths, load),
   };
 }
 
@@ -259,7 +259,7 @@ function tasksSource(scope: ReadScope): DocumentSource {
       };
     },
     async build() {
-      const register = await workingSetOf(runtime, layout);
+      const register = await workingSetOf(runtime, kit.paths, layout);
       const body = tasksBody({
         tasks: register.tasks,
         owner: scope.owner,
@@ -315,7 +315,7 @@ function inboxSource(scope: ReadScope): DocumentSource {
         connectors: CONNECTORS,
         shapes: new SecretScanner(config.register.secretPatterns),
       });
-      return { body, problems: skippedOf(kit.paths.inboxMarks, log) };
+      return { body, problems: skippedOf(kit.paths, kit.paths.inboxMarks, log) };
     },
   };
 }
@@ -342,20 +342,22 @@ interface WorkingSet {
  * The register's tasks and what could not be read of them. An archive with a segment gone serves no task and says
  * why, where a text command refuses: one broken document must not take down the others asked in the same run.
  */
-async function workingSetOf(runtime: CliRuntime, layout: LayoutPaths): Promise<WorkingSet> {
+async function workingSetOf(runtime: CliRuntime, folder: ServedFolder, layout: LayoutPaths): Promise<WorkingSet> {
   try {
     const snapshot = await readWorkingSet(runtime.files, layout);
-    return { tasks: snapshot.state.tasks.values(), problems: damageOf(snapshot, layout.tail) };
+    return { tasks: snapshot.state.tasks.values(), problems: damageOf(snapshot, folder, layout.tail) };
   } catch (error) {
     if (error instanceof MissingSegmentError) {
-      return { tasks: [], problems: [error.message] };
+      const segment = servedPathOf(folder, error.path);
+      return { tasks: [], problems: [`${segment}: missing, so the register's archive is incomplete and its tasks cannot be read`] };
     }
     throw error;
   }
 }
 
 /** Damaged or newer lines never stop a read; each kind left out is one line, so a reader shows which it is. */
-function damageOf(snapshot: RegisterSnapshot, path: string): string[] {
+function damageOf(snapshot: RegisterSnapshot, folder: ServedFolder, path: string): string[] {
   const { orphans } = snapshot.state;
-  return [...skippedOf(path, snapshot.read), ...(orphans > 0 ? [`${path}: ${orphans} event(s) naming no task left out`] : [])];
+  const unowned = orphans > 0 ? [`${servedPathOf(folder, path)}: ${orphans} event(s) naming no task left out`] : [];
+  return [...skippedOf(folder, path, snapshot.read), ...unowned];
 }
