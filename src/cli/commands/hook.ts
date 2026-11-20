@@ -54,7 +54,7 @@ import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { keptRulesAboveOf, readTeamRules } from '../team-rules.ts';
 import { loadTree } from '../tree.ts';
 import { bindAfterClear, bindHintOnce, bindNamedTab, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
-import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
+import { helperGateReply, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
 import { ensureWatch } from './issue-watch.ts';
 import { leaderDigestText } from './hook-leader-digest.ts';
 import { closedSendHold } from './hook-closed-send.ts';
@@ -400,16 +400,13 @@ export async function helperGateHook(args: ParsedArgs, runtime: CliRuntime): Pro
   if (event === undefined) {
     return EXIT.ok;
   }
-  const output = await helperGateOf(runtime, event).catch(() => undefined);
-  if (output !== undefined) {
-    runtime.out.stdout(output);
-  }
+  writeReply(runtime, 'tool-start', await helperGateOf(runtime, event).catch(() => undefined));
   return EXIT.ok;
 }
 
-async function helperGateOf(runtime: CliRuntime, event: HookEvent): Promise<string | undefined> {
+async function helperGateOf(runtime: CliRuntime, event: HookEvent): Promise<HookReply | undefined> {
   const scope = await hookScopeOf(runtime, event);
-  return scope === undefined ? undefined : helperGateOutput(runtime, scope, event.transcript);
+  return scope === undefined ? undefined : helperGateReply(runtime, scope, event.transcript);
 }
 
 /** What a session's start reads of its hook event. */
