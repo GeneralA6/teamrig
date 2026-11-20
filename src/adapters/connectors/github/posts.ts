@@ -1,6 +1,14 @@
-import { isRecord, numberField, recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import type { HostPost } from '../issues/post.ts';
-import { MENTION_PAGE_SIZE, MENTION_PAGES_MAX, REVIEW_READS_MAX } from '../issues/scan-caps.ts';
+import {
+  isRecord,
+  MENTION_PAGE_SIZE,
+  MENTION_PAGES_MAX,
+  numberField,
+  recordField,
+  REVIEW_READS_MAX,
+  stringField,
+  type HostPost,
+  type JsonRecord,
+} from '../../../plugin-api/index.ts';
 import { MENTION_LISTS, mentionListArgs, reviewListArgs, type GhRunner, type MentionList } from './gh.ts';
 import { loginOf, runRead, timeField, WEB_URL, type ReadKind } from './issues.ts';
 import type { RepoAccess } from './tokens.ts';

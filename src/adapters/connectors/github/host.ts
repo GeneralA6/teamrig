@@ -1,12 +1,21 @@
-import type { SecretScanner } from '../core/secrets.ts';
-import { withStampFooter } from '../core/stamp.ts';
 import {
+  exitText,
+  isLogin,
+  isRecord,
+  LABEL_FILE,
+  MAX_COMMENT,
+  parseLabelFile,
+  plainLine,
   targetText,
+  withStampFooter,
   type CloseReason,
-  type HostEnd,
+  type Env,
+  type FieldValue,
   type HostAssignee,
-  type HostViewer,
   type HostComments,
+  type HostEnd,
+  type HostField,
+  type HostFieldRead,
   type HostIssueId,
   type HostIssueLabels,
   type HostJobLog,
@@ -15,27 +24,23 @@ import {
   type HostLinks,
   type HostList,
   type HostOpen,
+  type HostPosts,
   type HostPulls,
   type HostReach,
   type HostThread,
   type HostUse,
+  type HostViewer,
   type HostWatch,
   type IssueDraft,
+  type IssueFields,
   type IssueHost,
-  type LabelSpec,
+  type IssueState,
   type IssueTarget,
+  type IssueThread,
+  type LabelSpec,
+  type SecretScanner,
   type WatchMarks,
-} from '../issues/host.ts';
-import { isRecord } from '../core/guards.ts';
-import type { FieldValue, HostField, HostFieldRead, IssueFields } from '../issues/fields.ts';
-import type { IssueState, IssueThread } from '../issues/issue.ts';
-import type { HostPosts } from '../issues/post.ts';
-import { LABEL_FILE, parseLabelFile } from '../issues/label-file.ts';
-import { isLogin } from '../issues/login.ts';
-import { MAX_COMMENT } from '../issues/write.ts';
-import { plainLine } from '../core/printable.ts';
-import { exitText } from '../open/processes.ts';
-import type { Env } from '../core/home.ts';
+} from '../../../plugin-api/index.ts';
 import {
   assigneeReadArgs,
   blockedByAddArgs,

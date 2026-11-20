@@ -1,10 +1,21 @@
-import { errorCode, errorMessage, isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import { plainLine } from '../core/printable.ts';
-import { exitText } from '../open/processes.ts';
-import { CONNECTOR_RUN_TIMEOUT_MS, ProgramOutputCapError } from '../plugin-api/index.ts';
+import {
+  CONNECTOR_RUN_TIMEOUT_MS,
+  errorCode,
+  errorMessage,
+  exitText,
+  isClaim,
+  isRecord,
+  plainLine,
+  ProgramOutputCapError,
+  recordField,
+  stringField,
+  type HostIssue,
+  type IssueComment,
+  type JsonRecord,
+  type LabelEvent,
+  type ReadComment,
+} from '../../../plugin-api/index.ts';
 import type { GhResult, GhRunner } from './gh.ts';
-import type { HostIssue, IssueComment, LabelEvent, ReadComment } from '../issues/issue.ts';
-import { isClaim } from '../issues/claim.ts';
 import { closedPageArgs, openPageArgs, type PageVariables } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 

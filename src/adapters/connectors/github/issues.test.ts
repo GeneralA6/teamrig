@@ -1,10 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { JsonRecord } from '../core/guards.ts';
-import { commentNode, FakeGh, ghIssue, labeledEvent, renamedEvent } from '../testing/fake-gh.ts';
-import { ProgramOutputCapError } from '../plugin-api/index.ts';
+import { ProgramOutputCapError, type HostIssue, type JsonRecord } from '../../../plugin-api/index.ts';
+import { commentNode, FakeGh, ghIssue, labeledEvent, renamedEvent } from '../../../testing/fake-gh.ts';
 import { GH_PROGRAM, isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
-import type { HostIssue } from '../issues/issue.ts';
 import { createdNumber, issuePageArgs, latestIssues, listIssues, parseIssuePage, readCommentsIn, startFailureText, type IssueListRequest } from './issues.ts';
 import { closedPageArgs, openPageArgs } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
