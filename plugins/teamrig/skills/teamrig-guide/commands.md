@@ -1327,7 +1327,10 @@ the `gh` login in its place.
 
 It does not see an issue closed over `closedDays` ago while its task was open, so that task stays open; nor an issue
 past the first 500 of a list, which a `NOTE` line points out. `TEAMRIG_GITHUB=off` turns the command off on a
-machine, and with no `github.repos` it prints an `OFF` line; neither reads nor writes anything. Exit 1 when a
+machine (so does `TEAMRIG_CONNECTOR_GITHUB=off`, the switch every connector has: `TEAMRIG_CONNECTOR_<ID>=off`, the
+id in upper case with `_` for each `-`; wherever this guide names `TEAMRIG_GITHUB=off`, either works and the `OFF`
+line names the one that is set), and with no `github.repos` it prints an `OFF` line; neither reads nor writes
+anything. Exit 1 when a
 repository could not be read (its tasks stay as they are, and the `FAILED` line says why), 2 when the
 register refused a step (a `SKIPPED` line each), else 0.
 
