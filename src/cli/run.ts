@@ -216,7 +216,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'idle-close': { effect: 'internal', flags: ['team', 'project'], load: async () => (await idleActCommands()).idleClose },
   'idle-open': { effect: 'internal', flags: ['team', 'project'], load: async () => (await idleActCommands()).idleOpen },
   who: { effect: 'read', flags: [], load: async () => (await teamCommands()).who },
-  read: { effect: 'read', flags: ['session', 'team', 'owner', 'since', 'interface'], switches: ['json'], load: async () => (await readCommand()).read },
+  read: { effect: 'read', flags: ['session', 'team', 'owner', 'since', 'conversation', 'interface'], switches: ['json'], load: async () => (await readCommand()).read },
   sessions: { effect: 'read', flags: ['project'], switches: ['pass'], load: async () => (await sessionsCommands()).sessions },
   close: { effect: 'write', flags: ['session', 'project'], switches: ['yes'], load: async () => (await closeCommands()).close },
   'cleanup launchers': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await cleanupCommands()).cleanupLaunchers },
@@ -689,12 +689,16 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --team <child>: a request of a team below yours, whose roles.securityReviewer names you as <team>/<id>
   exec run R<n>        runs an approved request once, before its approval expires
   who [<id|name|role|team/id>] the name to message a session by (no argument: every session of yours)
-  read <document>... --json [--session <id|name>] [--team <id>] [--owner <id|name>] [--since <hours>]
-      [--interface <major.minor>]   the public interface's read side, for a program: each document
-      asked is one JSON line on stdout, in the order asked, with its revision and what could not be
-      served (problems); a refusal goes to stderr, so stdout holds answers only. Documents: tasks (the
-      register's working set; --owner keeps one session's), inbox (--session's own lines, marking none
-      read: the unread ones and the read ones of the last --since hours, 24 unless given). --team: a
+  read <document>... --json [--session <id|name>] [--conversation <id>] [--team <id>] [--owner <id|name>]
+      [--since <hours>] [--interface <major.minor>]   the public interface's read side, for a program:
+      each document asked is one JSON line on stdout, in the order asked, with its revision and what
+      could not be served (problems); a refusal goes to stderr, so stdout holds answers only.
+      Documents: tasks (the register's working set; --owner keeps one session's), inbox (--session's
+      own lines, marking none read: the unread ones and the read ones of the last --since hours, 24
+      unless given), sessions (every session of your tree of teams: its place, hire, state and unread
+      count; a hire's and a retirement's words only for your own team and the teams above it).
+      --conversation: the host's id of the conversation the program runs in; sessions then names the
+      session holding it (self), and inbox serves that session's when no --session is given. --team: a
       team above yours, for tasks. --interface: the version you speak, refused when this teamrig does
       not serve it. It writes nothing
   sessions [--pass] [--project <dir>]   each session: running (and the MB its Claude Code's processes
