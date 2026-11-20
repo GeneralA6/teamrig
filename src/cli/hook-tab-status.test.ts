@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import { bareHost } from '../testing/bare-host.ts';
+import { HOOKS_ONLY_HOST } from '../testing/host.ts';
 import { TAB_CIRCLES } from '../tabs/status.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
@@ -72,7 +72,7 @@ describe('hook tab-status', () => {
 
   it("takes the topic from the payload alone on a host that keeps no transcript it can read", async () => {
     const kit = await teamWith(ON_TEAM, [JSON.stringify({ type: 'custom-title', customTitle: 'scout' })]);
-    const bare: HostSource = bareHost;
+    const bare: HostSource = HOOKS_ONLY_HOST;
     const kept = await kit.run(['hook', 'tab-status'], { stdin: payload('UserPromptSubmit', { prompt: 'and the tests' }), env: TITLE_OFF });
     assert.equal(titleOf(kept), `${TAB_CIRCLES.working} scout`);
     const prompt = await kit.run(['hook', 'tab-status'], { stdin: payload('UserPromptSubmit', { prompt: 'and the tests' }), env: TITLE_OFF, host: bare });
@@ -132,7 +132,7 @@ describe('hook stop: tab status', () => {
 
   it('shows ready at a turn end on a host that keeps no transcript it can read, whose helpers it cannot see', async () => {
     const busy = await teamWith(ON_TEAM, HELPER);
-    const bare: HostSource = bareHost;
+    const bare: HostSource = HOOKS_ONLY_HOST;
     const title = titleOf(await busy.run(['hook', 'stop'], { stdin: stop(), env: TITLE_OFF, host: bare }));
     assert.equal(title?.startsWith(TAB_CIRCLES.ready), true, title);
   });
