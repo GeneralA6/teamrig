@@ -1,6 +1,7 @@
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { aiTitleOf, customTitleOf } from '../names/title.ts';
+import type { InputEntry } from '../ports/host/index.ts';
 import type { BackgroundKind } from '../refresh/running.ts';
 
 /**
@@ -162,6 +163,11 @@ export function messageTextOf(entry: JsonRecord): string | undefined {
   }
   const block = Array.isArray(content) ? content.find((item) => isRecord(item) && item['type'] === 'text') : undefined;
   return isRecord(block) ? stringField(block, 'text') : undefined;
+}
+
+/** The text of an input the host's transcript reader read: its string content, else its first text block. */
+export function inputTextOf(entry: InputEntry): string | undefined {
+  return entry.text ?? entry.parts[0];
 }
 
 /**
