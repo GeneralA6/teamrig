@@ -91,6 +91,7 @@ describe('teamPaths', () => {
     assert.equal(paths.effortChanges, join(TEAM_HOME, 'state', 'effort-changes.jsonl'));
     assert.equal(paths.unownedNotices, join(TEAM_HOME, 'state', 'unowned-notices.json'));
     assert.equal(paths.unownedNoticesLock, join(TEAM_HOME, 'state', 'unowned-notices.lock'));
+    assert.equal(paths.checkSeen, join(TEAM_HOME, 'state', 'check-seen'));
     assert.equal(paths.usage, join(TEAM_HOME, 'state', 'usage'));
     assert.equal(paths.lifts, join(TEAM_HOME, 'state', 'usage', 'lifts.jsonl'));
     assert.equal(paths.teamWeek, join(TEAM_HOME, 'state', ...TEAM_WEEK_IN_STATE), 'where the read side says the team week summary is');

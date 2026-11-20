@@ -257,11 +257,12 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       of a task that needs it ("due 01-12 (from T9)"), and a row names another session's task needing it.
       --parked: only the quiet tasks the park rule leaves out of a list; --untriaged: only the tasks that
       wait for a leader to class them
-  show <id> [--tree] [--history]   every field, the last 3 history events and the inbox lines naming it;
-      --history: every event; --tree: what it needs and what needs it, each with owner, status and due, then
-      the next move (who acts first, on which task)
-  check [--week <date>] [--tree] [--all]   tasks and skills that break a team rule and context
-      text over budget, in a short form within 3,000 characters; --all: every flag in full
+  show <id> [<id> ...] [--tree] [--history]   every field, the last 3 history events and the inbox lines naming
+      it, for each id in order (an unknown one refuses the call); --history: every event; --tree: what it needs
+      and what needs it, each with owner, status and due, then the next move (who acts first, on which task)
+  check [--week <date>] [--tree] [--all] [--new]   tasks and skills that break a team rule and context
+      text over budget, in a short form within 3,000 characters; --all: every flag in full; --new:
+      only the flags the session acts on (as start shows them) new since its last start or check --new
   plan [--week <date>] [--tree] [--by-slice]    the week plan (default: the newest week that has
       started); --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>;
       --by-slice: the week's tasks under each slice of the team's goals first, then the rest by band

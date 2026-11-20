@@ -166,6 +166,8 @@ export interface TeamPaths {
   readonly unownedNotices: string;
   /** Held while a start tells the lead of those warnings, so two starts never tell one twice. */
   readonly unownedNoticesLock: string;
+  /** What `start` and `check --new` last showed each session of the check flags, `<id>.json` each (T2536). */
+  readonly checkSeen: string;
   /** Each session's metered use, `<id>.json` each, and the use outside the team in its own folder (budget/measure.ts `outsideUsageDir`). */
   readonly usage: string;
   /** The Claude config dir the team's sessions last started in, recorded at each start (budget/config-dir.ts). */
@@ -348,6 +350,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     effortChanges: join(state, 'effort-changes.jsonl'),
     unownedNotices: join(state, 'unowned-notices.json'),
     unownedNoticesLock: join(state, 'unowned-notices.lock'),
+    checkSeen: join(state, 'check-seen'),
     usage: join(state, 'usage'),
     configDirRecord: join(state, 'usage', 'claude-config-dir.json'),
     skillsScorecard: join(state, 'skills-scorecard.json'),

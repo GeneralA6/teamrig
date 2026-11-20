@@ -1,3 +1,4 @@
+import type { LeadTree } from '../config/lead-tree.ts';
 import { KIT_NAME } from '../core/home.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { DecisionBatch } from '../decisions/batch.ts';
@@ -73,6 +74,11 @@ export interface LeadDecisions {
   readonly batch: DecisionBatch;
   /** The team's clock, which the batch times print on. */
   readonly zone: TimeZone;
+}
+
+/** The flags `session` acts on, as its `start` and `check --new` print them: every one for the lead, else {@link ownCheck}'s. */
+export function sessionCheck(report: CheckReport, session: string, tree: Pick<LeadTree, 'lead' | 'groupOf'>): CheckReport {
+  return session === tree.lead ? report : ownCheck(report, session, tree.groupOf(session));
 }
 
 /**
