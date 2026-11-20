@@ -5,5 +5,5 @@ import { unsupported, type HostPorts } from '../ports/host/index.ts';
  * lacking a port. Every spec asks here, so a new port adds its line once and no spec's literal goes stale.
  */
 export function bareHost(): HostPorts {
-  return { transcripts: unsupported('no transcript is kept'), usage: unsupported('no call is priced') };
+  return { transcripts: unsupported('no transcript is kept'), usage: unsupported('no call is priced'), statusLine: unsupported('no status line is drawn') };
 }

@@ -1,5 +1,5 @@
-import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
-import type { Checked } from '../setup/team-create.ts';
+import { isRecord, recordField, stringField, type JsonRecord, type StatusLine, type StatusLineAnswer, type StatusReading } from '../../../plugin-api/index.ts';
+import { objectOf } from './json.ts';
 
 /**
  * How `teamrig statusline install` and `uninstall` change Claude Code's `statusLine` setting. With no
@@ -19,16 +19,8 @@ export function launcherCommand(launcher: string): string {
   return `node "${launcher.replaceAll('\\', '/')}"`;
 }
 
-/** A change to the settings, or none when they already read this way. */
-export interface StatusLinePlan {
-  /** The settings to write; undefined when nothing changes. */
-  readonly settings: JsonRecord | undefined;
-  readonly before: string | undefined;
-  readonly after: string | undefined;
-}
-
 /** Puts the launcher in as the status line, in front of the one already there. */
-export function planInstall(settings: JsonRecord, launcher: string): Checked<StatusLinePlan> {
+export function planInstall(settings: JsonRecord, launcher: string): StatusLineAnswer {
   const own = launcherCommand(launcher);
   const current = currentCommand(settings);
   if (!current.ok) {
@@ -57,7 +49,7 @@ export function planInstall(settings: JsonRecord, launcher: string): Checked<Sta
 }
 
 /** Takes the launcher back out: the status line that was there before it returns, or none when there was none. */
-export function planUninstall(settings: JsonRecord, launcher: string): Checked<StatusLinePlan> {
+export function planUninstall(settings: JsonRecord, launcher: string): StatusLineAnswer {
   const own = launcherCommand(launcher);
   const current = currentCommand(settings);
   if (!current.ok) {
@@ -97,8 +89,10 @@ function statusLineOf(settings: JsonRecord): JsonRecord {
   return isRecord(value) ? value : {};
 }
 
+type Command = { readonly ok: true; readonly value: string | undefined } | { readonly ok: false; readonly problem: string };
+
 /** The status line's command; undefined when there is no status line. A status line without a command is refused. */
-function currentCommand(settings: JsonRecord): Checked<string | undefined> {
+function currentCommand(settings: JsonRecord): Command {
   const value = settings[STATUS_LINE_KEY];
   if (value === undefined) {
     return { ok: true, value: undefined };
@@ -133,3 +127,49 @@ export function compoundOperator(command: string): string | undefined {
   }
   return undefined;
 }
+
+function finite(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function told(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== '' ? value : undefined;
+}
+
+const TRANSCRIPT_SUFFIX = '.jsonl';
+
+/** The session id of a status input: `session_id`, else the transcript's file name, which Claude Code names by it. */
+function sessionIdOf(status: JsonRecord): string | undefined {
+  const id = stringField(status, 'session_id');
+  if (id !== undefined) {
+    return id;
+  }
+  const file = stringField(status, 'transcript_path')?.split(/[\\/]/).at(-1);
+  return file?.endsWith(TRANSCRIPT_SUFFIX) === true ? file.slice(0, -TRANSCRIPT_SUFFIX.length) : file;
+}
+
+/**
+ * The reading of Claude Code's status line input, the JSON object it writes to the command's stdin. The folder is
+ * `workspace.current_dir`, else `cwd`; `effort.level` comes only for a model that takes one.
+ */
+function parse(input: string): StatusReading | undefined {
+  const status = objectOf(input);
+  if (status === undefined) {
+    return undefined;
+  }
+  const workspace = recordField(status, 'workspace');
+  const context = recordField(status, 'context_window');
+  return {
+    sessionId: sessionIdOf(status),
+    cwd: (workspace === undefined ? undefined : stringField(workspace, 'current_dir')) ?? stringField(status, 'cwd') ?? '',
+    agentName: told(recordField(status, 'agent')?.['name']),
+    model: told(recordField(status, 'model')?.['display_name']),
+    effort: told(recordField(status, 'effort')?.['level']),
+    costUsd: finite(recordField(status, 'cost')?.['total_cost_usd']),
+    contextUsedPct: finite(context?.['used_percentage']),
+    contextInputTokens: finite(context?.['total_input_tokens']),
+  };
+}
+
+/** Claude Code's status line. */
+export const statusLine: StatusLine = { setting: STATUS_LINE_KEY, parse, install: planInstall, uninstall: planUninstall };

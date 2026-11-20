@@ -1,4 +1,4 @@
-import { isUnsupported, type HostPorts, type TranscriptReader, type UsageMeter } from '../ports/host/index.ts';
+import { isUnsupported, type HostPorts, type StatusLine, type TranscriptReader, type UsageMeter } from '../ports/host/index.ts';
 import type { ContextSource } from '../refresh/usage.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
@@ -47,6 +47,15 @@ export function usageIfMetered(runtime: Pick<CliRuntime, 'host' | 'env' | 'platf
 export function contextSourceIfTold(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): ContextSource | undefined {
   const { transcripts, usage } = hostOf(runtime);
   return isUnsupported(transcripts) || isUnsupported(usage) ? undefined : { reader: transcripts, usage };
+}
+
+/** The run's status line. A host that draws none refuses with its own reason, as `transcriptsOf` does. */
+export function statusLineOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): StatusLine {
+  const { statusLine } = hostOf(runtime);
+  if (isUnsupported(statusLine)) {
+    throw new RefusedError(statusLine.notice);
+  }
+  return statusLine;
 }
 
 /** The run's usage meter. A host whose calls teamrig cannot price refuses with its own reason, as `transcriptsOf` does. */

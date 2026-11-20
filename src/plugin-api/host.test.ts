@@ -24,9 +24,9 @@ describe('defineHost', () => {
   it('hands back the adapter it is given, whose create builds its ports from the deps', () => {
     const data = hostDeclarationData();
     assert.ok(isHostDeclaration(data));
-    const adapter = defineHost({ declaration: data, create: (deps: HostDeps) => ({ transcripts: unsupported(`no session log on ${deps.platform}`), usage: unsupported('no call is priced') }) });
+    const adapter = defineHost({ declaration: data, create: (deps: HostDeps) => ({ transcripts: unsupported(`no session log on ${deps.platform}`), usage: unsupported('no call is priced'), statusLine: unsupported('no status line is drawn') }) });
     assert.equal(adapter.declaration, data);
-    assert.deepEqual(adapter.create({ env: {}, platform: 'linux', run: () => Promise.reject(new Error('no program runs here')) }), { transcripts: { kind: 'unsupported', notice: 'no session log on linux' }, usage: { kind: 'unsupported', notice: 'no call is priced' } });
+    assert.deepEqual(adapter.create({ env: {}, platform: 'linux', run: () => Promise.reject(new Error('no program runs here')) }), { transcripts: { kind: 'unsupported', notice: 'no session log on linux' }, usage: { kind: 'unsupported', notice: 'no call is priced' }, statusLine: { kind: 'unsupported', notice: 'no status line is drawn' } });
     assert.equal(isHostAdapter(adapter), true);
   });
 });

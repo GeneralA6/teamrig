@@ -4,15 +4,16 @@ import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { LAUNCHER_RECORD_FORMAT, launcherRecordPath } from '../restore/launcher-refresh.ts';
-import { launcherCommand } from '../statusline/install.ts';
 import { LAUNCHER_SCRIPT } from '../statusline/launcher.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import { CliHarness, KIT, USER_HOME } from '../testing/cli-harness.ts';
 import { holderLetsGo, holdFileLock } from '../testing/held-file-lock.ts';
 import { EXIT } from './runtime.ts';
 
 const SETTINGS = join(USER_HOME, '.claude', 'settings.json');
 const LAUNCHER = join(KIT, 'bin', 'statusline.mjs');
-const OWN = launcherCommand(LAUNCHER);
+/** The launcher's command as the shipped host writes it: run by Node, its path with forward slashes. */
+const OWN = `node "${LAUNCHER.replaceAll('\\', '/')}"`;
 const THEIRS = 'node "/u/.claude/scripts/statusline.cjs"';
 const BACKUP = join(KIT, 'backups', 'claude-settings.json');
 /** Settings with a status line already there and another key that must stay as it is. */
@@ -101,6 +102,15 @@ describe('teamrig statusline install', () => {
     assert.equal(split.code, EXIT.refused);
     assert.match(split.stdout[0] ?? '', /^REFUSED the status line already there is a shell line with ";"/);
     assert.equal(compound.files.get(LAUNCHER), undefined);
+  });
+
+  it('refuses on a host that draws no status line, install and uninstall alike, reading and writing nothing', async () => {
+    for (const command of ['install', 'uninstall']) {
+      const kit = await withSettings(ORIGINAL);
+      const result = await kit.run(['statusline', command, '--yes'], { host: bareHost });
+      assert.deepEqual([result.code, result.stdout], [EXIT.refused, ['REFUSED no status line is drawn']], command);
+      assert.deepEqual([kit.files.get(SETTINGS), kit.files.get(LAUNCHER)], [ORIGINAL, undefined], command);
+    }
   });
 
   it("reads Claude Code's folder from $CLAUDE_CONFIG_DIR", async () => {

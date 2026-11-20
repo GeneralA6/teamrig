@@ -3,17 +3,20 @@
  * every one of them, and gives an {@link Unsupported} with its reason for a port its tool cannot fill, so a missing
  * port is a refusal the core words, never a crash.
  */
+import type { StatusLine } from './status-line.ts';
 import type { TranscriptReader } from './transcript-reader.ts';
 import type { Unsupported } from './unsupported.ts';
 import type { UsageMeter } from './usage-meter.ts';
 
 export { isUnsupported, unsupported, type Unsupported } from './unsupported.ts';
+export type { StatusLine, StatusLineAnswer, StatusLinePlan, StatusReading } from './status-line.ts';
 export type { RateLimits, RateWindow, TokenWeights, UsageMeter } from './usage-meter.ts';
 
 /** Every host port by its name. Each line is required: an adapter names every port, filled or not. */
 export interface HostPorts {
   readonly transcripts: TranscriptReader | Unsupported;
   readonly usage: UsageMeter | Unsupported;
+  readonly statusLine: StatusLine | Unsupported;
 }
 
 export {

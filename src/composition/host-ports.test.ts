@@ -9,11 +9,12 @@ import type { ModuleImporter } from './loader.ts';
 const run: ProgramRunner = () => Promise.reject(new Error('no program runs here'));
 
 describe('loadHostPorts', () => {
-  it('gives the shipped host adapter a filled transcript reader and usage meter', async () => {
+  it('gives the shipped host adapter a filled transcript reader, usage meter and status line', async () => {
     const ports = (await loadHostPorts(run))({ env: {}, platform: 'linux' });
-    assert.deepEqual(Object.keys(ports), ['transcripts', 'usage']);
+    assert.deepEqual(Object.keys(ports), ['transcripts', 'usage', 'statusLine']);
     assert.equal(isUnsupported(ports.transcripts), false);
     assert.equal(isUnsupported(ports.usage), false);
+    assert.equal(isUnsupported(ports.statusLine), false);
   });
 
   it('hands the adapter what each run sees, with the one runner of the process', async () => {

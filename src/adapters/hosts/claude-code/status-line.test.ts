@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { compoundOperator, launcherCommand, planInstall, planUninstall } from './install.ts';
+import { compoundOperator, launcherCommand, planInstall, planUninstall, statusLine } from './status-line.ts';
 
 const LAUNCHER = 'C:\\Users\\me\\.teamrig\\bin\\statusline.mjs';
 const OWN = 'node "C:/Users/me/.teamrig/bin/statusline.mjs"';
@@ -84,6 +84,60 @@ describe('planUninstall', () => {
   it('refuses a launcher line changed by hand', () => {
     const plan = planUninstall({ statusLine: { type: 'command', command: `${OWN} --verbose` } }, LAUNCHER);
     assert.match(plan.ok ? '' : plan.problem, /changed by hand/);
+  });
+});
+
+describe('statusLine', () => {
+  const FULL = {
+    session_id: '0f8fad5b-d9cb-469f-a165-70867728950e',
+    transcript_path: 'C:\\Users\\me\\.claude\\projects\\p\\another-name.jsonl',
+    cwd: '/elsewhere',
+    workspace: { current_dir: '/work/repo' },
+    agent: { name: 'alpha' },
+    model: { id: 'model-id', display_name: 'Opus' },
+    effort: { level: 'high' },
+    cost: { total_cost_usd: 1.25 },
+    context_window: { used_percentage: 42, total_input_tokens: 84_000 },
+  };
+
+  it('names the setting its plans change, and plans by planInstall and planUninstall', () => {
+    assert.equal(statusLine.setting, 'statusLine');
+    assert.deepEqual(statusLine.install({}, LAUNCHER), planInstall({}, LAUNCHER));
+    const installed = { statusLine: { type: 'command', command: OWN } };
+    assert.deepEqual(statusLine.uninstall(installed, LAUNCHER), planUninstall(installed, LAUNCHER));
+  });
+
+  it('reads every field the status input tells', () => {
+    assert.deepEqual(statusLine.parse(`  ${JSON.stringify(FULL)}\n`), {
+      sessionId: '0f8fad5b-d9cb-469f-a165-70867728950e',
+      cwd: '/work/repo',
+      agentName: 'alpha',
+      model: 'Opus',
+      effort: 'high',
+      costUsd: 1.25,
+      contextUsedPct: 42,
+      contextInputTokens: 84_000,
+    });
+  });
+
+  it('leaves a field the input did not tell undefined, the folder empty', () => {
+    const bare = { sessionId: undefined, cwd: '', agentName: undefined, model: undefined, effort: undefined, costUsd: undefined, contextUsedPct: undefined, contextInputTokens: undefined };
+    assert.deepEqual(statusLine.parse('{}'), bare);
+    const blank = { agent: { name: ' ' }, model: { display_name: '' }, effort: { level: 3 }, cost: { total_cost_usd: '1' }, context_window: { used_percentage: Number.NaN } };
+    assert.deepEqual(statusLine.parse(JSON.stringify(blank)), bare);
+  });
+
+  it("takes the session id from the transcript's file name when the input names none, and the folder from cwd", () => {
+    for (const transcript_path of ['C:\\Users\\me\\.claude\\projects\\p\\abc-1.jsonl', '/u/.claude/projects/p/abc-1.jsonl']) {
+      assert.deepEqual([statusLine.parse(JSON.stringify({ transcript_path, cwd: '/work' }))?.sessionId, statusLine.parse(JSON.stringify({ transcript_path, cwd: '/work' }))?.cwd], ['abc-1', '/work']);
+    }
+    assert.equal(statusLine.parse(JSON.stringify({ transcript_path: '/u/p/notes.txt' }))?.sessionId, 'notes.txt');
+  });
+
+  it('reads nothing from a text that is no JSON object', () => {
+    for (const input of ['', 'not json', '[1]', '"text"', 'null']) {
+      assert.equal(statusLine.parse(input), undefined, input);
+    }
   });
 });
 
