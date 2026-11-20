@@ -27,8 +27,29 @@ export interface HostPaths {
    * a worktree is a temporary copy of the project. Undefined for any other path.
    */
   worktreeRepo(path: string): string | undefined;
+  /** The instruction file the host loads for that person in every project. */
+  userInstructions(userHome: string): string;
+  /**
+   * The instruction files the host loads from `folder`, in the order it reads them: it reads a project's folder and
+   * each folder above it at a session's start, and a folder below it once the session works there.
+   */
+  folderInstructions(folder: string): readonly string[];
+  /** The folder the host loads that person's own rule files from, in every project. */
+  userRules(userHome: string): string;
+  /** The folder the host loads the rule files of the project in `project` from. */
+  projectRules(project: string): string;
   /** The folder the host loads that person's own skills from, in every project. */
   skills(userHome: string): string;
+  /** The folder the host loads the skills of the project in `project` from. */
+  projectSkills(project: string): string;
+  /** The folder the host loads that person's own agent types from, in every project. */
+  userAgents(userHome: string): string;
+  /** The folder the host loads the agent types of the project in `project` from. */
+  projectAgents(project: string): string;
+  /** The folder the host keeps that person's memory of the project in `project` in. */
+  memoryFolder(userHome: string, project: string): string;
+  /** The index of that memory: the one file of it the host loads into every session of the project. */
+  memoryIndex(userHome: string, project: string): string;
   /** The memory folders the host keeps for that person, one per project, as one pattern. */
   memoryFolders(userHome: string): string;
   /** The scratchpad folders of every session, on a machine whose temporary folder is `systemTemp`, as one pattern. */

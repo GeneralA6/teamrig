@@ -46,6 +46,39 @@ describe("Claude Code's paths", () => {
     assert.equal(pathsIn({ CLAUDE_CONFIG_DIR: join('/', 'cfg') }).skills(USER_HOME), join('/', 'cfg', 'skills'));
   });
 
+  it("loads a person's instruction file, rules and agent types from its own folder, wherever that one is", () => {
+    const moved = pathsIn({ CLAUDE_CONFIG_DIR: join('/', 'cfg') });
+    assert.equal(pathsIn({}).userInstructions(USER_HOME), join(USER_HOME, '.claude', 'CLAUDE.md'));
+    assert.equal(moved.userInstructions(USER_HOME), join('/', 'cfg', 'CLAUDE.md'));
+    assert.equal(pathsIn({}).userRules(USER_HOME), join(USER_HOME, '.claude', 'rules'));
+    assert.equal(moved.userRules(USER_HOME), join('/', 'cfg', 'rules'));
+    assert.equal(pathsIn({}).userAgents(USER_HOME), join(USER_HOME, '.claude', 'agents'));
+    assert.equal(moved.userAgents(USER_HOME), join('/', 'cfg', 'agents'));
+  });
+
+  it("reads a folder's instruction file, the person's local one there, then the one in its own folder there", () => {
+    const folder = join('/', 'work', 'app');
+    const files = [join(folder, 'CLAUDE.md'), join(folder, 'CLAUDE.local.md'), join(folder, '.claude', 'CLAUDE.md')];
+    assert.deepEqual(pathsIn({}).folderInstructions(folder), files);
+    assert.deepEqual(pathsIn({ CLAUDE_CONFIG_DIR: join('/', 'cfg') }).folderInstructions(folder), files, 'the variable moves no project file');
+  });
+
+  it("loads a project's rules, skills and agent types from the project folder, wherever its own folder is", () => {
+    const project = join('/', 'work', 'app');
+    for (const paths of [pathsIn({}), pathsIn({ CLAUDE_CONFIG_DIR: join('/', 'cfg') })]) {
+      assert.equal(paths.projectRules(project), join(project, '.claude', 'rules'));
+      assert.equal(paths.projectSkills(project), join(project, '.claude', 'skills'));
+      assert.equal(paths.projectAgents(project), join(project, '.claude', 'agents'));
+    }
+  });
+
+  it("keeps a project's memory in a folder named by the project's path, each character but a letter or digit a dash", () => {
+    const moved = pathsIn({ CLAUDE_CONFIG_DIR: join('/', 'cfg') });
+    assert.equal(pathsIn({}).memoryFolder(USER_HOME, 'C:\\Work\\my_app.v2'), join(USER_HOME, '.claude', 'projects', 'C--Work-my-app-v2', 'memory'));
+    assert.equal(moved.memoryFolder(USER_HOME, '/work/app'), join('/', 'cfg', 'projects', '-work-app', 'memory'));
+    assert.equal(moved.memoryIndex(USER_HOME, '/work/app'), join('/', 'cfg', 'projects', '-work-app', 'memory', 'MEMORY.md'));
+  });
+
   it("reads a person's settings from its own folder, wherever that one is", () => {
     assert.equal(pathsIn({}).userSettings(USER_HOME), join(USER_HOME, '.claude', 'settings.json'));
     assert.equal(pathsIn({ CLAUDE_CONFIG_DIR: join('/', 'cfg') }).userSettings(USER_HOME), join('/', 'cfg', 'settings.json'));
