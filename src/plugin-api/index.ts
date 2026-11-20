@@ -34,9 +34,27 @@ export {
   type HostFeatureId,
   type Toggle,
 } from '../features/registry.ts';
+export {
+  INPUT_ORIGINS,
+  type BackgroundMark,
+  type CallUsage,
+  type CompactEntry,
+  type EntryKind,
+  type EntryThread,
+  type HookNoteEntry,
+  type InputEntry,
+  type InputOrigin,
+  type OtherEntry,
+  type ReplyCall,
+  type ReplyEntry,
+  type ToolOutcome,
+  type TranscriptEntry,
+  type TranscriptReader,
+  type UnreadLine,
+} from '../ports/host/index.ts';
 export type { CredentialRead, CredentialStore } from '../core/credentials.ts';
-// What a connector reads an API's answer with: outside JSON is narrowed, never cast.
-export { isRecord, isStringArray, recordField, stringField, type JsonRecord } from '../core/guards.ts';
+// What an adapter reads outside JSON with, an API's answer or a host's own line: it is narrowed, never cast.
+export { instantField, isNonNegativeInteger, isRecord, isStringArray, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 export type { Env } from '../core/home.ts';
 export type { HttpClient, HttpMethod, HttpRequest, HttpResult } from '../core/http.ts';
 // The footer of a text a connector posts: taken off a text already stamped, and its parts for a tool with no Markdown.
