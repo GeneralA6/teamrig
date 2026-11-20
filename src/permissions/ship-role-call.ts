@@ -4,8 +4,10 @@ import { ABSOLUTE, type KitContext } from './route-kit.ts';
 /**
  * The ship calls a service role lets run (T2984, design 1): `teamrig queue --kind test|ship|merge [--detach] --session <id>
  * [--what "<text>"] [--task <id>] [--max-minutes <n>] -- node [--disable-warning=ExperimentalWarning] <shipTool>` then
- * either `<worktree> <plan> [--merge [--approved <sha>] [--note-file <file>]]` or `merge <worktree> [--approved <sha>]
- * [--note-file <file>]`. Every path is absolute and each flag comes once; a base, a head, a timeout or any other word
+ * either `<worktree> <plan> [--merge [--approved <sha>] [--note-file <file>]]`, `merge <worktree> [--approved <sha>]
+ * [--note-file <file>]` or the release merge `merge <main checkout> --release <task> --approved <sha>` (T4645, T4672),
+ * which merges the release pull request on that task's approval and opens no pull request, so it names no note file
+ * and always the approved sha. Every path is absolute and each flag comes once; a base, a head, a timeout or any other word
  * is no ship call, so the line runs exactly the tool the team configured on the files this reader names; a line naming
  * no `--session` is none either (T2984, service-role-call.ts). Whether the worktree, the files and the tool may be
  * used is the allow's to check (hook-role-allow.ts): this reader reads only. The kind fits the run, as the queue
@@ -25,6 +27,8 @@ export interface ShipRun {
   readonly task: string | undefined;
   /** True for a merge: `--merge`, or the `merge` form. */
   readonly merges: boolean;
+  /** The release task a release merge (`merge <dir> --release <task>`) names; undefined for any other ship call. */
+  readonly release: string | undefined;
 }
 
 /** What reading a ship call needs beyond the CLI's table: whether a word names the team's configured ship tool. */
@@ -47,25 +51,41 @@ const NODE_FLAG = '--disable-warning=ExperimentalWarning';
 /** A commit sha, short or full, as the tool's `--approved` takes it. */
 const APPROVED_SHA = /^[0-9a-f]{7,40}$/;
 
-/** The tool's words after its positionals: `--merge` alone, and two flags that take a value. */
+/** A task id, as the tool's `--release` takes it. */
+const RELEASE_TASK = /^T\d+$/;
+
+/** The tool's words after its positionals: `--merge` alone, and three flags that take a value. */
 const MERGE_SWITCH = '--merge';
 const APPROVED = '--approved';
 const NOTE_FILE = '--note-file';
+const RELEASE = '--release';
+
+/** The tool's flags a line names. */
+interface ToolFlags {
+  readonly merge: boolean;
+  readonly approved: boolean;
+  readonly note: string | undefined;
+  readonly release: string | undefined;
+}
 
 /** A path the tool takes: absolute, so the allow checks the place the tool opens whatever its folder. */
 function isPathWord(word: string | undefined): word is string {
   return word !== undefined && ABSOLUTE.test(word);
 }
 
-/** The tool's flags in `words`, each once and in its own slot; undefined for any other word. */
-function toolFlagsOf(words: readonly string[], takesMerge: boolean): { merge: boolean; approved: boolean; note: string | undefined } | undefined {
+/**
+ * The tool's flags in `words`, each once and in its own slot; undefined for any other word. `mergeForm` is the `merge`
+ * form, which takes `--release` and never `--merge`.
+ */
+function toolFlagsOf(words: readonly string[], mergeForm: boolean): ToolFlags | undefined {
   let merge = false;
   let approved = false;
   let note: string | undefined;
+  let release: string | undefined;
   for (let at = 0; at < words.length; at++) {
     const word = words[at];
     const value = words[at + 1];
-    if (word === MERGE_SWITCH && takesMerge && !merge) {
+    if (word === MERGE_SWITCH && !mergeForm && !merge) {
       merge = true;
     } else if (word === APPROVED && !approved && value !== undefined && APPROVED_SHA.test(value)) {
       approved = true;
@@ -73,11 +93,14 @@ function toolFlagsOf(words: readonly string[], takesMerge: boolean): { merge: bo
     } else if (word === NOTE_FILE && note === undefined && isPathWord(value)) {
       note = value;
       at++;
+    } else if (word === RELEASE && mergeForm && release === undefined && value !== undefined && RELEASE_TASK.test(value)) {
+      release = value;
+      at++;
     } else {
       return undefined;
     }
   }
-  return { merge, approved, note };
+  return { merge, approved, note, release };
 }
 
 /** The ship run the words after the queue's `--` make, when they run the configured tool in a ship shape. */
@@ -89,7 +112,7 @@ export function shipRunOf(rest: readonly string[], isShipTool: (word: string) =>
   }
   const mergeForm = args[0] === 'merge';
   const [worktree, plan] = mergeForm ? [args[1], undefined] : [args[0], args[1]];
-  const flags = toolFlagsOf(args.slice(2), !mergeForm);
+  const flags = toolFlagsOf(args.slice(2), mergeForm);
   if (!isPathWord(worktree) || (!mergeForm && !isPathWord(plan)) || flags === undefined) {
     return undefined;
   }
@@ -97,8 +120,12 @@ export function shipRunOf(rest: readonly string[], isShipTool: (word: string) =>
   if (!mergeForm && !flags.merge && (flags.approved || flags.note !== undefined)) {
     return undefined;
   }
+  // A release merge opens no pull request, so it reads no note (merge.ts refuses one), and it lands only an approved head.
+  if (flags.release !== undefined && (flags.note !== undefined || !flags.approved)) {
+    return undefined;
+  }
   const files = [plan, flags.note].filter((file) => file !== undefined);
-  return { tool, worktree, files, task, merges: mergeForm || flags.merge };
+  return { tool, worktree, files, task, merges: mergeForm || flags.merge, release: flags.release };
 }
 
 /** The ship run a parsed `teamrig queue` line makes through this install's own launcher; undefined for any other line. */

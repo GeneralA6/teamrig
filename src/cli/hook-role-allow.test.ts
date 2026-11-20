@@ -243,6 +243,31 @@ describe('hook route-allow: the ship role (T2984)', () => {
   });
 });
 
+/** A release merge of T1, alpha's task, from the repository's main checkout (T4672). */
+const RELEASE = `teamrig queue --kind merge --detach --what "release" --task T1 --session alpha -- node ${SHIP_TOOL} merge ${MAIN_CHECKOUT} --release T1 --approved 0123456789abcdef0123456789abcdef01234567`;
+
+describe('hook route-allow: the release merge (T4672)', () => {
+  it("allows the holder's release merge of its own release task from the main checkout, logging the release", async () => {
+    const { kit, git } = await shipKit();
+    const result = await kit.run(HOOK, { stdin: call(RELEASE), env: ALPHA, mergeGit: git });
+    assert.equal(decisionOf(result), 'allow');
+    const [logged] = await answersOf(kit);
+    assert.ok(isRecord(logged) && logged['command'] === 'queue merge' && logged['target'] === 'release T1');
+  });
+
+  it("gives no release merge of another session's task, another --task, from a worktree, or with a tool off main's code", async () => {
+    const { kit, git } = await shipKit();
+    assert.equal((await kit.run(['add', '--title', 'Release the API', '--description', 'what and why', '--priority', 'p1', '--owner', 'bravo', '--session', 'lead'])).code, EXIT.ok);
+    for (const line of [RELEASE.replaceAll('T1', 'T2'), RELEASE.replace('--task T1', '--task T2'), RELEASE.replace(` ${MAIN_CHECKOUT} `, ` ${SHIP_WORKTREE} `), RELEASE.replace(` ${MAIN_CHECKOUT} `, ' /repo/other ')]) {
+      assert.deepEqual(await kit.run(HOOK, { stdin: call(line), env: ALPHA, mergeGit: git }), NOTHING, line);
+    }
+    const changed = await shipKit();
+    changed.git.status.set('/repo/ship', ['?? tools/ship/extra.ts']);
+    assert.deepEqual(await changed.kit.run(HOOK, { stdin: call(RELEASE), env: ALPHA, mergeGit: changed.git }), NOTHING, 'a tool with a change (C5)');
+    assert.deepEqual(await answersOf(kit), []);
+  });
+});
+
 describe('hook route-allow: the migrate role (T4606)', () => {
   const ROWS = `${TASKS}/T1/rows.jsonl`;
   const MIGRATE = `teamrig issue migrate ${ROWS} --yes --session alpha`;

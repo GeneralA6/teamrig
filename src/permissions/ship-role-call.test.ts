@@ -9,6 +9,8 @@ const WORKTREE = '/repo/.worktrees/t7-fix';
 const PLAN = '/kit/teams/app/tasks/T7/plan.json';
 const NOTE = '/kit/teams/app/tasks/T7/pr.md';
 const SHA = '0123456789abcdef0123456789abcdef01234567';
+/** The repository's main checkout, the folder a release merge names (T4672). */
+const MAIN = '/repo/app';
 
 const CONTEXT: ShipCallContext = { cli: COMMAND_TABLE, ownClient: async (word) => word === 'teamrig', isShipTool: (word) => word === TOOL };
 
@@ -25,13 +27,14 @@ const QUEUE = 'queue --detach --session alpha --what fix --task T7 --kind test -
 describe('ship role call: the tool line (T2984)', () => {
   it('reads a ship, a ship that merges, and the merge form, with the files each reads', () => {
     const isTool = CONTEXT.isShipTool;
-    assert.deepEqual(shipRunOf(['node', TOOL, WORKTREE, PLAN], isTool, 'T7'), { tool: TOOL, worktree: WORKTREE, files: [PLAN], task: 'T7', merges: false });
+    assert.deepEqual(shipRunOf(['node', TOOL, WORKTREE, PLAN], isTool, 'T7'), { tool: TOOL, worktree: WORKTREE, files: [PLAN], task: 'T7', merges: false, release: undefined });
     assert.deepEqual(shipRunOf(['node', '--disable-warning=ExperimentalWarning', TOOL, WORKTREE, PLAN, '--merge', '--approved', SHA, '--note-file', NOTE], isTool, undefined), {
       tool: TOOL,
       worktree: WORKTREE,
       files: [PLAN, NOTE],
       task: undefined,
       merges: true,
+      release: undefined,
     });
     assert.deepEqual(shipRunOf(['node', TOOL, 'merge', WORKTREE, '--note-file', NOTE, '--approved', 'abc1234'], isTool, 'T7'), {
       tool: TOOL,
@@ -39,6 +42,7 @@ describe('ship role call: the tool line (T2984)', () => {
       files: [NOTE],
       task: 'T7',
       merges: true,
+      release: undefined,
     });
     assert.equal(shipRunOf(['node', TOOL, 'merge', WORKTREE], isTool, undefined)?.merges, true);
   });
@@ -71,12 +75,40 @@ describe('ship role call: the tool line (T2984)', () => {
       assert.equal(shipRunOf(rest, CONTEXT.isShipTool, undefined), undefined, rest.join(' '));
     }
   });
+
+  it('reads the release merge with its task and approved sha, and no note file (T4672)', () => {
+    assert.deepEqual(shipRunOf(['node', TOOL, 'merge', MAIN, '--release', 'T9', '--approved', SHA], CONTEXT.isShipTool, 'T9'), {
+      tool: TOOL,
+      worktree: MAIN,
+      files: [],
+      task: 'T9',
+      merges: true,
+      release: 'T9',
+    });
+    assert.equal(shipRunOf(['node', TOOL, 'merge', MAIN, '--approved', SHA, '--release', 'T9'], CONTEXT.isShipTool, undefined)?.release, 'T9', 'in either order');
+  });
+
+  it('reads no release merge without an approved sha, with a note file, a second release, a word off a task id, or outside the merge form (T4672)', () => {
+    for (const rest of [
+      ['node', TOOL, 'merge', MAIN, '--release', 'T9'],
+      ['node', TOOL, 'merge', MAIN, '--release', 'T9', '--approved', SHA, '--note-file', NOTE],
+      ['node', TOOL, 'merge', MAIN, '--release', 'T9', '--release', 'T9', '--approved', SHA],
+      ['node', TOOL, 'merge', MAIN, '--release', '9', '--approved', SHA],
+      ['node', TOOL, 'merge', MAIN, '--release', 'T9;x', '--approved', SHA],
+      ['node', TOOL, 'merge', MAIN, '--release', '--approved', SHA],
+      ['node', TOOL, 'merge', MAIN, '--release', 'T9', '--head', 'release-branch', '--approved', SHA],
+      ['node', TOOL, 'merge', 'repo/app', '--release', 'T9', '--approved', SHA],
+      ['node', TOOL, WORKTREE, PLAN, '--merge', '--release', 'T9', '--approved', SHA],
+    ]) {
+      assert.equal(shipRunOf(rest, CONTEXT.isShipTool, undefined), undefined, rest.join(' '));
+    }
+  });
 });
 
 describe('ship role call: the queue line (T2984)', () => {
   it('reads a queued ship under --kind test, and a merge under --kind ship or merge, through the own launcher (T3414)', async () => {
-    assert.deepEqual(await callOf(QUEUE, `node ${TOOL} ${WORKTREE} ${PLAN}`), { tool: TOOL, worktree: WORKTREE, files: [PLAN], task: 'T7', merges: false });
-    assert.deepEqual(await callOf('queue --kind merge', `node ${TOOL} merge ${WORKTREE}`), { tool: TOOL, worktree: WORKTREE, files: [], task: undefined, merges: true });
+    assert.deepEqual(await callOf(QUEUE, `node ${TOOL} ${WORKTREE} ${PLAN}`), { tool: TOOL, worktree: WORKTREE, files: [PLAN], task: 'T7', merges: false, release: undefined });
+    assert.deepEqual(await callOf('queue --kind merge', `node ${TOOL} merge ${WORKTREE}`), { tool: TOOL, worktree: WORKTREE, files: [], task: undefined, merges: true, release: undefined });
     assert.equal((await callOf('queue --kind ship', `node ${TOOL} ${WORKTREE} ${PLAN} --merge`)) !== undefined, true);
   });
 

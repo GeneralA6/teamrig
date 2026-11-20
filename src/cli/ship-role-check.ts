@@ -18,7 +18,9 @@ import type { CliRuntime } from './runtime.ts';
  * The allow's checks of a service role's ship call (T2984): the line names the tool and the places, and these prove the
  * places may be used. C4: the worktree is a linked worktree of the repository whose `shipTool` the line runs, inside its
  * worktree folder, on a task branch whose task the holder owns, and the plan and note files sit in that task's folder,
- * so a session ships only its own work. C5: the tool is a tracked file of a checkout of the same repository with no
+ * so a session ships only its own work; a release merge (T4672) names the repository's main checkout, where the tool
+ * only fetches, and a release task the holder owns, whose approval the tool's own gate checks at the head it reads from
+ * origin. C5: the tool is a tracked file of a checkout of the same repository with no
  * change at all whose HEAD makes the default branch's tree as of the last fetch, so what runs is main's current code,
  * reviewed, never a past main's (T3223). Paths are the host's, since git and the tool open them there.
  */
@@ -474,12 +476,36 @@ function startReadOf(git: MergeGit, kit: Kit, config: KitConfig, pin: ShipToolPi
   return { ok: true, value: staleToolReason(pin.tool, state.value, since) };
 }
 
+/** The owner of task `task` in the team's register. */
+async function ownerOf(runtime: CliRuntime, kit: Kit, task: string): Promise<string | undefined> {
+  return (await new JsonlEventLog(runtime.files, kit.paths.events).read()).state.tasks.get(task)?.owner;
+}
+
 /**
- * The branch a ship call runs on, when `holder` may run it (C4, C5 above); undefined otherwise, so the permission check
- * decides. The register is read only after the line's places pass, and git last.
+ * What a release merge acts on, `release T<id>`, when `holder` may run it: the line names the repository's main checkout
+ * and a release task the holder owns, matching the queue's `--task` when it names one (C4), and the tool is main's
+ * current code (C5); undefined otherwise.
+ */
+async function releaseTargetOf(runtime: CliRuntime, kit: Kit, repo: ShipRepo, holder: string, run: ShipRun, release: string): Promise<string | undefined> {
+  if (!samePath(run.worktree, repo.mainDir) || (run.task !== undefined && run.task !== release) || run.files.length > 0) {
+    return undefined;
+  }
+  if ((await ownerOf(runtime, kit, release)) !== holder) {
+    return undefined;
+  }
+  return toolIsLanded(runtime.mergeGit, run.tool, repo.mainDir) ? `release ${release}` : undefined;
+}
+
+/**
+ * The branch a ship call runs on, or a release merge's `release T<id>`, when `holder` may run it (C4, C5 above);
+ * undefined otherwise, so the permission check decides. The register is read only after the line's places pass, and
+ * git last.
  */
 export async function shipBranchOf(runtime: CliRuntime, kit: Kit, config: KitConfig, holder: string, run: ShipRun): Promise<string | undefined> {
   const repo = shipRepoOf(kit, config, run.tool);
+  if (repo !== undefined && run.release !== undefined) {
+    return releaseTargetOf(runtime, kit, repo, holder, run, run.release);
+  }
   if (repo === undefined || !isInside(run.worktree, resolve(repo.mainDir, repo.config.worktreeFolder ?? DEFAULT_WORKTREE_FOLDER))) {
     return undefined;
   }
@@ -490,7 +516,7 @@ export async function shipBranchOf(runtime: CliRuntime, kit: Kit, config: KitCon
   if (checkout === undefined || !checkout.linked || !samePath(checkout.top, run.worktree) || task === undefined || (run.task !== undefined && run.task !== task)) {
     return undefined;
   }
-  const owner = (await new JsonlEventLog(runtime.files, kit.paths.events).read()).state.tasks.get(task)?.owner;
+  const owner = await ownerOf(runtime, kit, task);
   const folder = taskFolder(kit.paths.kitHome, kit.paths.team, task);
   if (owner !== holder || !run.files.every((file) => isInside(file, folder))) {
     return undefined;
