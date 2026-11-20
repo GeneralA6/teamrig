@@ -1,11 +1,12 @@
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { claudeProjectsDir } from '../../budget/discover.ts';
 import { DEFAULT_PERMISSIONS } from '../../config/defaults.ts';
-import { claudeConfigDir, KIT_NAME } from '../../core/home.ts';
+import { KIT_NAME } from '../../core/home.ts';
 import { expandHome } from '../../core/paths.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { KeepList } from '../../permissions/allow-rules.ts';
 import type { SettingsFile } from '../../permissions/settings-scope.ts';
+import type { HostPaths } from '../../ports/host/index.ts';
 import { coreRuleTexts } from '../../rules/pack.ts';
 import type { Candidate } from '../../rules/scan.ts';
 import { isCleared, RULE_HASH_CLOCK, ruleHashesOf, verdictsByText, VerdictStore } from '../../rules/verdicts.ts';
@@ -17,7 +18,7 @@ import { scanSetup } from '../../setup/scan.ts';
 import { claudeSkillDoctor } from '../../setup/skill-doctor.ts';
 import { projectsSettingsScope, teamSettingsScope } from '../allow-scope.ts';
 import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
-import { transcriptsOf } from '../host.ts';
+import { pathsOf, transcriptsOf } from '../host.ts';
 import { teamFolders, teamProjectOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRulesPathsOf } from '../team-rules.ts';
@@ -63,10 +64,10 @@ async function clearedOf(runtime: CliRuntime, team: SetupTeam | undefined): Prom
   return (candidate) => isCleared(candidate, byText, hashes);
 }
 
-async function settingsOf(runtime: CliRuntime, team: SetupTeam | undefined, claudeDir: string, project: string): Promise<SettingsFile[]> {
+async function settingsOf(runtime: CliRuntime, team: SetupTeam | undefined, host: HostPaths, project: string): Promise<SettingsFile[]> {
   return team === undefined
-    ? projectsSettingsScope(runtime, claudeDir, [project])
-    : teamSettingsScope(runtime, { paths: team.kit.paths, config: team.config, project });
+    ? projectsSettingsScope(runtime, host, [project])
+    : teamSettingsScope(runtime, host, { paths: team.kit.paths, config: team.config, project });
 }
 
 export async function scan(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
@@ -77,19 +78,21 @@ export async function scan(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const asked = flag === undefined ? undefined : resolve(runtime.cwd, expandHome(flag, runtime.userHome));
   const team = await setupTeamOf(runtime, asked);
   const project = asked ?? (team === undefined ? undefined : teamProjectOf(team.config, team.from)) ?? teamFolders(runtime.env, [])[0] ?? runtime.cwd;
-  const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
+  // The scan's whole work is the host's own files, so a host whose folders teamrig does not know refuses here.
+  const host = pathsOf(runtime);
+  const claudeDir = host.home(runtime.userHome);
   const secrets = new SecretScanner(team?.config.register.secretPatterns);
   const doctor = claudeSkillDoctor({ env: runtime.env, platform: runtime.platform, probe: runtime.probe, files: runtime.files, node: runtime.self.node, hooks: runtime.hooks });
   const found = await scanSetup({ files: runtime.files, probe: runtime.probe, transcripts: runtime.transcripts, reader: transcriptsOf(runtime), doctor }, {
     claudeDir,
     userHome: runtime.userHome,
     project,
-    skills: team?.kit.paths.skills ?? join(claudeDir, 'skills'),
+    skills: team?.kit.paths.skills ?? host.skills(runtime.userHome),
     teamRules: team === undefined ? [] : await teamRulesPathsOf(runtime, team.kit),
     projectsDir: claudeProjectsDir(runtime.env, runtime.userHome),
     since: runtime.clock.now() - days * DAY_MS,
     maxBytes: maxMb * BYTES_PER_MB,
-    settings: await settingsOf(runtime, team, claudeDir, project),
+    settings: await settingsOf(runtime, team, host, project),
     keep: new KeepList((team?.config.permissions ?? DEFAULT_PERMISSIONS).keepAllow),
     secrets,
     conflicts: team?.config.ruleConflicts ?? [],
