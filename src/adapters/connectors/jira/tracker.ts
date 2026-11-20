@@ -69,6 +69,9 @@ const MS_PER_DAY = 86_400_000;
 /** A day as the port gives it. */
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+/** An issue's id as Jira writes it: digits, few enough that the number they make is exact. */
+const ISSUE_ID = /^\d{1,15}$/;
+
 type Failed = { readonly kind: 'failed'; readonly reason: string };
 
 function failed(reason: string): Failed {
@@ -310,8 +313,21 @@ export class JiraTracker implements Tracker {
     return await this.write(target, (at) => this.client.post(at.project.site, `/issue/${at.key}/transitions`, sent));
   }
 
-  issueId(): Promise<HostIssueId> {
-    return Promise.resolve(failed(NOT_BUILT.links));
+  /**
+   * Jira's own id of the issue, which it writes as a string of digits. Core reads it of the original a duplicate's
+   * close names, so that close is refused for an original Jira does not show; no link is made by it.
+   */
+  async issueId(target: IssueTarget): Promise<HostIssueId> {
+    const place = this.place(target);
+    if (place.kind === 'failed') {
+      return place;
+    }
+    const answer = await this.client.get(place.project.site, `/issue/${place.key}?fields=summary`);
+    if (answer.kind !== 'ok') {
+      return answer;
+    }
+    const id = isRecord(answer.body) ? stringField(answer.body, 'id') : undefined;
+    return id !== undefined && ISSUE_ID.test(id) ? { kind: 'found', id: Number(id) } : failed(`Jira's answer for ${place.key} names no id for the issue`);
   }
 
   /** Posts `body` as one comment of plain paragraphs. A text with no line is refused here: Jira takes no empty comment. */

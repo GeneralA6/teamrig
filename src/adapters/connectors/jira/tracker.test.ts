@@ -552,11 +552,42 @@ describe('closing a Jira issue (T4754)', () => {
   });
 });
 
+describe("Jira's own id of an issue (T4754)", () => {
+  const READ = `${ISSUE}?fields=summary`;
+
+  it('reads the id as a number, and finds none for an issue Jira does not show', async () => {
+    const { tracker, http } = kit();
+    http.answers('GET', READ, 200, '{"id":"10042","key":"ENG-12","fields":{"summary":"A title"}}').answers('GET', READ, 404);
+    assert.deepEqual(await tracker.issueId(TARGET), { kind: 'found', id: 10042 });
+    assert.deepEqual(await tracker.issueId(TARGET), { kind: 'missing' });
+    assert.deepEqual(sent(http), [['GET', '/issue/ENG-12?fields=summary'], ['GET', '/issue/ENG-12?fields=summary']]);
+  });
+
+  it('fails on an answer that names no id it can hold, and passes on why a read failed', async () => {
+    const { tracker, http } = kit();
+    const noId = failed("Jira's answer for ENG-12 names no id for the issue");
+    http
+      .answers('GET', READ, 200, '{"key":"ENG-12"}')
+      .answers('GET', READ, 200, '{"id":10042}')
+      .answers('GET', READ, 200, '{"id":"1e3"}')
+      .answers('GET', READ, 200, '{"id":"1234567890123456"}')
+      .answers('GET', READ, 200, '[]')
+      .answers('GET', READ, 500);
+    assert.deepEqual(await tracker.issueId(TARGET), noId);
+    assert.deepEqual(await tracker.issueId(TARGET), noId);
+    assert.deepEqual(await tracker.issueId(TARGET), noId);
+    assert.deepEqual(await tracker.issueId(TARGET), noId);
+    assert.deepEqual(await tracker.issueId(TARGET), noId);
+    assert.deepEqual(await tracker.issueId(TARGET), failed('Jira answered 500'));
+    assert.deepEqual(await tracker.issueId({ repo: 'acme', number: 12 }), failed(NOT_A_PROJECT));
+    assert.equal(http.requests.length, 6);
+  });
+});
+
 describe('what the Jira tracker does not do yet', () => {
   it('answers each method of a later slice with its line, and sends nothing', async () => {
     const { tracker, http } = kit();
     assert.deepEqual(await tracker.open(), failed(NOT_BUILT.open));
-    assert.deepEqual(await tracker.issueId(), failed(NOT_BUILT.links));
     assert.deepEqual(await tracker.links(), failed(NOT_BUILT.links));
     assert.deepEqual(await tracker.addSubIssue(), failed(NOT_BUILT.links));
     assert.deepEqual(await tracker.addBlockedBy(), failed(NOT_BUILT.links));
