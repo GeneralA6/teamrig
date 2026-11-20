@@ -159,7 +159,7 @@ async function factsOf(deps: RestoreDeps, entries: readonly RestoreEntry[], sinc
       transcripts.set(entry.claudeSession, transcript);
       const tail = await deps.readTail(transcript, KIND_TAIL_BYTES);
       if (tail !== undefined) {
-        kinds.set(entry.claudeSession, transcriptKindOf(tail));
+        kinds.set(entry.claudeSession, transcriptKindOf(deps.reader, tail));
         if (live && turnRunning(deps.reader, tail) &&(await stalledSince(deps, transcript, now))) {
           stalled.add(entry.claudeSession);
         }
