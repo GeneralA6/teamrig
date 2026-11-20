@@ -43,6 +43,7 @@ export const SECRET_TOKEN_PATTERNS: readonly SecretPattern[] = [
   { id: 'stripe-key', description: 'Stripe live key', pattern: /\b[rs]k_live_[0-9A-Za-z]{24,}/ },
   { id: 'jwt', description: 'JSON web token', pattern: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/ },
   { id: 'npm-token', description: 'npm token', pattern: /\bnpm_[A-Za-z0-9]{36}(?![A-Za-z0-9])/ },
+  { id: 'discord-webhook', description: 'Discord webhook URL', pattern: /\bdiscord(?:app)?\.com\/api\/(?:v\d+\/)?webhooks\/\d+\/[A-Za-z0-9_-]{20,}/i },
   {
     id: 'slack-webhook',
     description: 'Slack webhook URL',
