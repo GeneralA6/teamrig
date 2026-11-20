@@ -27,6 +27,8 @@ const EXEMPT: Readonly<Record<string, string>> = {
   'hooks/pass-record-guard.ts':
     'matches the pass-record folder name with word bounds; halving keeps at least one backslash of each run, so the name and its bounds read alike in every reading',
   'hooks/prompt-refuse.ts': 'reads the command only for the refusal log line; the call is refused in every reading',
+  'refresh/owner-turns.ts':
+    "reads a transcript reply's command to tell whether the old session wrote its handover, which only marks what the owner typed after it; it allows or refuses no call",
   'tabs/need.ts': "shows the asked command in another tab's band; it decides nothing",
 };
 
