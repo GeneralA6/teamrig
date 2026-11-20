@@ -165,7 +165,7 @@ export function unusedSection(scan: SetupScan, at: ScanReportContext, show: (pat
   const oldSkills = notUsedSkills.filter(isOld);
   const skills = oldSkills.filter((skill) => !ranIn(rows.get(skill.name), at.days));
   const agents = notUsedAgents.filter(isOld);
-  const here = projectUse(usage, at.project);
+  const here = projectUse(usage, at.project, at.paths);
   const elsewhere = [...usedElsewhere(SKILLS, context.skills, usage.skills, here.skills), ...usedElsewhere(AGENTS, context.agents, usage.agents, here.agents)];
   const moved = here.transcripts === 0 ? [] : elsewhere;
   const doctorOnly = doctorOnlyFindings(scan, at);
