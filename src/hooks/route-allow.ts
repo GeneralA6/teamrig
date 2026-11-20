@@ -30,15 +30,9 @@ export function guardsPassed(answers: readonly (HookReply | string | undefined)[
   return answers.every((answer) => answer === undefined || answer === '');
 }
 
-/** The hook's stdout: an allow that runs the route's line with no permission check, naming the route. */
-export function routeAllowOutput(route: SanctionedRoute): string {
-  return JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: 'PreToolUse',
-      permissionDecision: 'allow',
-      permissionDecisionReason: `teamrig: the sanctioned route ${route.id}, to ${route.purpose}`,
-    },
-  });
+/** The hook's reply: an allow that runs the route's line with no permission check, naming the route. */
+export function routeAllowReply(route: SanctionedRoute): HookReply {
+  return { verdict: { kind: 'allow', reason: `teamrig: the sanctioned route ${route.id}, to ${route.purpose}` } };
 }
 
 /** Who ran the allowed route, and when: the team session and the Claude Code session, when known. */
