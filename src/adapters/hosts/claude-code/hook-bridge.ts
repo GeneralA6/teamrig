@@ -51,6 +51,18 @@ function sessionOf(payload: JsonRecord): string | undefined {
   return id !== undefined && SESSION_ID.test(id) ? id : undefined;
 }
 
+/** The title the human gave the session (`--name`, `/rename`); a blank one is none. */
+function titleOf(payload: JsonRecord): string | undefined {
+  const title = stringField(payload, 'session_title')?.trim();
+  return title === undefined || title === '' ? undefined : title;
+}
+
+/** The effort level, which Claude Code 2.1.300 gives the Stop and PreToolUse hooks and not SessionStart. */
+function effortOf(payload: JsonRecord): string | undefined {
+  const effort = recordField(payload, 'effort');
+  return effort === undefined ? undefined : stringField(effort, 'level');
+}
+
 /** A hook that fires inside a helper carries `agent_id`; a session started as an agent carries its type alone. */
 function helperOf(payload: JsonRecord): HookHelper | undefined {
   const helper = { id: stringField(payload, 'agent_id'), type: stringField(payload, 'agent_type'), transcript: stringField(payload, 'agent_transcript_path') };
@@ -96,6 +108,7 @@ function eventOf(payload: JsonRecord, shape: ToolCallShape): HookEvent {
     session: sessionOf(payload),
     cwd: stringField(payload, 'cwd'),
     transcript: stringField(payload, 'transcript_path'),
+    title: titleOf(payload),
     helper: helperOf(payload),
     call: callOf(payload, shape),
     prompt: stringField(payload, 'prompt'),
@@ -104,6 +117,7 @@ function eventOf(payload: JsonRecord, shape: ToolCallShape): HookEvent {
     source: stringField(payload, 'source'),
     trigger: stringField(payload, 'trigger'),
     model: stringField(payload, 'model'),
+    effort: effortOf(payload),
     // A form with no text of its own is named by the MCP server that asks.
     message: stringField(payload, 'message') ?? (name === 'form-start' ? stringField(payload, 'mcp_server_name') : undefined),
     error: stringField(payload, 'error'),
@@ -146,6 +160,8 @@ function specificOf(on: HookEventName, reply: HookReply): JsonRecord {
     ...permissionOf(on, verdict),
     ...(on === 'tool-end' && reply.toolOutput !== undefined ? { updatedToolOutput: reply.toolOutput } : {}),
     ...(TAKES_CONTEXT.has(on) && reply.context !== undefined ? { additionalContext: reply.context } : {}),
+    // A prompt hook may title the session from Claude Code 2.1.94, older than the oldest teamrig runs on; a
+    // SessionStart hook only from 2.1.152, and only at startup and resume, so the prompt's reply is the one that does.
     ...(on === 'prompt' && reply.sessionTitle !== undefined ? { sessionTitle: reply.sessionTitle } : {}),
     ...(on === 'prompt' && verdict?.kind === 'block' && verdict.hidePrompt === true ? { suppressOriginalPrompt: true } : {}),
   };
