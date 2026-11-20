@@ -51,29 +51,29 @@ describe('aiTitleOf', () => {
 });
 
 describe('sessionTitleOf', () => {
-  it("takes the payload's title first, and reads no transcript for it", async () => {
+  it("takes the event's title first, and reads no transcript for it", async () => {
     const files = new MemoryFiles({ [TRANSCRIPT]: entries({ type: 'custom-title', customTitle: 'scout' }) });
-    assert.equal(await sessionTitleOf(reader, { session_title: ' ranger', transcript_path: TRANSCRIPT }, files), 'ranger');
+    assert.equal(await sessionTitleOf(reader, { title: 'ranger', transcript: TRANSCRIPT }, files), 'ranger');
   });
 
   it("falls back to the end of the transcript, and only its end", async () => {
     const turns = entries({ type: 'user', message: 'x'.repeat(TRANSCRIPT_TAIL_BYTES) });
     const files = new MemoryFiles({ [TRANSCRIPT]: `${entries({ type: 'custom-title', customTitle: 'scout' })}${turns}` });
-    assert.equal(await sessionTitleOf(reader, { session_title: '', transcript_path: TRANSCRIPT }, files), undefined);
+    assert.equal(await sessionTitleOf(reader, { title: undefined, transcript: TRANSCRIPT }, files), undefined);
     await files.append(TRANSCRIPT, entries({ type: 'custom-title', customTitle: 'ranger' }));
-    assert.equal(await sessionTitleOf(reader, { transcript_path: TRANSCRIPT }, files), 'ranger');
+    assert.equal(await sessionTitleOf(reader, { title: undefined, transcript: TRANSCRIPT }, files), 'ranger');
   });
 
-  it("takes only the payload's title on a host that keeps no transcript it can read", async () => {
+  it("takes only the event's title on a host that keeps no transcript it can read", async () => {
     const files = new MemoryFiles({ [TRANSCRIPT]: entries({ type: 'custom-title', customTitle: 'scout' }) });
-    assert.equal(await sessionTitleOf(undefined, { session_title: 'ranger', transcript_path: TRANSCRIPT }, files), 'ranger');
-    assert.equal(await sessionTitleOf(undefined, { transcript_path: TRANSCRIPT }, files), undefined);
+    assert.equal(await sessionTitleOf(undefined, { title: 'ranger', transcript: TRANSCRIPT }, files), 'ranger');
+    assert.equal(await sessionTitleOf(undefined, { title: undefined, transcript: TRANSCRIPT }, files), undefined);
   });
 
-  it('has no title without a payload, a transcript path or a transcript file', async () => {
+  it('has no title without a transcript path or a transcript file', async () => {
     const files = new MemoryFiles();
-    assert.equal(await sessionTitleOf(reader, 'not a payload', files), undefined);
-    assert.equal(await sessionTitleOf(reader, { transcript_path: '' }, files), undefined);
-    assert.equal(await sessionTitleOf(reader, { transcript_path: TRANSCRIPT }, files), undefined);
+    assert.equal(await sessionTitleOf(reader, { title: undefined, transcript: undefined }, files), undefined);
+    assert.equal(await sessionTitleOf(reader, { title: undefined, transcript: '' }, files), undefined);
+    assert.equal(await sessionTitleOf(reader, { title: undefined, transcript: TRANSCRIPT }, files), undefined);
   });
 });

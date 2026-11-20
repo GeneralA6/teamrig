@@ -40,8 +40,3 @@ export function promptSecretReason(found: readonly PromptSecret[], outcome: Hist
   const reason = `${KIT_NAME} stopped this prompt before Claude read it: it looks like it holds a secret (${shapes}). Send its name or the file it is kept in instead; the value counts as leaked: rotate it.`;
   return note === undefined ? reason : `${reason} ${note}`;
 }
-
-/** The hook's stdout for a stopped prompt: a UserPromptSubmit block that also keeps the prompt out of the transcript. */
-export function promptBlockOutput(reason: string): string {
-  return JSON.stringify({ decision: 'block', reason, hookSpecificOutput: { hookEventName: 'UserPromptSubmit', suppressOriginalPrompt: true } });
-}
