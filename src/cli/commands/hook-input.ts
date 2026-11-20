@@ -1,17 +1,16 @@
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { ToolUse } from '../../budget/line.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress } from '../../core/address.ts';
 import { isRecord, type JsonRecord } from '../../core/guards.ts';
-import { claudeConfigDir, claudeTempDir, ENV } from '../../core/home.ts';
+import { ENV } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import { OwnPaths, tasksSearched, TeamFolders, type LeadPaths, type SubTeamPlace } from '../../hooks/lead-boundary.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import type { HookEvent, HookEventName, HookReply } from '../../ports/host/index.ts';
 import { JsonlEventLog } from '../../register/store.ts';
-import { hooksOf } from '../host.ts';
+import { hooksOf, pathsIfKnown } from '../host.ts';
 import { openKit, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import type { KitTree } from '../tree.ts';
@@ -178,20 +177,21 @@ export function subTeamPlacesOf({ tree, teams }: KitTree, team: string): SubTeam
 }
 
 /**
- * Where the lead's calls land in this team. Its own paths: its teamrig folder, Claude Code's memory folders, its
- * session scratchpads (notes and command input it keeps for itself, never work to hand off), its sub-teams' configs,
+ * Where the lead's calls land in this team. Its own paths: its teamrig folder, the memory folders and the session
+ * scratchpads its host keeps (notes and command input it keeps for itself, never work to hand off; neither counts on
+ * a host that tells none of its folders), its sub-teams' configs,
  * rules and states, and `leadBoundary.ownPaths`. In the teamrig folder, a search outside the config, the rules, the register's state,
  * the places named for the lead and the folders of the tasks `taskOwners` gives the lead is research (T736, T1467),
  * and so is one in a sub-team's folder outside its config, rules and state, read from `tree` (T1019).
  */
 export function leadPathsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, tree: KitTree, taskOwners: ReadonlyMap<string, string> = new Map()): LeadPaths {
-  const memory = join(claudeConfigDir(runtime.env, runtime.userHome), 'projects', '*', 'memory');
-  const scratchpads = join(claudeTempDir(runtime.env, tmpdir()), 'claude', '*', '*', 'scratchpad');
+  const hostPaths = pathsIfKnown(runtime);
+  const ofHost = hostPaths === undefined ? [] : [hostPaths.memoryFolders(runtime.userHome), hostPaths.scratchpads(tmpdir())];
   const { home, config: configFile, teamRules, state, tasks } = kit.paths;
   const subTeams = subTeamPlacesOf(tree, kit.paths.team);
   const places = { home, own: [configFile, teamRules, state], lead: config.roles.lead, sessions: config.sessions, subTeams, tasks, taskOwners };
   return {
-    own: new OwnPaths([home, memory, scratchpads, ...subTeams.flatMap((sub) => sub.own), ...config.leadBoundary.ownPaths], runtime.userHome),
+    own: new OwnPaths([home, ...ofHost, ...subTeams.flatMap((sub) => sub.own), ...config.leadBoundary.ownPaths], runtime.userHome),
     team: new TeamFolders(places, runtime.userHome),
   };
 }
