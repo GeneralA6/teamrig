@@ -1,14 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { SecretScanner } from '../core/secrets.ts';
-import { STAMP_MARKER, withStampFooter } from '../core/stamp.ts';
-import { MAX_COMMENT } from '../issues/write.ts';
-import { FakeCredentials, TEST_OWNERS } from '../testing/fake-credentials.ts';
-import type { JsonRecord } from '../core/guards.ts';
-import type { IssueDraft } from '../issues/host.ts';
-import { STATUS_LABEL_SPECS } from '../issues/status-push.ts';
-import { commentNode, FakeGh, ghIssue, ghPull, restComment } from '../testing/fake-gh.ts';
-import type { HostPull } from '../issues/pull.ts';
+import { MANAGED_LABEL_SPECS, MAX_COMMENT, withStampFooter, type HostPull, type IssueDraft, type JsonRecord } from '../../../plugin-api/index.ts';
+import { secretScanner } from '../../../testing/adapter-deps.ts';
+import { FakeCredentials, TEST_OWNERS } from '../../../testing/fake-credentials.ts';
+import { commentNode, FakeGh, ghIssue, ghPull, restComment } from '../../../testing/fake-gh.ts';
 import {
   assigneeReadArgs,
   isAssigneeRead,
@@ -56,7 +51,7 @@ function hostWith(
   credentials: FakeCredentials = new FakeCredentials().savesTokensFor(TEST_OWNERS),
   stamp = true,
 ): GitHubIssueHost {
-  return new GitHubIssueHost(gh, new RepoTokens(credentials, ENV), new SecretScanner(['tok_[a-z0-9]{8}']), stamp);
+  return new GitHubIssueHost(gh, new RepoTokens(credentials, ENV), secretScanner(['tok_[a-z0-9]{8}']), stamp);
 }
 
 /** The `body=` field of a command line, or undefined when it has none. */
@@ -64,9 +59,9 @@ function bodyOf(args: readonly string[] | undefined): string | undefined {
   return args?.find((arg) => arg.startsWith('body='))?.slice('body='.length);
 }
 
-/** How many footers `text` carries. */
-function stamps(text: string | undefined): number {
-  return (text ?? '').split(STAMP_MARKER).length - 1;
+/** Whether `text` carries one footer, at its end: stamping takes every earlier footer out first, so only such a text stays as it is. */
+function stampedOnce(text: string | undefined): boolean {
+  return text !== undefined && withStampFooter(text) === text;
 }
 
 /** A gh whose closed read fails, as a rate limit hit between the two reads would; the open read is one page. */
@@ -252,7 +247,7 @@ describe('GitHubIssueHost stamp', () => {
     const host = hostWith(gh);
     await host.comment(TARGET, withStampFooter('Thanks'));
     await host.editBody(TARGET, `${withStampFooter('Spec', '0.1.0')}\n\nOne more step.`);
-    assert.deepEqual(gh.ran.map((request) => stamps(bodyOf(request.args))), [1, 1]);
+    assert.deepEqual(gh.ran.map((request) => stampedOnce(bodyOf(request.args))), [true, true]);
     assert.equal(bodyOf(gh.ran[1]?.args), withStampFooter('Spec\n\nOne more step.'));
   });
 
@@ -403,7 +398,7 @@ describe('GitHubIssueHost', () => {
   });
 
   it('makes a status label through the allowlisted create, after which the label reads found (T2999)', async () => {
-    const [label] = STATUS_LABEL_SPECS;
+    const [label] = MANAGED_LABEL_SPECS;
     assert.ok(label !== undefined);
     const gh = new FakeGh();
     const host = hostWith(gh);
@@ -438,7 +433,7 @@ describe('GitHubIssueHost', () => {
   });
 
   it('gives gh\'s own line when the create fails', async () => {
-    const [label] = STATUS_LABEL_SPECS;
+    const [label] = MANAGED_LABEL_SPECS;
     assert.ok(label !== undefined);
     const gh = new FakeGh().failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Validation Failed (HTTP 422)\n' });
     const made = await hostWith(gh).createLabel('acme/web', label);

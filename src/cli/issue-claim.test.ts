@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
-import { isCommentsRead, isIssueAssign, isIssueBodyEdit, isIssueClose, isIssueComment, isIssueCreate, isIssueUnassign, isLabelAdd, isLabelCreate, isLabelRemove, isLinkAdd } from '../github/gh.ts';
+import { isCommentsRead, isIssueAssign, isIssueBodyEdit, isIssueClose, isIssueComment, isIssueCreate, isIssueUnassign, isLabelAdd, isLabelCreate, isLabelRemove, isLinkAdd } from '../adapters/connectors/github/gh.ts';
 import { CLAIM_DAYS, CLAIM_READS, CLAIMS_PER_DAY, formatClaims, parseClaims } from '../issues/claim.ts';
 import { minuteOf, pushHourText } from '../issues/push-hour.ts';
 import { PUSH_WRITES_PER_HOUR } from '../issues/status-push.ts';

@@ -1,7 +1,16 @@
-import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import type { FieldKind, FieldValue, FieldedIssue, HostField, HostFieldRead } from '../issues/fields.ts';
+import {
+  isRecord,
+  plainLine,
+  recordField,
+  stringField,
+  type FieldedIssue,
+  type FieldKind,
+  type FieldValue,
+  type HostField,
+  type HostFieldRead,
+  type JsonRecord,
+} from '../../../plugin-api/index.ts';
 import { HOST_ID, type GhRunner } from './gh.ts';
-import { plainLine } from '../core/printable.ts';
 import { ISSUE_READ, nodesOf, runRead } from './issues.ts';
 import { fieldsPageArgs } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
