@@ -323,6 +323,12 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       --team <child>: a request of a team below yours, whose roles.securityReviewer names you as <team>/<id>
   exec run R<n>        runs an approved request once, before its approval expires
   who [<id|name|role|team/id>] the name to message a session by (no argument: every session of yours)
+  read <document>... --json [--team <id>] [--owner <id|name>] [--interface <major.minor>]   the public
+      interface's read side, for a program: each document asked is one JSON line on stdout, in the order
+      asked, with its revision and what could not be served (problems); a refusal goes to stderr, so
+      stdout holds answers only. Documents: tasks (the register's working set; --owner keeps one
+      session's). --team: a team above yours. --interface: the version you speak, refused when this
+      teamrig does not serve it. It writes nothing
   sessions [--pass] [--project <dir>]   each session: running (and the MB its Claude Code's processes
       hold), closed or never recorded; then the host's free memory and commit charge. --pass: what an
       idle pass would close and reopen (one reopen a pass, with room on the host) and why it keeps or

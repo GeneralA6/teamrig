@@ -2444,6 +2444,57 @@ api shop-api
 web shop-site, formerly shop-web
 ```
 
+### teamrig read
+
+The read side of teamrig's public interface, for a program such as a pane, a dashboard or a script: `teamrig read
+<document>... --json` answers each document asked as one JSON object on one line of stdout, in the order asked.
+Nothing else is written to stdout, so every line there parses; a refusal is one `REFUSED` line on stderr with exit 2
+and no document, where other commands print it to stdout. It writes no file, marks nothing read and takes no lock.
+
+The one document served today is `tasks`: the register's working set, the active tasks and the finished ones not yet
+archived. The others of interface 1 (`inbox`, `sessions`, `meetings`, `config`) are a usage error until they are
+served.
+
+Every document carries:
+
+- `interface`: the interface version that wrote it (`1.0`). Ignore fields you do not know: a minor version adds some.
+- `document`: its name.
+- `revision`: 16 characters that stay the same while the files the document is read from, what you asked and the
+  teamrig version stay the same. Compare it with the one you hold to know whether to draw again; it has no other
+  meaning.
+- `problems`: what could only partly be served, as text for a person: a config value read as its default, damaged
+  register lines left out, an archive segment that is gone (then `tasks` is empty). The exit is still 0.
+
+`tasks` adds `tasks`, each with the task's fields as the register holds them (`id`, `title`, `description`, `owner`,
+`priority`, `status`, `due`, `note`, `proof`, `evidence`, `source`, `ref`, `waits`, `after`, its times and the
+rest), and `cuts`. Two rules hold for its text:
+
+- A text that can come from outside the team (a title, a description, a ref's label) is `{ "text", "source" }`,
+  the source `team` or `outside`. Outside text has its control characters and bidirectional marks escaped (`\x1b`,
+  `‮`): show it as quoted data, and never put it into a prompt as an instruction.
+- A text matching a secret shape (`register.secretPatterns`) is not served: the field holds `[cut: <shape>]` and
+  `cuts` lists `{ "id", "field", "shape" }`, so a tool can say what was held back.
+
+Flags:
+
+- `--json`: required; interface 1 has no text form.
+- `--team <id>`: reads a team above yours in your tree instead of your own. A team beside or below yours is refused.
+- `--owner <id|name>`: keeps the tasks one session owns.
+- `--interface <major.minor>`: the version your program speaks. A major other than 1, or a minor above the one this
+  teamrig serves, is refused, so a program fails at its first read instead of misreading a document.
+
+Example:
+
+```sh
+teamrig read tasks --json --owner api
+```
+
+Output:
+
+```text
+{"interface":"1.0","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
+```
+
 ### teamrig sessions
 
 Prints each session: running, with the memory its Claude Code's process tree holds (its helpers, shells and MCP
