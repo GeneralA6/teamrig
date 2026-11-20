@@ -1,9 +1,8 @@
-import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV, resolveKitHome } from '../../core/home.ts';
 import { ID_PATTERN } from '../../core/ids.ts';
 import { KIT_VERSION } from '../../core/version.ts';
 import { INBOX_ADD_LAUNCHER_SCRIPT, inboxAddLauncherPath } from '../../inbox/host-launcher.ts';
-import { sessionIdOf } from '../../inbox/inbox.ts';
+import type { HookEvent } from '../../ports/host/index.ts';
 import { dayProbePath, dayProbeReleaseLine, type DayProbeReply } from '../../restore/day-probe.ts';
 import { DayProbeStore } from '../../restore/day-probe-store.ts';
 import { apiGaveUpLine, apiRetriesSpentOn } from '../../restore/api-error.ts';
@@ -19,30 +18,30 @@ import { fileLockOf } from '../file-locks.ts';
 import { transcriptsIfKept } from '../host.ts';
 import { loginPageLogLine, loginPageOf, sendLoginPage, type LoginPage } from '../login-page.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { parseJson } from './hook-input.ts';
+import { readHookInput } from './hook-input.ts';
 
 /**
- * The event a hook payload reports; undefined for one the tracker skips. A compaction's SessionStart
- * (`source: compact`) is skipped: it comes mid-turn in the same process, and must not mark a working
+ * What a hook event reports to the tracker; undefined for one the tracker skips. A session start that follows a
+ * compaction (`source: compact`) is skipped: it comes mid-turn in the same process, and must not mark a working
  * session ready.
  */
-export function trackEventOf(payload: JsonRecord): TrackEvent | undefined {
-  switch (stringField(payload, 'hook_event_name')) {
-    case 'SessionStart':
-      return stringField(payload, 'source') === 'compact' ? undefined : { kind: 'start' };
-    case 'UserPromptSubmit':
+export function trackEventOf(event: Pick<HookEvent, 'name' | 'source' | 'helper' | 'error' | 'reason'>): TrackEvent | undefined {
+  switch (event.name) {
+    case 'session-start':
+      return event.source === 'compact' ? undefined : { kind: 'start' };
+    case 'prompt':
       return { kind: 'working' };
-    case 'PostToolUse':
-    case 'PostToolUseFailure':
-      // A helper's tool call carries the helper's id (`agent_id`).
-      return { kind: 'tool', mainThread: stringField(payload, 'agent_id') === undefined };
-    case 'Stop':
+    case 'tool-end':
+    case 'tool-failed':
+      // A helper's tool call carries the helper's id.
+      return { kind: 'tool', mainThread: event.helper?.id === undefined };
+    case 'stop':
       return { kind: 'ready' };
-    case 'StopFailure':
-      // A payload with no error is read from the transcript once, by `trackRestore` (`codedEvent`).
-      return { kind: 'error', code: stringField(payload, 'error') };
-    case 'SessionEnd':
-      return { kind: 'end', reason: stringField(payload, 'reason') };
+    case 'stop-failed':
+      // An event with no error is read from the transcript once, by `trackRestore` (`codedEvent`).
+      return { kind: 'error', code: event.error };
+    case 'session-end':
+      return { kind: 'end', reason: event.reason };
     default:
       return undefined;
   }
@@ -85,16 +84,16 @@ async function trackEntry(event: TrackEvent, facts: TrackFacts, runtime: CliRunt
 }
 
 /**
- * The event with a failed turn's error read from the transcript when the payload named none
+ * The event with a failed turn's error read from the transcript when the hook event named none
  * (src/restore/turn-error.ts); a transcript that cannot be read names none, and never keeps the entry from its update.
  */
-async function codedEvent(payload: JsonRecord, event: TrackEvent, facts: TrackFacts, runtime: CliRuntime): Promise<TrackEvent> {
+async function codedEvent(event: TrackEvent, facts: TrackFacts, runtime: CliRuntime): Promise<TrackEvent> {
   const { transcriptPath } = facts;
   if (event.kind !== 'error' || event.code !== undefined) {
     return event;
   }
   const tailOf = async (): Promise<string | undefined> => (transcriptPath === undefined ? undefined : runtime.files.readTail(transcriptPath, TURN_TAIL_BYTES));
-  return { kind: 'error', code: await turnErrorOf(transcriptsIfKept(runtime), payload, tailOf).catch(() => undefined) };
+  return { kind: 'error', code: await turnErrorOf(transcriptsIfKept(runtime), event.code, tailOf).catch(() => undefined) };
 }
 
 /** The login event a turn end reports: a good one answered, a failed one failed on the login; undefined for any other. */
@@ -199,23 +198,23 @@ async function trackLaunchers(event: TrackEvent, runtime: CliRuntime, kitHome: s
 }
 
 /**
- * Records the event `payload` reports in its session's restore entry, at a turn's end in the login marker, at a
- * reply in the day-start probe, and at a session start refreshes the launchers; a payload of no session or event it
- * skips writes nothing. A marker, probe or refresh that cannot be written (its lock busy) never keeps the entry from
+ * Records what the hook event `hook` reports in its session's restore entry, at a turn's end in the login marker, at
+ * a reply in the day-start probe, and at a session start refreshes the launchers; an event of no session, or one it
+ * skips, writes nothing. A marker, probe or refresh that cannot be written (its lock busy) never keeps the entry from
  * its update; an entry that cannot be written fails the call once they are done.
  */
-export async function trackRestore(payload: unknown, runtime: CliRuntime): Promise<void> {
-  const claudeSession = sessionIdOf(payload);
-  const reported = isRecord(payload) ? trackEventOf(payload) : undefined;
-  if (!isRecord(payload) || claudeSession === null || reported === undefined) {
+export async function trackRestore(hook: HookEvent, runtime: CliRuntime): Promise<void> {
+  const claudeSession = hook.session;
+  const reported = trackEventOf(hook);
+  if (claudeSession === undefined || reported === undefined) {
     return;
   }
   const facts: TrackFacts = {
     claudeSession,
     at: runtime.clock.now(),
     // The folder the session started in, which stays put through a `cd` or a worktree: the one to resume from.
-    projectDir: present(runtime.env[ENV.claudeProjectDir]) ?? present(stringField(payload, 'cwd')),
-    transcriptPath: present(stringField(payload, 'transcript_path')),
+    projectDir: present(runtime.env[ENV.claudeProjectDir]) ?? present(hook.cwd),
+    transcriptPath: present(hook.transcript),
     entrypoint: present(runtime.env[ENV.claudeEntrypoint]),
     sessionKind: present(runtime.env[ENV.claudeSessionKind]),
     // Claude Code starts its hooks itself (exec form, no shell), so the hook's parent is the session's Claude Code.
@@ -224,7 +223,7 @@ export async function trackRestore(payload: unknown, runtime: CliRuntime): Promi
     session: envId(runtime, ENV.session),
   };
   const kitHome = resolveKitHome(runtime.env, runtime.userHome);
-  const event = await codedEvent(payload, reported, facts, runtime);
+  const event = await codedEvent(reported, facts, runtime);
   const login = trackLogin(event, facts, runtime, kitHome).catch(() => undefined);
   const dayProbe = trackDayProbe(event, facts, runtime, kitHome).catch(() => undefined);
   const launchers = trackLaunchers(event, runtime, kitHome).catch(() => undefined);
@@ -250,6 +249,9 @@ export async function trackRestore(payload: unknown, runtime: CliRuntime): Promi
  */
 export async function restoreTrack(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  await trackRestore(parseJson(await runtime.readStdin()), runtime).catch(() => undefined);
+  const { event } = await readHookInput(runtime);
+  if (event !== undefined) {
+    await trackRestore(event, runtime).catch(() => undefined);
+  }
   return EXIT.ok;
 }
