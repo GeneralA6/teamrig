@@ -2462,7 +2462,9 @@ Every document carries:
 - `document`: its name.
 - `revision`: 16 characters that stay the same while the files the document is read from, what you asked and the
   teamrig version stay the same. Compare it with the one you hold to know whether to draw again; it has no other
-  meaning.
+  meaning. Give it back with `--unless` and a document that has not changed is answered `"unchanged": true` with
+  no body and no `problems`: keep what you hold. `unchanged` speaks of the files only, so what moves with the clock
+  (the read lines leaving the inbox's `--since` window, a meeting's `missed`) is yours to work out again.
 - `problems`: what could only partly be served, as text for a person: a config value read as its default, damaged
   register lines left out, an archive segment that is gone (then `tasks` is empty). The exit is still 0.
 
@@ -2566,6 +2568,11 @@ Flags:
 - `--owner <id|name>`: keeps the tasks one session owns.
 - `--since <hours>`: how far back `inbox` serves the lines already read, in whole hours; 24 when left out, and 0
   serves the unread ones only.
+- `--unless <document>=<revision>[,<document>=<revision>...]`: the revision you already hold of a document this run
+  asks, one entry a document, in one flag. A document still at that revision is answered `{ "interface", "document",
+  "revision", "unchanged": true }` and nothing more, from the stamps of its files alone: nothing is folded, so
+  asking again costs little. Any other is answered in full. A revision is the 16 characters `read` served; an entry
+  of another shape, for a document not asked or named twice, is a usage error.
 - `--interface <major.minor>`: the version your program speaks. A major other than 1, or a minor above the one this
   teamrig serves, is refused, so a program fails at its first read instead of misreading a document.
 
