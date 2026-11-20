@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ConfigLoad } from '../config/load.ts';
 import { testConfig } from '../testing/config.ts';
+import { hookEventOf } from '../testing/host.ts';
 import { redactableResultOf, redactedLine, rotationText, rotatorOf } from './secret-redact.ts';
 
 const join = (...parts: string[]): string => parts.join('');
@@ -12,22 +13,21 @@ const bashResult = (stdout: string): { stdout: string; stderr: string; interrupt
 const loaded = (roles: { lead: string; securityReviewer?: string }): ConfigLoad => ({ status: 'loaded', path: 'c.json', config: testConfig({ roles }), issues: [] });
 
 describe('redactableResultOf', () => {
-  it('gives the result of a Bash, PowerShell or Grep call, and of a Read of a text file, with its tool and payload', () => {
+  it('gives the result of a Bash, PowerShell or Grep call, and of a Read of a text file, with its tool', () => {
     for (const tool_name of ['Bash', 'PowerShell', 'Grep']) {
-      const payload = { tool_name, tool_response: bashResult(TOKEN) };
-      assert.deepEqual(redactableResultOf(payload), { payload, tool: tool_name, response: bashResult(TOKEN) });
+      assert.deepEqual(redactableResultOf(hookEventOf({ tool_name, tool_response: bashResult(TOKEN) })), { tool: tool_name, response: bashResult(TOKEN) });
     }
     const text = { type: 'text', file: { filePath: 'a.txt', content: TOKEN } };
-    assert.deepEqual(redactableResultOf({ tool_name: 'Read', tool_response: text })?.response, text);
+    assert.deepEqual(redactableResultOf(hookEventOf({ tool_name: 'Read', tool_response: text })), { tool: 'Read', response: text });
   });
 
-  it('leaves a tool not probed, a Read of an image, a result that is no object and a payload that is none alone', () => {
-    assert.equal(redactableResultOf({ tool_name: 'WebFetch', tool_response: { result: TOKEN } }), undefined);
-    assert.equal(redactableResultOf({ tool_name: 'Read', tool_response: { type: 'image', file: { base64: TOKEN } } }), undefined);
-    assert.equal(redactableResultOf({ tool_name: 'Bash', tool_response: JSON.stringify(bashResult(TOKEN)) }), undefined);
-    assert.equal(redactableResultOf({ tool_name: 'Bash' }), undefined);
-    assert.equal(redactableResultOf({ tool_response: bashResult(TOKEN) }), undefined);
-    assert.equal(redactableResultOf('not a payload'), undefined);
+  it('leaves a tool not probed, a Read of an image, a result that is no object and an event with no call alone', () => {
+    assert.equal(redactableResultOf(hookEventOf({ tool_name: 'WebFetch', tool_response: { result: TOKEN } })), undefined);
+    assert.equal(redactableResultOf(hookEventOf({ tool_name: 'Glob', tool_response: { filenames: [TOKEN] } })), undefined);
+    assert.equal(redactableResultOf(hookEventOf({ tool_name: 'Read', tool_response: { type: 'image', file: { base64: TOKEN } } })), undefined);
+    assert.equal(redactableResultOf(hookEventOf({ tool_name: 'Bash', tool_response: JSON.stringify(bashResult(TOKEN)) })), undefined);
+    assert.equal(redactableResultOf(hookEventOf({ tool_name: 'Bash' })), undefined);
+    assert.equal(redactableResultOf(hookEventOf({ tool_response: bashResult(TOKEN) })), undefined);
   });
 });
 
