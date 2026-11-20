@@ -16,6 +16,7 @@ const BARE: HookEvent = {
   session: undefined,
   cwd: undefined,
   transcript: undefined,
+  title: undefined,
   helper: undefined,
   call: undefined,
   prompt: undefined,
@@ -24,6 +25,7 @@ const BARE: HookEvent = {
   source: undefined,
   trigger: undefined,
   model: undefined,
+  effort: undefined,
   message: undefined,
   error: undefined,
 };
@@ -124,6 +126,18 @@ describe("Claude Code's hook input", () => {
     assert.deepEqual(parse({ hook_event_name: 'SubagentStop', agent_id: 'a1', agent_type: 'Explore', agent_transcript_path: '/logs/a1.jsonl' })?.helper, { id: 'a1', type: 'Explore', transcript: '/logs/a1.jsonl' });
     assert.deepEqual(parse({ agent_type: 'reviewer' })?.helper, { id: undefined, type: 'reviewer', transcript: undefined });
     assert.equal(parse({ agent_id: 7 })?.helper, undefined);
+  });
+
+  it('reads the title the human gave the session, and no blank one', () => {
+    assert.equal(parse({ session_title: ' ranger ' })?.title, 'ranger');
+    assert.equal(parse({ session_title: '  ' })?.title, undefined);
+    assert.equal(parse({ session_title: 7 })?.title, undefined);
+  });
+
+  it('reads the effort level, and none from an effort that is no object', () => {
+    assert.equal(parse({ hook_event_name: 'Stop', effort: { level: 'high' } })?.effort, 'high');
+    assert.equal(parse({ effort: 'high' })?.effort, undefined);
+    assert.equal(parse({ effort: { level: 3 } })?.effort, undefined);
   });
 
   it('reads a prompt, a start and a compaction', () => {
