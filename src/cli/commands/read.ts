@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { ENV, type Env } from '../../core/home.ts';
+import { ID_PATTERN, ID_RULE } from '../../core/ids.ts';
 import { PlainLogFile } from '../../core/log-file.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { KIT_VERSION } from '../../core/version.ts';
@@ -22,6 +23,7 @@ import {
   type InterfaceVersion,
   type RevisionParts,
 } from '../../interface/index.ts';
+import type { Roster } from '../../config/roster.ts';
 import type { Task } from '../../register/fold.ts';
 import { layoutPaths, MissingSegmentError, readWorkingSet, type LayoutPaths } from '../../register/layout.ts';
 import type { RegisterSnapshot } from '../../register/snapshot.ts';
@@ -97,13 +99,26 @@ function requestOf(args: ParsedArgs, env: Env): ReadRequest {
   }
   return {
     documents,
-    team: args.flags.get('team'),
-    owner: args.flags.get('owner'),
+    team: teamOf(args.flags.get('team')),
+    owner: ownerOf(args.flags.get('owner')),
     session: askerOf(args.flags.get('session'), env),
     conversation: conversationOf(args.flags.get('conversation')),
     sinceHours: sinceHoursOf(args.flags.get('since')),
     speaks,
   };
+}
+
+/** `--team` names a folder of the kit home, so it is held to an id's shape before the tree is asked about it. */
+function teamOf(typed: string | undefined): string | undefined {
+  if (typed !== undefined && !ID_PATTERN.test(typed)) {
+    throw new UsageError(`--team "${typed}" is not a team id (${ID_RULE})`);
+  }
+  return typed;
+}
+
+/** `--owner` only filters the tasks served, and is held to a session's shape all the same, as `--session` is. */
+function ownerOf(typed: string | undefined): string | undefined {
+  return typed === undefined ? undefined : sessionRef('--owner', typed);
 }
 
 function conversationOf(typed: string | undefined): string | undefined {
@@ -272,7 +287,7 @@ function inboxSource(scope: ReadScope): DocumentSource {
     const held = scope.conversation === null ? '' : `no session of team ${scope.own} holds conversation ${scope.conversation}; `;
     throw new UsageError(`inbox is one session's: ${held}name it with --session (or $${ENV.session})`);
   }
-  const session = pastOrPresentIdOf(roster, scope.asker);
+  const session = inboxSessionOf(roster, scope.asker);
   const inboxes = new InboxDir(runtime.files, kit.paths.inbox);
   const marks = new JsonlMarkLog(new PlainLogFile(runtime.files, kit.paths.inboxMarks));
   return {
@@ -303,6 +318,19 @@ function inboxSource(scope: ReadScope): DocumentSource {
       return { body, problems: skippedOf(kit.paths.inboxMarks, log) };
     },
   };
+}
+
+/**
+ * The session whose inbox is served: one the team has now, by id or by any name it has had. Any other is refused
+ * before its inbox file is named, a session the team once had too: the id becomes a file's name, so only an id the
+ * config holds may be one, where `--owner`, which builds no path, also takes an id the team no longer has.
+ */
+function inboxSessionOf(roster: Roster, asker: string): string {
+  const found = roster.lookup(asker);
+  if (!found.ok) {
+    throw new RefusedError(found.error);
+  }
+  return found.id;
 }
 
 interface WorkingSet {

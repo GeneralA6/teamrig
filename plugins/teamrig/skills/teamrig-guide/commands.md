@@ -2478,7 +2478,7 @@ names it (a session's id, `<team>/<id>` from another team, `github` for a line t
 for a line with no date. Reading it marks nothing read, unlike `teamrig inbox read`. The 24 hours are counted when
 you ask and are no part of `revision`: with an unchanged revision, drop the read lines that left the window
 yourself. `inbox` needs `--session` (or `$TEAMRIG_SESSION`, or a `--conversation` one of your team's sessions holds)
-and takes no `--team`.
+and takes no `--team`; a session your team does not have now is refused.
 
 `sessions` adds `self`, `teams`, `sessions`, `failures` and `cuts`, and is the same whatever `--team` names: the tree
 is your own.
