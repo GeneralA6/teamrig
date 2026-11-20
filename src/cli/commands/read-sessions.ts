@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import { describeLaunch, launchOf } from '../../config/launch.ts';
 import { LeadTree } from '../../config/lead-tree.ts';
 import { Roster } from '../../config/roster.ts';
@@ -14,10 +15,9 @@ import { sessionsBody, type MemberInput, type ServedHost, type SessionPlace, typ
 import { JsonlRenameLog } from '../../names/log.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';
 import { TabNeedStore } from '../../tabs/need.ts';
-import { issueText } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { teamsFolderOf, type KitTree, type TreeTeam } from '../tree.ts';
-import { skippedOf, stampsOf, type DocumentSource, type ReadScope } from './read-source.ts';
+import { servedPathOf, skippedOf, stampsOf, type DocumentSource, type ReadScope } from './read-source.ts';
 
 /** The one program a session runs in, until a team's config names each session's host. */
 const HOST: ServedHost = { id: 'claude-code', name: 'Claude Code' };
@@ -128,14 +128,17 @@ async function teamInputOf(runtime: CliRuntime, tree: TeamTree, own: string, { k
       retire,
     })),
   };
-  const skipped = hiring.skipped > 0 ? [`${kit.paths.hires}: ${hiring.skipped} damaged or newer line(s) left out`] : [];
-  return { input, problems: [...skippedOf(kit.paths.inboxMarks, markLog), ...skipped] };
+  const skipped = hiring.skipped > 0 ? [`${servedPathOf(kit.paths, kit.paths.hires)}: ${hiring.skipped} damaged or newer line(s) left out`] : [];
+  return { input, problems: [...skippedOf(kit.paths, kit.paths.inboxMarks, markLog), ...skipped] };
 }
 
-/** The team folders whose config cannot be read. A folder with no config is no team, and is not one of them. */
+/**
+ * The team folders whose config cannot be read. A folder with no config is no team, and is not one of them. The
+ * reason is the same text for each: why the file did not parse is the parser's message, which quotes the file.
+ */
 function failuresOf(loaded: KitTree): TeamFailure[] {
   return [...loaded.leftOut].flatMap(([team, load]) =>
-    load.status === 'unreadable' ? [{ team, reason: `the team config cannot be read: ${issueText(load.issue)}` }] : [],
+    load.status === 'unreadable' ? [{ team, reason: `${team}/${basename(load.path)} cannot be read as a team config` }] : [],
   );
 }
 
@@ -185,7 +188,7 @@ export function sessionsSource(scope: ReadScope): DocumentSource {
       return {
         body,
         problems: [
-          ...failures.map((failure) => `team ${failure.team}: ${failure.reason}`),
+          ...failures.map((failure) => failure.reason),
           ...problems,
           ...(broken > 0 ? [`the tree has ${broken} problem(s); run: teamrig doctor`] : []),
         ],
