@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_PROMPTS } from '../config/defaults.ts';
+import { toJsonlLine } from '../core/jsonl.ts';
 import { SANCTIONED_ROUTES, type RouteId, type SanctionedRoute } from '../permissions/sanctioned.ts';
 import { guardsPassed, preToolUseRouteOf, routeAllowOn, routeAllowOutput, routeAllowRecord } from './route-allow.ts';
 
@@ -56,5 +57,13 @@ describe('route allow', () => {
       command: null,
     });
     assert.equal(routeAllowRecord({ at, session: undefined, claudeSession: null, route: 'merge' })['session'], null);
+  });
+
+  it('writes the line as it does today, naming the tab claudeSession: no code reads the id back, so the rename moves it in one release (T4762)', () => {
+    const at = new Date('2030-01-08T10:00:00.000Z');
+    assert.equal(
+      toJsonlLine(routeAllowRecord({ at, session: 'alpha', claudeSession: 'c1', route: 'git-commit' })),
+      '{"v":1,"at":"2030-01-08T10:00:00.000Z","session":"alpha","claudeSession":"c1","tool":"Bash","event":"PreToolUse","answer":"route","route":"git-commit","command":null}\n',
+    );
   });
 });
