@@ -94,6 +94,15 @@ describe('the CLI on a rotated register', () => {
     assert.equal(historyOf(shown.stdout).length, 3, 'the header, the create and the update');
   });
 
+  it("shows a task with the description its snapshot task line left out, read from the history (T4781)", async () => {
+    const kit = await rotatedKit();
+    const snapshot = kit.files.get(layoutPaths(EVENTS_PATH).snapshot) ?? '';
+    assert.doesNotMatch(snapshot, /what and why/, 'the task line of T3 holds no description');
+    const shown = await kit.run(['show', 'T3'], AS_ALPHA);
+    assert.equal(shown.code, EXIT.ok);
+    assert.ok(shown.stdout.join('\n').split('\n').includes('description: what and why'), shown.stdout.join('\n'));
+  });
+
   it("reads the whole history for a week plan as old as the retired tasks' newest", async () => {
     const kit = await rotatedKit();
     const old = await kit.run(['plan', '--week', '2030-01-07'], AS_ALPHA);
