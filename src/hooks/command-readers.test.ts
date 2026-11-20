@@ -12,8 +12,8 @@ import ts from 'typescript';
  * from the shell call the host port hands it (`readings`); a route from `shellRouteOf` or a service role's call from
  * `shellRoleCallOf`, each of which holds only when every reading is that route or call; a reader whose verdict cannot
  * change under the halving sits in EXEMPT with the reason it holds. A source that reads the command off the hook
- * payload itself has no readings to take, so it is a reader with none. The spec fails on a new reader with none, and
- * on an exemption whose file no longer reads a command.
+ * payload itself, or off the call's input as the host sent it, has no readings to take, so it is a reader with none.
+ * The spec fails on a new reader with none, and on an exemption whose file no longer reads a command.
  */
 
 /** The functions that judge a shell call in every text it may run. */
@@ -21,6 +21,7 @@ const READINGS_IMPORTS: ReadonlySet<string> = new Set(['shellRouteOf', 'shellRol
 
 /** Readers whose verdict is the same in every reading, by the path under src/ with `/` separators, with why. */
 const EXEMPT: Readonly<Record<string, string>> = {
+  'budget/line.ts': "reads a tool use's command off a transcript line or a call to count a turn's work for the budget and the loop nudge; it allows or refuses no call",
   'hooks/cd-compound.ts':
     "refuses only, never allows: a line it lets go meets Claude Code's own prompt, a refused one its rerun form, so no reading lets a line run unchecked",
   'hooks/pass-record-guard.ts':
@@ -49,8 +50,9 @@ const SRC = fileURLToPath(new URL('..', import.meta.url));
 /** What one source says about the command it reads. */
 interface CommandReading {
   /**
-   * It reads a shell call's command: off a hook payload, naming both `tool_input` and `command` as strings, or off
-   * the call the host port hands it, narrowing its kind to `shell` and reading the member `command`.
+   * It reads a shell call's command: off a hook payload, naming both `tool_input` and `command` as strings; off the
+   * call the host port hands it, narrowing its kind to `shell` and reading the member `command`; or off that call's
+   * input as the host sent it, reading the member `input` and naming `command` as a string.
    */
   readonly readsCommand: boolean;
   /** Imports a function that gives every reading, or reads the shell call's `readings`. */
@@ -113,7 +115,9 @@ function commandReadingOf(fileName: string, source: string): CommandReading {
   const offPayload = strings.has('tool_input') && strings.has('command');
   // A guard that reads only the readings, never the line as written, reads the command as much as one that reads both.
   const offCall = narrowsShell && (members.has('command') || members.has('readings'));
-  return { readsCommand: offPayload || offCall, importsReadings: importsReadings || members.has('readings') };
+  // The input as the host sent it holds the line as written too, and a read of it takes none of the call's readings.
+  const offInput = members.has('input') && strings.has('command');
+  return { readsCommand: offPayload || offCall || offInput, importsReadings: importsReadings || members.has('readings') };
 }
 
 /** Every non-test TypeScript source under `dir`, but those in a skipped folder. */
@@ -188,6 +192,13 @@ describe('commandReadingOf', () => {
     const source = "switch (call?.kind) { case 'shell': return call.readings.flatMap(found); default: return []; }";
     assert.deepEqual(commandReadingOf('a.ts', source), { readsCommand: true, importsReadings: true });
     assert.equal(commandReadingOf('a.ts', 'const texts = step.readings;').readsCommand, false);
+  });
+
+  it("finds a command read off the call's input as the host sent it, which takes no reading", () => {
+    assert.deepEqual(commandReadingOf('a.ts', "const line = stringField(call.input, 'command');"), { readsCommand: true, importsReadings: false });
+    assert.deepEqual(commandReadingOf('a.ts', "const { input } = call;\nconst line = input['command'];"), { readsCommand: true, importsReadings: false });
+    assert.equal(commandReadingOf('a.ts', "const path = stringField(call.input, 'file_path');").readsCommand, false);
+    assert.equal(commandReadingOf('a.ts', "const line = stringField(input, 'command');").readsCommand, false, 'a record of that name is no call');
   });
 
   it('leaves a command read off anything but a call narrowed to the shell kind', () => {
