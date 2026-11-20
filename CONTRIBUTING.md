@@ -20,9 +20,9 @@ team, [the configuration reference](docs/configuration.md) from each key's `desc
 `src/features/terminal`), so none can drift from the code or from what the CLI prints: the checks fail until they are
 redrawn. To change a key's text, edit its `description` and run `npm run docs:config`; to change what a tool supports,
 edit its adapter's declaration and run `npm run docs:parity`. The layer boundaries of `src` (what the core and an
-adapter may import, who
-may import an adapter, where a tool is named) are counted by `node tools/ci/boundaries-cli.ts`, in warn mode: it prints
-the counts and fails nothing yet. The sections below give the test and sign-off rules.
+adapter may import, who may import an adapter or a fake of `src/testing`, where a tool is named) are counted by
+`node tools/ci/boundaries-cli.ts`, in warn mode: it prints the counts and fails nothing yet. The sections below give
+the test and sign-off rules.
 
 ## How we work
 Every contributor, and every Claude Code session opened in this repo, works the same way. [CLAUDE.md](CLAUDE.md) holds
