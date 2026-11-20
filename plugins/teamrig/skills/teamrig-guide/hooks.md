@@ -905,7 +905,8 @@ with no permission check when all of these hold:
   reads as the same call. A ship is `teamrig queue --kind test --session <you> --what "<text>" [--task
   T<id>] [--detach] [--max-minutes <n>] -- node <shipTool> <worktree> <plan.json>`, and a merge the same under
   `--kind ship|merge` with `--merge [--approved <sha>] [--note-file <file>]` after it, or `... -- node <shipTool>
-  merge <worktree> [--approved <sha>] [--note-file <file>]`, every path absolute, `--session` required here too;
+  merge <worktree> [--approved <sha>] [--note-file <file>]`, or the release merge `... -- node <shipTool> merge
+  <main checkout> --release T<id> --approved <sha>`, every path absolute, `--session` required here too;
 - **a migrate reads the team's task files**: its rows file is named by an absolute path inside one task folder of
   the team (`<team>/tasks/T<id>/...`, what `teamrig files T<id>` gives), never `--out`, so every row it opens an
   issue for was written where the team keeps its task files; the register lets the holder of `issue migrate` point
@@ -920,7 +921,10 @@ with no permission check when all of these hold:
   checks it again as the step is queued and at its start, when a later main with the same tool code runs too); the
   worktree is a linked worktree of
   the same repository inside its worktree folder, on a task branch (`t<id>-...`, never a protected branch) whose task
-  the session owns, `--task` names that task when given, and the plan and note sit in that task's files folder;
+  the session owns, `--task` names that task when given, and the plan and note sit in that task's files folder; a
+  release merge names instead the repository's main checkout and a release task the session owns (`--task` the same
+  one when given), and the ship tool's own gate checks the lead's approval of that task at the head it reads from
+  origin and that the head holds only the release;
 - **the tab is the holder's**: every inbox mark this Claude Code session ever wrote names one session, it is on the
   roster, and it is the session the call's `--session` names (the hook never falls back on `$TEAMRIG_SESSION`, which
   the shell may set otherwise). A tab that ever read or bound as two sessions holds no role, so `inbox read --session

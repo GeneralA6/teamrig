@@ -17,6 +17,9 @@ it raises the version in `plugins/teamrig/.claude-plugin/plugin.json` and `src/c
    `node tools/ship/ship.ts merge <repo dir> --release T<id> --approved <sha>`. It reads the head from origin, refuses
    it before its gate when it changes anything but the version raises and the changelog's new notes (naming
    the path, `tools/ship/release-pull.ts`), proves its checks as the repository's gate does, and rebase-merges it.
+   Written as `teamrig queue --kind merge --detach --session <you> --what "..." --task T<id> -- node <abs shipTool>
+   merge <abs main checkout> --release T<id> --approved <full sha>`, it is a ship role call the route allow lets run
+   with no permission prompt (T4672); any other shape goes to the permission check.
 4. The next run of the release workflow tags main and publishes the plugin to the `release` branch: check that the
    new tag and release exist before you set the task done.
 
