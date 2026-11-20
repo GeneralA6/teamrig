@@ -2,12 +2,23 @@ import { loadHostPorts, type HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { isUnsupported, type HookBridge, type HookEvent, type HookEventName, type HookReply, type ShellCall } from '../ports/host/index.ts';
 import { hostDeps } from './adapter-deps.ts';
+import { bareHost } from './bare-host.ts';
 
 /**
  * The shipped host adapter, loaded once for every spec and given no program to run: a spec reads what the host
  * wrote through the code teamrig runs with, so a pin fails when that code changes.
  */
 export const SHIPPED_HOST: HostSource = await loadHostPorts(hostDeps().run);
+
+/**
+ * A bare host (`bareHost`) whose hooks still run: the shipped host's hook bridge and tool calls, and no other port.
+ * For a spec of what a hook does on a host lacking the rest, such as a transcript or a usage meter: on a wholly
+ * bare host the hook would read no input at all.
+ */
+export const HOOKS_ONLY_HOST: HostSource = (given) => {
+  const { hooks, toolCall } = SHIPPED_HOST(given);
+  return { ...bareHost(), hooks, toolCall };
+};
 
 /** The shipped host's hook bridge on `platform`. */
 export function testHooks(platform: NodeJS.Platform = 'linux'): HookBridge {
