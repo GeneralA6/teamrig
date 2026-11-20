@@ -8,8 +8,10 @@ import { areaLabelSpec } from '../issues/managed-labels.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
+import { rotateRegister } from '../testing/rotation.ts';
 import { EXIT } from './runtime.ts';
 
+const DAY_MS = 86_400_000;
 const GITHUB_TEAM: JsonRecord = { ...TEAM, github: { repos: ['acme/web'] } };
 const AS_LEAD = { env: { TEAMRIG_SESSION: 'lead' } };
 const LOGIN = 'ACCESS acme: writes with the token saved as teamrig-gh-acme';
@@ -433,21 +435,49 @@ describe('teamrig issue edit', () => {
 });
 
 describe('teamrig issue similar', () => {
-  /** Three mirrored issues (T1-T3), two of them about the same crash, and one task with no issue (T4). */
-  async function seeded(team: JsonRecord = GITHUB_TEAM): Promise<CliHarness> {
+  /** A task to add: its title, its description, and the issue it mirrors, if any. */
+  type Seed = readonly [title: string, description: string, ref: string | undefined];
+
+  /** A team holding `tasks`, added in order as T1, T2 and on. */
+  async function teamWith(tasks: readonly Seed[], team: JsonRecord = GITHUB_TEAM): Promise<CliHarness> {
     const kit = new CliHarness(team);
-    const tasks: ReadonlyArray<readonly [string, string, string | undefined]> = [
-      ['Login page crashes on submit', 'The login page crashes when the form is submitted with an empty password.', 'gh:acme/web#7'],
-      ['Login crashes on submit with an empty password', 'Submitting the login form with no password crashes the page.', 'gh:acme/web#8'],
-      ['Dark theme colours for the settings menu', 'The settings menu needs its own dark theme colours.', 'gh:acme/web#9'],
-      ['The login page crashes on submit', 'A team task with no issue behind it: the login page crashes on submit.', undefined],
-    ];
     for (const [title, description, ref] of tasks) {
       const added = await kit.run(['add', '--title', title, '--description', description, '--priority', 'p1', ...(ref === undefined ? [] : ['--ref', ref])], AS_LEAD);
       assert.equal(added.code, EXIT.ok, [...added.stdout, ...added.stderr].join('\n'));
     }
     return kit;
   }
+
+  /** Three mirrored issues (T1-T3), two of them about the same crash, and one task with no issue (T4). */
+  function seeded(team: JsonRecord = GITHUB_TEAM): Promise<CliHarness> {
+    return teamWith(
+      [
+        ['Login page crashes on submit', 'The login page crashes when the form is submitted with an empty password.', 'gh:acme/web#7'],
+        ['Login crashes on submit with an empty password', 'Submitting the login form with no password crashes the page.', 'gh:acme/web#8'],
+        ['Dark theme colours for the settings menu', 'The settings menu needs its own dark theme colours.', 'gh:acme/web#9'],
+        ['The login page crashes on submit', 'A team task with no issue behind it: the login page crashes on submit.', undefined],
+      ],
+      team,
+    );
+  }
+
+  it('compares the bodies a compaction left out of the snapshot, read from the history (T4781)', async () => {
+    // Alike only in their bodies: with the bodies missing, no title word is shared and nothing matches. The bodies
+    // are long enough to outweigh the titles, whose words count twice and are shared by neither.
+    const crash = 'The login page crashes when the form is submitted with an empty password';
+    const trace = 'the browser console shows a null reference error in the validation script.';
+    const kit = await teamWith([
+      ['Sign-in is broken', `${crash}: ${trace}`, 'gh:acme/web#7'],
+      ['Report from a customer', `${crash} field: ${trace}`, 'gh:acme/web#8'],
+      ['Dark theme colours for the settings menu', 'The settings menu needs its own dark theme colours.', 'gh:acme/web#9'],
+    ]);
+    kit.clock.advance(3 * DAY_MS);
+    await rotateRegister(kit.files, EVENTS_PATH, { now: new Date(kit.clock.now()) });
+    const result = await kit.run(['issue', 'similar', 'acme/web#7'], AS_LEAD);
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.equal(result.stdout[0], 'SIMILAR acme/web#7 (T1): 1 of 2 mirrored issues at or above 0.35 (github.similarThreshold)');
+    assert.match(result.stdout[1] ?? '', / acme\/web#8 T2 Report from a customer$/u);
+  });
 
   it("lists the issue's likely duplicates among the mirrored ones, best first, reading only the task list", async () => {
     const kit = await seeded();
