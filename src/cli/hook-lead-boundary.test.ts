@@ -1,10 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import type { HostSource } from '../composition/host-ports.ts';
 import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
+import { unsupported } from '../ports/host/index.ts';
 import { APP, CLAUDE_SESSION, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { SHIPPED_HOST } from '../testing/host.ts';
 import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { promptLine, replyLine, resultsLine, transcript, type FixtureTool } from '../testing/transcript-lines.ts';
 
@@ -26,7 +29,7 @@ function teamWith(last: FixtureTool, config: JsonRecord = TEAM, prompt = 'go'): 
 }
 
 /** The loop-nudge hook after `tool`, over `files` when given (such as a `FaultyFiles` over the kit's). */
-function afterTool(kit: CliHarness, tool: FixtureTool, env: Readonly<Record<string, string>>, files?: Files): Promise<CliResult> {
+function afterTool(kit: CliHarness, tool: FixtureTool, env: Readonly<Record<string, string>>, files?: Files, host?: HostSource): Promise<CliResult> {
   const stdin = JSON.stringify({
     session_id: CLAUDE_SESSION,
     cwd: APP,
@@ -35,8 +38,11 @@ function afterTool(kit: CliHarness, tool: FixtureTool, env: Readonly<Record<stri
     tool_use_id: tool.id,
     tool_input: { ...(tool.path === undefined ? {} : { file_path: tool.path }), ...(tool.url === undefined ? {} : { url: tool.url }) },
   });
-  return kit.run(['hook', 'loop-nudge'], { stdin, env, ...(files === undefined ? {} : { files }) });
+  return kit.run(['hook', 'loop-nudge'], { stdin, env, ...(files === undefined ? {} : { files }), ...(host === undefined ? {} : { host }) });
 }
+
+/** The shipped host, telling none of its folders: its transcript is still read. */
+const NO_PATHS_HOST: HostSource = (given) => ({ ...SHIPPED_HOST(given), paths: unsupported('no folder of the host is known') });
 
 describe('the lead boundary hooks', () => {
   it('hand the lead one line at its first edit outside its own files, and nothing to another session', async () => {
@@ -57,6 +63,16 @@ describe('the lead boundary hooks', () => {
     assert.match((await afterTool(await teamWith(beside), beside, inTemp)).stdout.join(''), /the lead edited lead-tasks\.tsv itself/);
     const off = await teamWith(EDIT, { ...TEAM, leadBoundary: { enabled: false } });
     assert.deepEqual((await afterTool(off, EDIT, AS_LEAD)).stdout, []);
+  });
+
+  it("count the host's memory folders and scratchpads as the lead own only on a host that tells where they are", async () => {
+    const memory: FixtureTool = { id: 'last', name: 'Write', path: join(USER_HOME, '.claude', 'projects', 'work-app', 'memory', 'lead-notes.md') };
+    assert.deepEqual((await afterTool(await teamWith(memory), memory, AS_LEAD)).stdout, [], 'a memory folder is the lead own');
+    assert.match((await afterTool(await teamWith(memory), memory, AS_LEAD, undefined, NO_PATHS_HOST)).stdout.join(''), /the lead edited lead-notes\.md itself/);
+    const temp = join(USER_HOME, 'temp');
+    const scratch: FixtureTool = { id: 'last', name: 'Write', path: join(temp, 'claude', 'work-app', 'old-session', 'scratchpad', 'lead-tasks.tsv') };
+    const inTemp = { ...AS_LEAD, CLAUDE_CODE_TMPDIR: temp };
+    assert.match((await afterTool(await teamWith(scratch), scratch, inTemp, undefined, NO_PATHS_HOST)).stdout.join(''), /the lead edited lead-tasks\.tsv itself/);
   });
 
   it('hand the lead one line at its first web lookup, naming the owner of the task its prompt asks about (T736)', async () => {
