@@ -1,4 +1,5 @@
 import type { DecisionCard } from './card.ts';
+import type { DescriptionCut } from './description-cut.ts';
 import { withAudit, type HandStepAudit } from './hand-step.ts';
 import { namesApprovedHead, namesUnapprovedCommit } from './head-sha.ts';
 import type { ProblemReview } from './review.ts';
@@ -29,6 +30,12 @@ export interface OwnerDecision {
 export interface Task extends TaskFields {
   readonly id: string;
   readonly status: TaskStatus;
+  /**
+   * The mark of a description a snapshot's task line left out (T4781, description-cut.ts): not null means the task
+   * has a description and `description` is null here, its text in the history. Null on a task folded from its own
+   * events, and from the update that gives it a description, or clears it, on.
+   */
+  readonly descriptionCut: DescriptionCut | null;
   /** The note, evidence and skill of the latest status change; evidence carries over when a change gives none. */
   readonly note: string | null;
   readonly evidence: string | null;
@@ -201,6 +208,7 @@ function created(id: string, fields: TaskFields, at: string, by: string): Task {
     ...fields,
     id,
     status: 'open',
+    descriptionCut: null,
     note: null,
     evidence: null,
     skill: null,
@@ -316,7 +324,8 @@ function reparksAfter(task: Task, event: Extract<RegisterEvent, { type: 'status'
  * marks the task `decided`. On a task in any other status they mean nothing. A pin holds for the owner it was set for:
  * handing the task on clears it, unless the same update pins it (T637). An update that gives a size, or clears it,
  * gives its size base too (T649). An update with an `audit` pins a hand step file for the task, by the session that
- * wrote it (T2312).
+ * wrote it (T2312). An update that gives a description, or clears it, ends the mark of a cut one (T4781): the task
+ * holds its text whole again.
  */
 function withChanges(task: Task, { changes, note, at, by, verdict, waits, decided, sizeBase, audit, securityVerdict }: UpdateEvent): Task {
   const priorityAt = changes.priority === undefined || changes.priority === task.priority ? task.priorityAt : at;
@@ -329,6 +338,7 @@ function withChanges(task: Task, { changes, note, at, by, verdict, waits, decide
   const next: Task = {
     ...task,
     ...changes,
+    descriptionCut: changes.description === undefined ? task.descriptionCut : null,
     note: shown,
     answer,
     decided: decision,

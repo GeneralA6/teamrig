@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TEST_CARD } from '../testing/card.ts';
 import type { DecisionCard } from './card.ts';
+import { cutOf, cutTask } from './description-cut.ts';
 import { EVENT_VERSION, type ApprovalVerdict, type RegisterEvent, type TaskFields } from './events.ts';
 import { droppedApproval, foldEvents, RegisterFold, type Task } from './fold.ts';
 import type { TaskStatus } from './model.ts';
@@ -564,5 +565,38 @@ describe("foldEvents: the owner's decision a leader records (T1366)", () => {
     assert.equal(taskAfter([create(9), status(10, 'in-progress'), decided(11, [])]).decided, null);
     assert.equal(taskAfter([create(9), status(10, 'waiting', OWNER), decided(11, []), status(12, 'in-progress')]).decided, null);
     assert.equal(taskAfter([create(9), status(10, 'waiting', OWNER), later(11, OWNER)]).decided, null, 'a Later is no decision');
+  });
+});
+
+describe('foldEvents: the mark of a description a task line left out (T4781)', () => {
+  const described: RegisterEvent = { v: EVENT_VERSION, type: 'create', id: 'T1', at: at(9), by: 'lead', task: { ...FIELDS, description: 'what and why' } };
+
+  /** The task after `events`, folded on from a task line that cut its description. */
+  function afterCut(events: readonly RegisterEvent[]): Task {
+    const line = cutTask(taskAfter([described]));
+    const task = foldEvents(events, [], { tasks: new Map([[line.id, line]]), orphans: 0, nextId: 'T2', moved: new Map() }).tasks.get('T1');
+    assert.ok(task !== undefined);
+    return task;
+  }
+
+  it('is null on a task folded from its own events, whatever its description', () => {
+    assert.equal(taskAfter([create(9)]).descriptionCut, null);
+    const whole = taskAfter([described, status(10, 'in-progress')]);
+    assert.deepEqual([whole.description, whole.descriptionCut], ['what and why', null]);
+  });
+
+  it('stays through a status and an update of other fields', () => {
+    const task = afterCut([status(10, 'in-progress'), update(11, { priority: 1 }), noted(12, 'alpha', 'a note')]);
+    assert.deepEqual([task.description, task.descriptionCut], [null, cutOf('what and why')]);
+  });
+
+  it('ends at an update that gives a description, which the task holds whole', () => {
+    const task = afterCut([update(10, { description: 'a new text' })]);
+    assert.deepEqual([task.description, task.descriptionCut], ['a new text', null]);
+  });
+
+  it('ends at an update that clears the description', () => {
+    const task = afterCut([update(10, { description: null })]);
+    assert.deepEqual([task.description, task.descriptionCut], [null, null]);
   });
 });
