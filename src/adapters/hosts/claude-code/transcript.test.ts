@@ -1,0 +1,335 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { apiErrorLine, compactLine, promptLine, replyLine, resultsLine, sessionStartNoteLine, summaryLine, systemLine, textLine } from '../../../testing/transcript-lines.ts';
+import { transcriptReader } from './transcript.ts';
+
+const AT = '2026-01-05T10:00:00.000Z';
+const AT_MS = Date.parse(AT);
+
+/** What an entry holds when its line names no id, time, session or thread. */
+const BARE = { at: undefined, id: undefined, parent: undefined, session: undefined, thread: undefined, meta: false } as const;
+/** What an input holds beyond its content. */
+const PLAIN_INPUT = { kind: 'input', text: undefined, parts: [], results: [], origin: undefined, turnOrigin: undefined, continuation: false, fromTool: false, background: undefined } as const;
+/** What a reply holds beyond its content. */
+const PLAIN_REPLY = { kind: 'reply', key: undefined, model: undefined, effort: undefined, usage: undefined, texts: [], calls: [], synthetic: false, failed: false, error: undefined } as const;
+
+function userLine(extra: Readonly<Record<string, unknown>>, content: unknown = 'go'): string {
+  return JSON.stringify({ type: 'user', message: { role: 'user', content }, ...extra });
+}
+
+function assistantLine(message: Readonly<Record<string, unknown>>, extra: Readonly<Record<string, unknown>> = {}): string {
+  return JSON.stringify({ type: 'assistant', message: { role: 'assistant', ...message }, ...extra });
+}
+
+describe("Claude Code's transcript lines as entries", () => {
+  it('reads a typed prompt with its ids, its time, its session and its thread', () => {
+    const line = userLine({ parentUuid: 'p-1', isSidechain: false, uuid: 'u-1', timestamp: AT, sessionId: 's-1', origin: { kind: 'human' }, turnOrigin: 'human' });
+    assert.deepEqual(transcriptReader.entry(line), {
+      ...PLAIN_INPUT,
+      at: AT_MS,
+      id: 'u-1',
+      parent: 'p-1',
+      session: 's-1',
+      thread: 'main',
+      meta: false,
+      text: 'go',
+      origin: 'person',
+      turnOrigin: 'person',
+    });
+  });
+
+  it('keeps the three states of the thread mark apart, and an unreadable time is none', () => {
+    assert.deepEqual(transcriptReader.entry(promptLine(AT, 'go', true)), { ...BARE, ...PLAIN_INPUT, at: AT_MS, thread: 'helper', text: 'go' });
+    assert.deepEqual(transcriptReader.entry(userLine({ timestamp: 'soon', parentUuid: null })), { ...BARE, ...PLAIN_INPUT, text: 'go' });
+  });
+
+  it("marks Claude Code's own text and a compaction's summary", () => {
+    assert.deepEqual(transcriptReader.entry(userLine({ isMeta: true })), { ...BARE, ...PLAIN_INPUT, meta: true, text: 'go' });
+    assert.deepEqual(transcriptReader.entry(summaryLine(AT)), { ...BARE, ...PLAIN_INPUT, at: AT_MS, thread: 'main', text: 'This session is being continued.', continuation: true });
+  });
+
+  it('reads a listed content as its text parts and its tool results, in order', () => {
+    const content = [
+      { type: 'text', text: 'one' },
+      { type: 'image', source: { type: 'base64', data: 'AAAA' } },
+      { type: 'tool_result', tool_use_id: 'call-1', content: 'done', is_error: false },
+      { type: 'tool_result', tool_use_id: 'call-2', content: [{ type: 'text', text: 'a' }, { type: 'image' }, { type: 'text', text: 'b' }], is_error: true },
+      { type: 'tool_result', content: 7 },
+      'stray',
+      { type: 'text', text: 'two' },
+      { type: 'text' },
+    ];
+    assert.deepEqual(transcriptReader.entry(userLine({}, content)), {
+      ...BARE,
+      ...PLAIN_INPUT,
+      parts: ['one', 'two'],
+      results: [
+        { call: 'call-1', isError: false, text: 'done' },
+        { call: 'call-2', isError: true, text: 'a\n\nb' },
+        { call: undefined, isError: false, text: '' },
+      ],
+    });
+    assert.deepEqual(transcriptReader.entry(resultsLine(AT, [{ id: 'call-3', text: 'out', isError: true }])), {
+      ...BARE,
+      ...PLAIN_INPUT,
+      at: AT_MS,
+      thread: 'main',
+      results: [{ call: 'call-3', isError: true, text: 'out' }],
+    });
+  });
+
+  it('names the origin mark, a handback apart from a peer, and any mark it has no name for as unknown', () => {
+    const origins: readonly (readonly [unknown, string | undefined])[] = [
+      [{ kind: 'human' }, 'person'],
+      [{ kind: 'peer' }, 'peer'],
+      [{ kind: 'peer', handback: true }, 'handback'],
+      [{ kind: 'human', handback: true }, 'person'],
+      [{ kind: 'task-notification' }, 'notification'],
+      [{ kind: 'task_notification' }, 'notification'],
+      [{ kind: 'scheduled' }, 'scheduled'],
+      [{ kind: 'plugin' }, 'unknown'],
+      [{ kind: 'constructor' }, 'unknown'],
+      [{}, 'unknown'],
+      ['human', 'unknown'],
+      [null, 'unknown'],
+      [undefined, undefined],
+    ];
+    for (const [origin, expected] of origins) {
+      assert.deepEqual(transcriptReader.entry(userLine({ origin })), { ...BARE, ...PLAIN_INPUT, text: 'go', origin: expected }, JSON.stringify(origin));
+    }
+  });
+
+  it('names the turn origin by the same names, in either spelling of a notification', () => {
+    const origins: readonly (readonly [unknown, string | undefined])[] = [
+      ['human', 'person'],
+      ['peer', 'peer'],
+      ['task_notification', 'notification'],
+      ['task-notification', 'notification'],
+      ['scheduled', 'scheduled'],
+      ['system', 'unknown'],
+      ['toString', 'unknown'],
+      [7, undefined],
+      [undefined, undefined],
+    ];
+    for (const [turnOrigin, expected] of origins) {
+      assert.deepEqual(transcriptReader.entry(userLine({ turnOrigin })), { ...BARE, ...PLAIN_INPUT, text: 'go', turnOrigin: expected }, JSON.stringify(turnOrigin));
+    }
+  });
+
+  it('keeps the two origin marks apart when they differ', () => {
+    assert.deepEqual(transcriptReader.entry(userLine({ origin: { kind: 'plugin' }, turnOrigin: 'system' })), { ...BARE, ...PLAIN_INPUT, text: 'go', origin: 'unknown', turnOrigin: 'unknown' });
+    assert.deepEqual(transcriptReader.entry(userLine({ origin: { kind: 'task-notification' } })), { ...BARE, ...PLAIN_INPUT, text: 'go', origin: 'notification' });
+  });
+
+  it("reads what a tool's run left in the background or stopped", () => {
+    const marks: readonly (readonly [unknown, unknown])[] = [
+      [{ backgroundTaskId: 'b-1', stdout: '' }, { started: 'command', task: 'b-1', stopped: undefined }],
+      [{ status: 'async_launched', agentId: 'a-1' }, { started: 'helper', task: 'a-1', stopped: undefined }],
+      [{ taskId: 't-1' }, { started: 'task', task: 't-1', stopped: undefined }],
+      [{ backgroundTaskId: 'b-2', status: 'async_launched', agentId: 'a-2', taskId: 't-2' }, { started: 'command', task: 'b-2', stopped: undefined }],
+      [{ agentId: 'a-3', status: 'completed' }, { started: undefined, task: 'a-3', stopped: undefined }],
+      [{ task_id: 't-9', message: 'stopped' }, { started: undefined, task: undefined, stopped: 't-9' }],
+      [{ stdout: 'ok', backgroundTaskId: 7 }, undefined],
+      ['Error: no such file', undefined],
+      [['a'], undefined],
+    ];
+    for (const [toolUseResult, background] of marks) {
+      assert.deepEqual(transcriptReader.entry(userLine({ toolUseResult })), { ...BARE, ...PLAIN_INPUT, text: 'go', fromTool: true, background }, JSON.stringify(toolUseResult));
+    }
+    assert.deepEqual(transcriptReader.entry(userLine({})), { ...BARE, ...PLAIN_INPUT, text: 'go' });
+  });
+
+  it('reads a reply with its join key, its model, its counts and its tool calls', () => {
+    const line = replyLine({
+      id: 'm-1',
+      requestId: 'r-1',
+      at: AT,
+      model: 'model-x',
+      usage: { input: 10, cacheWrite: 70, cacheWrite5m: 20, cacheWrite1h: 30, cacheRead: 40, output: 50 },
+      tools: [{ id: 'call-1', name: 'Bash', command: 'ls' }],
+    });
+    assert.deepEqual(transcriptReader.entry(line), {
+      ...BARE,
+      ...PLAIN_REPLY,
+      at: AT_MS,
+      thread: 'main',
+      key: 'm-1|r-1',
+      model: 'model-x',
+      usage: { input: 10, cacheWrite5m: 20, cacheWrite1h: 30, cacheWriteUnsplit: 20, cacheRead: 40, output: 50 },
+      calls: [{ id: 'call-1', name: 'Bash', input: { command: 'ls' } }],
+    });
+  });
+
+  it('reads the effort, the text parts, and only the calls that have an id and a name', () => {
+    const content = [
+      { type: 'thinking', thinking: 'hm', text: 'not a text part' },
+      { type: 'text', text: 'first' },
+      { type: 'tool_use', id: 'call-1', name: 'Read', input: { file_path: 'a.ts' } },
+      { type: 'tool_use', id: 'call-2', name: 'Bash', input: 'ls' },
+      { type: 'tool_use', name: 'Bash', input: {} },
+      { type: 'tool_use', id: 'call-4', input: {} },
+      { type: 'text', id: 'call-5', name: 'Bash', text: 'second' },
+    ];
+    assert.deepEqual(transcriptReader.entry(assistantLine({ id: 'm-2', content }, { effort: 'high', isSidechain: true })), {
+      ...BARE,
+      ...PLAIN_REPLY,
+      thread: 'helper',
+      key: 'm-2|',
+      effort: 'high',
+      texts: ['first', 'second'],
+      calls: [
+        { id: 'call-1', name: 'Read', input: { file_path: 'a.ts' } },
+        { id: 'call-2', name: 'Bash', input: undefined },
+      ],
+    });
+    assert.deepEqual(transcriptReader.entry(textLine('u-7', ['hello'], ['call-9'])), {
+      ...BARE,
+      ...PLAIN_REPLY,
+      id: 'u-7',
+      thread: 'main',
+      texts: ['hello'],
+      calls: [{ id: 'call-9', name: 'Bash', input: {} }],
+    });
+  });
+
+  it('reads a missing count as 0, and the cache writes a split leaves out as unsplit', () => {
+    assert.deepEqual(transcriptReader.entry(assistantLine({ usage: {} })), { ...BARE, ...PLAIN_REPLY, usage: { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheWriteUnsplit: 0, cacheRead: 0, output: 0 } });
+    assert.deepEqual(transcriptReader.entry(assistantLine({ usage: { cache_creation_input_tokens: 9, output_tokens: 2, input_tokens: null } })), {
+      ...BARE,
+      ...PLAIN_REPLY,
+      usage: { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheWriteUnsplit: 9, cacheRead: 0, output: 2 },
+    });
+    assert.deepEqual(transcriptReader.entry(assistantLine({ usage: { cache_creation_input_tokens: 5, cache_creation: { ephemeral_5m_input_tokens: 4, ephemeral_1h_input_tokens: 3 } } })), {
+      ...BARE,
+      ...PLAIN_REPLY,
+      usage: { input: 0, cacheWrite5m: 4, cacheWrite1h: 3, cacheWriteUnsplit: 0, cacheRead: 0, output: 0 },
+    });
+  });
+
+  it('says a damaged usage is unreadable, never 0, and a reply without one carries none', () => {
+    const damaged: readonly unknown[] = [
+      { input_tokens: -1 },
+      { output_tokens: 1.5 },
+      { cache_read_input_tokens: '3' },
+      { cache_creation: { ephemeral_5m_input_tokens: -2 } },
+      { cache_creation: { ephemeral_1h_input_tokens: true } },
+      'none',
+      7,
+      null,
+      [],
+    ];
+    for (const usage of damaged) {
+      assert.deepEqual(transcriptReader.entry(assistantLine({ usage })), { ...BARE, ...PLAIN_REPLY, usage: 'unreadable' }, JSON.stringify(usage));
+    }
+    assert.deepEqual(transcriptReader.entry(assistantLine({})), { ...BARE, ...PLAIN_REPLY });
+  });
+
+  it('marks the reply Claude Code wrote for a failed API call, with the error it names', () => {
+    assert.deepEqual(transcriptReader.entry(apiErrorLine(AT, 's-1')), {
+      ...PLAIN_REPLY,
+      at: AT_MS,
+      id: '00000000-0000-4000-8000-0000000000e2',
+      parent: '00000000-0000-4000-8000-0000000000e1',
+      session: 's-1',
+      thread: 'main',
+      meta: false,
+      key: '00000000-0000-4000-8000-0000000000e3|',
+      model: '<synthetic>',
+      usage: { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheWriteUnsplit: 0, cacheRead: 0, output: 0 },
+      texts: ['Login expired · Please run /login'],
+      synthetic: true,
+      failed: true,
+      error: 'authentication_failed',
+    });
+    assert.deepEqual(transcriptReader.entry(assistantLine({}, { error: 'overloaded' })), { ...BARE, ...PLAIN_REPLY, error: 'overloaded' });
+  });
+
+  it('reads a compaction boundary', () => {
+    assert.deepEqual(transcriptReader.entry(compactLine(AT)), { ...BARE, at: AT_MS, kind: 'compact' });
+  });
+
+  it("reads a hook's note with its texts, and whether it was written at the session's start", () => {
+    assert.deepEqual(transcriptReader.entry(sessionStartNoteLine(AT, ['one', 'two'])), { ...BARE, at: AT_MS, thread: 'main', kind: 'hook-note', atStart: true, texts: ['one', 'two'] });
+    assert.deepEqual(transcriptReader.entry(sessionStartNoteLine(AT, ['later'], 'UserPromptSubmit')), { ...BARE, at: AT_MS, thread: 'main', kind: 'hook-note', atStart: false, texts: ['later'] });
+    const mixed = JSON.stringify({ type: 'attachment', attachment: { type: 'hook_additional_context', content: ['kept', 7, null, { text: 'dropped' }], hookEvent: 'SessionStart' } });
+    assert.deepEqual(transcriptReader.entry(mixed), { ...BARE, kind: 'hook-note', atStart: true, texts: ['kept'] });
+    const unlisted = JSON.stringify({ type: 'attachment', attachment: { type: 'hook_additional_context', content: 'plain' } });
+    assert.deepEqual(transcriptReader.entry(unlisted), { ...BARE, kind: 'hook-note', atStart: false, texts: [] });
+  });
+
+  it('names the type of every other line, so none is lost unseen', () => {
+    const others: readonly (readonly [Readonly<Record<string, unknown>>, string | undefined])[] = [
+      [{ type: 'attachment', attachment: { type: 'environment', snapshot: {} } }, 'attachment'],
+      [{ type: 'attachment' }, 'attachment'],
+      [{ type: 'system', subtype: 'turn_duration' }, 'system'],
+      [{ type: 'queue-operation', operation: 'enqueue', content: 'go' }, 'queue-operation'],
+      [{ type: 'user' }, 'user'],
+      [{ type: 'user', message: 'go' }, 'user'],
+      [{ type: 'assistant', message: [] }, 'assistant'],
+      [{ subtype: 'compact_boundary' }, undefined],
+      [{ type: 7 }, undefined],
+      [{}, undefined],
+    ];
+    for (const [entry, type] of others) {
+      assert.deepEqual(transcriptReader.entry(JSON.stringify(entry)), { ...BARE, kind: 'other', type }, JSON.stringify(entry));
+    }
+    assert.deepEqual(transcriptReader.entry(systemLine(AT)), { ...BARE, at: AT_MS, kind: 'other', type: 'system' });
+  });
+
+  it('says a torn line and a line that is no object are unread, and a blank line is nothing', () => {
+    assert.deepEqual(transcriptReader.entry('{"type":"user","message":{"role":"us'), { kind: 'unread', reason: 'damaged' });
+    assert.deepEqual(transcriptReader.entry('not json'), { kind: 'unread', reason: 'damaged' });
+    for (const line of ['[1]', '7', 'null', '"text"', 'true']) {
+      assert.deepEqual(transcriptReader.entry(line), { kind: 'unread', reason: 'not-an-object' }, line);
+    }
+    for (const line of ['', ' ', '\r', ' \t\r']) {
+      assert.equal(transcriptReader.entry(line), undefined, JSON.stringify(line));
+      assert.equal(transcriptReader.entry(line, ['other']), undefined, JSON.stringify(line));
+    }
+    assert.deepEqual(transcriptReader.entry(`${compactLine(AT)}\r`), { ...BARE, at: AT_MS, kind: 'compact' });
+  });
+});
+
+describe('reading only some kinds of entry', () => {
+  const lines = {
+    input: promptLine(AT),
+    reply: replyLine({ id: 'm-1', at: AT, usage: { input: 1 } }),
+    compact: compactLine(AT),
+    'hook-note': sessionStartNoteLine(AT, ['note']),
+    other: systemLine(AT),
+  } as const;
+  const kinds = ['input', 'reply', 'compact', 'hook-note', 'other'] as const;
+
+  it('gives a line of a named kind as it reads without the filter', () => {
+    for (const kind of kinds) {
+      const whole = transcriptReader.entry(lines[kind]);
+      assert.equal(whole?.kind, kind);
+      assert.deepEqual(transcriptReader.entry(lines[kind], [kind]), whole);
+      assert.deepEqual(transcriptReader.entry(lines[kind], kinds), whole);
+    }
+  });
+
+  it('gives nothing for a line of a kind not named', () => {
+    for (const kind of kinds) {
+      for (const other of kinds.filter((name) => name !== kind)) {
+        assert.equal(transcriptReader.entry(lines[kind], [other]), undefined, `${kind} read as only ${other}`);
+      }
+      assert.equal(transcriptReader.entry(lines[kind], []), undefined);
+    }
+  });
+
+  it('is not misled by a line that quotes another kind of line', () => {
+    const quoting = textLine('u-1', [lines.input, lines.compact]);
+    assert.equal(transcriptReader.entry(quoting, ['input', 'compact', 'hook-note']), undefined);
+    assert.equal(transcriptReader.entry(quoting, ['reply'])?.kind, 'reply');
+    const named = userLine({}, 'the "compact_boundary" and "hook_additional_context" lines');
+    assert.equal(transcriptReader.entry(named, ['compact', 'hook-note']), undefined);
+  });
+
+  it('still says a damaged line that could be of a named kind is unread, and passes one that could not', () => {
+    const torn = lines.input.slice(0, -5);
+    assert.deepEqual(transcriptReader.entry(torn, ['input']), { kind: 'unread', reason: 'damaged' });
+    assert.equal(transcriptReader.entry(torn, ['reply', 'compact']), undefined);
+    assert.deepEqual(transcriptReader.entry(torn, ['other']), { kind: 'unread', reason: 'damaged' });
+  });
+});
