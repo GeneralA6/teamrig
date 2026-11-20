@@ -2,7 +2,8 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import type { Files } from '../core/files.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import { expandHome, pathKey, samePath } from '../core/paths.ts';
-import { claudeMdPaths, claudeMemoryDir, skillFolders } from '../doctor/context-files.ts';
+import { instructionPaths, skillFolders, type InstructionPaths } from '../doctor/context-files.ts';
+import type { HostPaths } from '../ports/host/index.ts';
 import { markdownBelow } from '../rules/places.ts';
 import { descriptionOf, frontmatterValue, splitFrontmatter } from '../skills/lint.ts';
 import { SkillDir } from '../skills/store.ts';
@@ -41,9 +42,13 @@ export interface SessionContext {
   readonly agents: readonly ListedAgent[];
 }
 
+/** Where the host loads what a session holds from its start from. */
+export type SessionContextPaths = InstructionPaths &
+  Pick<HostPaths, 'userRules' | 'projectRules' | 'projectSkills' | 'userAgents' | 'projectAgents' | 'memoryIndex'>;
+
 export interface SessionContextLocations {
-  /** Claude Code's own folder (`claudeConfigDir`). */
-  readonly claudeDir: string;
+  /** The host's paths: its instruction files, rules folders, project skills, agent type folders and memory index. */
+  readonly paths: SessionContextPaths;
   readonly userHome: string;
   /** The project folder sessions start in. */
   readonly project: string;
@@ -134,7 +139,7 @@ async function addImports(loaded: LoadedFiles, file: LoadedFile, userHome: strin
 
 async function readSkills(files: Files, at: SessionContextLocations): Promise<ListedSkill[]> {
   const listed: ListedSkill[] = [];
-  for (const folder of skillFolders(at.skills, at.project)) {
+  for (const folder of skillFolders(at.paths, at.skills, at.project)) {
     const dir = new SkillDir(files, folder);
     const scope: ListedScope = samePath(folder, at.skills) ? 'user' : 'project';
     for (const skill of await dir.readAll()) {
@@ -161,10 +166,10 @@ async function readAgentFolder(files: Files, folder: string, scope: ListedScope)
   return listed;
 }
 
-/** The user's agent types (`<claudeDir>/agents`), then the project's (`.claude/agents`), each folder read once. */
+/** The user's agent types, then the project's, from the folders the host loads them from, each folder read once. */
 async function readAgents(files: Files, at: SessionContextLocations): Promise<ListedAgent[]> {
-  const user = join(at.claudeDir, 'agents');
-  const project = join(at.project, '.claude', 'agents');
+  const user = at.paths.userAgents(at.userHome);
+  const project = at.paths.projectAgents(at.project);
   const own = samePath(user, project) ? [] : await readAgentFolder(files, project, 'project');
   return [...(await readAgentFolder(files, user, 'user')), ...own];
 }
@@ -176,20 +181,21 @@ async function readAgents(files: Files, at: SessionContextLocations): Promise<Li
  */
 export async function readSessionContext(files: Files, probe: PathProbe, at: SessionContextLocations): Promise<SessionContext> {
   const loaded = new LoadedFiles(files);
-  for (const path of claudeMdPaths(at.claudeDir, at.project)) {
+  const { paths } = at;
+  for (const path of instructionPaths(paths, at.userHome, at.project)) {
     const file = await loaded.add('claude-md', path);
     if (file !== undefined) {
       await addImports(loaded, file, at.userHome, 1);
     }
   }
-  const rules = [...(await markdownBelow(files, probe, join(at.project, '.claude', 'rules'))), ...(await markdownBelow(files, probe, join(at.claudeDir, 'rules')))];
+  const rules = [...(await markdownBelow(files, probe, paths.projectRules(at.project))), ...(await markdownBelow(files, probe, paths.userRules(at.userHome)))];
   for (const path of rules) {
     const text = await files.read(path);
     if (text !== undefined && !PATHS_KEY.test(splitFrontmatter(text).front)) {
       loaded.keep('rules', path, text);
     }
   }
-  await loaded.add('memory', join(claudeMemoryDir(at.claudeDir, at.project), 'MEMORY.md'), (text) => text.split('\n').slice(0, MEMORY_INDEX_LINES).join('\n'));
+  await loaded.add('memory', paths.memoryIndex(at.userHome, at.project), (text) => text.split('\n').slice(0, MEMORY_INDEX_LINES).join('\n'));
   for (const path of at.teamRules) {
     await loaded.add('team-rules', path);
   }

@@ -4,7 +4,7 @@ import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from '../../config/limits.ts';
 import { CONFLICT_WINNERS, isConflictWinner, type ConflictWinner, type KitConfig, type RuleConflict } from '../../config/types.ts';
 import { clipEnd } from '../../core/clip.ts';
 import type { JsonRecord } from '../../core/guards.ts';
-import { claudeConfigDir, KIT_NAME } from '../../core/home.ts';
+import { KIT_NAME } from '../../core/home.ts';
 import { expandHome, homeRelative, pathKey } from '../../core/paths.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { sessionSettingsFiles } from '../../doctor/settings-env.ts';
@@ -135,11 +135,12 @@ async function scanView(runtime: CliRuntime, kit: Kit, config: KitConfig, kind: 
   const kitTree = await loadTree(runtime);
   const teamRules = teamRulesFilesOf(kit, kitTree).map((file) => file.path);
   // The scan's whole work is the files the host loads into a session, so a host whose folders teamrig does not know refuses here.
-  const sessionSettings = sessionSettingsFiles({ paths: pathsOf(runtime), userHome: runtime.userHome }, project);
+  const paths = pathsOf(runtime);
+  const sessionSettings = sessionSettingsFiles({ paths, userHome: runtime.userHome }, project);
   const found = await scanRules<KeptRule>(
     runtime.files,
     runtime.probe,
-    { claudeDir: claudeConfigDir(runtime.env, runtime.userHome), userHome: runtime.userHome, project, sessionSettings, skills: kit.paths.skills, teamRules },
+    { paths, userHome: runtime.userHome, project, sessionSettings, skills: kit.paths.skills, teamRules },
     [...config.ruleConflicts, ...keptRulesAboveOf(kit, kitTree)],
   );
   const kinds = kind === undefined ? PLACE_KINDS : [kind];
