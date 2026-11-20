@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { claudeProjectSlug } from '../budget/discover.ts';
 import { APP, CliHarness, HELD_DENY, TEAM, USER_HOME, USER_SETTINGS } from '../testing/cli-harness.ts';
 import { FakePathProbe } from '../testing/fake-processes.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { skillListingLine, transcript, type FixtureListing } from '../testing/transcript-lines.ts';
 import { EXIT } from './runtime.ts';
@@ -32,6 +33,15 @@ describe('teamrig doctor: what overrides a model or effort choice', () => {
     assert.ok(text.includes(`WARN settings-json ${PROJECT_SETTINGS} is not a JSON object`));
     assert.ok(text.includes('WARN launch-effort app-alpha (session alpha) launches on model sonnet with no effort'));
     assert.doesNotMatch(text, /not a real key|ANTHROPIC_API_KEY/);
+  });
+
+  it("reads no settings file on a host whose folders teamrig does not know, and still reads its own environment and the team's launches", async () => {
+    const kit = new CliHarness({ ...TEAM, launch: { alpha: { model: 'sonnet' } } });
+    await kit.files.write(USER_SETTINGS, JSON.stringify({ env: { CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1' } }));
+    await kit.files.write(PROJECT_SETTINGS, '{ not json');
+    const result = await kit.run(['doctor'], { env: { CLAUDE_CODE_EFFORT_LEVEL: 'low' }, host: NO_PATHS_HOST });
+    assert.equal(result.code, EXIT.ok);
+    assert.deepEqual(kinds(result.stdout), ['DOCTOR 2', 'WARN effort-env', 'WARN launch-effort']);
   });
 
   it('stays clean with the variables unset, valid settings and every named model given an effort', async () => {

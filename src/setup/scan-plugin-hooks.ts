@@ -11,6 +11,8 @@ import { hookFindings, type SettingsFinding } from './scan-settings.ts';
 export interface PluginHookLocations {
   readonly claudeDir: string;
   readonly project: string;
+  /** The settings files a session started in the project reads, in the order the host reads them (`sessionSettingsFiles`). */
+  readonly sessionSettings: readonly string[];
 }
 
 /** A plugin's hooks file, with the object that holds its `hooks` as a settings file holds them. */
@@ -24,16 +26,13 @@ async function jsonAt(files: Files, path: string): Promise<JsonRecord | undefine
   return text === undefined ? undefined : jsonObjectOf(text);
 }
 
-/** The settings files whose `enabledPlugins` turn a plugin on or off for the project, the one that wins last. */
-function enablingFiles(at: PluginHookLocations): string[] {
-  const project = join(at.project, '.claude');
-  return [join(at.claudeDir, 'settings.json'), join(project, 'settings.json'), join(project, 'settings.local.json')];
-}
-
-/** Each plugin the settings files turn on (true) or off (false), as the last file to name it says. */
+/**
+ * Each plugin the session's settings files turn on (true) or off (false) for the project in their `enabledPlugins`,
+ * as the last file to name it says: the one the host reads last wins.
+ */
 async function enabledPlugins(files: Files, at: PluginHookLocations): Promise<ReadonlyMap<string, boolean>> {
   const enabled = new Map<string, boolean>();
-  for (const path of enablingFiles(at)) {
+  for (const path of at.sessionSettings) {
     const listed = (await jsonAt(files, path))?.['enabledPlugins'];
     for (const [key, on] of isRecord(listed) ? Object.entries(listed) : []) {
       if (typeof on === 'boolean') {

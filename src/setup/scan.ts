@@ -45,6 +45,8 @@ export interface SetupScanInput extends SessionContextLocations {
   readonly maxBytes: number;
   /** The settings files sessions in the project run under. */
   readonly settings: readonly SettingsFile[];
+  /** The settings files a session started in the project reads, in the order the host reads them (`sessionSettingsFiles`). */
+  readonly sessionSettings: readonly string[];
   readonly keep: KeepList;
   readonly secrets: SecretScanner;
   /** The conflicts the team recorded with `rules keep`; none before a team exists. */

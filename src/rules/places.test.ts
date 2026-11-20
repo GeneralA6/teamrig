@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { claudeMemoryDir } from '../doctor/context-files.ts';
+import { sessionSettingsFiles, type SessionSettingsHost } from '../doctor/settings-env.ts';
+import { testPaths } from '../testing/host.ts';
 import { MemoryFiles, MemoryPathProbe, normalisePath } from '../testing/memory-files.ts';
 import { findRulePlaces, isPlaceKind, NESTED_FOLDERS_MAX, type RulePlace, type RulePlaceLocations } from './places.ts';
 
@@ -9,10 +11,12 @@ const USER_HOME = resolve('/', 'u');
 const CLAUDE_DIR = join(USER_HOME, '.claude');
 const PROJECT = resolve('/', 'work', 'app');
 const TEAM_RULES = resolve('/', 'kit', 'teams', 'app', 'rules.md');
+const HOST: SessionSettingsHost = { paths: testPaths(), userHome: USER_HOME };
 const AT: RulePlaceLocations = {
   claudeDir: CLAUDE_DIR,
   userHome: USER_HOME,
   project: PROJECT,
+  sessionSettings: sessionSettingsFiles(HOST, PROJECT),
   skills: join(CLAUDE_DIR, 'skills'),
   teamRules: [TEAM_RULES],
 };
@@ -128,8 +132,20 @@ describe('findRulePlaces', () => {
 
   it('lists a file once when the project is the home folder', async () => {
     const files = new MemoryFiles({ [join(CLAUDE_DIR, 'CLAUDE.md')]: 'user' });
-    const { places } = await findRulePlaces(files, new MemoryPathProbe(files), { ...AT, project: USER_HOME });
+    const { places } = await findRulePlaces(files, new MemoryPathProbe(files), { ...AT, project: USER_HOME, sessionSettings: sessionSettingsFiles(HOST, USER_HOME) });
     assert.deepEqual(shown(places), [`claude-md ${normalisePath(join(CLAUDE_DIR, 'CLAUDE.md'))}`]);
+  });
+
+  it('lists the settings files it is told a session reads and the scripts their hooks run, joining no settings name of its own', async () => {
+    const told = resolve('/', 'etc', 'agent', 'rules.json');
+    const script = resolve('/', 'etc', 'agent', 'guard.js');
+    const files = new MemoryFiles({
+      [told]: JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'node', args: [script] }] }] } }),
+      [script]: '// guard',
+      [join(CLAUDE_DIR, 'settings.json')]: JSON.stringify(SETTINGS),
+    });
+    const { places } = await findRulePlaces(files, new MemoryPathProbe(files), { ...AT, sessionSettings: [told, resolve('/', 'etc', 'agent', 'missing.json')] });
+    assert.deepEqual(shown(places), [`hook ${normalisePath(script)}`, `settings ${normalisePath(told)}`]);
   });
 
   it(`stops looking for CLAUDE.md files below the project after ${NESTED_FOLDERS_MAX} folders, and says so`, async () => {
