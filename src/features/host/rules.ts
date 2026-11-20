@@ -6,4 +6,5 @@ export const RULES_FEATURES = {
   'rules.instruction-files': { doc: 'the rules files read on every turn', byDefault: 'on' },
   'rules.rules-folder': { doc: 'the rules folder of a project', byDefault: 'on' },
   'rules.memory': { doc: 'memory files kept between sessions', byDefault: 'on' },
+  'rules.start-size': { doc: "the CLI's limits on the start text, a rules file and a skill's listing", byDefault: 'on' },
 } as const satisfies HostGroup<'rules'>;

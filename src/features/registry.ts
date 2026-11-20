@@ -3,6 +3,7 @@ import { TRACKER_FEATURES } from './connector/tracker.ts';
 import type { ConnectorFeature, FeatureSide, HostFeature, Toggle } from './feature.ts';
 import { BUDGET_FEATURES } from './host/budget.ts';
 import { CONTEXT_FEATURES } from './host/context.ts';
+import { ERRORS_FEATURES } from './host/errors.ts';
 import { HELPERS_FEATURES } from './host/helpers.ts';
 import { HOOKS_FEATURES } from './host/hooks.ts';
 import { INBOX_FEATURES } from './host/inbox.ts';
@@ -36,6 +37,7 @@ export const HOST_FEATURES = {
   ...HELPERS_FEATURES,
   ...PLUGIN_FEATURES,
   ...BUDGET_FEATURES,
+  ...ERRORS_FEATURES,
   ...OS_FEATURES,
 } as const satisfies Readonly<Record<string, HostFeature>>;
 

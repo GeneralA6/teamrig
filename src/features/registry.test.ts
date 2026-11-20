@@ -61,7 +61,7 @@ describe('the feature registry', () => {
   it('groups a host row by the part of its id before the dot', () => {
     assert.deepEqual(
       [...new Set(featuresOf('host').map((row) => row.group))],
-      ['rules', 'inbox', 'context', 'hooks', 'permissions', 'sessions', 'tabs', 'wake', 'skills', 'helpers', 'plugin', 'budget', 'os'],
+      ['rules', 'inbox', 'context', 'hooks', 'permissions', 'sessions', 'tabs', 'wake', 'skills', 'helpers', 'plugin', 'budget', 'errors', 'os'],
     );
     for (const row of featuresOf('host')) {
       assert.ok(row.id.startsWith(`${row.group}.`), row.id);

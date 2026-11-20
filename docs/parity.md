@@ -24,6 +24,7 @@ The AI CLIs a session runs in.
 | `rules.instruction-files` | the rules files read on every turn | supported, unproved |
 | `rules.rules-folder` | the rules folder of a project | supported, unproved |
 | `rules.memory` | memory files kept between sessions | supported, unproved |
+| `rules.start-size` | the CLI's limits on the start text, a rules file and a skill's listing | supported, unproved |
 
 ### inbox
 
@@ -37,6 +38,7 @@ The AI CLIs a session runs in.
 | --- | --- | --- |
 | `context.compact-hold` | holding a compaction while a handover is written | supported, unproved |
 | `context.size` | the context size and its refresh thresholds | supported, unproved |
+| `context.refresh` | how the CLI starts fresh (clear, compaction or a new process), with the handover read after | supported, unproved |
 
 ### hooks
 
@@ -79,12 +81,14 @@ The AI CLIs a session runs in.
 | --- | --- | --- |
 | `tabs.title-status` | tab titles and status circles | supported, unproved |
 | `tabs.waiting-state` | the tab's waiting-on-a-decision state | supported, unproved |
+| `tabs.memory` | what one tab's processes hold in memory, and the notice of a step killed for memory | supported, unproved |
 
 ### wake
 
 | Feature | What it does | Claude Code |
 | --- | --- | --- |
 | `wake.api-retry` | sending a turn again after an API error | supported, unproved |
+| `wake.cost` | what a wake turn costs, from the CLI's prompt-cache lifetime and the measured turns | supported, unproved |
 
 ### skills
 
@@ -121,6 +125,15 @@ The AI CLIs a session runs in.
 | `budget.five-hour` | the five-hour forecast | supported, unproved |
 | `budget.status-line` | teamrig's status-line text | supported, unproved |
 | `budget.helper-weight` | the weight of a helper | supported, unproved |
+| `budget.pools` | a budget pool per CLI and account, never added to another | supported, unproved |
+| `budget.windows` | the usage windows beside the week, each with its share used and its reset | supported, unproved |
+| `budget.tuning` | model and effort tuned from the user's own results, on evidence only | unsupported: tuning from a user's own results is not built yet |
+
+### errors
+
+| Feature | What it does | Claude Code |
+| --- | --- | --- |
+| `errors.kinds` | a failed turn told apart by kind: rate limit, overload, auth, context too long, other | partial (missing: a rule of its own for a rate-limit hit and for a context too long), unproved |
 
 ### os
 

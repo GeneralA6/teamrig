@@ -13,10 +13,18 @@ describe('the Claude Code adapter', () => {
     assert.equal(apiVersionNotice(declaration.apiVersion, API_VERSION), undefined);
   });
 
-  it('supports every host feature', () => {
-    for (const row of featuresOf('host')) {
-      assert.equal(declaration.manifest[row.id].kind, 'supported', row.id);
-    }
+  it('supports every host feature but the two it says it lacks', () => {
+    const lacking = featuresOf('host')
+      .filter((row) => declaration.manifest[row.id].kind !== 'supported')
+      .map((row) => row.id);
+    assert.deepEqual(lacking, ['budget.tuning', 'errors.kinds']);
+  });
+
+  it('says tuning is not built, and which kinds of error have no rule of their own yet', () => {
+    assert.deepEqual(declaration.manifest['budget.tuning'], { kind: 'unsupported', notice: "tuning from a user's own results is not built yet" });
+    const errors = declaration.manifest['errors.kinds'];
+    assert.equal(errors.kind, 'partial');
+    assert.match(errors.kind === 'partial' ? errors.missing : '', /rate-limit hit.*context too long/);
   });
 
   it('enters through defineHost with that declaration, and builds no port yet', () => {
