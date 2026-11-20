@@ -574,7 +574,7 @@ commands read theirs themselves). To check a saved key, ask the owner to look in
 
 It also refuses a Bash or PowerShell line that holds a secret as text, a quiet one too, since the line itself stays in
 the transcript: a token by its shape (GitHub, Anthropic, `sk-`, AWS, Slack, Google, Stripe live, npm, a JSON web
-token, a private key block, a Slack webhook URL), credentials in a URL (`postgres://app:<the password>@db`), the credentials of an `Authorization`
+token, a private key block, a Discord or Slack webhook URL), credentials in a URL (`postgres://app:<the password>@db`), the credentials of an `Authorization`
 header, the key of an API key header (`x-api-key: ...`), a quoted literal of 12 or more characters given to a
 secret-like name (`api_key = "..."`), and the team's own `register.secretPatterns`. A value that only stands in for a
 secret passes: a reference (`${DB_URI}`, `$env:DB_URI`, `<db_password>`, `%TOKEN%`), a placeholder word
@@ -627,7 +627,7 @@ The secret guard reads only the call, so a script, a log or a file can still pri
 each Bash, PowerShell, Read (of a text file) or Grep call, `hook secret-redact` scans the call's result and replaces
 each secret it holds with `[redacted <kind>]` before Claude and the transcript see it: a token by its shape (the
 guard's shapes: GitHub, Anthropic, `sk-`, AWS, Slack, Google, Stripe live, npm, a JSON web token, a private key
-block, a Slack webhook URL), credentials in a URL, the credentials of an `Authorization` or API key header, a quoted literal given to a
+block, a Discord or Slack webhook URL), credentials in a URL, the credentials of an `Authorization` or API key header, a quoted literal given to a
 secret-like name, a match of `register.secretPatterns`, and the value of a secret variable as an environment dump, a
 `.env` file or `docker inspect` prints it: `NAME=value`, an upper-case name the guard's names judge secret, with no
 space around `=`. A value found once goes from every part of the result, `stdout` and `stderr` alike. A value that
