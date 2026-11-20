@@ -88,8 +88,8 @@ function section<Side extends FeatureSide>(side: Side, loads: readonly Load<Adap
  * drawn without that adapter's column would read as if the tool were gone.
  */
 export function renderParity(declarations: Declarations): string {
-  const refused = [...refusals('host', declarations.hosts), ...refusals('connector', declarations.connectors)];
+  const refused = [...refusals('host', declarations.hosts), ...refusals('connector', declarations.connectors), ...refusals('terminal', declarations.terminals)];
   if (refused.length > 0) throw new Error(`a refused declaration cannot be drawn: ${refused.join('; ')}`);
-  const lines = [...INTRO, ...section('host', declarations.hosts), ...section('connector', declarations.connectors)];
+  const lines = [...INTRO, ...section('host', declarations.hosts), ...section('connector', declarations.connectors), ...section('terminal', declarations.terminals)];
   return `${lines.join('\n').trimEnd()}\n`;
 }

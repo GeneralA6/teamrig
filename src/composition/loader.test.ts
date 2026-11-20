@@ -1,10 +1,16 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { API_VERSION } from '../plugin-api/index.ts';
-import { connectorDeclarationData, hostDeclarationData } from '../testing/manifests.ts';
-import { importModule, loadConnector, loadHost, readDeclarations, type Load, type ModuleImporter } from './loader.ts';
+import { connectorDeclarationData, hostDeclarationData, terminalDeclarationData } from '../testing/manifests.ts';
+import { TERMINAL_ADAPTERS } from './adapters.ts';
+import { importModule, loadConnector, loadHost, loadTerminal, readDeclarations, type Load, type ModuleImporter } from './loader.ts';
 
 const HOST_ENTRY = '../adapters/hosts/claude-code/index.ts';
+const TERMINAL_IDS = ['tmux', 'windows-terminal', 'macos-terminal', 'gnome-terminal', 'konsole', 'x-terminal-emulator'];
+const TERMINAL_LIST = TERMINAL_IDS.join(', ');
+const terminalDeclarationFile = (id: string): string => `../adapters/terminals/${id}/declaration.ts`;
+/** The declaration module of each built-in terminal, by its specifier. */
+const terminalDeclarations = (): Record<string, unknown> => Object.fromEntries(TERMINAL_IDS.map((id) => [terminalDeclarationFile(id), { declaration: terminalDeclarationData({ id }) }]));
 const NOT_DEFINED = 'its entry is not made by defineHost: it needs a declaration and a create function';
 
 /** An importer that serves the given modules by specifier, refuses any other as Node does, and keeps what it was asked for. */
@@ -42,8 +48,28 @@ describe('the adapter loader, on the adapters teamrig ships', () => {
     assert.equal(local.kind === 'loaded' && local.value.declaration.refPrefix, 'local:');
   });
 
+  it('loads each terminal through the real importer, none building a port yet', async () => {
+    assert.deepEqual(Object.keys(TERMINAL_ADAPTERS), TERMINAL_IDS);
+    for (const id of TERMINAL_IDS) {
+      const load = await loadTerminal(id);
+      assert.equal(load.kind === 'loaded' && load.value.declaration.id, id);
+      assert.deepEqual(load.kind === 'loaded' && load.value.create({ env: {}, platform: 'linux' }), {});
+    }
+  });
+
   it('reads every declaration in table order', async () => {
-    const { hosts, connectors } = await readDeclarations();
+    const { hosts, connectors, terminals } = await readDeclarations();
+    assert.deepEqual(
+      terminals.map((load) => [load.id, load.kind, load.kind === 'loaded' && load.value.name]),
+      [
+        ['tmux', 'loaded', 'tmux'],
+        ['windows-terminal', 'loaded', 'Windows Terminal'],
+        ['macos-terminal', 'loaded', 'macOS Terminal'],
+        ['gnome-terminal', 'loaded', 'GNOME Terminal'],
+        ['konsole', 'loaded', 'Konsole'],
+        ['x-terminal-emulator', 'loaded', 'x-terminal-emulator'],
+      ],
+    );
     assert.deepEqual(
       hosts.map((load) => [load.id, load.kind]),
       [['claude-code', 'loaded']],
@@ -66,17 +92,19 @@ describe('reading the declarations', () => {
       '../adapters/connectors/github/declaration.ts': { declaration: connectorDeclarationData({ id: 'github' }) },
       '../adapters/connectors/jira/declaration.ts': { declaration: connectorDeclarationData({ id: 'jira' }) },
       '../adapters/connectors/local/declaration.ts': { declaration: connectorDeclarationData({ id: 'local' }) },
+      ...terminalDeclarations(),
     });
-    const { hosts, connectors } = await readDeclarations(importer);
+    const { hosts, connectors, terminals } = await readDeclarations(importer);
     assert.deepEqual(
-      [...hosts, ...connectors].map((load) => load.kind),
-      ['loaded', 'loaded', 'loaded', 'loaded'],
+      [...hosts, ...connectors, ...terminals].map((load) => [load.id, load.kind]),
+      ['claude-code', 'github', 'jira', 'local', ...TERMINAL_IDS].map((id) => [id, 'loaded']),
     );
     assert.deepEqual(asked, [
       '../adapters/hosts/claude-code/declaration.ts',
       '../adapters/connectors/github/declaration.ts',
       '../adapters/connectors/jira/declaration.ts',
       '../adapters/connectors/local/declaration.ts',
+      ...TERMINAL_IDS.map(terminalDeclarationFile),
     ]);
   });
 
@@ -84,9 +112,12 @@ describe('reading the declarations', () => {
     const { importer } = serving({
       '../adapters/hosts/claude-code/declaration.ts': { declaration: hostDeclarationData({ id: 'claude-code' }) },
       '../adapters/connectors/github/declaration.ts': { declaration: connectorDeclarationData({ id: 'github', refPrefix: 'gh' }) },
+      ...terminalDeclarations(),
+      [terminalDeclarationFile('konsole')]: { declaration: terminalDeclarationData({ id: 'konsole', name: '' }) },
     });
-    const { hosts, connectors } = await readDeclarations(importer);
+    const { hosts, connectors, terminals } = await readDeclarations(importer);
     assert.deepEqual(hosts.map(noticesOf), [undefined]);
+    assert.deepEqual(terminals.map(noticesOf), [undefined, undefined, undefined, undefined, ['it needs a name'], undefined]);
     assert.deepEqual(connectors.map(noticesOf), [
       ['its refPrefix must be a lower-case word ending in a colon'],
       ['its declaration.ts did not load: Cannot find module ../adapters/connectors/jira/declaration.ts'],
@@ -102,6 +133,8 @@ describe('an adapter the loader refuses', () => {
     assert.deepEqual(noticesOf(await loadHost('github', importer)), ['no host adapter is named github: the host adapters are claude-code']);
     assert.deepEqual(noticesOf(await loadConnector('claude-code', importer)), ['no connector adapter is named claude-code: the connector adapters are github, jira, local']);
     assert.deepEqual(noticesOf(await loadConnector('constructor', importer)), ['no connector adapter is named constructor: the connector adapters are github, jira, local']);
+    assert.deepEqual(noticesOf(await loadTerminal('iterm', importer)), [`no terminal adapter is named iterm: the terminal adapters are ${TERMINAL_LIST}`]);
+    assert.deepEqual(noticesOf(await loadTerminal('github', importer)), [`no terminal adapter is named github: the terminal adapters are ${TERMINAL_LIST}`]);
     assert.deepEqual(asked, []);
   });
 

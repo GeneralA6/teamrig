@@ -10,13 +10,19 @@ import {
   isConnectorDeclaration,
   isHostAdapter,
   isHostDeclaration,
+  isTerminalAdapter,
+  isTerminalDeclaration,
+  terminalAdapterProblems,
+  terminalDeclarationProblems,
   type ConnectorAdapter,
   type ConnectorDeclaration,
   type FeatureSide,
   type HostAdapter,
   type HostDeclaration,
+  type TerminalAdapter,
+  type TerminalDeclaration,
 } from '../plugin-api/index.ts';
-import { CONNECTOR_ADAPTERS, HOST_ADAPTERS, type AdapterTable } from './adapters.ts';
+import { CONNECTOR_ADAPTERS, HOST_ADAPTERS, TERMINAL_ADAPTERS, type AdapterTable } from './adapters.ts';
 
 /** Loads the module a specifier names. */
 export type ModuleImporter = (specifier: string) => Promise<unknown>;
@@ -91,6 +97,26 @@ const CONNECTOR_ENTRY: Part<ConnectorAdapter> = {
   declared: (adapter) => adapter.declaration,
 };
 
+const TERMINAL_DECLARATION: Part<TerminalDeclaration> = {
+  side: 'terminal',
+  table: TERMINAL_ADAPTERS,
+  file: DECLARATION_FILE,
+  exported: 'declaration',
+  problems: terminalDeclarationProblems,
+  accepts: isTerminalDeclaration,
+  declared: (declaration) => declaration,
+};
+
+const TERMINAL_ENTRY: Part<TerminalAdapter> = {
+  side: 'terminal',
+  table: TERMINAL_ADAPTERS,
+  file: ENTRY_FILE,
+  exported: 'default',
+  problems: terminalAdapterProblems,
+  accepts: isTerminalAdapter,
+  declared: (adapter) => adapter.declaration,
+};
+
 function refused<T>(id: string, notices: readonly string[]): Load<T> {
   return { kind: 'refused', id, notices };
 }
@@ -134,14 +160,24 @@ export function loadConnector(id: string, importer: ModuleImporter = importModul
   return load(CONNECTOR_ENTRY, id, importer);
 }
 
+/** The terminal adapter named `id`, checked and ready to build its ports. */
+export function loadTerminal(id: string, importer: ModuleImporter = importModule): Promise<Load<TerminalAdapter>> {
+  return load(TERMINAL_ENTRY, id, importer);
+}
+
 /** What every adapter of the table says of itself, in table order. */
 export interface Declarations {
   readonly hosts: readonly Load<HostDeclaration>[];
   readonly connectors: readonly Load<ConnectorDeclaration>[];
+  readonly terminals: readonly Load<TerminalDeclaration>[];
 }
 
 /** Reads each adapter's declaration file alone: the parity page and the checks need no adapter code to run. */
 export async function readDeclarations(importer: ModuleImporter = importModule): Promise<Declarations> {
-  const [hosts, connectors] = await Promise.all([loadAll(HOST_DECLARATION, importer), loadAll(CONNECTOR_DECLARATION, importer)]);
-  return { hosts, connectors };
+  const [hosts, connectors, terminals] = await Promise.all([
+    loadAll(HOST_DECLARATION, importer),
+    loadAll(CONNECTOR_DECLARATION, importer),
+    loadAll(TERMINAL_DECLARATION, importer),
+  ]);
+  return { hosts, connectors, terminals };
 }

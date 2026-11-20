@@ -185,3 +185,29 @@ The outside tools holding a team's issues (the `tracker` rows) or its code and p
 | `codehost.pr-conflicts` | the files a pull request conflicts on (`pr conflicts`) | supported, unproved | unsupported: Jira is a tracker: pull requests, their checks and their reviews need a code host connector | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
 | `codehost.review-posts` | review comments and reviews in the mention scan | supported, unproved | unsupported: Jira is a tracker: pull requests, their checks and their reviews need a code host connector | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
 | `codehost.linked-pulls` | how many open pull requests close an issue | supported, unproved | unsupported: Jira is a tracker: pull requests, their checks and their reviews need a code host connector | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+
+## Terminals
+
+The programs whose panes the sessions run in.
+
+- tmux (`tmux`), built on plugin API 0.1.0
+- Windows Terminal (`windows-terminal`), built on plugin API 0.1.0
+- macOS Terminal (`macos-terminal`), built on plugin API 0.1.0
+- GNOME Terminal (`gnome-terminal`), built on plugin API 0.1.0
+- Konsole (`konsole`), built on plugin API 0.1.0
+- x-terminal-emulator (`x-terminal-emulator`), built on plugin API 0.1.0
+
+### pane
+
+| Feature | What it does | tmux | Windows Terminal | macOS Terminal | GNOME Terminal | Konsole | x-terminal-emulator |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `pane.open` | opens a pane for a session and answers its own id of it | supported, unproved | supported, unproved | partial (missing: an id of the pane it opened), unproved | partial (missing: an id of the pane it opened), unproved | partial (missing: an id of the pane it opened), unproved | supported, unproved |
+| `pane.window` | opens a pane in the window teamrig names, made when none of that name is open | unsupported: a pane opens in the tmux session teamrig runs in: teamrig names no other | supported, unproved | unsupported: every pane is a window of its own | unsupported: a pane opens in the window GNOME Terminal picks: teamrig names none | unsupported: a pane opens in the window Konsole picks: teamrig names none | unsupported: every pane is a window of its own |
+| `pane.focus` | brings a session's pane forward | supported, unproved | supported, unproved | unsupported: teamrig does not ask Terminal for it yet | unsupported: GNOME Terminal has no call for it on a tab already open | unsupported: teamrig does not ask Konsole for it yet | unsupported: the terminal has no call for it on a window already open |
+| `pane.close` | closes a session's pane | unsupported: teamrig does not ask tmux for it yet | unsupported: Windows Terminal has no call for it on a tab already open | unsupported: teamrig does not ask Terminal for it yet | unsupported: GNOME Terminal has no call for it on a tab already open | unsupported: teamrig does not ask Konsole for it yet | unsupported: the terminal has no call for it on a window already open |
+| `pane.restart` | restarts a pane's command, resuming the conversation when asked | unsupported: teamrig does not ask tmux for it yet | unsupported: Windows Terminal has no call for it on a tab already open | unsupported: teamrig does not ask Terminal for it yet | unsupported: GNOME Terminal has no call for it on a tab already open | unsupported: teamrig does not ask Konsole for it yet | unsupported: the terminal has no call for it on a window already open |
+| `pane.rename` | changes a pane's title | unsupported: teamrig does not ask tmux for it yet | unsupported: Windows Terminal has no call for it on a tab already open | unsupported: teamrig does not ask Terminal for it yet | unsupported: GNOME Terminal has no call for it on a tab already open | unsupported: teamrig does not ask Konsole for it yet | unsupported: the terminal has no call for it on a window already open |
+| `pane.deliver` | delivers a wake only to an idle pane, with its token; else says what held it | unsupported: tmux cannot tell whether a pane is idle | unsupported: Windows Terminal cannot tell whether a pane is idle | unsupported: Terminal cannot tell whether a pane is idle | unsupported: GNOME Terminal cannot tell whether a pane is idle | unsupported: Konsole cannot tell whether a pane is idle | unsupported: the terminal cannot tell whether a pane is idle |
+| `pane.is-idle` | says whether a pane is idle, busy, asking, holding a draft or gone | unsupported: tmux cannot tell whether a pane is idle | unsupported: Windows Terminal cannot tell whether a pane is idle | unsupported: Terminal cannot tell whether a pane is idle | unsupported: GNOME Terminal cannot tell whether a pane is idle | unsupported: Konsole cannot tell whether a pane is idle | unsupported: the terminal cannot tell whether a pane is idle |
+| `pane.list` | lists every pane it has, each with its state and its identity label | unsupported: teamrig does not ask tmux for it yet | unsupported: teamrig does not ask Windows Terminal for its tabs yet | unsupported: teamrig does not ask Terminal for it yet | unsupported: GNOME Terminal has no call for it on a tab already open | unsupported: teamrig does not ask Konsole for it yet | unsupported: the terminal has no call for it on a window already open |
+| `pane.sees-draft` | sees a pane's unsent input, so a wake never lands on a person's text | unsupported: tmux does not tell a pane's unsent input from what it printed | unsupported: Windows Terminal cannot read a pane's input | unsupported: Terminal cannot read a pane's input | unsupported: GNOME Terminal cannot read a pane's input | unsupported: Konsole cannot read a pane's input | unsupported: the terminal cannot read a pane's input |
