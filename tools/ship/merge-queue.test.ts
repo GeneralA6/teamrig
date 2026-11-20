@@ -11,7 +11,7 @@ const MERGED = 'merged0ccc';
 const TIP = 'tip0000ddd';
 const MINUTE = 60_000;
 const PULL: PullRequest = { number: 7, url: 'https://github.com/Owner/repo/pull/7', headRef: 'dev', headSha: SHA, baseRef: 'main' };
-const REQUEST: MergeRequest = { repo: REPO, head: 'dev', base: 'main', sha: SHA, title: 'Merge dev', body: '', lacks: null, opens: true };
+const REQUEST: MergeRequest = { repo: REPO, head: 'dev', base: 'main', sha: SHA, title: 'Merge dev', body: '', lacks: null, opens: true, labels: [], unlinked: null };
 const POLLING = { intervalMs: 30_000, timeoutMs: 10 * MINUTE };
 
 /** A head pushed to the pull request after SHA was approved. */

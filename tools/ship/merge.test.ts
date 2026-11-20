@@ -669,6 +669,7 @@ function runFixture(fixture: RunFixture = {}): {
   sweep: ReturnType<typeof mock.fn<MergeDeps['sweep']>>;
   clearMerge: ReturnType<typeof mock.fn<MergeDeps['clearMerge']>>;
   clearTaskMerge: ReturnType<typeof mock.fn<MergeDeps['clearTaskMerge']>>;
+  pullTask: ReturnType<typeof mock.fn<MergeDeps['pullTask']>>;
   releaseRefusal: ReturnType<typeof mock.fn<MergeDeps['releaseRefusal']>>;
   catchUp: ReturnType<typeof mock.fn<MergeDeps['catchUp']>>;
   /** Each step-away and step-back of the step's host share, in turn, with the catch-ups run before it. */
