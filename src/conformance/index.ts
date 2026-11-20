@@ -3,6 +3,7 @@
  * inside teamrig and an outside program reached through the protocol. It imports the plugin API, `node:assert` and
  * its own folder, nothing else, so it ships as it is to whoever builds a host or a connector.
  */
+import { STATUS_LINE_CONTRACT } from './host/status-line.ts';
 import { TRANSCRIPT_CONTRACT } from './host/transcript.ts';
 import { USAGE_CONTRACT } from './host/usage.ts';
 import { entryOf, type KitEntry } from './kit.ts';
@@ -15,6 +16,7 @@ export { TERMINAL_CONTRACT, type ShownPane, type TerminalCase, type TerminalSubj
 export { nothingTerminal, referenceTerminal, yesTerminal, type ReferenceOptions } from './terminal/reference.ts';
 export { nothingTranscripts, TRANSCRIPT_CONTRACT, yesTranscripts, type TranscriptCase, type TranscriptSubject, type TranscriptWorld, type WorldReply } from './host/transcript.ts';
 export { nothingUsage, USAGE_CONTRACT, yesUsage, type UsageCase, type UsageSubject, type UsageWorld, type WorldLimits } from './host/usage.ts';
+export { nothingStatusLine, STATUS_LINE_CONTRACT, yesStatusLine, type StatusLineCase, type StatusLineSubject, type StatusLineWorld, type WorldStatus } from './host/status-line.ts';
 
 /**
  * Every contract of the kit. A port's contract lives in its own file, under `host/`, `connector/` or `terminal/`,
@@ -25,4 +27,5 @@ export const CONTRACTS: readonly KitEntry[] = [
   entryOf(TERMINAL_CONTRACT),
   entryOf(TRANSCRIPT_CONTRACT),
   entryOf(USAGE_CONTRACT),
+  entryOf(STATUS_LINE_CONTRACT),
 ];

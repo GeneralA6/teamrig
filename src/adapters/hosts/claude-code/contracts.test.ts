@@ -1,8 +1,9 @@
-import { bind, TRANSCRIPT_CONTRACT, USAGE_CONTRACT, type TranscriptWorld, type UsageWorld } from '../../../conformance/index.ts';
-import type { RateWindow } from '../../../plugin-api/index.ts';
+import { bind, STATUS_LINE_CONTRACT, TRANSCRIPT_CONTRACT, USAGE_CONTRACT, type StatusLineWorld, type TranscriptWorld, type UsageWorld } from '../../../conformance/index.ts';
+import { recordField, stringField, type RateWindow } from '../../../plugin-api/index.ts';
 import { describeContracts } from '../../../testing/contracts.ts';
 import { promptLine, resultsLine } from '../../../testing/transcript-lines.ts';
 import { declaration } from './declaration.ts';
+import { statusLine } from './status-line.ts';
 import { transcriptReader } from './transcript.ts';
 import { usageMeter } from './usage.ts';
 
@@ -39,11 +40,28 @@ const usageWorld: UsageWorld = {
     }),
 };
 
+/** Claude Code's status input for what a case tells, and its settings, the status line under `statusLine.command`. */
+const statusLineWorld: StatusLineWorld = {
+  status: ({ sessionId, cwd, model, effort }) =>
+    JSON.stringify({
+      session_id: sessionId,
+      ...(cwd === undefined ? {} : { workspace: { current_dir: cwd } }),
+      ...(model === undefined ? {} : { model: { display_name: model } }),
+      ...(effort === undefined ? {} : { effort: { level: effort } }),
+    }),
+  settings: (command) => (command === undefined ? { theme: 'dark' } : { theme: 'dark', statusLine: { type: 'command', command } }),
+  commandOf: (settings) => {
+    const line = recordField(settings, 'statusLine');
+    return line === undefined ? undefined : stringField(line, 'command');
+  },
+};
+
 describeContracts({
   side: 'host',
   declaration,
   bound: [
     bind({ contract: TRANSCRIPT_CONTRACT, make: () => ({ port: transcriptReader, world: transcriptWorld }) }),
     bind({ contract: USAGE_CONTRACT, make: () => ({ port: usageMeter, world: usageWorld }) }),
+    bind({ contract: STATUS_LINE_CONTRACT, make: () => ({ port: statusLine, world: statusLineWorld }) }),
   ],
 });
