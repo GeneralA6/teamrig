@@ -77,6 +77,7 @@ const EXPECTED = {
   'idle-open': 'internal',
   who: 'read',
   read: 'read',
+  events: 'internal',
   sessions: 'read',
   close: 'write',
   'cleanup launchers': 'write',

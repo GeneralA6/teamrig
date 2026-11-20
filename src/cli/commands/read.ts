@@ -129,8 +129,7 @@ function requestOf(args: ParsedArgs, env: Env): ReadRequest {
   return {
     documents,
     ...scopeFlagsOf(args, env),
-    task: taskOf(args.flags.get('task'), documents),
-    range: statsRangeOf(args.flags.get('range'), documents),
+    ...documentFlagsOf(args, documents),
     unless: unlessOf(args.flags.get('unless'), documents),
     speaks,
   };
@@ -146,6 +145,16 @@ export function scopeFlagsOf(args: ParsedArgs, env: Env): ScopeFlags {
     session: askerOf(args.flags.get('session'), env),
     conversation: conversationOf(args.flags.get('conversation')),
     sinceHours: sinceHoursOf(args.flags.get('since')),
+  };
+}
+
+/** What one document is asked of: the flags only a run naming that document takes, at their defaults when not given. */
+export type DocumentFlags = Pick<ReadRequest, 'task' | 'range'>;
+
+export function documentFlagsOf(args: ParsedArgs, documents: readonly DocumentName[]): DocumentFlags {
+  return {
+    task: taskOf(args.flags.get('task'), documents),
+    range: statsRangeOf(args.flags.get('range'), documents),
   };
 }
 

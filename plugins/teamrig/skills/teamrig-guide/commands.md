@@ -2764,6 +2764,55 @@ Output:
 {"interface":"1.7","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
 ```
 
+### teamrig events
+
+The events side of the public interface, for a program that shows the team and wants to know when to read again
+without asking on a timer: start `teamrig events --json`, keep it running and read its stdout. Each line is one JSON
+frame, and nothing else is written there. It is a program's command: `/teamrig events` is refused, since it runs
+until its reader ends.
+
+- The first frame is `hello`: `{ "interface", "event": "hello", "documents": [{ "document", "revision" }] }`, every
+  followed document with the revision `teamrig read` answers for it now.
+- Then a `changed` frame each time a revision moved, naming only the documents that moved, with their new revision.
+  The files are looked at once a second, so every change inside a second is one frame, and a second with no change
+  sends nothing.
+- A frame holds documents and revisions and no text of the team's: run `teamrig read <document> --json --unless
+  <document>=<revision you hold>` for what changed. A `revision` of `null` means the document's files could not be
+  looked at; read it to be told why.
+- Ignore an event or a field you do not know: a minor version adds some.
+
+A refusal is `read`'s: one `REFUSED` line on stderr with exit 2, before any frame. The follower ends with exit 0
+once the program that started it is gone, or once that program reads its stdout no more, which is seen at the next
+frame's write. It writes no file, marks nothing read and takes no lock. It keeps the team, sessions and paths it
+started with: start it again after the team config changed (every followed document is then named in one frame).
+
+Flags:
+
+- `--json`: required; interface 1 has no text form.
+- `--documents <document>[,<document>...]`: the documents to follow, each once: `tasks`, `inbox`, `sessions`,
+  `meetings`, `config`. Every one when left out, and then `inbox` needs a session to serve.
+- `--session <id|name>`: who is asking, which picks whose `inbox` is followed; `$TEAMRIG_SESSION` when left out.
+- `--conversation <id>`: the host's own id of the conversation your program runs in, as `teamrig read` takes it.
+- `--team <id>`: follows a team above yours in your tree instead of your own, for `tasks`, `meetings` and `config`.
+- `--owner <id|name>`: the session whose tasks your reads keep.
+- `--since <hours>`: the reach your `inbox` reads ask.
+
+Give the follower the flags you give your reads: a revision counts what was asked, so only then are its revisions
+the ones your reads hold.
+
+Example:
+
+```sh
+teamrig events --json --documents tasks,inbox --session api
+```
+
+Output:
+
+```text
+{"interface":"1.7","event":"hello","documents":[{"document":"tasks","revision":"5f0c2a9be41d7c36"},{"document":"inbox","revision":"9a41c07d2be3f518"}]}
+{"interface":"1.7","event":"changed","documents":[{"document":"inbox","revision":"c2d81374e0aa51b9"}]}
+```
+
 ### teamrig sessions
 
 Prints each session: running, with the memory its Claude Code's process tree holds (its helpers, shells and MCP

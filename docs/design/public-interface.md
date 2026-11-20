@@ -197,6 +197,14 @@ A tool that shows the team learns that something changed from events, then reads
   text, no titles, no inbox lines: those come only through a read, which scans and marks them.
 - A frame carries the interface version; a client ignores frames and fields it does not know.
 
+**What interface 1.7 ships: the follower first, the pipe after it.** `teamrig events --json` is a process the tool
+starts and reads: its stdout is a pipe only that tool holds, so no address is opened and no token is needed. Its
+frames are `hello` (every followed document with its revision) and `changed` (the documents whose revision moved),
+which is less than ids and statuses: a frame names documents and revisions, and the tool reads the document with
+`teamrig read --unless` to learn what changed. It looks at the documents' files once a second and sends at most one
+frame a look. The named pipe or socket, for a tool that cannot keep a child process, and frames that name a task or
+a session come after it, in a later minor version with the same frame envelope.
+
 ## The owner's own acts
 
 Some acts are the owner's alone: approving a push to a protected branch, an owner gate (a destructive data change, a

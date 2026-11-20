@@ -28,6 +28,12 @@ export class FaultyFiles implements Files {
     return this;
   }
 
+  /** From now on, `operation` on `path` passes through again: the disk came back. */
+  mend(operation: FileOperation, path: string): this {
+    this.faults.delete(keyOf(operation, path));
+    return this;
+  }
+
   /** From now on, `operation` on `path` never settles; the promise resolves once a call reaches it. */
   stall(operation: FileOperation, path: string): Promise<void> {
     return new Promise((reached) => {

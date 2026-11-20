@@ -129,6 +129,7 @@ const sweepCommands = () => import('./commands/sweep.ts');
 const setupBackupCommands = () => import('./commands/setup-backup.ts');
 const auditCommand = () => import('./commands/audit.ts');
 const readCommand = () => import('./commands/read.ts');
+const eventsCommand = () => import('./commands/events.ts');
 
 const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'type', 'class'];
 /** The parts of a bug's review `set` gives (register/review.ts REVIEW_FLAGS). */
@@ -217,6 +218,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'idle-open': { effect: 'internal', flags: ['team', 'project'], load: async () => (await idleActCommands()).idleOpen },
   who: { effect: 'read', flags: [], load: async () => (await teamCommands()).who },
   read: { effect: 'read', flags: ['session', 'team', 'owner', 'since', 'conversation', 'unless', 'interface', 'task', 'range'], switches: ['json'], load: async () => (await readCommand()).read },
+  // A follower a program starts and reads until one of the two ends: `/teamrig` would wait on it for good, so it is no `read`.
+  events: { effect: 'internal', flags: ['documents', 'session', 'team', 'owner', 'since', 'conversation'], switches: ['json'], load: async () => (await eventsCommand()).events },
   sessions: { effect: 'read', flags: ['project'], switches: ['pass'], load: async () => (await sessionsCommands()).sessions },
   close: { effect: 'write', flags: ['session', 'project'], switches: ['yes'], load: async () => (await closeCommands()).close },
   'cleanup launchers': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await cleanupCommands()).cleanupLaunchers },
@@ -719,6 +722,14 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       revision you hold of a document asked; one still at that revision is answered with unchanged:
       true in place of its body, from its files' stamps alone. --interface: the version you speak,
       refused when this teamrig does not serve it. It writes nothing
+  events --json [--documents <document>[,...]] [--session <id|name>] [--conversation <id>] [--team <id>]
+      [--owner <id|name>] [--since <hours>]   the public interface's events side, for a program that
+      starts it and reads its stdout: one JSON line a frame, first hello with every followed
+      document's revision, then a changed frame naming the documents whose revision moved, at most
+      one a second. A frame holds documents and revisions only: read --unless serves what changed.
+      --documents: the documents to follow (every one unless given); the other flags are read's,
+      and so are its refusals, on stderr before the first frame. It ends with exit 0 once the
+      program that started it is gone or reads its stdout no more. It writes nothing
   sessions [--pass] [--project <dir>]   each session: running (and the MB its Claude Code's processes
       hold), closed or never recorded; then the host's free memory and commit charge. --pass: what an
       idle pass would close and reopen (one reopen a pass, with room on the host) and why it keeps or
