@@ -26,6 +26,7 @@ describe('golden register logs', () => {
       id: 'T1',
       title: 'Add a health check to the web service',
       description: null,
+      descriptionCut: null,
       owner: 'alpha',
       source: 'owner',
       ref: 'inbox/alpha.md:1',
