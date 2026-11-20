@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import { formatCount } from '../budget/format.ts';
 import { clipEnd } from '../core/clip.ts';
 import type { Files } from '../core/files.ts';
@@ -63,12 +62,13 @@ function fileFindings(path: string, settings: JsonRecord, reading: PermissionsRe
  * The settings findings of the host's settings files in `scope`: per file, the allow rules a `permissions trim`
  * removes (counted by class, never printed), prompts turned off, and the context hooks `hooks` (the transcripts read)
  * show printing into the context, with what they printed, the same finding in a file's worktree copies folded into its
- * first, with their count; then one finding when no file denies anything. It only reads.
+ * first, with their count; then one finding when no file denies anything, on `userSettings`, the person's own settings
+ * file, where a deny rule holds in every project. It only reads.
  */
 export async function scanSettings(
   permissions: HostPermissions,
   files: Files,
-  claudeDir: string,
+  userSettings: string,
   scope: readonly SettingsFile[],
   keep: KeepList,
   secrets: SecretScanner,
@@ -93,7 +93,7 @@ export async function scanSettings(
   }
   const grouped = [...found.values()];
   if (!denies) {
-    grouped.push({ kind: 'no-deny', path: join(claudeDir, 'settings.json'), what: `no settings file has a ${permissions.denySetting} rule, so nothing is refused outright (secret files, force pushes)`, copies: 0 });
+    grouped.push({ kind: 'no-deny', path: userSettings, what: `no settings file has a ${permissions.denySetting} rule, so nothing is refused outright (secret files, force pushes)`, copies: 0 });
   }
   return grouped;
 }
