@@ -1,5 +1,6 @@
-import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
+import { isRecord, stringField } from '../core/guards.ts';
 import { KIT_NAME } from '../core/home.ts';
+import type { HookEvent } from '../ports/host/index.ts';
 
 /**
  * The missing-cli hook, PostToolUse and PostToolUseFailure on Bash and PowerShell. Claude Code puts a plugin's
@@ -8,9 +9,6 @@ import { KIT_NAME } from '../core/home.ts';
  * command is not found. A session left there tends to run another copy it finds in the plugin cache, an older
  * version. The model gets one line after that result: run the copy its hooks run, by its path.
  */
-
-/** The shell tools whose output can say the bare command is missing. */
-const SHELL_TOOLS: ReadonlySet<string> = new Set(['Bash', 'PowerShell']);
 
 /**
  * The line a shell prints for a command it does not find, from the line's start: bash and sh (`bash: teamrig:
@@ -32,28 +30,24 @@ const NOT_FOUND = new RegExp(
   'm',
 );
 
-/** The events the hook answers: a shell call that exits 0 ends in PostToolUse, one that does not in PostToolUseFailure. */
-export type MissingCliEvent = 'PostToolUse' | 'PostToolUseFailure';
+/** The events the hook answers: a shell call that exits 0 ends in `tool-end`, one that does not in `tool-failed`. */
+export type MissingCliEvent = 'tool-end' | 'tool-failed';
 
 /** The event of a shell call whose output says the bare command was not found; undefined for any other call. */
-export function missingCliOf(payload: unknown): MissingCliEvent | undefined {
-  if (!isRecord(payload) || !SHELL_TOOLS.has(stringField(payload, 'tool_name') ?? '')) {
+export function missingCliOf(event: HookEvent): MissingCliEvent | undefined {
+  const { name, call } = event;
+  if (call?.kind !== 'shell' || (name !== 'tool-end' && name !== 'tool-failed')) {
     return undefined;
   }
-  const event = stringField(payload, 'hook_event_name');
-  if (event !== 'PostToolUse' && event !== 'PostToolUseFailure') {
-    return undefined;
-  }
-  return NOT_FOUND.test(shellTextOf(payload)) ? event : undefined;
+  return NOT_FOUND.test(shellTextOf(event.error, call.response)) ? name : undefined;
 }
 
-/** What the call printed: a failed call's `error`, else the result's stdout and stderr (or its text). */
-function shellTextOf(payload: JsonRecord): string {
-  const response = payload['tool_response'];
+/** What the call printed: a failed call's error, else the result's stdout and stderr (or its text). */
+function shellTextOf(error: string | undefined, response: unknown): string {
   const printed = isRecord(response)
     ? [stringField(response, 'stdout'), stringField(response, 'stderr')]
     : [typeof response === 'string' ? response : undefined];
-  return [stringField(payload, 'error'), ...printed].filter((text): text is string => text !== undefined).join('\n');
+  return [error, ...printed].filter((text): text is string => text !== undefined).join('\n');
 }
 
 /**
@@ -67,9 +61,4 @@ export function missingCliLine(script: string, command: string): string {
     `For the rest of this session run the installed copy by its path: \`node "${path}" <command> ...\`, never another copy from the plugin cache (another version). ` +
     `The user's /reload-plugins brings the bare name back.`
   );
-}
-
-/** The hook's stdout: the line as context for the model after the tool's result, under the event it answers. */
-export function missingCliOutput(event: MissingCliEvent, line: string): string {
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: line } });
 }
