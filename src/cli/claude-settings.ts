@@ -1,12 +1,13 @@
 import { join } from 'node:path';
 import { formatConfig, writeConfigWithBackup } from '../config/load.ts';
 import { errorMessage, isRecord, type JsonRecord } from '../core/guards.ts';
-import { claudeConfigDir, resolveKitHome } from '../core/home.ts';
+import { resolveKitHome } from '../core/home.ts';
 import type { Checked } from '../setup/team-create.ts';
+import { pathsOf } from './host.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
 /**
- * The person's own Claude Code user settings (`<Claude Code folder>/settings.json`), as the commands that change them
+ * The person's own user settings of the host (the file its paths port names), as the commands that change them
  * read and write them: a missing file reads as empty and one that is not a JSON object is refused before anything is
  * written; a write keeps the old file in the kit's backups folder first.
  */
@@ -25,9 +26,13 @@ export interface ClaudeSettings {
   readonly exists: boolean;
 }
 
+/**
+ * Every caller's whole work is that one file, so a host whose folders teamrig does not know refuses here, with its own
+ * reason, before anything is read or written.
+ */
 export function settingsTargetOf(runtime: CliRuntime): SettingsTarget {
   return {
-    settingsPath: join(claudeConfigDir(runtime.env, runtime.userHome), 'settings.json'),
+    settingsPath: pathsOf(runtime).userSettings(runtime.userHome),
     backupsDir: join(resolveKitHome(runtime.env, runtime.userHome), 'backups'),
   };
 }

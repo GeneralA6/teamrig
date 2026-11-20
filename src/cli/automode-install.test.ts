@@ -5,6 +5,7 @@ import { kitLines, kitTag } from '../automode/lines.ts';
 import { formatConfig } from '../config/load.ts';
 import { homeRelative } from '../core/paths.ts';
 import { CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME } from '../testing/cli-harness.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import { EXIT } from './runtime.ts';
 
 const SETTINGS = join(USER_HOME, '.claude', 'settings.json');
@@ -43,6 +44,14 @@ function removed(lines: readonly string[]): string[] {
 }
 
 describe('teamrig automode install', () => {
+  it("refuses on a host whose folders teamrig does not know, with the host's own reason, reading and writing nothing", async () => {
+    const original = formatConfig({ theme: 'dark' });
+    const kit = await withSettings(original);
+    const result = await kit.run(['automode', 'install', '--yes'], { host: NO_PATHS_HOST });
+    assert.deepEqual([result.code, result.stdout], [EXIT.refused, ['REFUSED no folder of the host is known']]);
+    assert.deepEqual([kit.files.get(SETTINGS), kit.files.get(BACKUP)], [original, undefined]);
+  });
+
   it('previews the lines after "$defaults" on a machine with no list, and writes nothing without --yes', async () => {
     const kit = await withSettings(undefined);
     const result = await kit.run(['automode', 'install']);

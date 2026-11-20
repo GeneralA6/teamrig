@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { FakePathProbe } from '../testing/fake-processes.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { APP, CliHarness, KIT, POINTER, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { CONFIG_VERSION } from '../config/types.ts';
@@ -166,6 +167,17 @@ describe('teamrig team create', () => {
       `NOTE each tab of team shop shows a colored circle before its title for what its session is doing once you set "tabStatus": { "enabled": true } in ${SHOP_CONFIG}`,
     );
     assert.equal(JSON.parse((await kit.files.read(SHOP_CONFIG)) ?? '')['tabStatus'], undefined, 'a repeat leaves a kept config as it is');
+  });
+
+  it('creates the team on a host whose folders teamrig does not know, its tab note naming the switch and no settings file', async () => {
+    const kit = new CliHarness(null, null);
+    const result = await kit.run(CREATE, { probe: FOLDERS, host: NO_PATHS_HOST });
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    assert.deepEqual(result.stdout.slice(0, 2), [`CREATED ${SHOP_CONFIG}`, `CREATED ${SHOP_POINTER}`]);
+    assert.equal(
+      result.stdout[2],
+      "NOTE each tab of team shop shows a colored circle before its title for what its session is doing once you set CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 in the environment the team's sessions start in and restart them, so the host stops writing its own title over the circle",
+    );
   });
 
   it("says on a repeat's dry run what it keeps, and gives a team already at work no setup task", async () => {
