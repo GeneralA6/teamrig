@@ -47,13 +47,17 @@ test('reads the release pull request\'s branch and changelog, none when not list
   }
 });
 
-test('the shipped repos.json names teamrig\'s release-please pull request branch and its CHANGELOG, and no release for teamrig-pane (T4645)', () => {
+test('the shipped repos.json names teamrig\'s release-please pull request branch and its CHANGELOG (T4645)', () => {
   // release-please names its branch release-please--branches--<main>--components--<component>.
   const config = readFileSync(new URL('../../release-please-config.json', import.meta.url), 'utf8');
   const component = /"component":\s*"([^"]+)"/.exec(config)?.[1];
   const changelog = /"changelog-path":\s*"([^"]+)"/.exec(config)?.[1];
   assert.deepEqual(readProfiles().get('teamrig/teamrig')?.release, { head: `release-please--branches--main--components--${component ?? ''}`, changelog });
-  assert.equal(readProfiles().get('teamrig/teamrig-pane')?.release, null);
+});
+
+test('the shipped repos.json names teamrig-pane\'s release-please branch, from its component teamrig-pane, and its CHANGELOG (T4821)', () => {
+  // The pane's release-please-config.json lives in its own repo: component teamrig-pane, changelog-path CHANGELOG.md.
+  assert.deepEqual(readProfiles().get('teamrig/teamrig-pane')?.release, { head: 'release-please--branches--main--components--teamrig-pane', changelog: 'CHANGELOG.md' });
 });
 
 test('refuses a missing or unknown gate', () => {
@@ -127,7 +131,7 @@ test('the shipped repos.json names each repo\'s every-check-passed job its summa
 test('the shipped repos.json calls regenerated exactly the dist, the version files and the release manifest a ship writes again', () => {
   const profiles = readProfiles();
   assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig').regenerated, [`${DIST}/`, ...[...TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_MANIFEST].map(file => file.path)]);
-  assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig-pane').regenerated, ['plugins/teamrig-pane/.claude-plugin/plugin.json']);
+  assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig-pane').regenerated, ['plugins/teamrig-pane/.claude-plugin/plugin.json', TEAMRIG_RELEASE_MANIFEST.path]);
 });
 
 /** The status checks main's ruleset requires before GitHub accepts a merge. */
