@@ -5,6 +5,7 @@ import { hostDeps } from '../../../testing/adapter-deps.ts';
 import { declaration } from './declaration.ts';
 import adapter from './index.ts';
 import { transcriptReader } from './transcript.ts';
+import { usageMeter } from './usage.ts';
 
 describe('the Claude Code adapter', () => {
   it('declares a host built for the plugin API of this teamrig', () => {
@@ -31,6 +32,6 @@ describe('the Claude Code adapter', () => {
   it('enters through defineHost with that declaration, and builds every host port', () => {
     assert.equal(adapter.declaration, declaration);
     assert.deepEqual(hostAdapterProblems(adapter), []);
-    assert.deepEqual(adapter.create(hostDeps()), { transcripts: transcriptReader });
+    assert.deepEqual(adapter.create(hostDeps()), { transcripts: transcriptReader, usage: usageMeter });
   });
 });

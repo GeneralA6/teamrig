@@ -6,7 +6,7 @@ import type { HostSource } from '../composition/host-ports.ts';
 import type { CommitCharge } from '../delivery/memory.ts';
 import { inboxLineOf } from '../inbox/inbox.ts';
 import { lineHash } from '../inbox/line-hash.ts';
-import { unsupported } from '../ports/host/index.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import { SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
@@ -118,7 +118,7 @@ describe('teamrig owner wake (T2298)', () => {
   });
 
   it('wakes such a tab on a host whose transcript teamrig cannot read: what it runs is unknown, so the line is posted', async () => {
-    const bare: HostSource = () => ({ transcripts: unsupported('no transcript is kept') });
+    const bare: HostSource = bareHost;
     for (const [last] of BUSY) {
       const kit = new CliHarness();
       await running(kit);

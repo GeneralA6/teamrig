@@ -1,4 +1,4 @@
-import { isUnsupported, type HostPorts, type TranscriptReader } from '../ports/host/index.ts';
+import { isUnsupported, type HostPorts, type TranscriptReader, type UsageMeter } from '../ports/host/index.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
 /**
@@ -28,4 +28,22 @@ export function transcriptsOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platfo
     throw new RefusedError(transcripts.notice);
   }
   return transcripts;
+}
+
+/**
+ * The run's usage meter, or undefined on a host whose calls teamrig cannot price: for a caller that goes on with the
+ * cost unknown, such as a hook that must never answer by a refusal.
+ */
+export function usageIfMetered(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): UsageMeter | undefined {
+  const { usage } = hostOf(runtime);
+  return isUnsupported(usage) ? undefined : usage;
+}
+
+/** The run's usage meter. A host whose calls teamrig cannot price refuses with its own reason, as `transcriptsOf` does. */
+export function usageOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): UsageMeter {
+  const { usage } = hostOf(runtime);
+  if (isUnsupported(usage)) {
+    throw new RefusedError(usage.notice);
+  }
+  return usage;
 }

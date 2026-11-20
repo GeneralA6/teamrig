@@ -9,10 +9,11 @@ import type { ModuleImporter } from './loader.ts';
 const run: ProgramRunner = () => Promise.reject(new Error('no program runs here'));
 
 describe('loadHostPorts', () => {
-  it('gives the shipped host adapter a filled transcript reader', async () => {
+  it('gives the shipped host adapter a filled transcript reader and usage meter', async () => {
     const ports = (await loadHostPorts(run))({ env: {}, platform: 'linux' });
-    assert.deepEqual(Object.keys(ports), ['transcripts']);
+    assert.deepEqual(Object.keys(ports), ['transcripts', 'usage']);
     assert.equal(isUnsupported(ports.transcripts), false);
+    assert.equal(isUnsupported(ports.usage), false);
   });
 
   it('hands the adapter what each run sees, with the one runner of the process', async () => {
@@ -21,7 +22,7 @@ describe('loadHostPorts', () => {
       declaration: hostDeclarationData({ id: DEFAULT_HOST }),
       create: (deps: HostDeps) => {
         built.push(deps);
-        return { transcripts: unsupported('this host keeps no transcript') };
+        return { transcripts: unsupported('this host keeps no transcript'), usage: unsupported('this host prices no call') };
       },
     };
     const importer: ModuleImporter = () => Promise.resolve({ default: entry });
@@ -29,7 +30,7 @@ describe('loadHostPorts', () => {
     assert.deepEqual(built, [], 'loading builds no port');
     const ports = source({ env: { RUN: 'one' }, platform: 'darwin' });
     source({ env: { RUN: 'two' }, platform: 'win32' });
-    assert.deepEqual(ports, { transcripts: { kind: 'unsupported', notice: 'this host keeps no transcript' } });
+    assert.deepEqual(ports, { transcripts: { kind: 'unsupported', notice: 'this host keeps no transcript' }, usage: { kind: 'unsupported', notice: 'this host prices no call' } });
     assert.deepEqual(built, [
       { env: { RUN: 'one' }, platform: 'darwin', run },
       { env: { RUN: 'two' }, platform: 'win32', run },

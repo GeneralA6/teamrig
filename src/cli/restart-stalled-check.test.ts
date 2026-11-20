@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import type { HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import { unsupported } from '../ports/host/index.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import { RestartLog } from '../refresh/restart-log.ts';
 import type { RefreshState, RestartTab } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
@@ -64,7 +64,7 @@ describe('RESTART-STALLED (#705)', () => {
   });
 
   it('counts the quiet from the ready state too on a host whose transcript teamrig cannot read', async () => {
-    const bare: HostSource = () => ({ transcripts: unsupported('no transcript is kept') });
+    const bare: HostSource = bareHost;
     const { kit } = await harness();
     const [line] = await stalledLines(kit, bare);
     assert.match(line ?? '', /has sat 30 min with its handover ready since 09:30 UTC/);

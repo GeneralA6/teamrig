@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import { unsupported } from '../ports/host/index.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
@@ -214,7 +214,7 @@ describe('runCli: hook refresh-mid', () => {
   it('asks plainly on a host that keeps no transcript it can read, whose background work it cannot see', async () => {
     const tab = new Tab();
     await tab.transcript(BACKGROUND_START);
-    const bare: HostSource = () => ({ transcripts: unsupported('no transcript is kept') });
+    const bare: HostSource = bareHost;
     assert.deepEqual(answerOf(await tab.run('refresh-mid', { tokens: 130_000 }, AS_ALPHA, bare)), { kind: 'ask', text: ASK_130K, nextAt: 154_000 });
   });
 
@@ -296,7 +296,7 @@ describe('runCli: hook pre-compact', () => {
     await tab.transcript(replyLine(170_000));
     await tab.mid(130_000);
     assert.notEqual(await tab.preCompact(), undefined, 'held on the shipped host');
-    const bare: HostSource = () => ({ transcripts: unsupported('no transcript is kept') });
+    const bare: HostSource = bareHost;
     const result = await tab.run('pre-compact', { transcript_path: TRANSCRIPT, trigger: 'auto' }, AS_ALPHA, bare);
     assert.deepEqual({ code: result.code, stdout: result.stdout }, { code: EXIT.ok, stdout: [] });
   });

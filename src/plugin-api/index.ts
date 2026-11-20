@@ -93,12 +93,14 @@ export {
   type ScheduledCarryEntry,
   type ScheduledJob,
   type TitleEntry,
+  type TokenWeights,
   type ToolOutcome,
   type TranscriptEntry,
   type TranscriptReader,
   type TurnEndEntry,
   type UnreadLine,
   type Unsupported,
+  type UsageMeter,
 } from '../ports/host/index.ts';
 export type { CredentialRead, CredentialStore } from '../core/credentials.ts';
 // What an adapter reads outside JSON with, an API's answer or a host's own line: it is narrowed, never cast.
