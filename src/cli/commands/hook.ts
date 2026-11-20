@@ -17,7 +17,7 @@ import { sendTargetOf } from '../../hooks/cold-send.ts';
 import { failedSendLine, failedSendOf } from '../../hooks/failed-send.ts';
 import { deliveredSendOf } from '../../hooks/route-reminder.ts';
 import { postToolUseContext } from '../../hooks/post-tool-use.ts';
-import { passRecordGuardOutput } from '../../hooks/pass-record-guard.ts';
+import { passRecordGuardReply } from '../../hooks/pass-record-guard.ts';
 import { JsonlHintLog } from '../../hooks/hint-log.ts';
 import { promptOutput } from '../../hooks/prompt-output.ts';
 import { showsLiveTasks } from '../../hooks/live-tasks.ts';
@@ -166,14 +166,11 @@ export async function serviceRoleGuard(args: ParsedArgs, runtime: CliRuntime): P
 /** PreToolUse on Bash, PowerShell and the file-writing tools: refuses a session's own write of a tree's pass record. */
 export async function passRecordGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  if ((await hookTeam(payload, runtime)).kind === 'none') {
+  const { payload, event } = await readHookInput(runtime);
+  if (event === undefined || (await hookTeam(payload, runtime)).kind === 'none') {
     return EXIT.ok;
   }
-  const output = passRecordGuardOutput(payload);
-  if (output !== '') {
-    runtime.out.stdout(output);
-  }
+  writeReply(runtime, 'tool-start', passRecordGuardReply(event));
   return EXIT.ok;
 }
 
