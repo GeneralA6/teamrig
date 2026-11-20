@@ -8,9 +8,10 @@ user asked for teamrig on Google's Antigravity CLI (`agy`), so this page does th
 Claude Code touch point teamrig relies on, set against what `agy` offers, the feature each one feeds, what each host
 port must hold for it, and what it would take to carry teamrig there.
 
-Read on 2026-11-20: teamrig at `main`, and Antigravity CLI at its newest release, **1.5.12** (2026-11-19), from its
-official docs and from four third-party pages that report live runs on versions 1.0.16 to 1.2.14
-([Sources](#sources)). Its changelog entries before 1.5.9 were not read. `agy` is closed source, so unlike the Codex
+Read on 2026-11-20: teamrig at `main`, and Antigravity CLI at **1.5.12** (2026-11-19), the newest release its
+changelog names, from its official docs and from four third-party pages that report live runs on versions 1.0.16 to
+1.2.14 ([Sources](#sources)). Its installer already served a build 1.5.13 that day, with no changelog entry yet, and
+its changelog entries before 1.5.9 were not read. `agy` is closed source, so unlike the Codex
 study no row here rests on code: each says what the docs say, a fact resting on a third party alone is marked
 *(third party)*, and all of it stays unverified until [a live proof](#proofs-on-a-live-antigravity-host). That live
 read is the port's first slice.
@@ -74,21 +75,28 @@ reads its own inbox.
 6. Start each work block with `teamrig start --session <name>`, and read the inbox with `teamrig inbox read --session
    <name>`: no hook shows the lines.
 
-Two cautions. With the terminal sandbox on (`--sandbox`, and `auto` mode needs it), a command the model runs may not
-reach the team's folder outside the project, so `teamrig` may fail to write there until it is granted. And `agy
-plugin import claude` converts an installed Claude Code plugin, but what it makes of teamrig's hooks is unknown:
-`agy` accepts an event name it does not know and never fires it, so a converted hooks file can list hooks that never
-run.
+Four cautions:
+
+- **Sign-in.** `agy` has no login or status command. Its first interactive launch opens the browser for the Google
+  sign-in and asks for a colour scheme, a rendering mode and trust in the folder. The token stays in the OS keyring
+  until `/logout`, and a one-shot `-p` run uses it. So a person opens `agy` once before any session runs unattended.
+- **Updates.** `agy` updates itself unless `AGY_CLI_DISABLE_AUTO_UPDATE` is set, and its installer serves only the
+  newest build: a team can neither pin an older build nor go back to one.
+- **The sandbox.** With the terminal sandbox on (`--sandbox`, and `auto` mode needs it), a command the model runs may
+  not reach the team's folder outside the project, so `teamrig` may fail to write there until it is granted.
+- **A converted plugin.** `agy plugin import claude` converts an installed Claude Code plugin, but what it makes of
+  teamrig's hooks is unknown: `agy` accepts an event name it does not know and never fires it, so a converted hooks
+  file can list hooks that never run.
 
 Missing on this route, all named again below: the guards, the inbox shown at each prompt, wakes, the week meter and
 pace line, refresh and restore, and tab titles.
 
 ## Every feature, by host
 
-Each row is one row of the host feature registry (`src/features/registry.ts`), named by its id. Works: no change
-needed. With change: works once the port's named change lands. Nearest: no parallel, the closest route named.
-Cannot: no parallel; on an Antigravity host teamrig prints a notice instead, never goes silently off. In an adapter's
-manifest a row is `supported` only with its live proof, `partial` until then and for a nearest route, and
+Each row is one row of the host feature registry (`HOST_FEATURES` in `src/features/`), named by its id. Works: no
+change needed. With change: works once the port's named change lands. Nearest: no parallel, the closest route
+named. Cannot: no parallel; on an Antigravity host teamrig prints a notice instead, never goes silently off. In an
+adapter's manifest a row is `supported` only with its live proof, `partial` until then and for a nearest route, and
 `unsupported` for a cannot.
 
 ### Rules and context
@@ -115,7 +123,7 @@ manifest a row is `supported` only with its live proof, `partial` until then and
 | Refusing permission prompts when asks are off (`hooks.permission-refuse`) | PermissionRequest `behavior` | no permission event; PreToolUse may answer `deny_unless_prior_grant` before any prompt | nearest: that answer on every call while asks are off, so no prompt shows |
 | Redacting a secret in tool output (`hooks.output-redact`) | PostToolUse `updatedToolOutput` | PostToolUse carries the call and an `error`, no output, and its reply is empty | cannot: a hook neither sees nor rewrites the output; the read guards stand before the call, and a turn-end scan of the transcript names a secret to rotate |
 | A secret pasted in a prompt (`hooks.prompt-secret`) | UserPromptSubmit block | no prompt event; PreInvocation sees `lastUserInput` and can end the turn, but the prompt stays in the conversation | cannot stop or hide it; the turn is ended and the person told to rotate the secret and start a new conversation |
-| Tool-end status and the missing-command hint (`hooks.tool-failure`) | PostToolUseFailure | PostToolUse `error`, empty on success | with change: a failure read from `error` |
+| Tool-end status and the missing-command hint (`hooks.tool-failure`) | PostToolUseFailure | PostToolUse `error`, empty on success; one live log shows its `toolCall` empty *(third party)* | with change: a failure read from `error` |
 | Permission deny lines, their doctor checks and trim (`permissions.deny-lines`) | `settings.json` | `permissions` allow, ask and deny lists in `~/.gemini/antigravity-cli/settings.json`, rules as `action(target)` such as `command(git push)`, deny over ask over allow | with change: a rules writer and its own doctor |
 | Auto mode's granted push and deploy routes (`permissions.auto-mode-routes`) | `autoMode.environment` | an `auto` mode with no environment list | nearest: allow rules for the granted routes |
 
@@ -123,7 +131,7 @@ manifest a row is `supported` only with its live proof, `partial` until then and
 
 | teamrig feature | Claude Code | Antigravity CLI 1.5.12 | On Antigravity |
 | --- | --- | --- | --- |
-| Open a tab on its model, effort and name (`sessions.open`) | `claude --model --effort --name` | `agy --model <slug> --effort <level>`, `-i` for a first prompt; no name flag | with change: a launch line per host; the name shows through the title command |
+| Open a tab on its model, effort and name (`sessions.open`) | `claude --model --effort --name` | `agy --model <slug> --effort <level>`, `-i` for a first prompt; no name flag; a first launch asks for a colour scheme, a rendering mode and trust in the folder | with change: a launch line per host; the name shows through the title command; whether those questions hold a tab opened unattended is a live proof |
 | Resume, restore after a reboot (`sessions.resume`) | `claude --resume <id>`, Claude transcripts | `agy --conversation <id>`, `-c`; conversations belong to their working folder | with change |
 | The session's own id in the CLI (`sessions.identity`) | `CLAUDE_CODE_SESSION_ID` | `conversationId` in every hook's input; no variable documented in the shell | with change: the name from `TEAMRIG_SESSION` set at launch, tied to the conversation id at the first hook |
 | Waking an idle session (`sessions.wake`) | the mod submits a prompt | no documented local route: `agy acp` serves the program that launched it, remote control goes through Google's cloud, `schedule` is the agent's own timer | cannot; nearest: the Stop hook continues a turn when a line waits, and a one-shot `agy -p --conversation <id>` serves a session whose tab is closed |
@@ -146,7 +154,7 @@ manifest a row is `supported` only with its live proof, `partial` until then and
 | Helpers and the rules at their start (`helpers.start-rules`) | SubagentStart, PreToolUse `Agent` | no helper events; `invoke_subagent` passes PreToolUse, whose `overwrite` reply changes its arguments; whether hooks fire inside a helper is not stated | with change: the gate and the rules on `invoke_subagent`; helpers are refused until blocker 4 is cleared |
 | teamrig's agent types (`helpers.agent-types`) | `.claude/agents/*.md` | `.agents/agents/<name>.md`, Markdown with its own front matter (`model` as `inherit`, `flash_lite`, `flash` or `pro`) | with change: a converter |
 | teamrig's hooks file loads as shipped (`plugin.hooks-file`) | `hooks/hooks.json` | its own shape: named groups, six events, one `command` per handler | with change: a generated Antigravity hooks file (blocker 3) |
-| Guards stay on across a teamrig update (`plugin.hook-trust`) | yes | no trust step documented; a plugin's files are replaced on update | works; the check still proves each guard fires (blocker 1) |
+| Guards stay on across a teamrig update (`plugin.hook-trust`) | yes | no trust step documented; a plugin's files are replaced on update; `/hooks`, a group's `enabled` key and the `pluginsDisabled` setting switch hooks off | works; the check still proves each guard fires (blocker 1) |
 | Install, update, version (`plugin.install-update`) | `claude plugin install`, `update` | `agy plugin install <url or path>`, `list --json`, `validate`; a manifest with unknown fields refused | with change: an Antigravity manifest |
 | `teamrig` on the path (`plugin.cli-on-path`) | the plugin's `bin/` | not added | with change: setup writes a launcher |
 
@@ -210,11 +218,11 @@ their first adapter. This is what Antigravity asks of each, and where it asks mo
 | `Paths` | home `~/.gemini`, which no variable moves; the CLI's settings in `~/.gemini/antigravity-cli/`; hooks, plugins, skills and rules in `~/.gemini/config/`; the project's `.agents/`; credentials in the OS keyring | a settings scope shared with other programs: a hook written to `~/.gemini/config/` may also fire in the desktop app and IDE, so the adapter picks the plugin or project scope until that is read live; per-file and total size caps as data |
 | `TranscriptReader` | the path from each hook; JSON lines of typed steps, in a file whose name differs between sources | the file is written only after Stop, so nothing live is read from it; an unknown step shape is refused loudly |
 | `UsageMeter` | per-call tokens from the transcript; the week from `quota`; the context from `context_window` | a week reading per quota bucket, not one per account; a token-kind split with no cache writes; readings that arrive pushed (the status-line input), kept by the adapter for the next ask |
-| `StatusLine` | `statusLine` and `title` keys in the CLI's settings; both commands get the same JSON | two commands to install, and the main live feed of the adapter: quota, context, state, model, pending input |
-| `SessionLauncher` | `agy`, `--model`, `--effort`, `--conversation`, `-i`; one-shot runs with `-p --output-format json` | `identity(env)` answers from `TEAMRIG_SESSION` alone, and `wake()` is none |
+| `StatusLine` | `statusLine` and `title` keys in the CLI's settings; both commands get the same JSON | two commands to install, and the main live feed of the adapter: quota, context, state, model, pending input; the host runs the command at most every 300 ms, ends it after 5 s and switches it off after 30 failures in a row, so the adapter flags a reading that went stale |
+| `SessionLauncher` | `agy`, `--model`, `--effort`, `--conversation`, `-i`; one-shot runs with `-p --output-format json`, whose `status` is one of `SUCCESS`, `ERROR`, `CANCELED`, `INTERRUPTED`, `INVALID`, `WAITING` and `RUNNING`, with an `error` text | `identity(env)` answers from `TEAMRIG_SESSION` alone, and `wake()` is none; a one-shot run has no time limit unless `--print-timeout` sets one, and exits 0 after an action it was not granted, so the launcher sets the limit and reads `status`, never the exit code alone |
 | `HostPermissions` | allow, ask and deny lists of `action(target)` rules; trusted workspaces; ceilings an administrator may set | a rule grammar of its own for the writer and the doctor; trusted routes as allow rules |
 | `HostPlugin` | `agy plugin list --json`, install from a path or URL, the installed copy under `~/.gemini/config/plugins/` | a manifest of its own beside Claude Code's, since unknown fields are refused |
-| `HostTexts` | `agy --conversation <id>` to resume, `/skills reload`, `agy update`; `agy models` lists the slugs | models whose slug carries the effort, beside an effort flag; agent files that name models by class |
+| `HostTexts` | `agy --conversation <id>` to resume, `/exit` (or Ctrl+D on an empty prompt) to leave, `/skills reload`, `agy update`; `agy models` lists the slugs; no login command | models whose slug carries the effort, beside an effort flag; agent files that name models by class; a sign-in text that names a first launch, not a command |
 
 No port changes shape for Antigravity. It adds three things the ports must allow: events of the host's own, a
 shared settings scope, and a week reading per quota bucket.
@@ -226,7 +234,8 @@ The layer-2 design keeps each rule in core and takes its numbers from the host's
 - **Budget pool.** One pool per CLI and account is not enough here: Antigravity meters a week and a five-hour window
   per model group, and its groups include other vendors' models. Its pools are one per account and quota bucket, and
   a session draws from the bucket of the model it runs on. A Claude model run through `agy` spends Google's quota,
-  never the Anthropic plan's week.
+  never the Anthropic plan's week. The status-line input names the account (`email`, `plan_tier`): the adapter tells
+  accounts apart by a hash of it and stores no address.
 - **Week reading.** From `quota`, as a share remaining and a reset time. The limits themselves are not published and
   the `/usage` panel cannot be read from a script, so a pool with no reading yet shows W with no pace line.
 - **Weights and helper weight.** Unknown, and fitted on Antigravity from its own transcripts. The `cost` in the
@@ -244,9 +253,14 @@ The layer-2 design keeps each rule in core and takes its numbers from the host's
 - **Size of the start text.** The instruction files have caps (24 KB a file, 20,000 tokens in all); no limit is
   stated for an injected step or a skill listing. Until one is measured, the start text goes as an injected step and
   falls back to an instruction file only where a proof shows it cut.
-- **Errors.** Stop gives `terminationReason` (`model_stop`, `max_steps_exceeded`, `error`) and an `error` text;
+- **Errors.** Stop gives `terminationReason` (`model_stop`, `max_steps_exceeded`, `error`; one live log also shows
+  `NO_TOOL_CALL` *(third party)*) and an `error` text; a one-shot run's JSON gives a `status` and an `error` text;
   `quota` gives the reset to wait for; the status-line input names `error` and `authenticating` states. The error
   texts themselves are unread, and `max_steps_exceeded` is a kind Claude Code does not have.
+- **Host version.** `agy` updates itself unless `AGY_CLI_DISABLE_AUTO_UPDATE` is set, and only its newest build is
+  served, so a build that changes a hook's shape cannot be rolled back. The status-line input names the running
+  `version`: the adapter records the version its proofs ran on, and the fired-guard check (blocker 1) runs again
+  when it changes.
 
 ## The blockers
 
@@ -344,6 +358,10 @@ reach a real repository or package.
 14. A plugin installed from a local path keeps its hooks on across an update; what `agy plugin import claude` makes
     of teamrig's plugin; which skill wins on a shared name; an agent file's `skills` as a session's listing.
 15. What `agy` does with an instruction file past 24 KB, and past 20,000 tokens in all.
+16. A first launch on a new account and in a new folder: each question it asks, whether a folder already listed in
+    `trustedWorkspaces` is opened unasked, and what a one-shot `-p` run does with no cached sign-in.
+17. A one-shot run's `status` for each ending (done, refused action, error, `--print-timeout` reached), with its exit
+    code.
 
 ## Sources
 
@@ -351,7 +369,8 @@ Official, under `https://antigravity.google/docs/`: `hooks/`, `permissions/`, `s
 `subagents/`, `plugins/`, `build-plugins/`, `sandbox/`, `changelog/`, `plans/`, `install/`, `getting-started/`,
 `customization-discovery/`, and under `cli/`: `reference`, `headless/`, `conversations/`, `statusline/`, `title/`,
 `modes/`, `acp/`, `troubleshooting/`, `gcli-migration/`, `commands/usage/`, `commands/context/`,
-`commands/permissions/`.
+`commands/permissions/`. The installer `https://antigravity.google/cli/install.ps1` and the update manifest it reads
+gave the build served on 2026-11-20.
 
 Third party, each reporting a live run:
 
