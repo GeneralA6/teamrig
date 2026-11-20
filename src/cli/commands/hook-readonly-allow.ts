@@ -2,15 +2,16 @@ import { join } from 'node:path';
 import type { KitConfig } from '../../config/types.ts';
 import { isRecord, type JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir } from '../../core/home.ts';
-import { readonlyRulesOf, readonlyShellOutput, type PrintsSecret } from '../../hooks/readonly-shell.ts';
+import { readonlyRulesOf, readonlyShellReply, type PrintsSecret } from '../../hooks/readonly-shell.ts';
 import type { ReadonlyRules } from '../../readonly-shell/rules.ts';
 import { secretFindingsOf } from '../../hooks/secret-guard.ts';
+import type { HookEvent, HookReply } from '../../ports/host/index.ts';
 import { newestSnapshotExports } from '../../readonly-shell/snapshot.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { parseJson, sessionTeam } from './hook-input.ts';
+import { readHookInput, sessionTeam, writeReply } from './hook-input.ts';
 
 /** The read-only check a hook runs on a call: the team's read-only rules and its secret guard. */
 export interface ReadonlyCheck {
@@ -24,23 +25,23 @@ export async function readonlyCheckOf(runtime: CliRuntime, config: KitConfig): P
   const secrets = secretRulesOf(config.secretGuard, runtime.userHome, runtime.platform, config.register.secretPatterns);
   return {
     rules: readonlyRulesOf(config.readonlyShell, runtime.env, snapshot),
-    printsSecret: (call) => secretFindingsOf(call, runtime.cwd, secrets).length > 0,
+    printsSecret: (event) => secretFindingsOf(event, runtime.cwd, secrets).length > 0,
   };
 }
 
 /**
- * What the hook prints for this payload: an allow for a line that only reads when the session's team turned the hook
- * on, else ''. It reads the session's team, not the one of the folder the line `cd`s into, so a line never gains
- * another team's trusted prefixes.
+ * The hook's reply to this call: an allow for a line that only reads when the session's team turned the hook on, else
+ * none. It reads the session's team, not the one of the folder the line `cd`s into, so a line never gains another
+ * team's trusted prefixes.
  */
-async function readonlyAllowOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<string> {
+async function readonlyAllowReplyOf(runtime: CliRuntime, payload: JsonRecord, event: HookEvent): Promise<HookReply | undefined> {
   const found = await sessionTeam(payload, runtime);
   const kit = found.kind === 'team' ? await openKit(runtime, found.team) : undefined;
   if (kit?.load.status !== 'loaded' || !kit.load.config.readonlyShell.enabled) {
-    return '';
+    return undefined;
   }
   const check = await readonlyCheckOf(runtime, kit.load.config);
-  return readonlyShellOutput(payload, check.rules, check.printsSecret, runtime.platform);
+  return readonlyShellReply(event, check.rules, check.printsSecret);
 }
 
 /**
@@ -51,10 +52,8 @@ async function readonlyAllowOutputOf(runtime: CliRuntime, payload: JsonRecord): 
  */
 export async function readonlyAllow(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  const output = isRecord(payload) ? await readonlyAllowOutputOf(runtime, payload).catch(() => '') : '';
-  if (output !== '') {
-    runtime.out.stdout(output);
-  }
+  const { payload, event } = await readHookInput(runtime);
+  const reply = isRecord(payload) && event !== undefined ? await readonlyAllowReplyOf(runtime, payload, event).catch(() => undefined) : undefined;
+  writeReply(runtime, 'tool-start', reply);
   return EXIT.ok;
 }
