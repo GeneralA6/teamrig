@@ -12,7 +12,7 @@ import type { KitConfig } from '../config/types.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths, type Env, type PathOverrides, type TeamPaths } from '../core/home.ts';
 import { ID_PATTERN } from '../core/ids.ts';
-import { resolveTeam, TEAM_POINTER } from '../core/team.ts';
+import { resolveTeam, TEAM_POINTER, type TeamResolution } from '../core/team.ts';
 import { TimeZone } from '../core/zone.ts';
 import { JsonlRenameLog } from '../names/log.ts';
 import type { RenameDeps } from '../names/record.ts';
@@ -175,7 +175,16 @@ export interface FoundTeam {
 
 /** A command's team: `$TEAMRIG_TEAM`, else the nearest pointer. Without one the command refuses. */
 export async function findTeam(runtime: CliRuntime): Promise<FoundTeam> {
-  const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
+  return foundTeamOf(await lookForTeam(runtime));
+}
+
+/** Where {@link findTeam} looks, refusing nothing: for a command that also answers a run with no team. */
+export function lookForTeam(runtime: Pick<CliRuntime, 'files' | 'env' | 'cwd'>): Promise<TeamResolution> {
+  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
+}
+
+/** The team a look found; with none, or with a pointer that names none, the command refuses. */
+export function foundTeamOf(found: TeamResolution): FoundTeam {
   switch (found.kind) {
     case 'none':
       throw new RefusedError(

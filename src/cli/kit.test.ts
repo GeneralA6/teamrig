@@ -6,7 +6,8 @@ import { Roster } from '../config/roster.ts';
 import { parseConfigText } from '../config/text.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { teamPaths } from '../core/home.ts';
-import { checkedNextConfig, configWarnings, leadOrDeliveryOwnerOnly, loadedConfig, type Kit } from './kit.ts';
+import { CliHarness, POINTER, TEAM } from '../testing/cli-harness.ts';
+import { checkedNextConfig, configWarnings, findTeam, foundTeamOf, leadOrDeliveryOwnerOnly, loadedConfig, lookForTeam, type Kit } from './kit.ts';
 import { RefusedError } from './runtime.ts';
 
 const CONFIG_FILE = join('/', 'kit', 'teams', 'app', 'config.json');
@@ -16,6 +17,32 @@ const PATHS = teamPaths(join('/', 'kit'), 'app', join('/', 'claude'));
 function kitOf(json: JsonRecord): Kit {
   return { paths: PATHS, load: { ...parseConfigText(formatConfig(json)), path: CONFIG_FILE } };
 }
+
+describe('lookForTeam and foundTeamOf', () => {
+  const refusal = (message: RegExp) => (error: unknown) => error instanceof RefusedError && message.test(error.message);
+
+  it('give the team its pointer names, as findTeam does', async () => {
+    const runtime = new CliHarness().runtime();
+    const found = await lookForTeam(runtime);
+    assert.deepEqual(found, { kind: 'team', team: 'app', from: POINTER });
+    assert.deepEqual(foundTeamOf(found), { team: 'app', from: POINTER });
+    assert.deepEqual(await findTeam(runtime), { team: 'app', from: POINTER });
+  });
+
+  it('look with no team and refuse nothing; only the found team refuses it', async () => {
+    const runtime = new CliHarness(TEAM, null).runtime();
+    const found = await lookForTeam(runtime);
+    assert.deepEqual(found, { kind: 'none' });
+    assert.throws(() => foundTeamOf(found), refusal(/^no team here: /));
+    await assert.rejects(findTeam(runtime), refusal(/^no team here: /));
+  });
+
+  it('look at a pointer naming no team without refusing; the found team refuses it by its file', async () => {
+    const found = await lookForTeam(new CliHarness(TEAM, '{"crew": "app"}').runtime());
+    assert.deepEqual(found, { kind: 'broken', from: POINTER, problem: 'has no "team" text; expected {"team": "<id>"}' });
+    assert.throws(() => foundTeamOf(found), refusal(/\.teamrig\.json has no "team" text/));
+  });
+});
 
 describe('loadedConfig', () => {
   it('gives the config that loaded, with its path', () => {
