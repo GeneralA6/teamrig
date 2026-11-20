@@ -10,7 +10,8 @@ import { stringField, type JsonRecord } from '../lib/guards.ts';
 import { runMain } from '../lib/run-main.ts';
 import { eventsOf, recordedInputs, recorderPlugin } from './plugin.ts';
 import { assemble } from './recording.ts';
-import { projectSlug, Scrubber } from './scrub.ts';
+import { projectSlug } from '../../src/testing/folder-names.ts';
+import { Scrubber } from './scrub.ts';
 import { SEALED_ENV, turnsOf } from './turns.ts';
 
 /** The hooks manifest whose events the recording must cover. */
