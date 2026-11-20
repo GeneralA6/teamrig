@@ -173,7 +173,7 @@ export interface LostWork {
 
 /** The work the transcript shows still live at `at`; `cut` when the text is the tail of a longer file. */
 export function lostWorkOf(reader: TranscriptReader, text: string, cut: boolean, at: number): LostWork {
-  const carry = carryOf(text, at, []);
+  const carry = carryOf(reader, text, at, []);
   return { background: runningWorkOf(reader, text, cut, at),crons: carry.crons.length, wake: carry.wake !== undefined };
 }
 
