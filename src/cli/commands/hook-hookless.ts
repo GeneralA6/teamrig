@@ -20,6 +20,7 @@ import {
 } from '../../restore/hookless.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../../restore/registry.ts';
 import { postToHolder, sessionNameOn } from '../holder-team.ts';
+import { transcriptsOf } from '../host.ts';
 import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { inboxDepsOf } from './inbox.ts';
@@ -38,7 +39,7 @@ async function replyAtEnd(runtime: CliRuntime, path: string): Promise<number | u
   const offset = Math.max(0, size - HOOKLESS_TAIL_BYTES);
   const { lines } = await readLines(runtime.transcripts, path, offset, size, HOOKLESS_TAIL_BYTES);
   // A read from inside the file starts mid-line.
-  return lastReplyAt(offset === 0 ? lines : lines.slice(1));
+  return lastReplyAt(transcriptsOf(runtime), offset === 0 ? lines : lines.slice(1));
 }
 
 /**

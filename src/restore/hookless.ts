@@ -1,10 +1,11 @@
-import { parseTranscriptLine } from '../budget/line.ts';
+import { callLineOf } from '../budget/line.ts';
 import { roleHolderOf } from '../config/roster.ts';
 import type { RolesConfig } from '../config/types.ts';
 import type { SessionAddress } from '../core/address.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
+import type { EntryKind, TranscriptReader } from '../ports/host/index.ts';
 import type { RestoreEntry } from './entry.ts';
 
 /**
@@ -131,16 +132,20 @@ export function workedPastHook(hookAt: number, at: number, now: number): boolean
   return now - at <= HOOKLESS_MS && at - hookAt > HOOKLESS_MS;
 }
 
+/** The one entry kind the check reads, so every other line of a transcript's end is never parsed. */
+const REPLY_ONLY = ['reply'] as const satisfies readonly EntryKind[];
+
 /**
  * The main thread's last reply in a transcript's lines, in epoch ms; undefined where they hold none (`lines` holds
  * whole lines only: a caller reading from inside a file drops its first). A helper's reply (a sidechain) is left
  * out: a helper's tool ends write the heartbeat, but its replies can outlive its parent's turn.
  */
-export function lastReplyAt(lines: readonly string[]): number | undefined {
+export function lastReplyAt(reader: TranscriptReader, lines: readonly string[]): number | undefined {
   let turnAt: number | undefined;
   for (const raw of lines) {
-    const line = parseTranscriptLine(raw);
-    if (line !== undefined && line.at !== undefined && line.kind === 'call' && line.mainThread) {
+    const entry = reader.entry(raw, REPLY_ONLY);
+    const line = entry?.kind === 'reply' ? callLineOf(entry) : undefined;
+    if (line !== undefined && line.at !== undefined && line.mainThread) {
       turnAt = Math.max(turnAt ?? line.at, line.at);
     }
   }
