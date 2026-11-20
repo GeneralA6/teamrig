@@ -17,6 +17,11 @@ const FOLDER_SETTINGS = [
 const FOLDER_INSTRUCTIONS: readonly (readonly string[])[] = [['CLAUDE.md'], ['CLAUDE.local.md'], [PROJECT_DIR, 'CLAUDE.md']];
 /** The index of a project's memory, the one memory file Claude Code loads at a session's start. */
 const MEMORY_INDEX = 'MEMORY.md';
+/**
+ * Claude Code's files whose content is a secret, as the secret guard's globs: its login, every prompt a person typed,
+ * and a folder's local settings, whose allow rules keep a command allowed once, a credential in it too.
+ */
+const SECRET_FILES: readonly string[] = ['~/.claude/.credentials.json', '~/.claude/history.jsonl', `**/${PROJECT_DIR}/settings.local.json`];
 
 /** Claude Code's folder name for a project: its path with every character but a letter or digit made `-`. */
 function projectSlug(project: string): string {
@@ -80,5 +85,6 @@ export function hostPaths(env: HostDeps['env'], platform: HostDeps['platform']):
     scratchpadOf: (transcript, systemTemp) => join(temp(systemTemp), basename(dirname(transcript)), basename(transcript, '.jsonl'), 'scratchpad'),
     planFile: (userHome, slug) => join(home(userHome), 'plans', `${slug}.md`),
     shellSnapshots: (userHome) => join(home(userHome), 'shell-snapshots'),
+    secretFiles: () => SECRET_FILES,
   };
 }
