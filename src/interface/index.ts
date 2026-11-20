@@ -9,5 +9,6 @@ export { answerOf, DOCUMENTS, isDocumentName, unchangedAnswer, type Answer, type
 export { refOf, type ServedRef } from './ref.ts';
 export { revisionText, type RevisionParts } from './revision.ts';
 export { sourceOf, type ServedSource, type SourceKind, type SourceNames } from './source.ts';
+export { tasksBody, type ServedAnswer, type ServedDecision, type ServedTask, type ServedWait, type TasksBody, type TasksInput } from './tasks.ts';
 export { cutText, ServedText, type Cut, type MarkedText, type SecretShapes, type TextSource } from './text.ts';
 export { checkInterfaceRange, INTERFACE_MAJOR, INTERFACE_MINOR, INTERFACE_VERSION, parseInterfaceVersion, type InterfaceVersion, type RangeCheck } from './version.ts';
