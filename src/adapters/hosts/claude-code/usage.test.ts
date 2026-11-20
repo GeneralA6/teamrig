@@ -24,4 +24,31 @@ describe("Claude Code's usage meter", () => {
   it('takes 2.28 characters of tool output for one token', () => {
     assert.equal(usageMeter.charsPerToken, 2.28);
   });
+
+  it("reads the plan's windows from the status input's rate_limits, their resets from epoch seconds", () => {
+    const status = JSON.stringify({
+      session_id: 'a',
+      rate_limits: { five_hour: { used_percentage: 6.5, resets_at: 1_700_000_000 }, seven_day: { used_percentage: 57, resets_at: 1_700_400_000 } },
+    });
+    assert.deepEqual(usageMeter.weekReading(`${status}\n`), {
+      fiveHour: { usedPct: 6.5, resetsAt: 1_700_000_000_000 },
+      sevenDay: { usedPct: 57, resetsAt: 1_700_400_000_000 },
+    });
+  });
+
+  it('reads one window alone, the other as null', () => {
+    const week = JSON.stringify({ rate_limits: { seven_day: { used_percentage: 12, resets_at: 1_700_400_000 } } });
+    assert.deepEqual(usageMeter.weekReading(week), { fiveHour: null, sevenDay: { usedPct: 12, resetsAt: 1_700_400_000_000 } });
+    const torn = JSON.stringify({ rate_limits: { five_hour: { used_percentage: 3, resets_at: 1_700_000_000 }, seven_day: { used_percentage: '12' } } });
+    assert.deepEqual(usageMeter.weekReading(torn), { fiveHour: { usedPct: 3, resetsAt: 1_700_000_000_000 }, sevenDay: null });
+  });
+
+  it('has no reading without rate_limits, with no whole window, or for a text that is no status input', () => {
+    assert.equal(usageMeter.weekReading(JSON.stringify({ session_id: 'a' })), undefined);
+    assert.equal(usageMeter.weekReading(JSON.stringify({ rate_limits: null })), undefined);
+    assert.equal(usageMeter.weekReading(JSON.stringify({ rate_limits: { seven_day: { used_percentage: 12 } } })), undefined);
+    assert.equal(usageMeter.weekReading(JSON.stringify({ rate_limits: { seven_day: { used_percentage: Number.NaN, resets_at: 1 } } })), undefined);
+    assert.equal(usageMeter.weekReading('not json'), undefined);
+    assert.equal(usageMeter.weekReading('[1]'), undefined);
+  });
 });

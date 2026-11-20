@@ -1,12 +1,22 @@
 import assert from 'node:assert/strict';
-import type { CallUsage, UsageMeter } from '../../plugin-api/index.ts';
+import type { CallUsage, RateWindow, UsageMeter } from '../../plugin-api/index.ts';
 import { defineContract, type ContractCase, type Subject } from '../contract.ts';
 
+/** The windows a case has the plan tell: each one given is told, each one left out is not. */
+export interface WorldLimits {
+  readonly week?: RateWindow;
+  readonly fiveHour?: RateWindow;
+}
+
 /**
- * What a usage meter sees: nothing of the host's. A case hands the meter a call's usage in the shape the transcript
- * reader gives every host's, so the world holds no line and no format.
+ * What a usage meter sees of the host: the status input that tells the plan's reading. A case hands the meter a
+ * call's usage in the shape the transcript reader gives every host's, so the world holds no transcript line; only the
+ * status input is the host's own text, which the world writes for the windows a case names.
  */
-export type UsageWorld = Readonly<Record<string, never>>;
+export interface UsageWorld {
+  /** The host's status input of a session whose plan tells these windows, and no other. */
+  readonly status: (limits: WorldLimits) => string;
+}
 
 export type UsageSubject = Subject<UsageMeter, UsageWorld>;
 export type UsageCase = ContractCase<UsageMeter, UsageWorld, 'host'>;
@@ -23,6 +33,10 @@ const MIXED: CallUsage = { input: 40, cacheWrite5m: 80, cacheWrite1h: 100, cache
 function only(kind: keyof CallUsage, count: number): CallUsage {
   return { ...NONE, [kind]: count };
 }
+
+/** Two windows no liar's fixed answer equals; their resets are whole seconds, the finest a host's input may hold. */
+const WEEK: RateWindow = { usedPct: 57, resetsAt: 1_900_000_400_000 };
+const FIVE_HOUR: RateWindow = { usedPct: 6, resetsAt: 1_900_000_000_000 };
 
 /** Whether two prices are one number, a rounding step of the sum apart at most. */
 function near(actual: number, expected: number): boolean {
@@ -89,20 +103,60 @@ const CASES: readonly UsageCase[] = [
       assert.equal(port.contextReading(MIXED), port.contextReading({ ...MIXED, output: 0 }));
     },
   },
+  {
+    id: 'usage.week-read',
+    title: "reads the week's use and reset the status input tells",
+    features: ['budget.week-reading'],
+    run: ({ port, world }) => {
+      assert.deepEqual(port.weekReading(world.status({ week: WEEK }))?.sevenDay, WEEK);
+      assert.deepEqual(port.weekReading(world.status({ week: WEEK, fiveHour: FIVE_HOUR }))?.sevenDay, WEEK);
+    },
+  },
+  {
+    id: 'usage.week-none',
+    title: 'has no reading when the status input tells no window, never a week of its own making',
+    features: ['budget.week-reading'],
+    run: ({ port, world }) => {
+      assert.equal(port.weekReading(world.status({})), undefined);
+      assert.equal(port.weekReading(world.status({ fiveHour: FIVE_HOUR }))?.sevenDay ?? null, null);
+    },
+  },
+  {
+    id: 'usage.five-hour-read',
+    title: "reads the five-hour window's use and reset the status input tells",
+    features: ['budget.five-hour'],
+    run: ({ port, world }) => {
+      assert.deepEqual(port.weekReading(world.status({ fiveHour: FIVE_HOUR }))?.fiveHour, FIVE_HOUR);
+      assert.deepEqual(port.weekReading(world.status({ week: WEEK, fiveHour: FIVE_HOUR }))?.fiveHour, FIVE_HOUR);
+    },
+  },
+  {
+    id: 'usage.five-hour-none',
+    title: 'reads a plan that tells its week alone as having no five-hour window',
+    features: ['budget.five-hour'],
+    run: ({ port, world }) => {
+      assert.equal(port.weekReading(world.status({ week: WEEK }))?.fiveHour ?? null, null);
+    },
+  },
 ];
 
-const WORLD: UsageWorld = {};
+/** The liars' world: they read no input, so it writes none. */
+const WORLD: UsageWorld = { status: () => '' };
 
-/** A liar that claims the port and meters nothing: every price, every call and every context is 0. */
+/** A liar that claims the port and meters nothing: every price, every call and every context is 0, and no plan tells a reading. */
 export function nothingUsage(): UsageSubject {
-  return { world: WORLD, port: { weights: NONE, charsPerToken: 0, ofCall: () => 0, contextReading: () => 0 } };
+  return { world: WORLD, port: { weights: NONE, charsPerToken: 0, ofCall: () => 0, contextReading: () => 0, weekReading: () => undefined } };
 }
 
-/** A liar that says yes to all: a call costs 1 whatever it used, and everything in it, its output too, is context. */
+/**
+ * A liar that says yes to all: a call costs 1 whatever it used, everything in it, its output too, is context, and
+ * every status input tells both windows, full.
+ */
 export function yesUsage(): UsageSubject {
   const weights = { input: 1, cacheWrite5m: 1, cacheWrite1h: 1, cacheWriteUnsplit: 1, cacheRead: 1, output: 1 };
   const all = (usage: CallUsage): number => KINDS.reduce((total, kind) => total + usage[kind], 0);
-  return { world: WORLD, port: { weights, charsPerToken: 1, ofCall: () => 1, contextReading: all } };
+  const full: RateWindow = { usedPct: 100, resetsAt: 1 };
+  return { world: WORLD, port: { weights, charsPerToken: 1, ofCall: () => 1, contextReading: all, weekReading: () => ({ fiveHour: full, sevenDay: full }) } };
 }
 
 /** What every host's usage meter must do with a call's usage. */

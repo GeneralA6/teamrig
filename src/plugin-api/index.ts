@@ -93,6 +93,8 @@ export {
   type ScheduledCarryEntry,
   type ScheduledJob,
   type TitleEntry,
+  type RateLimits,
+  type RateWindow,
   type TokenWeights,
   type ToolOutcome,
   type TranscriptEntry,

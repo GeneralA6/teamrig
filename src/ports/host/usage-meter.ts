@@ -14,9 +14,22 @@ export interface TokenWeights {
   readonly output: number;
 }
 
+/** One window of the plan's limit: percent of it used, and when it resets, in epoch milliseconds. */
+export interface RateWindow {
+  readonly usedPct: number;
+  readonly resetsAt: number;
+}
+
+/** The plan's own reading of its limits: the five-hour window and the week, each null when the plan has none or told none. */
+export interface RateLimits {
+  readonly fiveHour: RateWindow | null;
+  readonly sevenDay: RateWindow | null;
+}
+
 /**
  * The host's usage meter: what a call the transcript reader gave cost, in weighted tokens (W), one number whatever
- * mix of input, cache and output the call used. The core adds, splits and compares W; only this port prices a token.
+ * mix of input, cache and output the call used, and what the plan itself says of its limits. The core adds, splits
+ * and compares W; only this port prices a token or reads the plan's reading.
  */
 export interface UsageMeter {
   /** The price of each kind of token, for a reader that prices one kind alone, such as the output a reply added. */
@@ -27,4 +40,10 @@ export interface UsageMeter {
   ofCall(usage: CallUsage): number;
   /** The context the model read for the call, in tokens: everything it was sent, cached or not. */
   contextReading(usage: CallUsage): number;
+  /**
+   * The plan's reading of its week, and of its five-hour window where it has one, as the host's status input (the
+   * text it hands its status line) tells them. Undefined is an answer: the input told no window, as on a plan with
+   * no limit, before a session's first reply, or on a host that tells no reading a program can take.
+   */
+  weekReading(status: string): RateLimits | undefined;
 }

@@ -107,6 +107,7 @@ describe('runMeter', () => {
       charsPerToken: 1,
       ofCall: (usage) => usage.output * 3,
       contextReading: (usage) => usage.input,
+      weekReading: () => undefined,
     };
     const bytes = new MemoryTranscripts({ [MAIN]: transcript([promptLine(at(9)), replyLine(R1), replyLine(R1_MORE)]) });
     const store = new UsageStore(new MemoryFiles(), DIR);

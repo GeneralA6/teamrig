@@ -8,7 +8,7 @@ import type { Unsupported } from './unsupported.ts';
 import type { UsageMeter } from './usage-meter.ts';
 
 export { isUnsupported, unsupported, type Unsupported } from './unsupported.ts';
-export type { TokenWeights, UsageMeter } from './usage-meter.ts';
+export type { RateLimits, RateWindow, TokenWeights, UsageMeter } from './usage-meter.ts';
 
 /** Every host port by its name. Each line is required: an adapter names every port, filled or not. */
 export interface HostPorts {

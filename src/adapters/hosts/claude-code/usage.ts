@@ -1,4 +1,5 @@
-import type { CallUsage, TokenWeights, UsageMeter } from '../../../plugin-api/index.ts';
+import { isRecord, type CallUsage, type RateLimits, type RateWindow, type TokenWeights, type UsageMeter } from '../../../plugin-api/index.ts';
+import { objectOf } from './json.ts';
 
 /**
  * What Claude Code's plan charges for each kind of token, against a plain input token: a cache write lasting 5
@@ -33,5 +34,36 @@ function contextReading(usage: CallUsage): number {
   return usage.input + usage.cacheWrite5m + usage.cacheWrite1h + usage.cacheWriteUnsplit + usage.cacheRead;
 }
 
+const MS_PER_SECOND = 1000;
+
+function finite(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/** A window as Claude Code's status input holds it: `used_percentage`, and `resets_at` in epoch seconds. */
+function windowOf(value: unknown): RateWindow | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const usedPct = finite(value['used_percentage']);
+  const resetsAt = finite(value['resets_at']);
+  return usedPct === undefined || resetsAt === undefined ? null : { usedPct, resetsAt: resetsAt * MS_PER_SECOND };
+}
+
+/**
+ * The `rate_limits` of Claude Code's status input, its `five_hour` and `seven_day` windows. Claude Code sends them
+ * only to a claude.ai plan's sessions, after the session's first reply; without them, or with neither window whole,
+ * there is no reading.
+ */
+function weekReading(status: string): RateLimits | undefined {
+  const limits = objectOf(status)?.['rate_limits'];
+  if (!isRecord(limits)) {
+    return undefined;
+  }
+  const fiveHour = windowOf(limits['five_hour']);
+  const sevenDay = windowOf(limits['seven_day']);
+  return fiveHour === null && sevenDay === null ? undefined : { fiveHour, sevenDay };
+}
+
 /** Claude Code's usage meter. */
-export const usageMeter: UsageMeter = { weights: WEIGHTS, charsPerToken: CHARS_PER_TOKEN, ofCall, contextReading };
+export const usageMeter: UsageMeter = { weights: WEIGHTS, charsPerToken: CHARS_PER_TOKEN, ofCall, contextReading, weekReading };

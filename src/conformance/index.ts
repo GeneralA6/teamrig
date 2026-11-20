@@ -14,7 +14,7 @@ export { entryOf, kitProblems, type KitEntry } from './kit.ts';
 export { TERMINAL_CONTRACT, type ShownPane, type TerminalCase, type TerminalSubject, type TerminalWorld } from './terminal/terminal.ts';
 export { nothingTerminal, referenceTerminal, yesTerminal, type ReferenceOptions } from './terminal/reference.ts';
 export { nothingTranscripts, TRANSCRIPT_CONTRACT, yesTranscripts, type TranscriptCase, type TranscriptSubject, type TranscriptWorld, type WorldReply } from './host/transcript.ts';
-export { nothingUsage, USAGE_CONTRACT, yesUsage, type UsageCase, type UsageSubject, type UsageWorld } from './host/usage.ts';
+export { nothingUsage, USAGE_CONTRACT, yesUsage, type UsageCase, type UsageSubject, type UsageWorld, type WorldLimits } from './host/usage.ts';
 
 /**
  * Every contract of the kit. A port's contract lives in its own file, under `host/`, `connector/` or `terminal/`,
