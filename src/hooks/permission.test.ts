@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_PROMPTS } from '../config/defaults.ts';
 import { testConfig } from '../testing/config.ts';
 import { replyText } from '../testing/host.ts';
-import { ASK_REFUSED_NOTE, heldBack, holdBack, holdBackOutput, hookAsksOf, refusal, refusalOutput } from './permission.ts';
+import { ASK_REFUSED_NOTE, heldBack, holdBack, hookAsksOf, refusal } from './permission.ts';
 
 describe('holdBack', () => {
   it('never asks a person: what a guard would ask about is refused with the note, a refusal keeps its reason (T3356)', () => {
@@ -19,14 +19,6 @@ describe('holdBack', () => {
   });
 });
 
-describe('holdBackOutput', () => {
-  it('wraps the fields in the PreToolUse output', () => {
-    assert.deepEqual(JSON.parse(holdBackOutput('ask', 'Why.')), {
-      hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Why. ${ASK_REFUSED_NOTE}` },
-    });
-  });
-});
-
 describe('refusal and heldBack', () => {
   it('are a deny with the reason as given, and with the note when a guard would have asked', () => {
     assert.deepEqual(refusal('Why.'), { verdict: { kind: 'deny', reason: 'Why.' } });
@@ -34,16 +26,13 @@ describe('refusal and heldBack', () => {
     assert.deepEqual(heldBack('ask', 'Why.'), refusal(`Why. ${ASK_REFUSED_NOTE}`));
   });
 
-  it('are worded by the shipped host as the output the guards wrote themselves', () => {
-    assert.equal(replyText('tool-start', refusal('Why.')), refusalOutput('Why.'));
-    assert.equal(replyText('tool-start', heldBack('ask', 'Why.')), holdBackOutput('ask', 'Why.'));
-  });
-});
-
-describe('refusalOutput', () => {
-  it('is a PreToolUse refusal carrying the reason as given', () => {
-    assert.deepEqual(JSON.parse(refusalOutput('Why.')), {
-      hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Why.' },
+  it('are worded by the shipped host as a refusal before the tool runs, never a prompt', () => {
+    assert.equal(
+      replyText('tool-start', refusal('Why.')),
+      '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Why."}}',
+    );
+    assert.deepEqual(JSON.parse(replyText('tool-start', heldBack('ask', 'Why.'))), {
+      hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Why. ${ASK_REFUSED_NOTE}` },
     });
   });
 });

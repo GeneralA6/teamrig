@@ -27,14 +27,9 @@ describe('route allow', () => {
     assert.equal(preToolUseRouteOf(undefined), undefined);
   });
 
-  it('passes only when no guard asked or refused', () => {
-    assert.equal(guardsPassed([]), true);
-    assert.equal(guardsPassed(['', '']), true);
-    assert.equal(guardsPassed(['', '{"hookSpecificOutput":{}}']), false);
-  });
-
   it('takes a guard with no reply as passed, and one with a refusal or only a note as not', () => {
-    assert.equal(guardsPassed([undefined, '']), true);
+    assert.equal(guardsPassed([]), true);
+    assert.equal(guardsPassed([undefined, undefined]), true);
     assert.equal(guardsPassed([undefined, { verdict: { kind: 'deny', reason: 'Why.' } }]), false);
     assert.equal(guardsPassed([{ notice: 'a push went through' }]), false);
   });
