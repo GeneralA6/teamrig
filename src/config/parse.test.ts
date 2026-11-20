@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_RUSH, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_FOCUS, DEFAULT_ISSUE_FIELDS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_MEETING, DEFAULT_BRANCHES } from './defaults.ts';
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
-import { GITHUB_LABEL_MAX_LENGTH } from './limits.ts';
+import { ADAPTER_ID } from '../plugin-api/index.ts';
+import { CONNECTOR_LIMITS, GITHUB_LABEL_MAX_LENGTH } from './limits.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION, type AccountBudget, type BudgetConfig } from './types.ts';
 import type { ConfigIssue } from './reader.ts';
@@ -645,6 +646,40 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(parsed.issues), ['serviceRoles']);
     assert.deepEqual(parsed.config.serviceRoles, {});
     assert.equal(Object.keys(parseConfig({ ...ROSTER, serviceRoles: Object.fromEntries(Object.entries(many).slice(0, 16)) }).config.serviceRoles).length, 16);
+  });
+
+  it('reads no connector section by default', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.connectors, {});
+  });
+
+  it('keeps each connector section as written, reading no key inside it (T4766)', () => {
+    const connectors = { tracker2: { site: 'acme', nested: { depth: [1, 'two'] } }, 'code-host': {} };
+    const { config, issues } = parseConfig({ ...ROSTER, connectors });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.connectors, connectors);
+  });
+
+  it('fails the load on a connector id no adapter could declare or a section that is no object, and leaves it out (T4766)', () => {
+    const parsed = parseConfig({ ...ROSTER, connectors: { 'Code Host': {}, 'tracker-': {}, listed: ['site'], named: 'acme', kept: { site: 'acme' } } });
+    assert.deepEqual(paths(parsed.issues), ['connectors.Code Host', 'connectors.tracker-', 'connectors.listed', 'connectors.named']);
+    assert.match(parsed.issues[0]?.message ?? '', /expected a connector id: lower-case words joined by -/);
+    assert.deepEqual(parsed.config.connectors, { kept: { site: 'acme' } });
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, connectors: 'acme' }).issues), ['connectors']);
+  });
+
+  it('refuses more connector sections than the limit', () => {
+    const many = Object.fromEntries(Array.from({ length: CONNECTOR_LIMITS.maxConnectors + 1 }, (_, index) => [`c${index}`, {}]));
+    const parsed = parseConfig({ ...ROSTER, connectors: many });
+    assert.deepEqual(paths(parsed.issues), ['connectors']);
+    assert.match(parsed.issues[0]?.message ?? '', /names 17 connectors; at most 16/);
+    assert.deepEqual(parsed.config.connectors, {});
+    const atLimit = Object.fromEntries(Object.entries(many).slice(0, CONNECTOR_LIMITS.maxConnectors));
+    assert.equal(Object.keys(parseConfig({ ...ROSTER, connectors: atLimit }).config.connectors).length, CONNECTOR_LIMITS.maxConnectors);
+  });
+
+  it('takes as a connector id exactly what an adapter may declare as its id', () => {
+    assert.equal(CONNECTOR_LIMITS.idPattern.source, ADAPTER_ID.source);
+    assert.equal(CONNECTOR_LIMITS.idPattern.flags, ADAPTER_ID.flags);
   });
 
   it('reads each area label\'s session with the label in lowercase, in the config\'s order', () => {

@@ -204,6 +204,16 @@ export const SERVICE_ROLE_LIMITS = {
   namePattern: /^[a-z][a-z0-9-]{0,31}$/,
 } as const;
 
+/**
+ * Bounds on `connectors`: how many connectors a team gives a section, and the shape of a connector's id. The id is
+ * the one a connector adapter declares, so the pattern is the plugin API's (plugin-api/declaration.ts), written again
+ * here because the config reads nothing of that API; a spec holds the two equal.
+ */
+export const CONNECTOR_LIMITS = {
+  maxConnectors: 16,
+  idPattern: /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/,
+} as const;
+
 /** Bounds on the fields of one review gate entry (`pushGuard.reviewPaths`). */
 export const REVIEW_PATH_LIMITS = {
   globMaxLength: 200,

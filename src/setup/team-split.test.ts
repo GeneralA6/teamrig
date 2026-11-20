@@ -168,11 +168,12 @@ describe('planTeamSplit', () => {
     assert.equal(split.config['budget'], undefined);
   });
 
-  it("lists the keys the child starts without: the parent's own GitHub import, folders and service roles, and keys this teamrig does not know", () => {
-    const record: JsonRecord = { ...RECORD, github: { repos: ['org/app'] }, serviceRoles: { github: { holders: ['bravo'], commands: ['issue close'] } }, paths: { inbox: 'mail' } };
+  it("lists the keys the child starts without: the parent's own GitHub import, connector sections, folders and service roles, and keys this teamrig does not know", () => {
+    const record: JsonRecord = { ...RECORD, github: { repos: ['org/app'] }, connectors: { tracker: { site: 'acme' } }, serviceRoles: { github: { holders: ['bravo'], commands: ['issue close'] } }, paths: { inbox: 'mail' } };
     const split = valueOf(plan(new Map(), parentOf(record, record, { ...record, future: { kept: true } })));
-    assert.deepEqual(split.leftOut, ['github', 'serviceRoles', 'paths', 'future']);
+    assert.deepEqual(split.leftOut, ['github', 'connectors', 'serviceRoles', 'paths', 'future']);
     assert.equal(split.config['github'], undefined);
+    assert.equal(split.config['connectors'], undefined);
     assert.equal(split.config['serviceRoles'], undefined);
     assert.equal(split.config['paths'], undefined);
     assert.equal(split.config['future'], undefined);

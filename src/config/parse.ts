@@ -70,6 +70,7 @@ import {
   APPLY_FLAG_PATTERN,
   BUDGET_ACCOUNT_MAX_LENGTH,
   CLIENT_RECEIVER_PATTERN,
+  CONNECTOR_LIMITS,
   CONFIG_LIMITS,
   DB_PROGRAM_NAME_PATTERN,
   DB_WRITE_ENTRYPOINT_LIMITS,
@@ -603,6 +604,7 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
     },
     github: parseGithub(read, read.section(raw, 'github', ''), sessions),
     serviceRoles: parseServiceRoles(read, read.section(raw, 'serviceRoles', ''), sessions),
+    connectors: parseConnectors(read, read.section(raw, 'connectors', '')),
     alerts: parseAlerts(read, read.section(raw, 'alerts', '')),
     decisions: {
       batchTimesUtc: read.stringList(decisions, 'batchTimesUtc', 'decisions', DEFAULT_DECISIONS.batchTimesUtc, isUtcTime, CONFIG_LIMITS.decisionBatchTimes.maxItems),
@@ -920,6 +922,32 @@ function parseServiceRoles(read: ConfigReader, raw: JsonRecord, sessions: readon
     }
   }
   return roles;
+}
+
+/**
+ * `connectors`: each connector's section under its id, kept as written. Only the shape is checked here (an id an
+ * adapter could declare, an object under it), since the keys are the connector's own and its adapter reports a wrong
+ * one when a command reaches it; a section under a bad id or of another type is an issue and is left out.
+ */
+function parseConnectors(read: ConfigReader, raw: JsonRecord): Record<string, JsonRecord> {
+  const ids = Object.keys(raw);
+  if (ids.length > CONNECTOR_LIMITS.maxConnectors) {
+    read.report('connectors', `names ${ids.length} connectors; at most ${CONNECTOR_LIMITS.maxConnectors}`);
+    return {};
+  }
+  const connectors: Record<string, JsonRecord> = {};
+  for (const id of ids) {
+    const path = `connectors.${id}`;
+    if (!CONNECTOR_LIMITS.idPattern.test(id)) {
+      read.report(path, 'expected a connector id: lower-case words joined by -');
+      continue;
+    }
+    const section = read.objectItem(raw[id], path);
+    if (section !== undefined) {
+      connectors[id] = section;
+    }
+  }
+  return connectors;
 }
 
 /** A role's commands: a non-empty list of names from the table, each once; undefined when any is wrong. */

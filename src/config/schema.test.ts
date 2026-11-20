@@ -9,6 +9,7 @@ import {
   BUDGET_ACCOUNT_MAX_LENGTH,
   CLIENT_RECEIVER_PATTERN,
   CONFIG_LIMITS,
+  CONNECTOR_LIMITS,
   DB_PROGRAM_NAME_PATTERN,
   DB_WRITE_ENTRYPOINT_LIMITS,
   DB_WRITE_NAME_LIMITS,
@@ -89,6 +90,8 @@ const EVERY_KEY = {
   decisions: { batchTimesUtc: ['13:03'], batchAt: 3 },
   github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, closedDays: 30, probeSeconds: 120, watcher: 'charlie' },
   serviceRoles: { github: { holders: ['bravo'], commands: ['issue close'] } },
+  // An empty section: the keys under an id are the connector's own, so the schema lists none of them.
+  connectors: { tracker2: {} },
   paths: { state: '/s', inbox: '/i', skills: '/k' },
   exec: { path: ['C:/tools'], webhookEnv: 'EXEC_WEBHOOK_URL' },
   alerts: { pageWebhookEnv: 'PAGE_WEBHOOK_URL', pageWebhookFile: 'C:/chat/.page-webhook' },
@@ -568,6 +571,16 @@ describe('config.schema.json', () => {
     for (const command of SERVICE_COMMANDS) {
       assert.match(String(commands['description']), new RegExp(`\\b${command}\\b`), `the description says what ${command} runs`);
     }
+  });
+
+  it('takes the connector sections the parser takes: a section count, an id pattern and any object under an id (T4766)', async () => {
+    const node = nodeAt(await loadSchema(), 'connectors');
+    assert.equal(node['maxProperties'], CONNECTOR_LIMITS.maxConnectors);
+    const ids = node['propertyNames'];
+    assert.ok(isRecord(ids));
+    assert.equal(ids['pattern'], CONNECTOR_LIMITS.idPattern.source);
+    assert.deepEqual(anyProperty(node), { type: 'object' });
+    assert.deepEqual(node['default'], {});
   });
 
   it('requires exactly the roster', async () => {

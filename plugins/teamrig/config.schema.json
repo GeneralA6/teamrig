@@ -1583,6 +1583,14 @@
       },
       "default": {}
     },
+    "connectors": {
+      "description": "Each connector's own settings, by the connector's id: a connector is the adapter that reaches an outside tool holding issues or code. The keys under an id are that connector's, so it reads and checks them itself, and a key it does not take is refused by the command that reaches the connector, naming the keys it takes. Only the owner changes it, since it says what outside tool a connector reaches and how.",
+      "type": "object",
+      "maxProperties": 16,
+      "propertyNames": { "type": "string", "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$" },
+      "additionalProperties": { "type": "object" },
+      "default": {}
+    },
     "alerts": {
       "description": "The alerting rule the core rules state, and where a page to the owner goes.",
       "type": "object",

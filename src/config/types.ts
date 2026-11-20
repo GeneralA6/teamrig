@@ -1,3 +1,4 @@
+import type { JsonRecord } from '../core/guards.ts';
 import type { TaskStatus } from '../register/model.ts';
 import type { ItemType } from '../register/events.ts';
 import type { CoreRuleKey } from '../rules/keys.ts';
@@ -1824,6 +1825,12 @@ export interface KitConfig {
   readonly github: GithubConfig;
   /** Each service role by name: the teamrig commands it holds and the sessions that hold it (T2984). */
   readonly serviceRoles: Readonly<Record<string, ServiceRoleConfig>>;
+  /**
+   * Each connector's own section, by the connector's id, as the file holds it. The load checks only that each is an
+   * object under an id: the keys inside are the connector's, read and checked by its adapter when a command reaches
+   * it (plugin-api/connector.ts), so the core never learns a connector's settings.
+   */
+  readonly connectors: Readonly<Record<string, JsonRecord>>;
   readonly alerts: AlertsConfig;
   readonly decisions: DecisionsConfig;
   /**
