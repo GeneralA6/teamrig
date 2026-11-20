@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { APP, bash, CliHarness, CONFIG_PATH, decisionOf, KIT, TEAM, USER_HOME } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { HOOKS_ONLY_HOST } from '../testing/host.ts';
 import { EXIT } from './runtime.ts';
 
 const ON_TEAM: JsonRecord = { ...TEAM, readonlyShell: { enabled: true, allowPrefixes: ['npx jest'] } };
@@ -51,6 +52,13 @@ describe('hook readonly-allow', () => {
     assert.equal(decisionOf(await kit.run(HOOK, { stdin: bash('out=y; cat f') })), 'allow');
     await kit.files.write(join(snapshots, 'snapshot-bash-3-c.sh'), 'set -a');
     assert.deepEqual(await kit.run(HOOK, { stdin: bash('out=y; cat f') }), NOTHING);
+  });
+
+  it('proves no line that sets a name on a host that tells none of its folders, whose shell snapshots it cannot look for', async () => {
+    const kit = new CliHarness(ON_TEAM);
+    assert.equal(decisionOf(await kit.run(HOOK, { stdin: bash('out=y; cat f') })), 'allow', 'the shipped host, with no snapshot');
+    assert.deepEqual(await kit.run(HOOK, { stdin: bash('out=y; cat f'), host: HOOKS_ONLY_HOST }), NOTHING);
+    assert.equal(decisionOf(await kit.run(HOOK, { stdin: bash('cat f'), host: HOOKS_ONLY_HOST })), 'allow', 'a line that sets none still only reads');
   });
 
   it('prints nothing with the hook off, by default, or with the config missing, broken or unreadable', async () => {
