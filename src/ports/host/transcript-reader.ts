@@ -189,13 +189,26 @@ export interface QueuedPromptEntry extends EntryBase {
   readonly text: string | undefined;
 }
 
+/**
+ * The host moved the session to another model on its own, as one does once its safeguards stopped a reply: the
+ * session answers on `to` from here on.
+ */
+export interface ModelSwitchEntry extends EntryBase {
+  readonly kind: 'model-switch';
+  /** The model the session ran until then; undefined when the line names none. */
+  readonly from: string | undefined;
+  readonly to: string;
+  /** Why, in the host's own word (a safeguard's category, say); undefined when the line gives none. */
+  readonly reason: string | undefined;
+}
+
 /** A line of a type no reader uses yet; `type` is the host's name for it, so a check can count unknown ones. */
 export interface OtherEntry extends EntryBase {
   readonly kind: 'other';
   readonly type: string | undefined;
 }
 
-export type TranscriptEntry = InputEntry | ReplyEntry | CompactEntry | TurnEndEntry | ContinuedEntry | HookNoteEntry | ScheduledCarryEntry | EnvironmentEntry | QueuedPromptEntry | OtherEntry;
+export type TranscriptEntry = InputEntry | ReplyEntry | CompactEntry | TurnEndEntry | ContinuedEntry | HookNoteEntry | ScheduledCarryEntry | EnvironmentEntry | QueuedPromptEntry | ModelSwitchEntry | OtherEntry;
 export type EntryKind = TranscriptEntry['kind'];
 
 /** A line that is no entry: damaged or torn text, or JSON that is not an object. It is said, never skipped. */

@@ -344,6 +344,15 @@ describe("Claude Code's transcript lines as entries", () => {
     }
   });
 
+  it("reads the host's own switch of the session's model, with the model it left and why when the line says", () => {
+    const line = JSON.stringify({ type: 'system', subtype: 'model_refusal_fallback', isSidechain: false, uuid: 'u-1', timestamp: AT, originalModel: 'model-a', fallbackModel: 'model-b', apiRefusalCategory: 'cyber' });
+    assert.deepEqual(transcriptReader.entry(line), { ...BARE, at: AT_MS, id: 'u-1', thread: 'main', kind: 'model-switch', from: 'model-a', to: 'model-b', reason: 'cyber' });
+    const bare = JSON.stringify({ type: 'system', fallbackModel: 'model-b', originalModel: 7 });
+    assert.deepEqual(transcriptReader.entry(bare), { ...BARE, kind: 'model-switch', from: undefined, to: 'model-b', reason: undefined });
+    const ended = JSON.stringify({ type: 'system', subtype: 'turn_duration', fallbackModel: 'model-b' });
+    assert.equal(transcriptReader.entry(ended)?.kind, 'turn-end', "a turn's end stays one");
+  });
+
   it('reads a prompt the host queued, with its text when the line holds one', () => {
     const line = JSON.stringify({ type: 'queue-operation', operation: 'enqueue', timestamp: AT, sessionId: 's-1', content: 'daily check' });
     assert.deepEqual(transcriptReader.entry(line), { ...BARE, at: AT_MS, session: 's-1', kind: 'queued-prompt', text: 'daily check' });
@@ -359,6 +368,7 @@ describe("Claude Code's transcript lines as entries", () => {
       [{ type: 'attachment', attachment: 'environment' }, 'attachment'],
       [{ type: 'attachment' }, 'attachment'],
       [{ type: 'system', subtype: 'api_error' }, 'system'],
+      [{ type: 'system', originalModel: 'model-a', fallbackModel: 7 }, 'system'],
       [{ type: 'system' }, 'system'],
       [{ type: 'system', subtype: 7 }, 'system'],
       [{ type: 'queue-operation', operation: 'dequeue' }, 'queue-operation'],
@@ -401,9 +411,10 @@ describe('reading only some kinds of entry', () => {
     'scheduled-carry': JSON.stringify({ type: 'attachment', timestamp: AT, attachment: { type: 'session_cron_carry', tasks: [] } }),
     environment: JSON.stringify({ type: 'attachment', timestamp: AT, attachment: { type: 'environment', snapshot: {} } }),
     'queued-prompt': JSON.stringify({ type: 'queue-operation', operation: 'enqueue', timestamp: AT, content: 'go' }),
+    'model-switch': JSON.stringify({ type: 'system', timestamp: AT, originalModel: 'model-a', fallbackModel: 'model-b' }),
     other: JSON.stringify({ type: 'system', subtype: 'api_error', timestamp: AT }),
   } as const;
-  const kinds = ['input', 'reply', 'compact', 'turn-end', 'continued', 'hook-note', 'scheduled-carry', 'environment', 'queued-prompt', 'other'] as const;
+  const kinds = ['input', 'reply', 'compact', 'turn-end', 'continued', 'hook-note', 'scheduled-carry', 'environment', 'queued-prompt', 'model-switch', 'other'] as const;
 
   it('gives a line of a named kind as it reads without the filter', () => {
     for (const kind of kinds) {
@@ -427,8 +438,8 @@ describe('reading only some kinds of entry', () => {
     const quoting = textLine('u-1', [lines.input, lines.compact]);
     assert.equal(transcriptReader.entry(quoting, ['input', 'compact', 'hook-note']), undefined);
     assert.equal(transcriptReader.entry(quoting, ['reply'])?.kind, 'reply');
-    const named = userLine({}, 'the "compact_boundary", "hook_additional_context", "session_cron_carry", "type":"environment" and "type":"queue-operation" lines');
-    assert.equal(transcriptReader.entry(named, ['compact', 'hook-note', 'scheduled-carry', 'environment', 'queued-prompt']), undefined);
+    const named = userLine({}, 'the "compact_boundary", "hook_additional_context", "session_cron_carry", "type":"environment", "type":"queue-operation" and "fallbackModel" lines');
+    assert.equal(transcriptReader.entry(named, ['compact', 'hook-note', 'scheduled-carry', 'environment', 'queued-prompt', 'model-switch']), undefined);
   });
 
   it('still says a damaged line that could be of a named kind is unread, and passes one that could not', () => {
@@ -447,7 +458,7 @@ describe('the recorded session read as entries', () => {
       .filter((line) => line.trim() !== '')
       .map((line, index) => ({ where: `${transcript.file} line ${index + 1}`, line })),
   );
-  const kinds = ['input', 'reply', 'compact', 'turn-end', 'continued', 'hook-note', 'scheduled-carry', 'environment', 'queued-prompt', 'other'] as const;
+  const kinds = ['input', 'reply', 'compact', 'turn-end', 'continued', 'hook-note', 'scheduled-carry', 'environment', 'queued-prompt', 'model-switch', 'other'] as const;
 
   it('reads every line the host wrote: none is damaged, and the session has inputs and replies in both threads', () => {
     assert.equal(recording.transcripts.length >= 2, true, 'the session and a helper were recorded');

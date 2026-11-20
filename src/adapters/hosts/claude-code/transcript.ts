@@ -12,6 +12,7 @@ import {
   type InputEntry,
   type InputOrigin,
   type JsonRecord,
+  type ModelSwitchEntry,
   type QueuedPromptEntry,
   type ReplyCall,
   type ReplyEntry,
@@ -44,6 +45,7 @@ const KIND_WORDS = {
   'scheduled-carry': '"session_cron_carry"',
   environment: '"type":"environment"',
   'queued-prompt': '"type":"queue-operation"',
+  'model-switch': '"fallbackModel"',
   other: undefined,
 } as const satisfies Readonly<Record<EntryKind, string | undefined>>;
 
@@ -314,13 +316,23 @@ function attachmentOf(base: Base, entry: JsonRecord): TranscriptEntry | undefine
   }
 }
 
-/** A `system` line teamrig has a kind for: a compaction boundary, or a turn's end; undefined for any other. */
+/**
+ * A model switch Claude Code made on its own: a `system` line naming the `fallbackModel` it answers on from then,
+ * with the `originalModel` and the `apiRefusalCategory` of the safeguard that stopped the reply (2.1.300 writes it
+ * with subtype `model_refusal_fallback`); undefined for a line naming no fallback model.
+ */
+function modelSwitchOf(base: Base, entry: JsonRecord): ModelSwitchEntry | undefined {
+  const to = stringField(entry, 'fallbackModel');
+  return to === undefined ? undefined : { ...base, kind: 'model-switch', from: stringField(entry, 'originalModel'), to, reason: stringField(entry, 'apiRefusalCategory') };
+}
+
+/** A `system` line teamrig has a kind for: a compaction boundary, a turn's end, or a model switch; undefined for any other. */
 function systemOf(base: Base, entry: JsonRecord): TranscriptEntry | undefined {
   const subtype = stringField(entry, 'subtype');
   if (subtype === 'compact_boundary') {
     return { ...base, kind: 'compact' };
   }
-  return subtype !== undefined && TURN_END_MARKS.has(subtype) ? { ...base, kind: 'turn-end' } : undefined;
+  return subtype !== undefined && TURN_END_MARKS.has(subtype) ? { ...base, kind: 'turn-end' } : modelSwitchOf(base, entry);
 }
 
 /**

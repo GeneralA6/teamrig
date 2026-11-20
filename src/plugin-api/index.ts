@@ -85,6 +85,7 @@ export {
   type HostPorts,
   type InputEntry,
   type InputOrigin,
+  type ModelSwitchEntry,
   type OtherEntry,
   type QueuedPromptEntry,
   type ReplyCall,
