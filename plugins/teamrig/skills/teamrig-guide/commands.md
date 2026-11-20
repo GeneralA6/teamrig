@@ -2451,9 +2451,10 @@ The read side of teamrig's public interface, for a program such as a pane, a das
 Nothing else is written to stdout, so every line there parses; a refusal is one `REFUSED` line on stderr with exit 2
 and no document, where other commands print it to stdout. It writes no file, marks nothing read and takes no lock.
 
-Three documents are served today. `tasks` is the register's working set, the active tasks and the finished ones not
-yet archived. `inbox` is the asking session's own inbox. `sessions` is every session of your tree of teams. The
-others of interface 1 (`meetings`, `config`) are a usage error until they are served.
+Four documents are served today. `tasks` is the register's working set, the active tasks and the finished ones not
+yet archived. `inbox` is the asking session's own inbox. `sessions` is every session of your tree of teams.
+`meetings` is the team's meetings still scheduled or started. The last of interface 1 (`config`) is a usage error
+until it is served.
 
 Every document carries:
 
@@ -2506,6 +2507,18 @@ above it every field is served; for a team beside or below yours, `hire.scope`, 
 `reason` and `launch.text` are `null`. `conversation` is served for your own team's sessions only, and is `null` for
 every other team's.
 
+`meetings` adds `meetings` and `cuts`: the team's meetings still scheduled or started, by time, the rows `teamrig
+meeting list --json` prints. Each is `{ "id", "at", "atText", "minutes", "session", "with", "tasks", "about",
+"brief", "status", "missed" }`: `id` is `M<n>`, `at` the start as a UTC instant and `atText` the same moment in the
+team's zone (a change of the zone changes `revision`), `session` the session met, `with` the others joining and
+`tasks` the tasks it settles, by id, `about` the team's own words, `status` `scheduled` or `started`.
+
+- `brief` names the brief's file, `null` when the meeting has none: a path typed with no root is served as typed, a
+  file inside the team's folder is named from that folder down, and any other by its file name alone, so no place on
+  someone's disk is served.
+- `missed` is `true` for a meeting still scheduled when its slot was over. It moves with the clock, which is no part
+  of `revision`: with an unchanged revision, work it out yourself from `status`, `at` and `minutes`.
+
 Two rules hold for a document's text:
 
 - A text that can come from outside the team (a title, a description, a ref's label, an inbox line's text) is
@@ -2524,8 +2537,8 @@ Flags:
   `.`, `:` or `-`), for a program that knows its conversation but not its session. `sessions` then answers `self`,
   and `inbox` serves the session of your team holding it when no `--session` is given (a usage error when none
   does). Like `--session` it is a label and proves nothing.
-- `--team <id>`: reads a team above yours in your tree instead of your own, for `tasks`. A team beside or below yours
-  is refused.
+- `--team <id>`: reads a team above yours in your tree instead of your own, for `tasks` and `meetings`. A team beside
+  or below yours is refused.
 - `--owner <id|name>`: keeps the tasks one session owns.
 - `--since <hours>`: how far back `inbox` serves the lines already read, in whole hours; 24 when left out, and 0
   serves the unread ones only.
