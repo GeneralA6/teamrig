@@ -10,7 +10,9 @@ import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import { OwnPaths, tasksSearched, TeamFolders, type LeadPaths, type SubTeamPlace } from '../../hooks/lead-boundary.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { indexMarks } from '../../inbox/marks.ts';
+import type { HookEvent, HookEventName, HookReply } from '../../ports/host/index.ts';
 import { JsonlEventLog } from '../../register/store.ts';
+import { hooksOf } from '../host.ts';
 import { openKit, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import type { KitTree } from '../tree.ts';
@@ -22,6 +24,28 @@ export function parseJson(text: string): unknown {
     return JSON.parse(text);
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * One hook call off standard input: the event the host's bridge reads out of it, undefined when it is no hook input
+ * at all, beside the parsed input for the readers not yet moved onto the event.
+ */
+export interface HookInput {
+  readonly payload: unknown;
+  readonly event: HookEvent | undefined;
+}
+
+export async function readHookInput(runtime: Pick<CliRuntime, 'readStdin' | 'host' | 'env' | 'platform'>): Promise<HookInput> {
+  const raw = await runtime.readStdin();
+  return { payload: parseJson(raw), event: hooksOf(runtime).parse(raw) };
+}
+
+/** Prints what the host reads for a hook's `reply` to the event `on`; nothing when the hook has nothing to say. */
+export function writeReply(runtime: Pick<CliRuntime, 'out' | 'host' | 'env' | 'platform'>, on: HookEventName, reply: HookReply | undefined): void {
+  const text = reply === undefined ? '' : hooksOf(runtime).reply(on, reply);
+  if (text !== '') {
+    runtime.out.stdout(text);
   }
 }
 
