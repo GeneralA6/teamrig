@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { API_VERSION, apiVersionNotice, featuresOf, hostAdapterProblems, hostDeclarationProblems } from '../../../plugin-api/index.ts';
+import { API_VERSION, apiVersionNotice, featuresOf, hostAdapterProblems, hostDeclarationProblems, isUnsupported } from '../../../plugin-api/index.ts';
 import { hostDeps } from '../../../testing/adapter-deps.ts';
 import { declaration } from './declaration.ts';
 import adapter from './index.ts';
@@ -30,9 +30,15 @@ describe('the Claude Code adapter', () => {
     assert.match(errors.kind === 'partial' ? errors.missing : '', /rate-limit hit.*context too long/);
   });
 
-  it('enters through defineHost with that declaration, and builds every host port', () => {
+  it('enters through defineHost with that declaration, and names every host port, the transcripts, the usage meter and the status line filled', () => {
     assert.equal(adapter.declaration, declaration);
     assert.deepEqual(hostAdapterProblems(adapter), []);
-    assert.deepEqual(adapter.create(hostDeps()), { transcripts: transcriptReader, usage: usageMeter, statusLine });
+    const ports = adapter.create(hostDeps());
+    assert.deepEqual(Object.keys(ports), ['hooks', 'toolCall', 'transcripts', 'usage', 'statusLine']);
+    assert.equal(isUnsupported(ports.hooks), true);
+    assert.equal(isUnsupported(ports.toolCall), true);
+    assert.equal(ports.transcripts, transcriptReader);
+    assert.equal(ports.usage, usageMeter);
+    assert.equal(ports.statusLine, statusLine);
   });
 });

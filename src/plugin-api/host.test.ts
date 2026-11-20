@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { hostDeclarationData, manifestOf } from '../testing/manifests.ts';
 import { unsupported } from '../ports/host/index.ts';
+import { hostDeclarationData, manifestOf } from '../testing/manifests.ts';
 import { defineHost, hostAdapterProblems, hostDeclarationProblems, isHostAdapter, isHostDeclaration, type HostDeps } from './host.ts';
 
 const NOT_DEFINED = 'its entry is not made by defineHost: it needs a declaration and a create function';
@@ -24,9 +24,24 @@ describe('defineHost', () => {
   it('hands back the adapter it is given, whose create builds its ports from the deps', () => {
     const data = hostDeclarationData();
     assert.ok(isHostDeclaration(data));
-    const adapter = defineHost({ declaration: data, create: (deps: HostDeps) => ({ transcripts: unsupported(`no session log on ${deps.platform}`), usage: unsupported('no call is priced'), statusLine: unsupported('no status line is drawn') }) });
+    const adapter = defineHost({
+      declaration: data,
+      create: (deps: HostDeps) => ({
+        hooks: unsupported(`no hooks on ${deps.platform}`),
+        toolCall: unsupported('no tool call'),
+        transcripts: unsupported('no session log'),
+        usage: unsupported('no call is priced'),
+        statusLine: unsupported('no status line is drawn'),
+      }),
+    });
     assert.equal(adapter.declaration, data);
-    assert.deepEqual(adapter.create({ env: {}, platform: 'linux', run: () => Promise.reject(new Error('no program runs here')) }), { transcripts: { kind: 'unsupported', notice: 'no session log on linux' }, usage: { kind: 'unsupported', notice: 'no call is priced' }, statusLine: { kind: 'unsupported', notice: 'no status line is drawn' } });
+    assert.deepEqual(adapter.create({ env: {}, platform: 'linux', run: () => Promise.reject(new Error('no program runs here')) }), {
+      hooks: { kind: 'unsupported', notice: 'no hooks on linux' },
+      toolCall: { kind: 'unsupported', notice: 'no tool call' },
+      transcripts: { kind: 'unsupported', notice: 'no session log' },
+      usage: { kind: 'unsupported', notice: 'no call is priced' },
+      statusLine: { kind: 'unsupported', notice: 'no status line is drawn' },
+    });
     assert.equal(isHostAdapter(adapter), true);
   });
 });
