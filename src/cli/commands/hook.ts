@@ -6,7 +6,7 @@ import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { recordConfigDir } from '../../budget/config-dir.ts';
 import { errorMessage } from '../../core/guards.ts';
-import { claudeConfigDir, KIT_NAME, resolveKitHome } from '../../core/home.ts';
+import { KIT_NAME, resolveKitHome } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { routeReminderOf } from '../../inbox/route.ts';
 import { boundPromptNote, boundStartNote, tabTitleFor } from '../../hooks/bind.ts';
@@ -48,7 +48,7 @@ import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
-import { contextSourceIfTold, pathsIfKnown, transcriptsIfKept, transcriptsOf } from '../host.ts';
+import { contextSourceIfTold, hostHomeIfKnown, pathsIfKnown, transcriptsIfKept, transcriptsOf } from '../host.ts';
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { keptRulesAboveOf, readTeamRules } from '../team-rules.ts';
@@ -449,7 +449,11 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, sta
   const id = rosterIdOf(roster, session);
   if (id !== undefined) {
     await logStart(runtime, { config, paths: kit.paths, id }, start).catch(() => undefined);
-    await recordConfigDir(runtime.files, kit.paths.configDirRecord, claudeConfigDir(runtime.env, runtime.userHome)).catch(() => undefined);
+    // A host that tells none of its folders records none: its teams read as one login (budget/account.ts).
+    const hostHome = hostHomeIfKnown(runtime);
+    if (hostHome !== undefined) {
+      await recordConfigDir(runtime.files, kit.paths.configDirRecord, hostHome).catch(() => undefined);
+    }
   }
   const recorded = id === undefined || hostSession === undefined ? undefined : await recordSessionStart(runtime, kit, roster.ids, id, hostSession, start.transcript);
   const envBindNote = fromEnv === undefined || id === undefined || hostSession === undefined ? undefined : await bindNamedTab(runtime, kit, id, hostSession);
