@@ -55,7 +55,6 @@ import {
   labelFileReadArgs,
   labelReadArgs,
   MENTION_LISTS,
-  MENTION_PAGES_MAX,
   mentionListArgs,
   nodeGhRunner,
   reviewListArgs,
@@ -70,6 +69,7 @@ import {
 } from './gh.ts';
 import type { IssueDraft, LabelSpec } from '../issues/host.ts';
 import { areaLabelSpec, MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
+import { MENTION_PAGES_MAX } from '../issues/scan-caps.ts';
 import { CLOSED_ISSUES_QUERY, closedPageArgs, OPEN_ISSUES_QUERY, openPageArgs, PULL_REQUESTS_QUERY, pullPageArgs } from './queries.ts';
 
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-gh-'));
