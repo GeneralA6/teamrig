@@ -20,6 +20,7 @@ describe('promptSecretReason', () => {
     assert.match(promptSecretReason([GITHUB], { kind: 'cleaned', lines: 3, pastes: 1 }), /3 lines and 1 pasted text that/);
     assert.match(promptSecretReason([GITHUB], { kind: 'retry' }), /failed; your next prompt tries again\.$/);
     assert.match(promptSecretReason([GITHUB], { kind: 'failed' }), /failed: an earlier prompt that held it may stay in history\.jsonl\.$/);
+    assert.match(promptSecretReason([GITHUB], { kind: 'unknown' }), /rotate it\. teamrig does not know where this host keeps a prompt history, so it cleaned none\.$/);
   });
 
   it('never holds a hash', () => {
