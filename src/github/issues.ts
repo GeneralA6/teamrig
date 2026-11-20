@@ -123,6 +123,26 @@ export async function listIssues(gh: GhRunner, access: RepoAccess, request: Issu
   return { kind: 'listed', issues, unreadable, full: next !== undefined };
 }
 
+/**
+ * Each issue once, as last read: the closed list is read after the open one, so an issue on both lists
+ * (closed between the two reads) counts as closed.
+ */
+export function latestIssues(open: readonly HostIssue[], closed: readonly HostIssue[]): HostIssue[] {
+  return [...new Map([...open, ...closed].map((issue) => [issue.number, issue])).values()];
+}
+
+/** The number of the issue GitHub's create answered with, from the JSON gh prints; undefined when there is none. */
+export function createdNumber(stdout: string): number | undefined {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(stdout);
+  } catch {
+    return undefined;
+  }
+  const number = isRecord(raw) ? raw['number'] : undefined;
+  return typeof number === 'number' && Number.isSafeInteger(number) && number > 0 ? number : undefined;
+}
+
 async function readPage(gh: GhRunner, access: RepoAccess, request: IssueListRequest, args: readonly string[]): Promise<IssuePage> {
   const ran = await runRead(gh, access, request.repo, args, ISSUE_READ);
   return ran.kind === 'failed' ? ran : parseIssuePage(ran.stdout, request);
