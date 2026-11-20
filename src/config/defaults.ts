@@ -1,5 +1,6 @@
 import type {
   AlertsConfig,
+  ChangesConfig,
   FreezesConfig,
   DeliveryWaitConfig,
   QueueConfig,
@@ -137,6 +138,9 @@ export const DEFAULT_CONTEXT_FILES: ContextFilesConfig = {
 };
 
 export const DEFAULT_LOCK: LockConfig = { ttlMs: 300_000, pollMs: 50, waitMs: 20_000 };
+
+/** No change sources named: `teamrig changes` reads every one that applies to the project. */
+export const DEFAULT_CHANGES: ChangesConfig = { sources: [] };
 
 /** No exec PATH: a privileged command names its program by absolute path until the team lists its tool folders. */
 export const DEFAULT_EXEC: ExecConfig = { path: [] };

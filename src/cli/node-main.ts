@@ -24,6 +24,7 @@ import { nodeProcesses } from '../open/processes.ts';
 import { nodeSessionProcesses } from '../open/session-processes.ts';
 import { httpPackageRegistry } from '../package-guard/registry.ts';
 import { GIT_CLI, GIT_COMMIT_LOG } from '../push-guard/git.ts';
+import { GIT_CHANGES } from '../changes/git.ts';
 import { gitSecrets } from '../secret-guard/secrets-git.ts';
 import { GIT_POINTER } from '../setup/pointer-git.ts';
 import { requirementsCheck } from '../requirements/requirements.ts';
@@ -122,6 +123,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     },
     mergeGit: GIT_MERGE,
     pulls: GIT_PULLS,
+    changeGit: GIT_CHANGES,
     trees: GIT_TREES,
     hooks: nodeHookRunner(process.platform),
     packageRegistry: httpPackageRegistry(),

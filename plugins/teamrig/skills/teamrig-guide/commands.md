@@ -4822,6 +4822,51 @@ OK 3 commit(s) in origin/main..HEAD, none over 400 non-test lines or 15 files wi
 
 A commit over the rule without the reason line is `REFUSED` (exit 2).
 
+### teamrig changes
+
+Lists what changed in the team's project since a release or a day, newest release first, the changes not released
+yet on top. In each release, actions (a step to take) and behaviour changes come first, then the rest by area. It
+reads each change source that applies to the project, or those `[changes.sources]` names, in this order:
+
+- `notes`: the project's change notes not released yet, `changes/<slug>.md`, each with `---` front matter
+  (`area`, `kind`: action, behaviour, feature, fix or other, `audience`: lead or all, for an action its
+  `action` line, and `files` and `refs` as comma lists), then its text. A note it cannot read is a `WARN` line.
+- `register`: the team's tasks the range's commits name (`T12` in a subject), one entry per task, its title as
+  the text.
+- `git`: the commit subjects; a Conventional Commits type sets the kind and its scope the area, any other
+  `area:` prefix is the area. Release, build, test and tooling commits are left out.
+
+One change two sources name (the same task or commit) is shown once, from the earlier source. A release is a
+version tag (`v1.2.3`, or a component's `teamrig-v1.2.3` as release-please tags it) or a commit naming its version
+(`plugin: version 0.447.0, ...`, `chore(release): 1.2.3`, `chore(main): release teamrig 1.2.3`).
+
+Flags:
+
+- `--since <version|date>`: required: a release (`0.447.0`), or a day or time on the team's clock
+  (`2026-11-16`, `2026-11-16 09:00`).
+- `--until <version|date>`: the last release or time to show; default now.
+- `--file <path>`: only the changes that touched this file or folder.
+- `--area <area>`: only the changes in this area.
+
+Example:
+
+```sh
+teamrig changes --since 0.447.0 --area open
+```
+
+Output:
+
+```text
+CHANGES since 0.447.0: 2 change(s) from register, git
+0.453.0 (2026-11-16)
+  fix open: teamrig open works on Windows with no Windows Terminal (T3272 #1360 3a0dfcc99)
+0.449.0 (2026-11-15)
+  feature open: open names the terminal it opens (5d1c2a7e0)
+```
+
+A source that cannot be read is a `FAILED <source>: <why>` line beside the others' entries. A version the project
+never released is `REFUSED` (exit 2), naming its newest releases.
+
 ### teamrig secrets staged
 
 For a git pre-commit hook: finds the secrets the staged change adds, a line in a secret shape (the shapes the secret

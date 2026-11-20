@@ -20,6 +20,7 @@ import type { RestorePorts } from '../restore/ports.ts';
 import type { Processes } from '../open/processes.ts';
 import type { SessionProcesses } from '../open/session-processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
+import type { ChangeGit } from '../changes/source.ts';
 import type { RepoState } from '../push-guard/push.ts';
 import type { SecretsGit } from '../secret-guard/secrets-git.ts';
 import type { CredentialStore } from '../github/credentials.ts';
@@ -122,6 +123,8 @@ export interface RunOptions {
   readonly configFormat?: ConfigFormat;
   /** cmd.exe's command line the `teamrig.cmd` shim passes; default none, as from Bash. */
   readonly cmdShimLine?: string;
+  /** The project history `teamrig changes` reads, such as a `FakeChangeGit`; default none. */
+  readonly changeGit?: ChangeGit;
   /** The commits git lists for any range; default none. */
   readonly commitLog?: CommitLog;
   /** The repository `teamrig secrets` scans, such as a `FakeSecretsGit`; default none it can read. */
@@ -234,6 +237,7 @@ export class CliHarness {
       ...(options.git === undefined ? {} : { git: options.git }),
       ...(options.pointerGit === undefined ? {} : { pointerGit: options.pointerGit }),
       ...(options.commitLog === undefined ? {} : { commitLog: options.commitLog }),
+      ...(options.changeGit === undefined ? {} : { changeGit: options.changeGit }),
       ...(options.secretsGit === undefined ? {} : { secretsGit: options.secretsGit }),
       ...(options.platform === undefined ? {} : { platform: options.platform }),
       ...(options.processes === undefined ? {} : { processes: options.processes }),
