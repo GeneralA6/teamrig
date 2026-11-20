@@ -49,6 +49,7 @@ function env(
       return Promise.resolve(root === INSTALL ? client : (placing.others?.[root] ?? INTACT));
     },
     platform: 'linux',
+    ghWrites: { github: { kind: 'repos', repos: new Set(['acme/web']) }, remotesOf: () => ['acme/web'], ghRepo: undefined },
     reads: () => reads,
     checks: () => checked.length,
     checked: () => checked,
@@ -316,6 +317,19 @@ describe('execGuardOutput', () => {
     for (const line of ['$DOCKER exec ctr ls', '$T list', '$T exec', 'node $SCRIPT build', 'node $SCRIPT exec', 'npx "$P" build', 'npm run "$S"']) {
       assert.equal(await verdict(bash(line), quiet), undefined, line);
     }
+    assert.equal(quiet.checks(), 0);
+  });
+
+  it('refuses a raw gh write on a team repository, naming the teamrig command, without reading the tab or checking a client (T4819)', async () => {
+    const quiet = env();
+    for (const payload of [bash('gh issue comment 7 --body hi'), powershell('gh issue comment 7 --body hi')]) {
+      const found = await verdict(payload, quiet);
+      assert.equal(found?.decision, 'deny');
+      assert.match(found?.reason ?? '', /^teamrig exec guard: `gh issue comment` writes on acme\/web, a repository of the team, .*`teamrig issue reply <owner\/name#n> --body-file <file>`/);
+    }
+    assert.equal(await verdict(bash('gh issue view 7'), quiet), undefined);
+    assert.equal(await verdict(bash('gh issue close 7'), { ...quiet, ghWrites: { ...quiet.ghWrites, github: { kind: 'none' } } }), undefined);
+    assert.equal(quiet.reads(), 0);
     assert.equal(quiet.checks(), 0);
   });
 
