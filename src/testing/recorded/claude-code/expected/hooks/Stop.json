@@ -1,0 +1,34 @@
+[
+  {
+    "event": "Stop",
+    "index": 0,
+    "hook": "hook stop",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "Stop",
+    "index": 0,
+    "hook": "hook restore-track",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "Stop",
+    "index": 1,
+    "hook": "hook stop",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "Stop",
+    "index": 1,
+    "hook": "hook restore-track",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  }
+]

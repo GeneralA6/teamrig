@@ -1,0 +1,18 @@
+[
+  {
+    "event": "PreCompact",
+    "index": 0,
+    "hook": "hook pre-compact",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreCompact",
+    "index": 0,
+    "hook": "hook tab-status",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  }
+]

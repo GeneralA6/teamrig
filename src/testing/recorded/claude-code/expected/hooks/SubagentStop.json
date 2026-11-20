@@ -1,0 +1,18 @@
+[
+  {
+    "event": "SubagentStop",
+    "index": 0,
+    "hook": "hook subagent-stop",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "SubagentStop",
+    "index": 1,
+    "hook": "hook subagent-stop",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  }
+]
