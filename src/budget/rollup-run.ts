@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import type { Roster } from '../config/roster.ts';
 import type { Files } from '../core/files.ts';
-import type { TranscriptReader } from '../ports/host/index.ts';
+import type { TranscriptReader, UsageMeter } from '../ports/host/index.ts';
 import { sessionsTitled } from '../hooks/bind.ts';
 import { attribute } from './attribute.ts';
 import { readLines, type TranscriptBytes } from './cursor.ts';
@@ -106,14 +106,15 @@ export interface TeamFoldInput {
   readonly chunkBytes: number;
 }
 
-/** Where a fold's lines come from: the transcripts' bytes, and the host's reader of a line. */
+/** Where a fold's lines come from and what they cost: the transcripts' bytes, the host's reader of a line and its price of a call. */
 export interface TeamFoldDeps {
   readonly bytes: TranscriptBytes;
   readonly reader: TranscriptReader;
+  readonly usage: UsageMeter;
 }
 
 /** Folds one transcript, a chunk at a time; a last line Claude Code is still writing is left for the next run. */
-async function readInto({ bytes, reader }: TeamFoldDeps, path: string, fold: RollupFold, source: RollupSource, chunkBytes: number): Promise<void> {
+async function readInto({ bytes, reader }: Pick<TeamFoldDeps, 'bytes' | 'reader'>, path: string, fold: RollupFold, source: RollupSource, chunkBytes: number): Promise<void> {
   const transcript = fold.transcript(source);
   const size = (await bytes.size(path)) ?? 0;
   let offset = 0;
@@ -135,7 +136,7 @@ async function readInto({ bytes, reader }: TeamFoldDeps, path: string, fold: Rol
 
 /** The team's rows per day. Sessions and their transcripts go in sorted, as the first reader of a repeated reply takes it. */
 export async function foldTeam(deps: TeamFoldDeps, input: TeamFoldInput): Promise<ReadonlyMap<string, DayRollup>> {
-  const fold = new RollupFold();
+  const fold = new RollupFold(deps.usage);
   for (const [session, { main, subagents }] of [...input.byTeamSession].sort(([a], [b]) => a.localeCompare(b))) {
     const lead = session === input.lead;
     for (const path of [...main].sort()) {
