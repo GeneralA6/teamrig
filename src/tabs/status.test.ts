@@ -173,12 +173,12 @@ describe('firstPromptOf', () => {
       typed([{ type: 'image' }, { type: 'text', text: 'Fix the  login\npage' }]),
       typed('later prompt'),
     );
-    assert.equal(firstPromptOf(text), 'Fix the login page');
+    assert.equal(firstPromptOf(reader, text), 'Fix the login page');
   });
 
   it('finds none in a transcript without a typed prompt, or with damaged lines only', () => {
-    assert.equal(firstPromptOf(entries(typed('/model'), { type: 'assistant', message: { content: 'hi' } })), undefined);
-    assert.equal(firstPromptOf('{"type":"user","message"\n'), undefined);
+    assert.equal(firstPromptOf(reader, entries(typed('/model'), { type: 'assistant', message: { content: 'hi' } })), undefined);
+    assert.equal(firstPromptOf(reader, '{"type":"user","message"\n'), undefined);
   });
 });
 
