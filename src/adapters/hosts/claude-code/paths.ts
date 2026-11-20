@@ -14,8 +14,10 @@ function setIn(env: HostDeps['env'], name: string): string | undefined {
 
 /** Where Claude Code keeps its files, in the environment of one run. */
 export function hostPaths(env: HostDeps['env']): HostPaths {
+  const home = (userHome: string): string => setIn(env, CONFIG_DIR) ?? join(userHome, '.claude');
   return {
-    home: (userHome) => setIn(env, CONFIG_DIR) ?? join(userHome, '.claude'),
+    home,
     temp: (systemTemp) => setIn(env, TEMP_DIR) ?? systemTemp,
+    skills: (userHome) => join(home(userHome), 'skills'),
   };
 }

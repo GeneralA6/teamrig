@@ -20,6 +20,11 @@ describe("Claude Code's paths", () => {
     assert.equal(hostPaths({ CLAUDE_CODE_TMPDIR: ' ' }).temp(SYSTEM_TEMP), SYSTEM_TEMP, 'a blank one moves nothing');
   });
 
+  it("loads a person's skills from the skills folder of its own folder, wherever that one is", () => {
+    assert.equal(hostPaths({}).skills(USER_HOME), join(USER_HOME, '.claude', 'skills'));
+    assert.equal(hostPaths({ CLAUDE_CONFIG_DIR: join('/', 'cfg') }).skills(USER_HOME), join('/', 'cfg', 'skills'));
+  });
+
   it('reads the environment of the run it was built for, not a later one', () => {
     const env: Record<string, string> = { CLAUDE_CONFIG_DIR: join('/', 'first') };
     const paths = hostPaths({ ...env });
