@@ -24,6 +24,11 @@ interface ToolCallBase {
   readonly id?: string | undefined;
   /** What the tool answered, on the events that come after it ran. */
   readonly response?: unknown;
+  /**
+   * The answer as the record a hook may put a changed copy of in its place (`HookReply.toolOutput`), which must keep
+   * the answer's shape; unset where the host is not known to take a replacement for this call's answer.
+   */
+  readonly replaceable?: JsonRecord | undefined;
 }
 
 /** A command line handed to a shell. */
