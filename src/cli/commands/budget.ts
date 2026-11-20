@@ -72,6 +72,7 @@ import type { RepoState } from '../../push-guard/push.ts';
 import { TASK_ID } from '../../register/model.ts';
 import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount, peerMarksOf } from '../account-teams.ts';
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
+import { transcriptsOf } from '../host.ts';
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { rushLine, rushSegment } from '../../budget/rush.ts';
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
@@ -129,6 +130,7 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   const measured = await measure(
     {
       transcripts: runtime.transcripts,
+      reader: transcriptsOf(runtime),
       titleOf: (path) => transcriptTitleOf(runtime.transcripts, path),
       team: recount ? new MemoryUsageStore() : new UsageStore(files, kit.paths.usage),
       outside: recount ? new MemoryUsageStore() : new UsageStore(files, outsideUsageDir(kit.paths.usage)),
