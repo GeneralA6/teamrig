@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { GH_PROGRAM, type GhRequest, type GhResult, type GhRunner } from '../github/gh.ts';
+import { GH_PROGRAM, type GhRequest, type GhResult, type GhRunner } from '../adapters/connectors/github/gh.ts';
 import { NotGhError, programOverGh } from './program-over-gh.ts';
 
 const RESULT: GhResult = { end: { kind: 'exited', code: 0 }, stdout: 'out', stderr: 'err' };

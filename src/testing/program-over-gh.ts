@@ -1,5 +1,5 @@
 import type { ProgramRunner } from '../core/program-runner.ts';
-import { GH_PROGRAM, type GhRunner } from '../github/gh.ts';
+import { GH_PROGRAM, type GhRunner } from '../adapters/connectors/github/gh.ts';
 
 /**
  * A spec's way to stand a `gh` fake in for the program runner a CLI run hands its connector adapters. The GitHub

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { FakeGh, restComment, restIssue, restReview, restReviewComment } from '../testing/fake-gh.ts';
-import { MENTION_PAGE_SIZE, MENTION_PAGES_MAX, REVIEW_READS_MAX } from '../issues/scan-caps.ts';
+import { FakeGh, restComment, restIssue, restReview, restReviewComment } from '../../../testing/fake-gh.ts';
+import { MENTION_PAGE_SIZE, MENTION_PAGES_MAX, REVIEW_READS_MAX } from '../../../plugin-api/index.ts';
 import { isMentionRead, isReviewRead } from './gh.ts';
 import { postOf, readPosts, reviewOf } from './posts.ts';
 import type { RepoAccess } from './tokens.ts';
