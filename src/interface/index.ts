@@ -11,6 +11,7 @@ export { refOf, type ServedRef } from './ref.ts';
 export { revisionText, type RevisionParts } from './revision.ts';
 export {
   sessionsBody,
+  type LaunchInput,
   type MemberInput,
   type RetiredInput,
   type ServedAsk,
@@ -27,6 +28,7 @@ export {
   type TabInput,
   type TeamFailure,
   type TeamInput,
+  type TeamReach,
 } from './sessions.ts';
 export { sourceOf,type ServedSource, type SourceKind, type SourceNames } from './source.ts';
 export { tasksBody, type ServedAnswer, type ServedDecision, type ServedTask, type ServedWait, type TasksBody, type TasksInput } from './tasks.ts';

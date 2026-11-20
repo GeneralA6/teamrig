@@ -1,8 +1,17 @@
 import type { Role } from '../config/roster.ts';
 import type { HireRecord, RetireRecord } from '../hiring/record.ts';
+import { TASK_ID } from '../register/model.ts';
 import type { NeedKind } from '../tabs/need-kind.ts';
 import type { TabState } from '../tabs/state.ts';
 import { ServedText, type Cut, type SecretShapes } from './text.ts';
+
+/**
+ * Where a team stands to the caller's: its own, one above it, or any other team of the tree, beside or below it.
+ * Every team of a tree sees who is on the others, as `teamrig who` shows it, but a team's own words (a hire's and a
+ * retirement's, the launch in words) go only to itself and the teams below it, so they are served for `own` and
+ * `above` alone; a conversation id is served for `own` alone.
+ */
+export type TeamReach = 'own' | 'above' | 'other';
 
 /**
  * What a session is doing, as far as its tab tells: at work, free, or stopped on something only a person answers. A
@@ -33,18 +42,18 @@ export interface ServedHost {
 export interface ServedLaunch {
   readonly model: string | null;
   readonly effort: string | null;
-  /** The two in words, for a line a person reads. */
-  readonly text: string;
+  /** The two in words, for a line a person reads; null for a team beside or below the caller's. */
+  readonly text: string | null;
 }
 
-/** The hire a session is on the team by. */
+/** The hire a session is on the team by. Its `scope` and `reason` are null for a team beside or below the caller's. */
 export interface ServedHire {
   readonly at: string;
   /** The session that hired it. */
   readonly by: string;
   /** The job it was hired for. */
-  readonly scope: string;
-  readonly reason: string;
+  readonly scope: string | null;
+  readonly reason: string | null;
   /** The day the hire is reviewed, `YYYY-MM-DD` (UTC). */
   readonly reviewBy: string;
   readonly approvedBy: string | null;
@@ -56,7 +65,8 @@ export interface ServedHire {
 export interface ServedRetire {
   readonly at: string;
   readonly by: string;
-  readonly reason: string;
+  /** Null for a team beside or below the caller's. */
+  readonly reason: string | null;
   /** The session its open tasks went to. */
   readonly heir: string | null;
 }
@@ -64,6 +74,7 @@ export interface ServedRetire {
 /** What a session asks a person: the kind and the task it names, never the ask's words, which come from a tool's input. */
 export interface ServedAsk {
   readonly kind: NeedKind;
+  /** Null when the ask names no task, or its tab file holds something else than a task's id there. */
   readonly task: string | null;
 }
 
@@ -96,7 +107,10 @@ export interface ServedSession {
   /** When its tab took this state. */
   readonly since: string | null;
   readonly host: ServedHost | null;
-  /** The host's own id of the conversation the session last started in: opaque, and a proof of nothing. */
+  /**
+   * The host's own id of the conversation the session last started in: opaque, and a proof of nothing. Served for
+   * the caller's own team only; null for every other team's sessions.
+   */
   readonly conversation: string | null;
 }
 
@@ -144,6 +158,13 @@ export interface TabInput {
   readonly since: string;
 }
 
+/** A session's launch as its team's config holds it: the model and effort the config checked, and the two in words. */
+export interface LaunchInput {
+  readonly model: string | null;
+  readonly effort: string | null;
+  readonly text: string;
+}
+
 /** A session on a team, with what the team's files hold of it. */
 export interface MemberInput {
   readonly id: string;
@@ -153,7 +174,7 @@ export interface MemberInput {
   readonly leader: string | null;
   readonly ledBy: readonly string[];
   readonly leads: number;
-  readonly launch: ServedLaunch;
+  readonly launch: LaunchInput;
   readonly hire: HireRecord | null;
   readonly rehiredFrom: RetireRecord | null;
   readonly unread: number | null;
@@ -175,6 +196,7 @@ export interface RetiredInput {
 export interface TeamInput {
   readonly id: string;
   readonly parent: string | null;
+  readonly reach: TeamReach;
   readonly members: readonly MemberInput[];
   readonly retired: readonly RetiredInput[];
 }
@@ -197,54 +219,90 @@ function recordOf(team: string, id: string): string {
   return `${team}/${id}`;
 }
 
-function hireOf(served: ServedText, record: string, hire: HireRecord): ServedHire {
+/**
+ * One team's texts on their way out: a session's names for every team, the team's own words only within reach. A
+ * text out of reach is never scanned, so it adds no cut.
+ */
+class TeamText {
+  private readonly served: ServedText;
+  private readonly team: TeamInput;
+
+  constructor(served: ServedText, team: TeamInput) {
+    this.served = served;
+    this.team = team;
+  }
+
+  /** A session's name: every team of the tree may read it, and it is scanned like any text a person typed. */
+  name(id: string, field: string, name: string): string {
+    return this.served.plain(recordOf(this.team.id, id), field, name);
+  }
+
+  /** The team's own words about session `id`; null for a team beside or below the caller's. */
+  words(id: string, field: string, text: string): string | null {
+    return this.team.reach === 'other' ? null : this.served.plain(recordOf(this.team.id, id), field, text);
+  }
+}
+
+function namesOf(text: TeamText, session: { readonly id: string; readonly name: string; readonly formerNames: readonly string[] }): Pick<ServedSession, 'name' | 'formerNames'> {
+  return {
+    name: text.name(session.id, 'name', session.name),
+    formerNames: session.formerNames.map((former) => text.name(session.id, 'formerNames', former)),
+  };
+}
+
+function hireOf(text: TeamText, id: string, hire: HireRecord): ServedHire {
   return {
     at: isoOf(hire.at),
     by: hire.by,
-    scope: served.plain(record, 'hire.scope', hire.scope),
-    reason: served.plain(record, 'hire.reason', hire.reason),
+    scope: text.words(id, 'hire.scope', hire.scope),
+    reason: text.words(id, 'hire.reason', hire.reason),
     reviewBy: hire.reviewBy,
     approvedBy: hire.approvedBy ?? null,
     burst: hire.burst === undefined ? null : isoOf(hire.burst),
   };
 }
 
-function retireOf(served: ServedText, record: string, field: 'retire' | 'rehiredFrom', retire: RetireRecord): ServedRetire {
-  return { at: isoOf(retire.at), by: retire.by, reason: served.plain(record, `${field}.reason`, retire.reason), heir: retire.heir ?? null };
+function retireOf(text: TeamText, id: string, field: 'retire' | 'rehiredFrom', retire: RetireRecord): ServedRetire {
+  return { at: isoOf(retire.at), by: retire.by, reason: text.words(id, `${field}.reason`, retire.reason), heir: retire.heir ?? null };
 }
 
-function memberOf(served: ServedText, team: string, member: MemberInput): ServedSession {
-  const record = recordOf(team, member.id);
-  const { tab } = member;
+/** The ask of a tab that asks something. Its task is read from a file any process may have written, so only a task's id passes. */
+function askOf(tab: TabInput | null): ServedAsk | null {
+  if (tab === null || tab.kind === null) {
+    return null;
+  }
+  return { kind: tab.kind, task: tab.task !== null && TASK_ID.test(tab.task) ? tab.task : null };
+}
+
+function memberOf(text: TeamText, team: TeamInput, member: MemberInput): ServedSession {
+  const { tab, launch } = member;
   return {
-    team,
+    team: team.id,
     id: member.id,
-    name: member.name,
-    formerNames: member.formerNames,
+    ...namesOf(text, member),
     roles: member.roles,
     leader: member.leader,
     ledBy: member.ledBy,
     leads: member.leads,
     active: true,
-    launch: member.launch,
-    hire: member.hire === null ? null : hireOf(served, record, member.hire),
-    rehiredFrom: member.rehiredFrom === null ? null : retireOf(served, record, 'rehiredFrom', member.rehiredFrom),
+    launch: { model: launch.model, effort: launch.effort, text: text.words(member.id, 'launch.text', launch.text) },
+    hire: member.hire === null ? null : hireOf(text, member.id, member.hire),
+    rehiredFrom: member.rehiredFrom === null ? null : retireOf(text, member.id, 'rehiredFrom', member.rehiredFrom),
     retire: null,
     unread: member.unread,
     state: tab === null ? null : STATES[tab.state],
-    ask: tab === null || tab.kind === null ? null : { kind: tab.kind, task: tab.task },
+    ask: askOf(tab),
     since: tab?.since ?? null,
     host: member.host,
-    conversation: member.conversation,
+    conversation: team.reach === 'own' ? member.conversation : null,
   };
 }
 
-function retiredOf(served: ServedText, team: string, retired: RetiredInput): ServedSession {
+function retiredOf(text: TeamText, team: TeamInput, retired: RetiredInput): ServedSession {
   return {
-    team,
+    team: team.id,
     id: retired.id,
-    name: retired.name,
-    formerNames: retired.formerNames,
+    ...namesOf(text, retired),
     roles: [],
     leader: null,
     ledBy: [],
@@ -253,7 +311,7 @@ function retiredOf(served: ServedText, team: string, retired: RetiredInput): Ser
     launch: null,
     hire: null,
     rehiredFrom: null,
-    retire: retireOf(served, recordOf(team, retired.id), 'retire', retired.retire),
+    retire: retireOf(text, retired.id, 'retire', retired.retire),
     unread: null,
     state: null,
     ask: null,
@@ -270,10 +328,10 @@ function retiredOf(served: ServedText, team: string, retired: RetiredInput): Ser
  */
 export function sessionsBody(input: SessionsInput): SessionsBody {
   const served = new ServedText(input.shapes);
-  const sessions = input.teams.flatMap((team) => [
-    ...team.members.map((member) => memberOf(served, team.id, member)),
-    ...team.retired.map((retired) => retiredOf(served, team.id, retired)),
-  ]);
+  const sessions = input.teams.flatMap((team) => {
+    const text = new TeamText(served, team);
+    return [...team.members.map((member) => memberOf(text, team, member)), ...team.retired.map((retired) => retiredOf(text, team, retired))];
+  });
   const teams = input.teams.map((team) => ({ id: team.id, parent: team.parent, active: team.members.length, retired: team.retired.length }));
   return { self: input.self, teams, sessions, failures: input.failures, cuts: served.cuts };
 }
