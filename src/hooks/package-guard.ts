@@ -139,7 +139,7 @@ async function linkedModulesVerdict(readings: readonly string[], context: Progra
  * for, and a refusal whatever the config says when an npx call hands its bin's flag to npm or a package manager would
  * rewrite node_modules through a link; else none, so the normal permission flow decides. One refusal among them
  * refuses the line, naming every reason. Under `hookAsks: refuse` the question is a refusal instead, its reason saying
- * what to do (see `holdBack`). The line is judged in each text its shell may run (the call's `readings`), naming each
+ * what to do (see `heldBack`). The line is judged in each text its shell may run (the call's `readings`), naming each
  * call once.
  */
 export async function packageGuardReply(event: HookEvent, env: PackageGuardEnv): Promise<HookReply | undefined> {

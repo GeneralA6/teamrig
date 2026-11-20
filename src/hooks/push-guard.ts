@@ -178,7 +178,7 @@ function strictestVerdict(verdicts: readonly PushVerdict[]): PushVerdict {
  * (`refuse`). A command the guard cannot read with confidence is asked about, with a reason that
  * says what it could not read. A line that runs git without the repository's hooks (see `hookSkips`) is refused or
  * asked about first, as `skipHooks` says; a refused push stays refused under `ask`. Under `hookAsks: refuse`
- * every such question is a refusal instead, its reason saying what to do (see `holdBack`). A line is judged in
+ * every such question is a refusal instead, its reason saying what to do (see `heldBack`). A line is judged in
  * each reading its shell may run (the call's `readings`), keeping the strictest verdict and every hook skip.
  */
 export async function pushGuardReply(event: HookEvent, env: PushGuardEnv): Promise<HookReply | undefined> {
