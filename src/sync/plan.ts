@@ -2,8 +2,8 @@ import { holdsDescription } from '../register/description-cut.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES, GITHUB_SOURCE, isIssueRef } from '../register/model.ts';
 import type { ImportChanges, ImportInput, StatusInput } from '../register/policy.ts';
+import { issuePage } from '../issues/host.ts';
 import type { HostIssue } from '../issues/issue.ts';
-import { issuePage } from './connector.ts';
 import { issueTask, type ImportRules, type IssueTask } from './map.ts';
 import { issueTrust } from './trust.ts';
 

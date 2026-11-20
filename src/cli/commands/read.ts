@@ -4,7 +4,6 @@ import { ID_PATTERN, ID_RULE } from '../../core/ids.ts';
 import { PlainLogFile } from '../../core/log-file.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { KIT_VERSION } from '../../core/version.ts';
-import { GITHUB_CONNECTOR } from '../../github/connector.ts';
 import { lineHash } from '../../inbox/line-hash.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import { InboxDir, JsonlMarkLog } from '../../inbox/store.ts';
@@ -19,11 +18,11 @@ import {
   revisionText,
   tasksBody,
   unchangedAnswer,
-  type Connector,
   type DocumentName,
   type InterfaceVersion,
   type RevisionParts,
 } from '../../interface/index.ts';
+import { DOCUMENT_CONNECTORS } from '../../composition/document-connectors.ts';
 import type { Roster } from '../../config/roster.ts';
 import { layoutPaths } from '../../register/layout.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
@@ -37,9 +36,6 @@ import { meetingsSource } from './read-meetings.ts';
 import { planSource } from './read-plan.ts';
 import { selfOf, sessionsSource } from './read-sessions.ts';
 import { configProblemsOf, once, skippedOf, stampsOf, workingSetOf, type DocumentSource, type ReadScope } from './read-source.ts';
-
-/** The trackers a document names a ref or a source by; a second one is one more entry here. */
-const CONNECTORS: readonly Connector[] = [GITHUB_CONNECTOR];
 
 /** How far back `inbox` serves the lines already read, when `--since` names no other reach. */
 const READ_LINES_HOURS = 24;
@@ -331,8 +327,8 @@ function tasksSource(scope: ReadScope): DocumentSource {
         tasks: register.tasks.values(),
         owner: scope.owner,
         shapes: new SecretScanner(config.register.secretPatterns),
-        connectors: CONNECTORS,
-        names: { owner: config.register.ownerSource, connectors: CONNECTORS, nameOf: (session) => roster.nameOf(session) },
+        connectors: DOCUMENT_CONNECTORS,
+        names: { owner: config.register.ownerSource, connectors: DOCUMENT_CONNECTORS, nameOf: (session) => roster.nameOf(session) },
       });
       return { body, problems: register.problems };
     },
@@ -379,7 +375,7 @@ function inboxSource(scope: ReadScope): DocumentSource {
         unread: mark === null ? null : unreadOf(session, lines, mark, lineHash).lines.length,
         readSince: runtime.clock.now() - scope.sinceHours * HOUR_MS,
         keyOf: lineHash,
-        connectors: CONNECTORS,
+        connectors: DOCUMENT_CONNECTORS,
         shapes: new SecretScanner(config.register.secretPatterns),
       });
       return { body, problems: skippedOf(kit.paths, kit.paths.inboxMarks, log) };

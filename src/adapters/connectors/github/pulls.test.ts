@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { commentNode, FakeGh, ghPull, reviewNode } from '../testing/fake-gh.ts';
+import { commentNode, FakeGh, ghPull, reviewNode } from '../../../testing/fake-gh.ts';
 import { isIssueQuery } from './gh.ts';
-import type { HostPull } from '../issues/pull.ts';
+import type { HostPull } from '../../../plugin-api/index.ts';
 import { listPulls, pullOf, type PullListRequest } from './pulls.ts';
 import type { RepoAccess } from './tokens.ts';
 
