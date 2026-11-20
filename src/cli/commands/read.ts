@@ -18,6 +18,7 @@ import {
   parseInterfaceVersion,
   revisionText,
   tasksBody,
+  unchangedAnswer,
   type Connector,
   type DocumentName,
   type InterfaceVersion,
@@ -54,8 +55,14 @@ interface ReadRequest {
   /** The host's own id of the conversation asking, which `sessions` answers `self` by; a label too. */
   readonly conversation: string | undefined;
   readonly sinceHours: number;
+  /** The revision the reader already holds of a document, for each it named with `--unless`. */
+  readonly unless: ReadonlyMap<DocumentName, string>;
   readonly speaks: InterfaceVersion | undefined;
 }
+
+/** A revision as `read` serves one ({@link revisionOf}); `--unless` takes no other text. */
+const REVISION_PATTERN = /^[0-9a-f]{16}$/;
+const UNLESS_FORM = '--unless takes <document>=<revision>[,<document>=<revision>...], a revision being the 16 hex characters read answered';
 
 /** A host's conversation id is opaque; this only keeps one a shell or a path could misread out of the run. */
 const CONVERSATION_PATTERN = /^[\w.:-]{1,128}$/;
@@ -113,8 +120,39 @@ function requestOf(args: ParsedArgs, env: Env): ReadRequest {
     session: askerOf(args.flags.get('session'), env),
     conversation: conversationOf(args.flags.get('conversation')),
     sinceHours: sinceHoursOf(args.flags.get('since')),
+    unless: unlessOf(args.flags.get('unless'), documents),
     speaks,
   };
+}
+
+/**
+ * `--unless`: the revision the reader holds of each document it names, one flag with a comma list since a flag is
+ * taken once. An entry is refused unless it names a document this run asks, once, with a revision of the shape
+ * `read` serves: a typo then fails loudly, where a revision that could never match would only cost the full answer
+ * on every run.
+ */
+function unlessOf(typed: string | undefined, documents: readonly DocumentName[]): ReadonlyMap<DocumentName, string> {
+  const held = new Map<DocumentName, string>();
+  if (typed === undefined) {
+    return held;
+  }
+  for (const entry of typed.split(',')) {
+    const [name, revision, ...rest] = entry.split('=');
+    if (name === undefined || revision === undefined || rest.length > 0 || !REVISION_PATTERN.test(revision)) {
+      throw new UsageError(`${UNLESS_FORM}; got "${entry}"`);
+    }
+    if (!isDocumentName(name)) {
+      throw new UsageError(`--unless names an unknown document "${name}"; the documents are ${DOCUMENTS.join(', ')}`);
+    }
+    if (!documents.includes(name)) {
+      throw new UsageError(`--unless names ${name}, which this run does not ask for`);
+    }
+    if (held.has(name)) {
+      throw new UsageError(`--unless names ${name} twice`);
+    }
+    held.set(name, revision);
+  }
+  return held;
 }
 
 /** `--team` names a folder of the kit home, so it is held to an id's shape before the tree is asked about it. */
@@ -179,6 +217,11 @@ async function answersOf(request: ReadRequest, runtime: CliRuntime): Promise<obj
   const answers: object[] = [];
   for (const [name, source] of sources) {
     const revision = revisionOf(await source.parts());
+    if (request.unless.get(name) === revision) {
+      // The reader holds this revision: its files' stamps were read to know it, and nothing is folded or built.
+      answers.push(unchangedAnswer(name, revision));
+      continue;
+    }
     const built = await source.build();
     answers.push(answerOf(name, revision, [...warnings, ...built.problems], built.body));
   }
