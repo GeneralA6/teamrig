@@ -20,7 +20,7 @@ import { fileRotations } from './secret-rotation.ts';
 export async function secretRedact(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const { payload, event } = await readHookInput(runtime);
-  const guard = await guardLoadOf(payload, runtime);
+  const guard = await guardLoadOf(event?.cwd, runtime);
   if (guard === undefined) {
     return EXIT.ok;
   }
