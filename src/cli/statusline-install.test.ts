@@ -8,6 +8,7 @@ import { LAUNCHER_SCRIPT } from '../statusline/launcher.ts';
 import { bareHost } from '../testing/bare-host.ts';
 import { CliHarness, KIT, USER_HOME } from '../testing/cli-harness.ts';
 import { holderLetsGo, holdFileLock } from '../testing/held-file-lock.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import { EXIT } from './runtime.ts';
 
 const SETTINGS = join(USER_HOME, '.claude', 'settings.json');
@@ -109,6 +110,15 @@ describe('teamrig statusline install', () => {
       const kit = await withSettings(ORIGINAL);
       const result = await kit.run(['statusline', command, '--yes'], { host: bareHost });
       assert.deepEqual([result.code, result.stdout], [EXIT.refused, ['REFUSED no status line is drawn']], command);
+      assert.deepEqual([kit.files.get(SETTINGS), kit.files.get(LAUNCHER)], [ORIGINAL, undefined], command);
+    }
+  });
+
+  it('refuses on a host that draws a status line but whose folders teamrig does not know, reading and writing nothing', async () => {
+    for (const command of ['install', 'uninstall']) {
+      const kit = await withSettings(ORIGINAL);
+      const result = await kit.run(['statusline', command, '--yes'], { host: NO_PATHS_HOST });
+      assert.deepEqual([result.code, result.stdout], [EXIT.refused, ['REFUSED no folder of the host is known']], command);
       assert.deepEqual([kit.files.get(SETTINGS), kit.files.get(LAUNCHER)], [ORIGINAL, undefined], command);
     }
   });
