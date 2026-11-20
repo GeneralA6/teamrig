@@ -112,7 +112,7 @@ function ghRefusalOf({ call, route, folder }: GhWrite, github: Exclude<GithubRep
   }
   const fromFolder = call.target.folder ? folder() : [];
   if (fromFolder === undefined) {
-    return `\`${call.what}\` writes on the repository of the folder it runs in (or \`GH_REPO\`), which the guard cannot read: the line may change it, or git cannot tell; name the repository with \`-R\`. On one of the team's: ${route}.`;
+    return `\`${call.what}\` writes on the repository of the folder it runs in (or \`GH_REPO\`), which the guard cannot read: the line may change it, git cannot tell, or a remote reaches GitHub in a form the guard cannot read (an SSH alias, a port); name the repository with \`-R\`. On one of the team's: ${route}.`;
   }
   const hit = [...new Set([...call.target.repos, ...fromFolder])].filter((repo) => github.repos.has(repo));
   return hit.length === 0

@@ -43,6 +43,23 @@ describe('ghWriteRefusals: a write on a team repository (T4819)', () => {
     }
   });
 
+  it('refuses, from a fork’s folder, a write whose -R/--repo comes before its command (R1)', () => {
+    for (const line of ['gh pr --repo=acme/web merge 5', 'gh pr -Racme/web merge 5', 'gh pr -R acme/web merge 5']) {
+      assert.match(refusal(line, FORK), /^`gh pr merge` writes on acme\/web, a repository of the team/u, line);
+    }
+  });
+
+  it('refuses a gh api write through :owner/:repo in a team checkout, and lets it pass in a fork (R2)', () => {
+    assert.match(refusal('gh api -X PUT repos/:owner/:repo/pulls/5/merge'), /writes on acme\/web, a repository of the team/u);
+    assert.deepEqual(refusals('gh api -X PUT repos/:owner/:repo/pulls/5/merge', FORK), []);
+  });
+
+  it('refuses a gh api call or a group with a word only known when it runs, whatever it looks like (R3, R4)', () => {
+    for (const line of ['gh api "$M" repos/acme/web/pulls/5/merge', 'gh api $E', 'gh api repos/acme/web/pulls -q $Q', 'gh $G list']) {
+      assert.match(refusal(line, FORK), /so the guard cannot tell whether it reaches one of the team's repositories/u, line);
+    }
+  });
+
   it('sends a write no teamrig command does to the lead', () => {
     assert.ok(refusal('gh release create v1').endsWith('no teamrig command does this write yet: ask your lead, who has it done with the team\'s saved key.'));
   });
