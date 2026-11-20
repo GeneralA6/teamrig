@@ -97,7 +97,7 @@ describe('service-role call: a queued ship or merge (T2984)', () => {
       command: 'queue ship',
       target: '/w/t1-cli',
       session: 'alpha',
-      ship: { tool: SHIP_TOOL, worktree: '/w/t1-cli', files: ['/t/T1/plan.json'], task: 'T1', merges: false },
+      ship: { tool: SHIP_TOOL, worktree: '/w/t1-cli', files: ['/t/T1/plan.json'], task: 'T1', merges: false, release: undefined },
     });
     const merge = await toolRoleCallOf('Bash', `${ship.replace('--kind test', '--kind ship')} --merge --approved 0123abc --note-file /t/T1/pr.md`, 'win32', CONTEXT);
     assert.deepEqual(merge?.command, 'queue merge');
