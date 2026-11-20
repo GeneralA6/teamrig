@@ -6,6 +6,7 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
+import { shippedUsage } from '../testing/shipped-usage.ts';
 import {
   promptLine,
   replyLine,
@@ -18,6 +19,7 @@ import {
   type FixtureTool,
 } from '../testing/transcript-lines.ts';
 import type { ModelWeight } from '../config/types.ts';
+import type { UsageMeter } from '../ports/host/index.ts';
 import type { TranscriptSet } from './discover.ts';
 import { runMeter, type MeterResult } from './meter.ts';
 import { PATTERN_FIELDS } from './patterns.ts';
@@ -60,7 +62,7 @@ function world(now: string, transcripts: Readonly<Record<string, string>> = {}):
     files,
     clock,
     run: (maxBytes = 10_000_000, transcripts = BOTH, subagentWeight = 1, modelWeights = []) =>
-      runMeter({ bytes, reader: shippedTranscripts(), store, clock },{ session: SESSION, transcripts, subagentWeight, modelWeights, maxBytes }),
+      runMeter({ bytes, reader: shippedTranscripts(), usage: shippedUsage(), store, clock },{ session: SESSION, transcripts, subagentWeight, modelWeights, maxBytes }),
   };
 }
 
@@ -96,6 +98,25 @@ describe('runMeter', () => {
     const again = await meter.run();
     assert.equal(again.bytesRead, 0);
     assert.deepEqual(again.state.byDay, result.state.byDay);
+  });
+
+  it("prices a call and the output a reply adds by the host's usage meter", async () => {
+    // A meter unlike the shipped one: a call costs 3 per output token, output added later 7 per token.
+    const flat: UsageMeter = {
+      weights: { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheWriteUnsplit: 0, cacheRead: 0, output: 7 },
+      charsPerToken: 1,
+      ofCall: (usage) => usage.output * 3,
+      contextReading: (usage) => usage.input,
+    };
+    const bytes = new MemoryTranscripts({ [MAIN]: transcript([promptLine(at(9)), replyLine(R1), replyLine(R1_MORE)]) });
+    const store = new UsageStore(new MemoryFiles(), DIR);
+    const result = await runMeter(
+      { bytes, reader: shippedTranscripts(), usage: flat, store, clock: new FakeClock(at(12)) },
+      { session: SESSION, transcripts: { main: [MAIN], subagents: [] }, subagentWeight: 1, modelWeights: [], maxBytes: 10_000 },
+    );
+    // R1 has 10 output tokens and 10 input tokens; R1_MORE brings the same call to 50 output tokens.
+    near(day(result.state, DAY)?.w, 10 * 3 + 40 * 7);
+    assert.equal(result.state.cursors[MAIN]?.call?.context, 10);
   });
 
   it("counts a subagent's W at the subagent weight, its added output and its turn's W too", async () => {
@@ -323,7 +344,7 @@ describe('runMeter', () => {
     const bytes = new MemoryTranscripts({ [MAIN]: transcript([replyLine(R1)]) });
     const clock = new FakeClock(at(12));
     const store = new UsageStore(files, DIR);
-    const run = (): Promise<MeterResult> => runMeter({ bytes, reader: shippedTranscripts(), store, clock },{ session: SESSION, transcripts: { main: [MAIN], subagents: [] }, subagentWeight: 1, modelWeights: [], maxBytes: 10_000 });
+    const run = (): Promise<MeterResult> => runMeter({ bytes, reader: shippedTranscripts(), usage: shippedUsage(), store, clock },{ session: SESSION, transcripts: { main: [MAIN], subagents: [] }, subagentWeight: 1, modelWeights: [], maxBytes: 10_000 });
     files.race = async () => {
       await run();
       bytes.append(MAIN, transcript([replyLine(R2)]));
