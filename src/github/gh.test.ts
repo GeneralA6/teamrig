@@ -1,8 +1,6 @@
-import { after, describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import type { ProgramRequest, ProgramResult, ProgramRunner } from '../plugin-api/index.ts';
 import {
   assigneeReadArgs,
   blockedByAddArgs,
@@ -12,7 +10,8 @@ import {
   isIssueTypeSet,
   COMMENTS_PAGE,
   commentsReadArgs,
-  GhOutputCapError,
+  GH_PROGRAM,
+  ghRunnerOver,
   GhRefusedError,
   isAllowedGh,
   isAreaLabelCreate,
@@ -56,7 +55,6 @@ import {
   labelReadArgs,
   MENTION_LISTS,
   mentionListArgs,
-  nodeGhRunner,
   reviewListArgs,
   type GhResult,
   subIssueAddArgs,
@@ -72,8 +70,6 @@ import { areaLabelSpec, MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts'
 import { MENTION_PAGES_MAX } from '../issues/scan-caps.ts';
 import { CLOSED_ISSUES_QUERY, closedPageArgs, OPEN_ISSUES_QUERY, openPageArgs, PULL_REQUESTS_QUERY, pullPageArgs } from './queries.ts';
 
-const DIR = mkdtempSync(join(tmpdir(), 'teamrig-gh-'));
-const ENV = { ...process.env };
 /** A first page of acme/web's open issues: a command line the runner starts. */
 const READ = openPageArgs({ owner: 'acme', name: 'web', after: undefined });
 /** An issue to open; its body holds what a shell or `-F` would read as code or a file, to show it stays text. */
@@ -81,13 +77,17 @@ const DRAFT: IssueDraft = { repo: 'acme/web', title: 'Fix login', body: 'Steps: 
 /** An issue, or a pull request, to comment on or close. */
 const ISSUE: IssueNumber = { repo: 'acme/web', number: 7 };
 
-after(() => rmSync(DIR, { recursive: true, force: true }));
+/** What the recording program runner answers when a spec gives it no answer of its own. */
+const RAN: ProgramResult = { end: { kind: 'exited', code: 0 }, stdout: 'out', stderr: 'err' };
 
-/** A Node script in the temp folder that stands in for gh; returns its path. */
-function script(name: string, source: string): string {
-  const path = join(DIR, name);
-  writeFileSync(path, source);
-  return path;
+/** A program runner that keeps each request and answers by `answer`, RAN when none is given. */
+function recordingProgram(answer: (request: ProgramRequest) => ProgramResult = () => RAN): { readonly run: ProgramRunner; readonly asked: ProgramRequest[] } {
+  const asked: ProgramRequest[] = [];
+  const run: ProgramRunner = (request) => {
+    asked.push(request);
+    return Promise.resolve(answer(request));
+  };
+  return { run, asked };
 }
 
 describe('isIssueQuery', () => {
@@ -491,13 +491,18 @@ describe("the repository's label file: its read, and the create of a label it na
     assert.deepEqual(reads.of('acme/web'), []);
   });
 
-  it('makes, through the real runner, a label the file it read names, and refuses it before that read', async () => {
-    const gh = script('label-file.mjs', `const args = process.argv.slice(2); process.stdout.write(args[3]?.endsWith('labels.json') ? ${JSON.stringify(FILE)} : JSON.stringify(args));`);
-    const runner = nodeGhRunner(process.execPath, [gh]);
+  it('makes, through the runner, a label the file it read names, and refuses it before that read', async () => {
+    const { run, asked } = recordingProgram((request) => ok(isLabelFileRead(request.args) ? FILE : 'made'));
+    const runner = ghRunnerOver(run);
     const create = labelCreateArgs('acme/web', AREA);
-    await assert.rejects(runner.run({ args: create, env: ENV }), GhRefusedError);
-    await runner.run({ args: labelFileReadArgs('acme/web'), env: ENV });
-    assert.deepEqual(JSON.parse((await runner.run({ args: create, env: ENV })).stdout), create);
+    await assert.rejects(runner.run({ args: create, env: {} }), GhRefusedError);
+    assert.equal(asked.length, 0);
+    await runner.run({ args: labelFileReadArgs('acme/web'), env: {} });
+    assert.equal((await runner.run({ args: create, env: {} })).stdout, 'made');
+    assert.deepEqual(
+      asked.map((request) => request.args),
+      [labelFileReadArgs('acme/web'), create],
+    );
   });
 });
 
@@ -962,63 +967,48 @@ describe('isReviewRead', () => {
   });
 });
 
-describe('nodeGhRunner', () => {
-  it('passes each argument as a list item, never through a shell, and tells gh not to prompt', async () => {
-    const gh = script('echo-args.mjs', 'process.stdout.write(JSON.stringify([process.argv.slice(2), process.env.GH_PROMPT_DISABLED]));');
+describe('ghRunnerOver', () => {
+  it('sends each request as one run of gh, its arguments a list, in its environment with gh told not to prompt or look for an update', async () => {
+    const { run, asked } = recordingProgram();
     const args = openPageArgs({ owner: 'acme', name: 'a;b $(x) "q" | y', after: undefined });
-    const result = await nodeGhRunner(process.execPath, [gh]).run({ args, env: ENV });
-    assert.deepEqual(result.end, { kind: 'exited', code: 0 });
-    assert.deepEqual(JSON.parse(result.stdout), [args, '1']);
+    const result = await ghRunnerOver(run).run({ args, env: { GH_TOKEN: 'a-key' } });
+    assert.deepEqual(asked, [{ program: GH_PROGRAM, args, env: { GH_TOKEN: 'a-key', GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' } }]);
+    assert.equal(result, RAN);
   });
 
-  it('refuses a command line that is not a page of a shipped query, and starts nothing', async () => {
-    const marker = join(DIR, 'started');
-    const gh = script('mark.cjs', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'x');`);
+  it('refuses a command line that is not a page of a shipped query, and never reaches the program runner', async () => {
+    const { run, asked } = recordingProgram();
     for (const args of [['issue', 'close', '7'], ['issue', 'list', '-R', 'acme/web'], [...READ, '--paginate']]) {
-      await assert.rejects(nodeGhRunner(process.execPath, [gh]).run({ args, env: ENV }), GhRefusedError, args.join(' ').slice(0, 40));
+      await assert.rejects(ghRunnerOver(run).run({ args, env: {} }), GhRefusedError, args.join(' ').slice(0, 40));
     }
     await assert.rejects(
-      nodeGhRunner(process.execPath, [gh]).run({ args: ['issue', 'close', '7'], env: ENV }),
+      ghRunnerOver(run).run({ args: ['issue', 'close', '7'], env: {} }),
       /teamrig only runs gh for its shipped issue queries, its two watch probes, to open, read, comment on, edit the body of, label, assign, close, link, type or set a field of an issue, to read a failed job's log, and to read the posts that may mention a user: it refuses gh issue close with these arguments/,
     );
-    assert.equal(existsSync(marker), false);
+    assert.deepEqual(asked, []);
   });
 
   it('starts the creation of one issue, one comment on or the close of one issue, and one link added', async () => {
-    const gh = script('echo-create.mjs', 'process.stdout.write(JSON.stringify(process.argv.slice(2)));');
-    for (const args of [issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'a;b $(x) | y'), issueCloseArgs(ISSUE), subIssueAddArgs(ISSUE, 42), blockedByAddArgs(ISSUE, 43)]) {
-      const result = await nodeGhRunner(process.execPath, [gh]).run({ args, env: ENV });
-      assert.deepEqual(JSON.parse(result.stdout), args);
+    const calls = [issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'a;b $(x) | y'), issueCloseArgs(ISSUE), subIssueAddArgs(ISSUE, 42), blockedByAddArgs(ISSUE, 43)];
+    const { run, asked } = recordingProgram();
+    const runner = ghRunnerOver(run);
+    for (const args of calls) {
+      await runner.run({ args, env: {} });
     }
+    assert.deepEqual(
+      asked.map((request) => request.args),
+      calls,
+    );
   });
 
-  it('keeps stdout and stderr apart, with the exit code', async () => {
-    const gh = script('fail.mjs', "process.stdout.write('out'); console.error('To get started with GitHub CLI, please run:  gh auth login'); process.exit(4);");
-    const result = await nodeGhRunner(process.execPath, [gh]).run({ args: READ, env: ENV });
-    assert.deepEqual(result, { end: { kind: 'exited', code: 4 }, stdout: 'out', stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' });
+  it("gives the program runner's result as it is: stdout and stderr apart, with how the run ended", async () => {
+    const failed: ProgramResult = { end: { kind: 'exited', code: 4 }, stdout: 'out', stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' };
+    const { run } = recordingProgram(() => failed);
+    assert.equal(await ghRunnerOver(run).run({ args: READ, env: {} }), failed);
   });
 
-  it('rejects with ENOENT when gh is not installed', async () => {
-    await assert.rejects(nodeGhRunner(join(DIR, 'no-such-gh')).run({ args: READ, env: ENV }), { code: 'ENOENT' });
-  });
-
-  it('stops a run that outlives its time, and says so by the signal', async () => {
-    const gh = script('hang.mjs', 'setTimeout(() => {}, 30_000);');
-    const result = await nodeGhRunner(process.execPath, [gh], 300).run({ args: READ, env: ENV });
-    assert.equal(result.end.kind, 'signal');
-  });
-
-  it('stops a run that prints more than its cap, stderr counted too, and rejects with nothing it printed', async () => {
-    const flood = script('flood.mjs', "process.stderr.write('e'.repeat(600)); const line = 'x'.repeat(1024); const write = () => { while (process.stdout.write(line)); process.stdout.once('drain', write); }; write();");
-    await assert.rejects(nodeGhRunner(process.execPath, [flood], 30_000, 4096).run({ args: READ, env: ENV }), GhOutputCapError);
-    const fits = script('fits.mjs', "process.stdout.write('o'.repeat(3000)); process.stderr.write('e'.repeat(1000));");
-    const result = await nodeGhRunner(process.execPath, [fits], 30_000, 4096).run({ args: READ, env: ENV });
-    assert.deepEqual([result.stdout.length, result.stderr.length], [3000, 1000]);
-  });
-
-  it('reads a character split across two writes whole', async () => {
-    const gh = script('split.mjs', "const bytes = Buffer.from('é'); process.stdout.write(bytes.subarray(0, 1)); setTimeout(() => process.stdout.write(bytes.subarray(1)), 50);");
-    const result = await nodeGhRunner(process.execPath, [gh]).run({ args: READ, env: ENV });
-    assert.equal(result.stdout, 'é');
+  it("passes the program runner's rejection on, as when gh is not installed", async () => {
+    const missing = new Error('spawn gh ENOENT');
+    await assert.rejects(ghRunnerOver(() => Promise.reject(missing)).run({ args: READ, env: {} }), missing);
   });
 });
