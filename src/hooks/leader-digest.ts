@@ -4,7 +4,7 @@ import type { Files } from '../core/files.ts';
 import { isNonNegativeInteger, stringField } from '../core/guards.ts';
 import { KIT_NAME } from '../core/home.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
-import { plainLine } from '../github/issues.ts';
+import { plainLine } from '../core/printable.ts';
 import type { RegisterEvent } from '../register/events.ts';
 import { foldEvents, type Task } from '../register/fold.ts';
 import type { TaskStatus } from '../register/model.ts';

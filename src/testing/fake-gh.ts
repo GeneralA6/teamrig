@@ -27,7 +27,6 @@ import {
   isMentionRead,
   isReviewRead,
   isWatchProbe,
-  MENTION_PAGE_SIZE,
   LabelFileReads,
   labelFileRepoOf,
   WATCH_PATHS,
@@ -37,6 +36,7 @@ import {
   type MentionList,
   type WatchPath,
 } from '../github/gh.ts';
+import { MENTION_PAGE_SIZE } from '../issues/scan-caps.ts';
 import { nodesOf } from '../github/issues.ts';
 import { FAKE_VIEWER } from './fake-issue-host.ts';
 import { CLOSED_ISSUES_QUERY, ISSUE_FIELDS_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, OPEN_PULLS_QUERY, PULL_PAGE_SIZE, PULL_REQUESTS_QUERY, RAW_FIELD } from '../github/queries.ts';

@@ -1,14 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
-import { NoAccessError, repoOwner, RepoTokens, TokenMissingError, TokenReadError, tokenName } from './tokens.ts';
+import { NoAccessError, repoOwner, RepoTokens, TokenMissingError, TokenReadError } from './tokens.ts';
 
 const ENV = { HOME: '/u' };
 
-describe('tokenName', () => {
-  it('names an owner\'s credential teamrig-gh-<owner> in lowercase', () => {
+describe('repoOwner', () => {
+  it('gives the owner of owner/name in lowercase', () => {
     assert.equal(repoOwner('Acme/Web'), 'acme');
-    assert.equal(tokenName('Acme'), 'teamrig-gh-acme');
   });
 });
 

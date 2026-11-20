@@ -2,7 +2,8 @@ import { isRecord, recordField, stringField, type JsonRecord } from '../core/gua
 import type { HostLinks } from '../issues/host.ts';
 import type { LinkedIssue } from '../issues/issue.ts';
 import { HOST_ID, type GhRunner } from './gh.ts';
-import { ISSUE_READ, nodesOf, plainLine, runRead } from './issues.ts';
+import { plainLine } from '../core/printable.ts';
+import { ISSUE_READ, nodesOf, runRead } from './issues.ts';
 import { linksPageArgs } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
