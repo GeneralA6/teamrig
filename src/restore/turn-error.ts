@@ -1,4 +1,3 @@
-import { stringField, type JsonRecord } from '../core/guards.ts';
 import type { TranscriptReader } from '../ports/host/index.ts';
 
 /**
@@ -14,16 +13,15 @@ export const TURN_TAIL_BYTES = 64 * 1024;
 const REPLY_ONLY = ['reply'] as const;
 
 /**
- * The error a StopFailure ended its turn on. The payload's `error` decides it; only a payload with none reads the
- * transcript's end (`tailOf`, undefined when there is none) through the host's `reader`, and a host that keeps no
- * transcript (`reader` undefined) leaves it unread. Undefined when neither names one.
+ * The error a failed turn ended on. `error`, the one its hook event names, decides it; only an event that names none
+ * reads the transcript's end (`tailOf`, undefined when there is none) through the host's `reader`, and a host that
+ * keeps no transcript (`reader` undefined) leaves it unread. Undefined when neither names one.
  */
 export async function turnErrorOf(
   reader: TranscriptReader | undefined,
-  payload: JsonRecord,
+  error: string | undefined,
   tailOf: () => Promise<string | undefined>,
 ): Promise<string | undefined> {
-  const error = stringField(payload, 'error');
   if (error !== undefined || reader === undefined) {
     return error;
   }

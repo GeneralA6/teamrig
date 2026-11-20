@@ -15,14 +15,14 @@ import { tabStatusTitleOf } from './hook-tab-status.ts';
  */
 export async function toolEnd(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
+  const { event } = await readHookInput(runtime);
   if (event === undefined) {
     return EXIT.ok;
   }
   const [tabTitle, context] = await Promise.all([
     tabStatusTitleOf(runtime, event).catch((): string | undefined => undefined),
     askedLinesOf(runtime, event).catch((): string | undefined => undefined),
-    trackRestore(payload, runtime).catch(() => undefined),
+    trackRestore(event, runtime).catch(() => undefined),
     recordTabNeed(runtime, event).catch(() => undefined),
   ]);
   writeReply(runtime, event.name === 'tool-failed' ? 'tool-failed' : 'tool-end', { tabTitle, context });
