@@ -32,6 +32,7 @@ import { sessionRef } from '../inputs.ts';
 import { findTeam, loadedConfig, openKit, pastOrPresentIdOf, rosterOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
+import { meetingsSource } from './read-meetings.ts';
 import { selfOf, sessionsSource } from './read-sessions.ts';
 import { configProblemsOf, servedPathOf, skippedOf, stampsOf, type DocumentSource, type ReadScope, type ServedFolder } from './read-source.ts';
 
@@ -63,6 +64,7 @@ const SOURCES: Partial<Record<DocumentName, (scope: ReadScope) => DocumentSource
   tasks: tasksSource,
   inbox: inboxSource,
   sessions: sessionsSource,
+  meetings: meetingsSource,
 };
 
 /**
