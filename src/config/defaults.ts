@@ -251,9 +251,6 @@ export const DEFAULT_ALERTS: AlertsConfig = { persistentFailureHours: 24 };
 /** The remote a repository's merge command merges into when `merge.remote` is unset. */
 export const DEFAULT_MERGE_REMOTE = 'origin';
 
-/** Where `teamrig worktree add` makes a repository's worktrees when `worktreeFolder` is unset: in its main checkout, where Claude Code makes its own. */
-export const DEFAULT_WORKTREE_FOLDER = '.claude/worktrees';
-
 /** A repository's docs folder when `docsFolder` is unset: `docs` at its root, where most projects keep theirs. */
 export const DEFAULT_DOCS_FOLDER = 'docs';
 

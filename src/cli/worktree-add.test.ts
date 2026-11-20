@@ -5,6 +5,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import { APP, CliHarness, TEAM } from '../testing/cli-harness.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeWorktreeFiles, FakeWorktreeGit, type FakeGitAnswers } from '../testing/fake-worktrees.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
 import { EXIT } from './runtime.ts';
 
@@ -70,6 +71,18 @@ describe('runCli: worktree add (T1305)', () => {
     const unknown = await kit.run(['worktree', 'add', 't9-page', '--repo', 'docs'], { worktrees: ports, cwd: '/elsewhere', env: IN_TEAM });
     assert.equal(unknown.code, EXIT.refused);
     assert.deepEqual(unknown.stdout, ['REFUSED team app has no delivery.repos.docs: it lists app, web']);
+  });
+
+  it('on a host whose folders teamrig does not know, refuses a repository with no worktreeFolder before any change, and adds to one that sets it', async () => {
+    const { git, ports } = world();
+    const refused = await new CliHarness(null, null).run(['worktree', 'add', 't9/parser'], { worktrees: ports, cwd: '/w/t4', host: NO_PATHS_HOST });
+    assert.equal(refused.code, EXIT.refused);
+    assert.deepEqual(refused.stdout, [`REFUSED no worktree folder is set for ${MAIN} and the host names none: set worktreeFolder in its delivery.repos entry`]);
+    assert.deepEqual(git.steps, []);
+    const hooks = new FakeHooks().answer(SETUP, { lines: [] });
+    const listed = await new CliHarness(LISTED).run(['worktree', 'add', 't9-parser'], { worktrees: ports, hooks, cwd: '/w/t4', env: IN_TEAM, host: NO_PATHS_HOST });
+    assert.equal(listed.code, EXIT.ok, listed.stdout.join('\n'));
+    assert.deepEqual(git.steps.slice(1), [`worktree add -b t9-parser ${resolve('/w/wt', 't9-parser')} origin/main in ${MAIN}`]);
   });
 
   it('refuses --repo outside a team, and a folder in no repository without it', async () => {

@@ -5,6 +5,7 @@ import { isRecord, recordField, type JsonRecord } from '../core/guards.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import { EXIT } from './runtime.ts';
 
 const ANSWERS_LOG = join(TEAM_HOME, 'state', 'prompt-answers.jsonl');
@@ -204,6 +205,13 @@ describe('hook route-allow: the ship role (T2984)', () => {
     other.git.checkouts.set(SHIP_WORKTREE, { top: SHIP_WORKTREE, branch: 't1-cli', mainCheckout: '/repo/other', linked: true });
     assert.deepEqual(await other.kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: other.git }), NOTHING, "another repository's worktree");
     assert.deepEqual(await answersOf(kit), []);
+  });
+
+  it('on a host whose folders teamrig does not know, gives the ship only where the repository sets its worktree folder: it guesses no default (C4)', async () => {
+    const unset = await shipKit();
+    assert.deepEqual(await unset.kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: unset.git, host: NO_PATHS_HOST }), NOTHING);
+    const set = await shipKit({ delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT, shipTool: SHIP_TOOL, worktreeFolder: '.claude/worktrees' } } } });
+    assert.equal(decisionOf(await set.kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: set.git, host: NO_PATHS_HOST })), 'allow');
   });
 
   it('gives no ship when the tool has a change, is untracked, sits off main, or in another repository (C5)', async () => {

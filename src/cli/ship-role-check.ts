@@ -1,5 +1,4 @@
 import { dirname, isAbsolute, posix, resolve } from 'node:path';
-import { DEFAULT_WORKTREE_FOLDER } from '../config/defaults.ts';
 import type { DeliveryRepoConfig, KitConfig } from '../config/types.ts';
 import { taskFolder } from '../core/home.ts';
 import { isAtOrBelow, samePath } from '../core/paths.ts';
@@ -13,6 +12,7 @@ import { JsonlEventLog } from '../register/store.ts';
 import { moduleSpecifiersOf } from './module-specifiers.ts';
 import type { Kit } from './kit.ts';
 import type { CliRuntime } from './runtime.ts';
+import { worktreeFolderOf } from './worktree-folder.ts';
 
 /**
  * The allow's checks of a service role's ship call (T2984): the line names the tool and the places, and these prove the
@@ -506,7 +506,9 @@ export async function shipBranchOf(runtime: CliRuntime, kit: Kit, config: KitCon
   if (repo !== undefined && run.release !== undefined) {
     return releaseTargetOf(runtime, kit, repo, holder, run, run.release);
   }
-  if (repo === undefined || !isInside(run.worktree, resolve(repo.mainDir, repo.config.worktreeFolder ?? DEFAULT_WORKTREE_FOLDER))) {
+  // With no folder set the worktree must sit where the host makes its own; where the host names none, nothing proves the place, so the permission check decides.
+  const worktrees = repo === undefined ? undefined : worktreeFolderOf(runtime, repo.mainDir, repo.config.worktreeFolder);
+  if (repo === undefined || worktrees === undefined || !isInside(run.worktree, worktrees)) {
     return undefined;
   }
   const git = runtime.mergeGit;
