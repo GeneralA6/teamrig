@@ -64,6 +64,18 @@ export function holdsDescription(task: Task, text: string | null): boolean {
   return mark.chars === descriptionCut.chars && mark.hash === descriptionCut.hash;
 }
 
+/**
+ * The task with the description its task line left out: a cut task takes the text of `whole`, the same task as the
+ * history folds it, and holds no mark. A task that is not cut is returned as is, and a cut one stays cut when the
+ * history lacks it or holds another text than the one cut, so a reader never shows a text the mark does not name.
+ */
+export function describedTask(task: Task, whole: Task | undefined): Task {
+  if (task.descriptionCut === null || whole === undefined || !holdsDescription(task, whole.description)) {
+    return task;
+  }
+  return { ...task, description: whole.description, descriptionCut: null };
+}
+
 /** The mark a task line's `descriptionCut` holds, null for none, or why the value is neither. */
 export function parseDescriptionCut(value: unknown): DescriptionCut | null | string {
   if (value === null) {
