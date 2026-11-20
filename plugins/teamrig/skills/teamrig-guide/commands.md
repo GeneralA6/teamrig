@@ -4441,8 +4441,12 @@ to). A value `config validate` finds wrong is named with its problem, read as it
 Flags:
 
 - `--json`: prints one JSON document, `{ "file", "rows" }`, each row with `path`, `group`, `type`, `items`, `enum`,
-  `min`, `max`, `value`, `default`, `isDefault`, `meaning`, `editable`, `gatedBy`, `readOnly` and `problem` (the
-  ones that apply), for a settings screen such as the pane's.
+  `min`, `max`, `value`, `default`, `isDefault`, `meaning`, `editable`, `gatedBy`, `readOnly`, `problem` and
+  `resolved` (the ones that apply), for a settings screen such as the pane's. `resolved` is on `github.watcher`
+  alone: `{ "session", "from" }`, the session teamrig reads and whether the key (`key`) or the fallback
+  (`fallback`: the first holder of a role holding `issue comment`, else the lead) gives it.
+- `--team <id>`: reads another team of your tree, above, below or beside yours; a team outside it, or one with no
+  config in the kit home, is refused.
 
 Example:
 

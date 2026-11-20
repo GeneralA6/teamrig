@@ -34,6 +34,11 @@ export interface SettingRow {
   readonly readOnly?: string;
   /** What `config validate` finds wrong in its value: the key is read as its default until it is fixed. */
   readonly problem?: string;
+  /**
+   * For `github.watcher`, which teamrig fills when it is unset (github/watcher.ts): the session it reads, and whether
+   * the key named it or the fallback picked it, so a screen shows the holder without repeating the rule (#1513).
+   */
+  readonly resolved?: { readonly session: string; readonly from: 'key' | 'fallback' };
 }
 
 /**

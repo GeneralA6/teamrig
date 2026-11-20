@@ -7,8 +7,24 @@ import { isRecord, type JsonRecord } from '../../core/guards.ts';
 import { clientRootOf } from '../../exec/client-integrity.ts';
 import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { checkedNextConfig, configFileJson, configLockOf, issueText, leadOnly, openTeamKit, reloadTeamConfig, requireConfig, rosterOf } from '../kit.ts';
+import type { KitConfig } from '../../config/types.ts';
+import { githubWatcher } from '../../github/watcher.ts';
+import {
+  checkedNextConfig,
+  configFileJson,
+  configLockOf,
+  findTeam,
+  issueText,
+  leadOnly,
+  openKit,
+  openTeamKit,
+  reloadTeamConfig,
+  requireConfig,
+  rosterOf,
+  type Kit,
+} from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { loadTree } from '../tree.ts';
 
 /**
  * The config schema beside this CLI: the plugin's own copy for the installed CLI (`<plugin>/dist/cli/main.js`), the
@@ -20,22 +36,23 @@ export function configSchemaPathOf(script: string): string {
 }
 
 /**
- * `config get [<key>] [--json]`: every key of the team config the schema describes, or those at and under `<key>`,
- * with its value, its default and whether `config set` may change it; `--json` for a settings screen.
+ * `config get [<key>] [--json] [--team <id>]`: every key of the team config the schema describes, or those at and
+ * under `<key>`, with its value, its default and whether `config set` may change it; `--json` for a settings screen,
+ * `--team` for another team of the caller's tree (#1513), so the pane reads every team through teamrig.
  */
 export async function get(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const [key, extra] = args.positionals;
   if (extra !== undefined) {
     throw new UsageError(`unexpected "${extra}"`);
   }
-  const { load } = await openTeamKit(runtime);
+  const { load } = await readKitOf(runtime, args.flags.get('team'));
   if (load.status === 'missing') {
     throw new RefusedError(`no team config at ${load.path}`);
   }
   if (load.status === 'unreadable') {
     throw new RefusedError(`${load.path} cannot be read: ${issueText(load.issue)}; teamrig config validate shows it`);
   }
-  const all = await settingRowsOf(runtime, load);
+  const all = (await settingRowsOf(runtime, load)).map((row) => (row.path === WATCHER_PATH ? { ...row, resolved: resolvedWatcher(load.config) } : row));
   const rows = key === undefined ? all : rowsUnder(all, key);
   if (rows.length === 0) {
     throw new RefusedError(`the config has no key ${key ?? ''}; teamrig config get lists them`);
@@ -49,6 +66,35 @@ export async function get(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
 }
 
 type LoadedConfig = Extract<ConfigLoad, { readonly status: 'loaded' }>;
+
+/**
+ * The kit `config get` reads: the caller's team's, else with `--team` that of another team of the caller's tree, above,
+ * below or beside it; a team outside the tree, or with no config here, is refused.
+ */
+async function readKitOf(runtime: CliRuntime, team: string | undefined): Promise<Kit> {
+  if (team === undefined) {
+    return openTeamKit(runtime);
+  }
+  const own = (await findTeam(runtime)).team;
+  if (team === own) {
+    return openKit(runtime, own);
+  }
+  const { tree } = await loadTree(runtime);
+  if (tree.leadOf(team) === undefined) {
+    throw new RefusedError(`no team ${team} with a config in this kit home`);
+  }
+  if (!tree.sameTree(own, team)) {
+    throw new RefusedError(`team ${team} is not in team ${own}'s tree: --team names a team above, below or beside yours`);
+  }
+  return openKit(runtime, team);
+}
+
+const WATCHER_PATH = 'github.watcher';
+
+/** The session that hears the GitHub news no task owner takes, and whether `github.watcher` names it or the fallback picks it. */
+function resolvedWatcher(config: KitConfig): NonNullable<SettingRow['resolved']> {
+  return { session: githubWatcher(config), from: config.github.watcher === undefined ? 'fallback' : 'key' };
+}
 
 /** Every key the schema beside this CLI describes, read against the team's file. */
 async function settingRowsOf(runtime: CliRuntime, load: LoadedConfig): Promise<readonly SettingRow[]> {

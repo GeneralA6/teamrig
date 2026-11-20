@@ -545,9 +545,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       1024) MB (one changed within them is not judged), and by Claude Code's /skill-doctor, which also
       counts plugins' skills, and the user's ones used only in other projects; it names the newest setup
       backup, or NO BACKUP; works before a team exists; it only reads
-  config get [<key>] [--json]   every key of the team config, or those at and under <key>: its value
+  config get [<key>] [--json] [--team <id>]   every key of the team config, or those at and under <key>: its value
       against its default, and read-only with why (the roster, an owner gate, a folder, a map, a key off
-      the lead's list); --json for a screen
+      the lead's list); --json for a screen; --team for another team of your tree
   config set <key> <value> | config set <key> --unset [--yes] [--session <id|name>]   the lead only:
       changes one key config get marks editable, the value read by the key's type (a list as JSON or
       a,b); --unset removes it to read its default; without --yes it shows the change; the whole new
