@@ -7,13 +7,14 @@ import { assignIssue, loginRefusal, MAX_ASSIGN_LOGINS } from '../../issues/assig
 import { CLOSE_REASONS, hostKindOf, parseIssueTarget, targetText, type CloseReason, type HostKind, type IssueTarget } from '../../issues/host.ts';
 import { bareRef, refOf } from '../../issues/ref.ts';
 import { checkReply, sendReply, type FollowUp, type ReplyWrite } from '../../issues/reply.ts';
-import { issueDoc, mirroredIssues, similarIssues } from '../../issues/similar.ts';
+import { issueDoc, mirroredIssues, mirrorsIssue, similarIssues } from '../../issues/similar.ts';
 import { holderOf, sessionLogins } from '../../issues/status-push.ts';
 import { editIssueBody, labelIssue, labelRefusal, postRefusal, writeIssue, type IssueWrite } from '../../issues/write.ts';
 import type { Task } from '../../register/fold.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
+import { withDescriptions } from '../card-texts.ts';
 import { callerOf } from '../inputs.ts';
 import { hostsOf, type Hosts } from '../issue-hosts.ts';
 import { sessionIdOf } from '../kit.ts';
@@ -337,20 +338,27 @@ function duplicateOfFlag(text: string | undefined, target: IssueTarget, reason: 
  * `issue similar <owner/name#n>` (T2695): the issues the register mirrors that may be duplicates of the one named, best
  * first (issues/similar.ts): TF-IDF over the mirrored titles and bodies, at most SIMILAR_TOP at or above
  * `github.similarThreshold`. It reads the register only, never the host, so the issue must be in it (`issue sync` adds
- * it). Exit 0, with or without candidates.
+ * it). A snapshot's task line leaves the body out (T4781), so the bodies compared, the named issue's and the mirrored
+ * ones', come from the history when any of them is cut (withDescriptions). Exit 0, with or without candidates.
  */
 export async function issueSimilar(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const target = targetOf(args);
   const { config, register } = await openTeam(runtime, 'read');
-  const tasks = [...(await register.snapshot()).state.tasks.values()];
+  const working = await register.snapshot();
   const ref = issueRef(target.repo, target.number);
-  const own = tasks.find((task) => task.ref?.toLowerCase() === ref);
-  if (own === undefined || own.ref === null) {
+  const named = [...working.state.tasks.values()].find((task) => task.ref?.toLowerCase() === ref);
+  if (named === undefined || named.ref === null) {
     throw new RefusedError(`${targetText(target)} is not in the task list: teamrig issue sync adds a task for each open issue of github.repos`);
   }
-  const corpus = mirroredIssues(tasks, new Date(runtime.clock.now()), config.github.closedDays).filter((doc) => doc.ref !== own.ref);
+  const ownRef = named.ref;
+  const now = new Date(runtime.clock.now());
+  const mirrored = mirrorsIssue(now, config.github.closedDays);
+  const read = await withDescriptions(working, () => register.history(), (task) => task.id === named.id || mirrored(task));
+  const tasks = [...read.state.tasks.values()];
+  const own = read.state.tasks.get(named.id) ?? named;
+  const corpus = mirroredIssues(tasks, now, config.github.closedDays).filter((doc) => doc.ref !== ownRef);
   const threshold = config.github.similarThreshold;
-  const matches = similarIssues(issueDoc(own.ref, own), corpus, threshold);
+  const matches = similarIssues(issueDoc(ownRef, own), corpus, threshold);
   const ids = new Map(tasks.flatMap((task) => (task.ref === null ? [] : [[task.ref, task.id] as const])));
   const found = matches.length === 0 ? 'none' : String(matches.length);
   runtime.out.stdout(`SIMILAR ${targetText(target)} (${own.id}): ${found} of ${corpus.length} mirrored issues at or above ${threshold} (github.similarThreshold)`);
