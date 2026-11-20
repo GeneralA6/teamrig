@@ -47,6 +47,19 @@ test('a note that already closes, fixes or resolves the issue gets no second lin
   assert.equal(withCloses('Closes #19001', ISSUE, REPO), 'Closes #19001\n\nCloses #1900');
 });
 
+test("a slice's note that is Part of the issue gets no Closes line, so its merge leaves the issue open (T4796)", () => {
+  assert.equal(withCloses('## What\n\nStep A. Part of #1900.', ISSUE, REPO), '## What\n\nStep A. Part of #1900.');
+  assert.equal(withCloses('part of: teamrig/teamrig#1900', ISSUE, REPO), 'part of: teamrig/teamrig#1900');
+  assert.equal(withCloses('Part of #1901', ISSUE, REPO), 'Part of #1901\n\nCloses #1900');
+});
+
+test("a slice's note that Refs the issue gets no Closes line, so its merge leaves the issue open (T4796)", () => {
+  assert.equal(withCloses('Refs #1900', ISSUE, REPO), 'Refs #1900');
+  assert.equal(withCloses('ref: Teamrig/Teamrig#1900', ISSUE, REPO), 'ref: Teamrig/Teamrig#1900');
+  assert.equal(withCloses('Refs #19000', ISSUE, REPO), 'Refs #19000\n\nCloses #1900');
+  assert.equal(withCloses('Prefs #1900', ISSUE, REPO), 'Prefs #1900\n\nCloses #1900');
+});
+
 test('an unread issue leaves the title to the first commit subject, still closing it (T4796)', () => {
   const face = facePull(facts({ issue: null }));
   assert.equal(face.title, 'T42: feat(ship): titles from the task (T42)');

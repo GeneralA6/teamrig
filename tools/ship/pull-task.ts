@@ -62,12 +62,21 @@ export function issueRef(target: IssueTarget, repo: string): string {
 
 const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 
-/** The note with a `Closes` line for the issue appended, unless it already closes, fixes or resolves that issue. */
+/**
+ * The keywords before an issue ref that say what the pull request does to it: GitHub's closing keywords, and the
+ * `Part of` and `Refs` a slice of a larger issue says, which must leave the issue open for the later slices.
+ */
+const NAMING_KEYWORDS = 'close[sd]?|fix(?:e[sd])?|resolve[sd]?|part\\s+of|refs?';
+
+/**
+ * The note with a `Closes` line for the issue appended, unless it already says what it does to that issue: closes,
+ * fixes or resolves it, or is `Part of` it or `Refs` it, as a slice whose merge must not close it.
+ */
 export function withCloses(note: string | null, target: IssueTarget, repo: string): string {
   const refs = [`${target.repo}#${target.number}`, ...(target.repo.toLowerCase() === repo.toLowerCase() ? [`#${target.number}`] : [])];
-  const closing = new RegExp(`\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\\s+(?:${refs.map(escaped).join('|')})(?!\\d)`, 'i');
+  const naming = new RegExp(`\\b(?:${NAMING_KEYWORDS}):?\\s+(?:${refs.map(escaped).join('|')})(?!\\d)`, 'i');
   const text = (note ?? '').trim();
-  if (closing.test(text)) return text;
+  if (naming.test(text)) return text;
   const line = `Closes ${issueRef(target, repo)}`;
   return text === '' ? line : `${text}\n\n${line}`;
 }
