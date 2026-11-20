@@ -266,18 +266,6 @@ function skipReason(row: MigrateRow, task: Task | undefined, repos: readonly str
   return judge(task, refOf({ repo: row.repo, number: 1 }));
 }
 
-/** The number of the issue GitHub's create answered with, from the JSON gh prints; undefined when there is none. */
-export function createdNumber(stdout: string): number | undefined {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(stdout);
-  } catch {
-    return undefined;
-  }
-  const number = isRecord(raw) ? raw['number'] : undefined;
-  return typeof number === 'number' && Number.isSafeInteger(number) && number > 0 ? number : undefined;
-}
-
 /**
  * The plan as a Markdown page for a reviewer: every issue in full (task, repository, labels, title, body), each
  * task kept local with its reason, each skipped row with why, the live tasks no row names, and the counts.
