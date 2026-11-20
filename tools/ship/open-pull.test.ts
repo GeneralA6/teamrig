@@ -5,6 +5,7 @@ import type { MergeClearance } from './approval.ts';
 import type { Gh } from './github.ts';
 import type { Credential } from './keychain.ts';
 import { type OpenPullArgs, type OpenPullDeps, openPullCommand, parseOpenPullArgs, realOpenPullDeps, runOpenPull } from './open-pull.ts';
+import type { PullTask } from './pull-task.ts';
 import { parseProfiles } from './repos.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
 
@@ -33,7 +34,16 @@ interface Fixture {
   note?: string | null;
   /** An earlier push's open pull request #5, on `${BRANCH}-2` at OLDER, carrying these commit subjects. */
   older?: readonly string[];
+  /** The register's task of the branch (T4796): TASK unless given; null for none. */
+  task?: PullTask | null;
+  /** The labels the repo has (T4796); none unless given, so no label is added. */
+  repoLabels?: readonly string[];
 }
+
+/** The branch's task in the register, linked to issue #9 of REPO (whose name GitHub reads lower-cased). */
+const TASK: PullTask = { id: 'T1', priority: 1, type: null, ref: `gh:${REPO}#9` };
+const ISSUE_PATH = `repos/${REPO.toLowerCase()}/issues/9`;
+const LABELS_PATH = `repos/${REPO}/issues/7/labels`;
 
 const OLDER = 'ddd5555ccc1111';
 const LIST_PULLS = `repos/${REPO}/pulls?state=open&base=main&per_page=100`;
@@ -49,6 +59,7 @@ function fixture(options: Fixture = {}): {
   gh: ReturnType<typeof mock.fn<Gh>>;
   ghFor: ReturnType<typeof mock.fn<OpenPullDeps['ghFor']>>;
   clearMerge: ReturnType<typeof mock.fn<OpenPullDeps['clearMerge']>>;
+  pullTask: ReturnType<typeof mock.fn<OpenPullDeps['pullTask']>>;
 } {
   const pushed = options.pushed ?? SHA;
   const answers: Record<string, string> = {
@@ -69,8 +80,12 @@ function fixture(options: Fixture = {}): {
     if (path === `repos/${REPO}/pulls`) return pullJson(options.openedSha ?? pushed);
     if (path === LIST_PULLS) return `[${pullJson(pushed)}${options.older === undefined ? '' : `,${JSON.stringify(older)}`}]`;
     if (path === `repos/${REPO}/issues/5/comments` || path === `repos/${REPO}/pulls/5`) return '{}';
+    if (path === ISSUE_PATH) return JSON.stringify({ title: 'Ship titles', labels: [{ name: 'area:cli' }] });
+    if (path === `repos/${REPO}/labels?per_page=100`) return JSON.stringify((options.repoLabels ?? []).map(name => ({ name })));
+    if (path === LABELS_PATH) return '[]';
     throw new Error(`unexpected gh ${args.join(' ')}`);
   });
+  const pullTask = mock.fn<OpenPullDeps['pullTask']>(() => Promise.resolve(options.task === null ? undefined : (options.task ?? TASK)));
   const ghFor = mock.fn<OpenPullDeps['ghFor']>(() => gh);
   const clearMerge = mock.fn<OpenPullDeps['clearMerge']>(() => Promise.resolve(options.clearance ?? { kind: 'approved', by: 'teamrig' }));
   const out: string[] = [];
@@ -85,11 +100,12 @@ function fixture(options: Fixture = {}): {
     credential: () => options.credential ?? { kind: 'found', secret: GH_SECRET },
     ghFor,
     clearMerge,
+    pullTask,
     readText: path => (path === NOTE_FILE ? (options.note === undefined ? NOTE : options.note) : null),
     out: line => out.push(line),
     err: line => err.push(line),
   };
-  return { deps, out, err, writes, gh, ghFor, clearMerge };
+  return { deps, out, err, writes, gh, ghFor, clearMerge, pullTask };
 }
 
 const fieldOf = (write: readonly string[], name: string): string | undefined => write.find(arg => arg.startsWith(`${name}=`))?.slice(name.length + 1);
@@ -102,10 +118,10 @@ test('opens the pull request of the approved pushed head with the ship token and
   assert.equal(writes.length, 1);
   const [write] = writes;
   assert.ok(write !== undefined);
-  assert.equal(fieldOf(write, 'title'), `Merge ${BRANCH} into main: 2 commit(s)`);
+  assert.equal(fieldOf(write, 'title'), 'T1: Ship titles');
   assert.equal(fieldOf(write, 'head'), BRANCH);
   assert.equal(fieldOf(write, 'base'), 'main');
-  assert.match(fieldOf(write, 'body') ?? '', /^## What\n\nA thing\.\n\n## Reach\n\nAll users\.\n\n## Commits\n- cli: a\n- docs: b\n/);
+  assert.match(fieldOf(write, 'body') ?? '', /^## What\n\nA thing\.\n\n## Reach\n\nAll users\.\n\nCloses #9\n\n## Commits\n- cli: a\n- docs: b\n/);
   assert.deepEqual(out, [`opened pull request #7 https://github.com/${REPO}/pull/7`]);
 });
 
@@ -127,6 +143,40 @@ test('closes the earlier push\'s pull request that the one it opened or found re
   assert.equal(await runOpenPull(ARGS, kept.deps), 0);
   assert.equal(kept.writes.length, 1);
   assert.deepEqual(kept.out.slice(1), [`warning: pull request #5 https://github.com/${REPO}/pull/5 stays open: #7 lacks its "feat: c"`]);
+});
+
+test("labels the pull request it opened or found with the repo's labels of its task (T4796)", async () => {
+  for (const open of [{}, { openSha: SHA }]) {
+    const { deps, out, writes, pullTask } = fixture({ ...open, repoLabels: ['p1', 'Task', 'area:cli'] });
+    assert.equal(await runOpenPull(ARGS, deps), 0);
+    assert.deepEqual(pullTask.mock.calls.map(call => call.arguments), [[BRANCH]]);
+    const labelled = writes.filter(write => write[1] === LABELS_PATH);
+    assert.deepEqual(labelled.map(write => write.slice(2)), [['-X', 'POST', '-f', 'labels[]=p1', '-f', 'labels[]=Task', '-f', 'labels[]=area:cli']]);
+    assert.deepEqual(out, [`${'openSha' in open ? 'found' : 'opened'} pull request #7 https://github.com/${REPO}/pull/7`, 'labelled pull request #7: p1, Task, area:cli']);
+  }
+});
+
+test('opens no pull request for a task that links no issue, but prints one already open with a warning (T4796)', async () => {
+  for (const task of [{ ...TASK, ref: null }, null]) {
+    const { deps, err, writes } = fixture({ task });
+    assert.equal(await runOpenPull(ARGS, deps), 1);
+    assert.deepEqual(writes, []);
+    assert.match(err[0] ?? '', task === null ? /^REFUSED the register holds no task T1, feat\/t1-a's task/ : /^REFUSED T1 links no GitHub issue/);
+  }
+  const { deps, out, writes } = fixture({ task: { ...TASK, ref: null }, openSha: SHA });
+  assert.equal(await runOpenPull(ARGS, deps), 0);
+  assert.deepEqual(writes, []);
+  assert.match(out[1] ?? '', /^warning: pull request #7: T1 links no GitHub issue/);
+});
+
+test('titles the pull request of a task kept off GitHub by its first commit, closing nothing (T4796)', async () => {
+  const { deps, out, writes } = fixture({ task: { ...TASK, ref: 'local: a security fix' } });
+  assert.equal(await runOpenPull(ARGS, deps), 0);
+  const [write] = writes;
+  assert.ok(write !== undefined);
+  assert.equal(fieldOf(write, 'title'), 'cli: a');
+  assert.doesNotMatch(fieldOf(write, 'body') ?? '', /Closes/);
+  assert.deepEqual(out, ['T1 is kept off GitHub: its pull request is titled by its first commit and closes no issue', `opened pull request #7 https://github.com/${REPO}/pull/7`]);
 });
 
 test('refuses an open pull request at another head', async () => {
