@@ -1,3 +1,5 @@
+import { isRecord } from '../core/guards.ts';
+
 /** The folders of one machine: the one a recording was made on, or the one that replays it. */
 export interface RecordedFolders {
   /** The folder the recorded session ran in. */
@@ -24,6 +26,21 @@ export function literalPattern(text: string): string {
 /** The folder name Claude Code keeps a project's transcripts under: the session folder, each character that is no letter or digit as `-`. */
 export function projectSlug(cwd: string): string {
   return cwd.replace(/[^A-Za-z0-9]/g, '-');
+}
+
+/**
+ * A JSON value with `change` applied to every string in it, a record's keys included. A recording has its folders
+ * named and filled this way, value by value: in raw JSON text a path's last segment would take the `\n` escape that
+ * follows it for part of the path.
+ */
+export function withStrings(value: unknown, change: (text: string) => string): unknown {
+  if (typeof value === 'string') {
+    return change(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item: unknown) => withStrings(item, change));
+  }
+  return isRecord(value) ? Object.fromEntries(Object.entries(value).map(([key, item]) => [change(key), withStrings(item, change)])) : value;
 }
 
 /**

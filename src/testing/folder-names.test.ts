@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { FolderNames, literalPattern, PLACEHOLDERS, projectSlug, type RecordedFolders } from './folder-names.ts';
+import { FolderNames, literalPattern, PLACEHOLDERS, projectSlug, withStrings, type RecordedFolders } from './folder-names.ts';
 
 const WINDOWS: RecordedFolders = { cwd: 'C:\\Temp\\rec\\cwd', temp: 'C:\\Temp', home: 'C:\\Users\\someone' };
 const POSIX: RecordedFolders = { cwd: '/tmp/rec/cwd', temp: '/tmp', home: '/home/someone' };
@@ -23,6 +23,31 @@ describe('projectSlug', () => {
   it('names a session folder as Claude Code names its transcripts folder', () => {
     assert.equal(projectSlug(WINDOWS.cwd), 'C--Temp-rec-cwd');
     assert.equal(projectSlug(POSIX.cwd), '-tmp-rec-cwd');
+  });
+});
+
+describe('withStrings', () => {
+  it('changes every string of a JSON value, keys included, and keeps what is no string', () => {
+    const upper = (text: string): string => text.toUpperCase();
+    assert.deepEqual(withStrings({ a: 'x', list: ['y', 1, null, { deep: 'z' }], flag: true, none: null }, upper), {
+      A: 'X',
+      LIST: ['Y', 1, null, { DEEP: 'Z' }],
+      FLAG: true,
+      NONE: null,
+    });
+    assert.equal(withStrings('x', upper), 'X');
+    assert.equal(withStrings(7, upper), 7);
+  });
+
+  it('names a path that an escaped line break follows without taking the escape for its last segment', () => {
+    const names = new FolderNames(WINDOWS);
+    const value = { text: 'C:\\Temp\\rec\\cwd\\notes.txt\nnext' };
+    const named = { text: '{{cwd}}/notes.txt\nnext' };
+    assert.deepEqual(
+      withStrings(value, (text) => names.named(text)),
+      named,
+    );
+    assert.equal(names.named(JSON.stringify(value)), '{"text":"{{cwd}}/notes.txt/nnext"}');
   });
 });
 
