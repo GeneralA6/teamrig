@@ -1,3 +1,4 @@
+import { holdsDescription } from '../register/description-cut.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES, GITHUB_SOURCE, isIssueRef } from '../register/model.ts';
 import type { ImportChanges, ImportInput, StatusInput } from '../register/policy.ts';
@@ -142,11 +143,15 @@ function namesText(names: readonly string[]): string {
   return names.length < 2 ? last : `${names.slice(0, -1).join(', ')} and ${last}`;
 }
 
-/** The priority the issue now gives, and with `followsText` its title and description, where they differ from the task's. */
+/**
+ * The priority the issue now gives, and with `followsText` its title and description, where they differ from the
+ * task's. The description is judged by holdsDescription, as the snapshot's task lines leave descriptions out: a plain
+ * comparison would see every such task as changed and write its body again at each sync.
+ */
 function fieldChanges(task: Task, wanted: IssueTask, followsText: boolean): ImportChanges {
   return {
     ...(!followsText || task.title === wanted.title ? {} : { title: wanted.title }),
-    ...(!followsText || task.description === wanted.description ? {} : { description: wanted.description }),
+    ...(!followsText || holdsDescription(task, wanted.description) ? {} : { description: wanted.description }),
     ...(task.priority === wanted.priority ? {} : { priority: wanted.priority }),
   };
 }
