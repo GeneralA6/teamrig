@@ -2451,9 +2451,9 @@ The read side of teamrig's public interface, for a program such as a pane, a das
 Nothing else is written to stdout, so every line there parses; a refusal is one `REFUSED` line on stderr with exit 2
 and no document, where other commands print it to stdout. It writes no file, marks nothing read and takes no lock.
 
-Two documents are served today. `tasks` is the register's working set, the active tasks and the finished ones not yet
-archived. `inbox` is the asking session's own inbox. The others of interface 1 (`sessions`, `meetings`, `config`) are
-a usage error until they are served.
+Three documents are served today. `tasks` is the register's working set, the active tasks and the finished ones not
+yet archived. `inbox` is the asking session's own inbox. `sessions` is every session of your tree of teams. The
+others of interface 1 (`meetings`, `config`) are a usage error until they are served.
 
 Every document carries:
 
@@ -2476,7 +2476,34 @@ and the read ones posted in the last 24 hours (`--since`), in file order, each `
 names it (a session's id, `<team>/<id>` from another team, `github` for a line the issue import posted), both `null`
 for a line with no date. Reading it marks nothing read, unlike `teamrig inbox read`. The 24 hours are counted when
 you ask and are no part of `revision`: with an unchanged revision, drop the read lines that left the window
-yourself. `inbox` needs `--session` (or `$TEAMRIG_SESSION`) and takes no `--team`.
+yourself. `inbox` needs `--session` (or `$TEAMRIG_SESSION`, or a `--conversation` one of your team's sessions holds)
+and takes no `--team`.
+
+`sessions` adds `self`, `teams`, `sessions`, `failures` and `cuts`, and is the same whatever `--team` names: the tree
+is your own.
+
+- `teams`: every team of the tree, the root first, each `{ "id", "parent", "active", "retired" }` (`parent` is `null`
+  for the root; the two counts are its sessions and its retired ones).
+- `sessions`: each team's sessions in its config's order, then its retired ones. A row holds `team`, `id`, `name`,
+  `formerNames`, `roles`, `leader` (its direct leader's id; `null` for the team's lead and for a retired session),
+  `ledBy` (the leaders above it, nearest first), `leads` (how many it leads directly), `active` (`false` once it is
+  retired and not hired again), `launch` (`{ "model", "effort", "text" }`, the first two `null` for the default),
+  `hire` (`{ "at", "by", "scope", "reason", "reviewBy", "approvedBy", "burst" }`; `null` for a session the config
+  named with no hire), `rehiredFrom` and `retire` (each `{ "at", "by", "reason", "heir" }` or `null`), `unread` (as
+  in `inbox`), `state` (`busy`, `idle` or `asking`; `null` with no tab open), `ask` (`{ "kind", "task" }` while it
+  asks a person something: the kind is `permission`, `question`, `elicitation`, `decision` or `error`, the task is
+  `null` unless the ask names a task id, and the ask's words are never served), `since` (when its tab took the
+  state), `host` (`{ "id", "name" }` of the program it runs in; `null` on a retired row) and `conversation` (the
+  host's id of the conversation it last started in).
+- `self`: `{ "team", "session" }` of the session holding the conversation `--conversation` names, the newest start
+  when two hold it; `null` when you gave none or no session of the tree holds it.
+- `failures`: each team folder of the kit home whose config cannot be read, as `{ "team", "reason" }`; the rest is
+  still served.
+
+What a team wrote for itself is served only to that team and the teams below it. For your own team and the teams
+above it every field is served; for a team beside or below yours, `hire.scope`, `hire.reason`, a retirement's
+`reason` and `launch.text` are `null`. `conversation` is served for your own team's sessions only, and is `null` for
+every other team's.
 
 Two rules hold for a document's text:
 
@@ -2492,7 +2519,12 @@ Flags:
 - `--json`: required; interface 1 has no text form.
 - `--session <id|name>`: who is asking, which picks whose `inbox` is served; `$TEAMRIG_SESSION` when left out. It is
   a label, as `teamrig inbox status --session` takes it, and proves nothing.
-- `--team <id>`: reads a team above yours in your tree instead of your own. A team beside or below yours is refused.
+- `--conversation <id>`: the host's own id of the conversation your program runs in (1 to 128 letters, digits, `_`,
+  `.`, `:` or `-`), for a program that knows its conversation but not its session. `sessions` then answers `self`,
+  and `inbox` serves the session of your team holding it when no `--session` is given (a usage error when none
+  does). Like `--session` it is a label and proves nothing.
+- `--team <id>`: reads a team above yours in your tree instead of your own, for `tasks`. A team beside or below yours
+  is refused.
 - `--owner <id|name>`: keeps the tasks one session owns.
 - `--since <hours>`: how far back `inbox` serves the lines already read, in whole hours; 24 when left out, and 0
   serves the unread ones only.
