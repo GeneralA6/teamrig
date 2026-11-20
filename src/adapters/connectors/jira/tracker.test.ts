@@ -500,11 +500,62 @@ describe('whose sign-in a Jira site has', () => {
   });
 });
 
+describe('closing a Jira issue (T4754)', () => {
+  const STATUS = `${ISSUE}?fields=status`;
+  const OFFERED = `${ISSUE}/transitions?expand=transitions.fields`;
+  const OPEN_ISSUE = JSON.stringify({ fields: { status: { statusCategory: { key: 'new' } } } });
+  const DONE_STEP = { id: '31', to: { name: 'Done', ...CLOSED }, fields: { resolution: { required: true, allowedValues: [{ id: 'r1', name: 'Done' }, { id: 'r2', name: "Won't Do" }] } } };
+
+  it('makes the transition to a closed status, with the resolution named for the reason', async () => {
+    const { tracker, http } = kit();
+    http.answers('GET', STATUS, 200, OPEN_ISSUE).answers('GET', OFFERED, 200, JSON.stringify({ transitions: [DONE_STEP] })).answers('POST', `${ISSUE}/transitions`, 204);
+    assert.deepEqual(await tracker.close(TARGET, 'not-planned'), { kind: 'done' });
+    assert.deepEqual(sent(http), [
+      ['GET', '/issue/ENG-12?fields=status'],
+      ['GET', '/issue/ENG-12/transitions?expand=transitions.fields'],
+      ['POST', '/issue/ENG-12/transitions', { transition: { id: '31' }, fields: { resolution: { id: 'r2' } } }],
+    ]);
+  });
+
+  it('closes as completed when no reason is given, and sends no resolution to a screen that takes none', async () => {
+    const { tracker, http } = kit();
+    const plain = { transitions: [{ id: '21', to: { name: "Won't Do", ...CLOSED } }, { id: '31', to: { name: 'Done', ...CLOSED } }] };
+    http.answers('GET', STATUS, 200, OPEN_ISSUE).answers('GET', OFFERED, 200, JSON.stringify(plain)).answers('POST', `${ISSUE}/transitions`, 204);
+    assert.deepEqual(await tracker.close(TARGET), { kind: 'done' });
+    assert.deepEqual(sent(http)[2], ['POST', '/issue/ENG-12/transitions', { transition: { id: '31' } }]);
+  });
+
+  it('leaves an issue already closed as it is, asking for no transition', async () => {
+    const { tracker, http } = kit();
+    http.answers('GET', STATUS, 200, JSON.stringify({ fields: { status: CLOSED } }));
+    assert.deepEqual(await tracker.close(TARGET, 'completed'), { kind: 'done' });
+    assert.deepEqual(sent(http), [['GET', '/issue/ENG-12?fields=status']]);
+  });
+
+  it('fails, writing nothing, when the workflow offers no transition to a closed status', async () => {
+    const { tracker, http } = kit();
+    http.answers('GET', STATUS, 200, OPEN_ISSUE).answers('GET', OFFERED, 200, JSON.stringify({ transitions: [{ id: '11', to: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } }] }));
+    assert.deepEqual(await tracker.close(TARGET, 'completed'), failed("Jira offers no transition that closes ENG-12: its workflow has none from the issue's status that the sign-in may make"));
+    assert.equal(http.requests.length, 2);
+  });
+
+  it('fails on an issue Jira does not show, and passes on why a read or the transition failed', async () => {
+    const { tracker, http } = kit();
+    http.answers('GET', STATUS, 404).answers('GET', STATUS, 200, OPEN_ISSUE);
+    http.answers('GET', OFFERED, 500).answers('GET', OFFERED, 200, JSON.stringify({ transitions: [DONE_STEP] }));
+    http.answers('POST', `${ISSUE}/transitions`, 400, '{"errorMessages":["The resolution is not valid."]}');
+    assert.deepEqual(await tracker.close(TARGET, 'completed'), failed(NO_ISSUE));
+    assert.deepEqual(await tracker.close(TARGET, 'completed'), failed('Jira answered 500'));
+    assert.deepEqual(await tracker.close(TARGET, 'completed'), failed('Jira answered 400: The resolution is not valid.'));
+    assert.deepEqual(await tracker.close({ repo: 'acme', number: 12 }, 'completed'), failed(NOT_A_PROJECT));
+    assert.equal(http.requests.length, 6);
+  });
+});
+
 describe('what the Jira tracker does not do yet', () => {
   it('answers each method of a later slice with its line, and sends nothing', async () => {
     const { tracker, http } = kit();
     assert.deepEqual(await tracker.open(), failed(NOT_BUILT.open));
-    assert.deepEqual(await tracker.close(), failed(NOT_BUILT.close));
     assert.deepEqual(await tracker.issueId(), failed(NOT_BUILT.links));
     assert.deepEqual(await tracker.links(), failed(NOT_BUILT.links));
     assert.deepEqual(await tracker.addSubIssue(), failed(NOT_BUILT.links));

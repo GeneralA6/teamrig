@@ -5,6 +5,7 @@ import {
   recordField,
   stampCredit,
   stringField,
+  type CloseReason,
   type HostAssignee,
   type HostComments,
   type HostEnd,
@@ -32,6 +33,7 @@ import type { JiraAnswer, JiraClient } from './client.ts';
 import { NOT_BUILT } from './declaration.ts';
 import { stateReasonOf } from './resolution.ts';
 import { browseUrl, credentialName, issueKey, issueNumber, parseProject, projectProblem, type JiraProject } from './site.ts';
+import { closingStep, isDoneStatus } from './transitions.ts';
 
 /**
  * Jira Cloud as a tracker (the plugin API's Tracker port): a list is pages of one search, a look for a change one
@@ -153,7 +155,7 @@ function hostIssue(repo: string, project: JiraProject, value: unknown): HostIssu
   if (number === undefined || fields === undefined) {
     return undefined;
   }
-  const closed = stringField(recordField(recordField(fields, 'status') ?? {}, 'statusCategory') ?? {}, 'key') === 'done';
+  const closed = isDoneStatus(recordField(fields, 'status'));
   const resolution = recordField(fields, 'resolution');
   const reporter = recordField(fields, 'reporter');
   const labels: unknown = fields['labels'];
@@ -279,8 +281,33 @@ export class JiraTracker implements Tracker {
     return await this.write(target, (place) => this.client.put(place.project.site, `/issue/${place.key}`, { fields: { description: this.document(body) } }));
   }
 
-  close(): Promise<HostEnd> {
-    return Promise.resolve(failed(NOT_BUILT.close));
+  /**
+   * Closes the issue by a transition its workflow offers from its status (transitions.ts), for `reason`, or as
+   * completed when none is given. An issue already closed is left as it is, with nothing written. A duplicate is
+   * closed as one, and no link to its original is made.
+   */
+  async close(target: IssueTarget, reason?: CloseReason): Promise<HostEnd> {
+    const place = this.place(target);
+    if (place.kind === 'failed') {
+      return place;
+    }
+    const issue = await this.read(target, place, '?fields=status');
+    if (issue.kind === 'failed') {
+      return issue;
+    }
+    if (isDoneStatus(isRecord(issue.body) ? recordField(recordField(issue.body, 'fields') ?? {}, 'status') : undefined)) {
+      return { kind: 'done' };
+    }
+    const offered = await this.read(target, place, '/transitions?expand=transitions.fields');
+    if (offered.kind === 'failed') {
+      return offered;
+    }
+    const step = closingStep(offered.body, reason ?? 'completed');
+    if (step === undefined) {
+      return failed(`Jira offers no transition that closes ${place.key}: its workflow has none from the issue's status that the sign-in may make`);
+    }
+    const sent = { transition: { id: step.id }, ...(step.resolution === undefined ? {} : { fields: { resolution: { id: step.resolution } } }) };
+    return await this.write(target, (at) => this.client.post(at.project.site, `/issue/${at.key}/transitions`, sent));
   }
 
   issueId(): Promise<HostIssueId> {
@@ -461,6 +488,12 @@ export class JiraTracker implements Tracker {
   private nothingToWrite(target: IssueTarget): HostEnd {
     const place = this.place(target);
     return place.kind === 'failed' ? place : { kind: 'done' };
+  }
+
+  /** One read of an issue, `path` going after its key: Jira's answer, or why there is none. An issue Jira does not show is a failure here. */
+  private async read(target: IssueTarget, place: Place, path: string): Promise<{ readonly kind: 'ok'; readonly body: unknown } | Failed> {
+    const answer = await this.client.get(place.project.site, `/issue/${place.key}${path}`);
+    return answer.kind === 'missing' ? failed(this.noIssue(target, place)) : answer;
   }
 
   /** One write on an issue: done, or why not. Jira answers a write on an issue it does not show with no such thing, which is a failure here. */

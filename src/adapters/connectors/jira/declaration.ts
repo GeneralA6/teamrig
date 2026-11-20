@@ -9,7 +9,6 @@ import type { ConnectorDeclaration, Support } from '../../../plugin-api/index.ts
 /** What a tracker method that is not built yet answers; its row says the same. */
 export const NOT_BUILT = {
   open: 'the Jira connector does not open issues yet',
-  close: 'the Jira connector does not close issues yet',
   assign: 'the Jira connector does not assign issues yet',
   links: 'the Jira connector does not read or write issue links yet',
 } as const;
@@ -44,7 +43,10 @@ export const declaration: ConnectorDeclaration = {
     'tracker.issue-open': unsupported(NOT_BUILT.open),
     'tracker.comment': partial('Markdown', 'a comment is posted to Jira as plain paragraphs: its Markdown marks show as typed'),
     'tracker.edit-body': partial('Markdown', 'a description is written to Jira as plain paragraphs: its Markdown marks show as typed'),
-    'tracker.close': unsupported(NOT_BUILT.close),
+    'tracker.close': partial(
+      "a link from a duplicate to its original, and a reason the project's workflow has no name for",
+      'a Jira issue closes by a transition to a closed status: its reason is kept when the workflow has a status or a resolution named for it, and a duplicate gets no link to its original',
+    ),
     'tracker.labels': partial(
       'a label made with a colour and a description, and a name holding a space',
       'a Jira label has no colour and no description and exists once an issue carries it; it holds no space, so a name with one is held with a hyphen in its place',
