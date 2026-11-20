@@ -125,6 +125,14 @@ Every change ships tests, so the next change cannot break it unnoticed:
   `src/testing/recorded-pins.test.ts` fails when the code and the pins differ. A refactor leaves the pins as they are.
   A change meant to alter what a hook prints, or a core rule's wording (the session-start pins hold the rules text),
   runs `node tools/record/pins-cli.ts` from the repository's root and commits the diff with the change.
+- What every adapter of a port must do is a contract of the conformance kit (`src/conformance/`), not a spec of one
+  adapter: `defineContract({ port, side, cases, liars })` in the port's own file, listed in `CONTRACTS` with one
+  `entryOf(...)` line. A case is a value that fails by throwing and speaks only through its `{ port, world }`, and
+  names the feature rows it proves; the kit imports the plugin API, `node:assert` and its own folder alone, so it
+  ships as it is to whoever builds an adapter outside. Every contract carries a liar (a subject that does nothing,
+  or says yes to everything), and the kit's spec fails a contract whose liar passes every case of a feature. An
+  adapter's contract spec is one call, `describeContracts({ side, declaration, bound: [bind(...)] })` of
+  `src/testing/contracts.ts`: its manifest picks the cases, and the spec fails when it binds less than it claims.
 
 `npm run check` runs every gate CI runs on the tree; the local gate also checks each pushed commit's sign-off and scrubs it,
 which the git hooks `npm ci` sets do before each commit. Its coverage gate (`npm run coverage`) fails when:
