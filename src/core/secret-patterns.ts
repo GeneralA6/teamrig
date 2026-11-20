@@ -28,6 +28,9 @@ export interface SecretPattern {
  * Credential formats with a fixed prefix or frame, matched case-sensitively as the issuers print them.
  * Two guard against prose: the `sk-` and Slack shapes require a digit, as a random key always has one
  * and a long hyphenated word (`sk-learn-compatible-...`) does not.
+ * A webhook URL is a credential whole, since whoever holds it can post: its shape is the host, the path and the
+ * token after them, the host in any case as a URL's is. The address with no token, as documentation writes it, passes.
+ * An npm token is `npm_` and exactly 36 letters and digits, so npm's own variables (`npm_config_...`) pass.
  */
 export const SECRET_TOKEN_PATTERNS: readonly SecretPattern[] = [
   { id: 'private-key', description: 'private key block', pattern: /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/ },
@@ -39,6 +42,12 @@ export const SECRET_TOKEN_PATTERNS: readonly SecretPattern[] = [
   { id: 'google-key', description: 'Google API key', pattern: /\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/ },
   { id: 'stripe-key', description: 'Stripe live key', pattern: /\b[rs]k_live_[0-9A-Za-z]{24,}/ },
   { id: 'jwt', description: 'JSON web token', pattern: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/ },
+  { id: 'npm-token', description: 'npm token', pattern: /\bnpm_[A-Za-z0-9]{36}(?![A-Za-z0-9])/ },
+  {
+    id: 'slack-webhook',
+    description: 'Slack webhook URL',
+    pattern: /\bhooks\.slack\.com\/(?:services|workflows|triggers)\/(?:[A-Za-z0-9]+\/)+[A-Za-z0-9]{20,}/i,
+  },
 ];
 
 /**
