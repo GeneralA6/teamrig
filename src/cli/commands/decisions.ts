@@ -8,6 +8,7 @@ import { batchLines } from '../../decisions/lines.ts';
 import { AskedStore } from '../../decisions/store.ts';
 import { taskLabel } from '../../register/views.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
+import { asRead, withCardTexts, type CardRead } from '../card-texts.ts';
 import { readRunFiles } from '../hand-step-file.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
@@ -38,26 +39,30 @@ interface DecisionsKit {
   readonly askedBy: SessionAddress | undefined;
 }
 
-/** The caller's team and the batch that holds its waits now: in a child team, only its own and its teams' waits of it. */
-async function decisionsKit(args: ParsedArgs, runtime: CliRuntime, access: Access): Promise<DecisionsKit> {
+/**
+ * The caller's team and the batch that holds its waits now: in a child team, only its own and its teams' waits of it.
+ * Each register of the batch goes through `read`: `withCardTexts` for the command that prints the cards, whose
+ * `what and why:` a snapshot's task line leaves out (T4781); `asRead` for one that prints none.
+ */
+async function decisionsKit(args: ParsedArgs, runtime: CliRuntime, access: Access, read: CardRead): Promise<DecisionsKit> {
   noPositionals(args);
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, access);
   const roster = await rosterOf(runtime, kit, config);
   const lead = config.roles.lead;
-  const { snapshot, elsewhere, ranking } = (await ownRegister(runtime)).own;
+  const { snapshot, elsewhere, ranking } = await read((await ownRegister(runtime)).own);
   const now = runtime.clock.now();
   const zone = teamZone(config, runtime);
   const team = kit.paths.team;
   const loaded = await loadTree(runtime);
-  const { batch, askedBy } = await ownerBatchOf(runtime, { team, config, paths: kit.paths, tasks: snapshot.state.tasks, elsewhere, ranking }, loaded, now);
+  const { batch, askedBy } = await ownerBatchOf(runtime, { team, config, paths: kit.paths, tasks: snapshot.state.tasks, elsewhere, ranking }, loaded, now, read);
   const held = askedBy === undefined ? batch : waitsOfTeams(batch, [team, ...loaded.tree.descendantsOf(team)]);
   return { kit, config, roster, lead, now, zone, batch: held, askedBy };
 }
 
 /** `decisions`: the batch the lead asks the owner next, and whether it is due now. */
 export async function decisions(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  const dk = await decisionsKit(args, runtime, 'read');
+  const dk = await decisionsKit(args, runtime, 'read', withCardTexts);
   const askedBy = dk.askedBy === undefined ? undefined : formatAddress(dk.askedBy);
   const runFiles = await readRunFiles(
     runtime,
@@ -70,7 +75,7 @@ export async function decisions(args: ParsedArgs, runtime: CliRuntime): Promise<
 
 /** `decisions asked`: the lead records that it asked the owner the batch, the waits not yet asked and the ones past due. */
 export async function decisionsAsked(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  const dk = await decisionsKit(args, runtime, 'write');
+  const dk = await decisionsKit(args, runtime, 'write', asRead);
   const caller = sessionIdOf(dk.roster, callerOf(args.flags, runtime.env));
   if (caller !== dk.lead) {
     throw new RefusedError(`only the lead (${dk.roster.nameOf(dk.lead) ?? dk.lead}) asks the owner's decisions`);

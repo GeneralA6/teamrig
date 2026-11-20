@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import type { Env } from '../core/home.ts';
 import { TEST_CARD_FLAGS, TEST_GATE, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import type { CliHarness } from '../testing/cli-harness.ts';
-import { treeHarness } from '../testing/team-tree.ts';
+import { rotateRegister } from '../testing/rotation.ts';
+import { teamEventsOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
+
+const DAY_MS = 86_400_000;
 
 const APP: Env = {};
 const WEB = { TEAMRIG_TEAM: 'web' };
@@ -129,6 +132,23 @@ describe("runCli: a child team's owner decisions go up to the lead at its tree's
     const member = await kit.run(['decisions', 'asked', '--session', 'front'], { env: WEB });
     assert.deepEqual(member.stdout, ["REFUSED only the lead (web-lead) asks the owner's decisions"]);
     assert.deepEqual(rowIds((await kit.run(['decisions', '--session', 'lead'])).stdout), ['T1', 'ops/T4', 'web/T2', 'ui/T3'], 'nothing was recorded asked, the teams depth first');
+  });
+
+  it("prints each card's what and why from its own register's history once a compaction left the descriptions out (T4781)", async () => {
+    const kit = await treeHarness(BATCHED);
+    await ownerWait(kit, APP, 'alpha', 'Pick the pricing tier');
+    await ownerWait(kit, WEB, 'front', 'Pick the landing page');
+    kit.clock.advance(3 * DAY_MS);
+    for (const team of ['app', 'web']) {
+      await rotateRegister(kit.files, teamEventsOf(team), { now: new Date(kit.clock.now()) });
+    }
+    const what = '    what and why: what and why';
+    const root = (await kit.run(['decisions', '--session', 'lead'])).stdout;
+    assert.deepEqual(rowIds(root), ['T1', 'web/T2']);
+    assert.equal(root.filter((line) => line === what).length, 2, root.join('\n'));
+    const web = (await kit.run(['decisions', '--session', 'front'], { env: WEB })).stdout;
+    assert.deepEqual(rowIds(web), ['web/T2']);
+    assert.equal(web.filter((line) => line === what).length, 1, web.join('\n'));
   });
 
   it("reads the waits of every team under the root lead at its meeting, and tells each decided task's owner in its own team at the end (T1018)", async () => {
