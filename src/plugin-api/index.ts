@@ -36,6 +36,7 @@ export {
 } from '../features/registry.ts';
 export type { CredentialRead, CredentialStore } from '../core/credentials.ts';
 export type { Env } from '../core/home.ts';
+export type { HttpClient, HttpMethod, HttpRequest, HttpResult } from '../core/http.ts';
 export type { CodeHost, Tracker } from '../issues/host.ts';
 export type { ProgramRequest, ProgramResult, ProgramRunner } from '../core/program-runner.ts';
 export type { SecretScanner } from '../core/secrets.ts';

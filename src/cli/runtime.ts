@@ -8,6 +8,7 @@ import type { StepRunner } from '../delivery/steps.ts';
 import type { FileBytes } from '../core/file-bytes.ts';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
+import type { HttpClient } from '../core/http.ts';
 import type { ChatWebhook } from '../core/webhook.ts';
 import type { ExecPorts } from '../exec/ports.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
@@ -85,6 +86,8 @@ export interface CliRuntime {
   readonly gh: GhRunner;
   /** The system's saved secrets, where `teamrig issue sync` finds each owner's read-only GitHub token; only ever read. */
   readonly credentials: CredentialStore;
+  /** The API of an outside tool a connector adapter reaches with no command line (plugin-api/connector.ts): https only. */
+  readonly http: HttpClient;
   /** Whether a folder or a program is there. */
   readonly probe: PathProbe;
   /** The plugin store's file and folder times, which the idle pass reads before it reopens a session. */

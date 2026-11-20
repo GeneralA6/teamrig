@@ -10,6 +10,7 @@ import { GITHUB_REPOS_HOST } from '../issues/host.ts';
 import type { ConnectorDeps, ConnectorPorts } from '../plugin-api/index.ts';
 import { FakeCredentials, TEST_OWNERS } from '../testing/fake-credentials.ts';
 import { FakeGh } from '../testing/fake-gh.ts';
+import { FakeHttp } from '../testing/fake-http.ts';
 import { FakeIssueHost } from '../testing/fake-issue-host.ts';
 import { connectorDeclarationData } from '../testing/manifests.ts';
 import { SRC_DIR, sourcesUnder, underSrc } from '../testing/source-files.ts';
@@ -30,9 +31,9 @@ class RecordingGh implements GhRunner {
   }
 }
 
-/** The part of a CLI run a host is built from, with `gh` as its gh runner and a key saved for each test owner. */
+/** The part of a CLI run a host is built from, with `gh` as its gh runner, an HTTP client of its own and a key saved for each test owner. */
 function runtimeWith(gh: GhRunner): HostRuntime {
-  return { gh, credentials: new FakeCredentials().savesTokensFor(TEST_OWNERS), env: OWN_ENV };
+  return { gh, http: new FakeHttp(), credentials: new FakeCredentials().savesTokensFor(TEST_OWNERS), env: OWN_ENV };
 }
 
 /**
@@ -70,13 +71,14 @@ describe('hostsOf', () => {
     assert.equal(hosts.codeHost, ports.codeHost);
   });
 
-  it("hands the adapter the run's saved secrets and environment, the scanner and the stamp as given", async () => {
+  it("hands the adapter the run's HTTP client, saved secrets and environment, the scanner and the stamp as given", async () => {
     for (const stamp of [true, false]) {
       const { load, given } = serving(bothPorts());
       const runtime = runtimeWith(new RecordingGh());
       const scanner = new SecretScanner();
       await hostsOf(GITHUB_REPOS_HOST, runtime, scanner, stamp, load);
       const deps = onlyDeps(given);
+      assert.equal(deps.http, runtime.http);
       assert.equal(deps.credentials, runtime.credentials);
       assert.equal(deps.env, runtime.env);
       assert.equal(deps.scanner, scanner);
