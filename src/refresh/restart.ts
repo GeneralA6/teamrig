@@ -136,7 +136,7 @@ async function endHooks(deps: RestartDeps, plan: RestartPlan, request: RestartRe
 /** Whether the session's last turn has ended and none of the work it started still runs. */
 async function idleAt(deps: RestartDeps, transcript: string): Promise<boolean> {
   const tail = await deps.files.readTail(transcript, TURN_TAIL_BYTES);
-  return !turnRunning(tail ?? '') && (await readRunningWork(deps.files, transcript, deps.clock.now())) === 0;
+  return !turnRunning(deps.reader, tail ?? '') &&(await readRunningWork(deps.files, transcript, deps.clock.now())) === 0;
 }
 
 /** What a held answer's give-up says when the tab's mod gave no reason: one older than the reason. */

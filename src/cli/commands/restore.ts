@@ -24,6 +24,7 @@ import { noRoomText } from '../../sessions/headroom.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { admitBusyText, admitTab, dropTabHold } from '../headroom.ts';
+import { transcriptsOf } from '../host.ts';
 import { loadTree, type TreeTeam } from '../tree.ts';
 import { claudeExit, claudeProgramOf, claudeSessionArg, effortFlag, encodedPromptFlag, homeArgs, openSessionTab, TERMINAL_LABELS, terminalFlag } from './open.ts';
 
@@ -192,6 +193,7 @@ async function restoreDepsOf(runtime: CliRuntime, terminal: TerminalChoice | und
     clock: runtime.clock,
     sleep: runtime.sleep,
     probe: runtime.probe,
+    reader: transcriptsOf(runtime),
     shutdowns: runtime.restore.shutdowns,
     countdown: runtime.restore.countdown,
     stops: runtime.restore.stops,

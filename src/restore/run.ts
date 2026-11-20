@@ -5,6 +5,7 @@ import type { PathProbe } from '../core/path-probe.ts';
 import { samePath } from '../core/paths.ts';
 import { customTitleOf } from '../names/title.ts';
 import type { EndOutcome } from '../open/session-processes.ts';
+import type { TranscriptReader } from '../ports/host/index.ts';
 import { CARRY_TAIL_BYTES } from '../refresh/carry.ts';
 import { turnRunning } from '../refresh/turn.ts';
 import { resumeFolderOf } from '../sessions/resume-folder.ts';
@@ -73,6 +74,8 @@ export interface RestoreDeps {
   readonly clock: Clock;
   readonly sleep: Sleep;
   readonly probe: PathProbe;
+  /** Reads the host's transcript lines: whether a session's last turn still runs. */
+  readonly reader: TranscriptReader;
   readonly shutdowns: ShutdownLog;
   readonly countdown: Countdown;
   readonly stops: StopWatch;
@@ -157,7 +160,7 @@ async function factsOf(deps: RestoreDeps, entries: readonly RestoreEntry[], sinc
       const tail = await deps.readTail(transcript, KIND_TAIL_BYTES);
       if (tail !== undefined) {
         kinds.set(entry.claudeSession, transcriptKindOf(tail));
-        if (live && turnRunning(tail) && (await stalledSince(deps, transcript, now))) {
+        if (live && turnRunning(deps.reader, tail) &&(await stalledSince(deps, transcript, now))) {
           stalled.add(entry.claudeSession);
         }
       }
