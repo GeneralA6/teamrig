@@ -12,7 +12,7 @@ import { remoteReposOf } from '../../hooks/gh-writes.ts';
 import { packageGuardOf, packageGuardReply } from '../../hooks/package-guard.ts';
 import { commitsOf, protectedBranchesOf, pushGuardReply, pushToProtectedOf, skipHooksOf, type PushClearance } from '../../hooks/push-guard.ts';
 import { secretGuardOf, secretGuardReply, secretPatternsOf } from '../../hooks/secret-guard.ts';
-import { serviceRoleGuardOutput } from '../../hooks/service-role-guard.ts';
+import { serviceRoleGuardReply } from '../../hooks/service-role-guard.ts';
 import type { HookEvent, HookReply } from '../../ports/host/index.ts';
 import { approvedTaskOf } from '../../register/approval.ts';
 import { JsonlEventLog } from '../../register/store.ts';
@@ -24,9 +24,9 @@ import type { GuardLoad } from './hook-guard-load.ts';
 import { teamSessionOf } from './hook-input.ts';
 
 /**
- * The PreToolUse guards' answers for one call, each built from the hook's runtime and the team's config load the same
- * way its own hook builds it: '' when the guard lets the call go, else the hook output that asks or refuses. Shared by
- * each guard's hook and by any hook that must know every guard passed on the same call.
+ * The guards' replies to one call before it runs, each built from the hook's runtime and the team's config load the
+ * same way its own hook builds it: none when the guard lets the call go, else the reply that refuses or notes. Shared
+ * by each guard's hook and by any hook that must know every guard passed on the same call.
  */
 
 /**
@@ -193,12 +193,12 @@ export function execGuardReplyOf(runtime: CliRuntime, guard: GuardLoad, event: H
 }
 
 /**
- * The service-role guard's answer (T2984): an ask before a session's `roles grant` or `revoke`, a refusal of its own
- * write of `serviceRoles` in any team's config. The config path comes from the kit even when its config cannot be
- * loaded, so a broken config is no way around it; the file is read again at each call.
+ * The service-role guard's reply (T2984): a refusal of a session's `roles grant` or `revoke`, and of its own write of
+ * an owner-gated key in any team's config; none when it lets the call go. The config path comes from the kit even
+ * when its config cannot be loaded, so a broken config is no way around it; the file is read again at each call.
  */
-export function serviceRoleGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload: unknown): Promise<string> {
-  return serviceRoleGuardOutput(payload, {
+export function serviceRoleGuardReplyOf(runtime: CliRuntime, guard: GuardLoad, event: HookEvent): Promise<HookReply | undefined> {
+  return serviceRoleGuardReply(event, {
     cwd: runtime.cwd,
     home: runtime.userHome,
     platform: runtime.platform,
