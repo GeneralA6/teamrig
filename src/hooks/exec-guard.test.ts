@@ -6,7 +6,8 @@ import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { settingsWriteRefusal } from '../core/settings-writers.ts';
 import type { ClientCheck } from '../exec/client-integrity.ts';
 import { ClientInstalls } from '../exec/client-launch.ts';
-import { EXEC_COMMANDS, execGuardOutput, HOOK_COMMANDS, OWNER_COMMANDS, type ExecGuardEnv, type TabIdentity } from './exec-guard.ts';
+import { hookEventOf, replyText } from '../testing/host.ts';
+import { EXEC_COMMANDS, execGuardReply, HOOK_COMMANDS, OWNER_COMMANDS, type ExecGuardEnv, type TabIdentity } from './exec-guard.ts';
 
 const SESSIONS: Readonly<Record<string, string>> = { alpha: 'alpha', 'app-alpha': 'alpha', bravo: 'bravo', lead: 'lead' };
 
@@ -27,12 +28,15 @@ interface Placing {
   readonly others?: Readonly<Record<string, ClientCheck>>;
 }
 
+/** The guard's env, with the platform the host reads the call on: Linux when a spec names none. */
+type SpecEnv = ExecGuardEnv & { readonly platform?: NodeJS.Platform };
+
 /** An env whose identity reads and client checks are recorded, so a test can show the guard makes each only for a line that needs it. */
 function env(
   identity: TabIdentity = ALPHA,
   client: ClientCheck = INTACT,
   placing: Placing = {},
-): ExecGuardEnv & { readonly reads: () => number; readonly checks: () => number; readonly checked: () => readonly string[] } {
+): SpecEnv & { readonly reads: () => number; readonly checks: () => number; readonly checked: () => readonly string[] } {
   let reads = 0;
   const checked: string[] = [];
   return {
@@ -48,7 +52,6 @@ function env(
       checked.push(root);
       return Promise.resolve(root === INSTALL ? client : (placing.others?.[root] ?? INTACT));
     },
-    platform: 'linux',
     ghWrites: { github: { kind: 'repos', repos: new Set(['acme/web']) }, remotesOf: () => ['acme/web'], ghRepo: undefined },
     reads: () => reads,
     checks: () => checked.length,
@@ -76,11 +79,16 @@ function verdictOf(output: string): { readonly decision: string | undefined; rea
   return { decision: stringField(hook, 'permissionDecision'), reason: stringField(hook, 'permissionDecisionReason') ?? '' };
 }
 
-async function verdict(payload: JsonRecord, guardEnv: ExecGuardEnv = env()): Promise<ReturnType<typeof verdictOf>> {
+/** What the shipped host is handed for the guard's reply to this hook input. */
+async function execGuardOutput(input: JsonRecord, guardEnv: SpecEnv): Promise<string> {
+  return replyText('tool-start', await execGuardReply(hookEventOf(input, guardEnv.platform), guardEnv));
+}
+
+async function verdict(payload: JsonRecord, guardEnv: SpecEnv = env()): Promise<ReturnType<typeof verdictOf>> {
   return verdictOf(await execGuardOutput(payload, guardEnv));
 }
 
-describe('execGuardOutput', () => {
+describe('execGuardReply', () => {
   it('lets a review through that names the tab’s own session, by id or by a name it has had', async () => {
     assert.equal(await verdict(bash('teamrig exec approve R1 --session alpha')), undefined);
     assert.equal(await verdict(bash('teamrig exec refuse R1 --note "use the read key" --session app-alpha')), undefined);
@@ -205,7 +213,7 @@ describe('execGuardOutput', () => {
     }
     assert.equal(quiet.reads(), 0);
     assert.equal(await execGuardOutput({ tool_name: 'Read', tool_input: { file_path: 'x' } }, quiet), '');
-    assert.equal(await execGuardOutput('not a payload', quiet), '');
+    assert.equal(await execGuardOutput({ tool_name: 'Bash', tool_input: {} }, quiet), '');
   });
 
   it('refuses every exec call, whatever its command, while the client differs from its build, naming at most five files', async () => {
@@ -652,7 +660,7 @@ describe('execGuardOutput', () => {
   });
 });
 
-describe('execGuardOutput: a Bash line on Windows (T2319)', () => {
+describe('execGuardReply: a Bash line on Windows (T2319)', () => {
   /** A run of n backslashes; on Windows bash receives each run not before a double quote halved, rounded up. */
   const bs = (n: number): string => '\\'.repeat(n);
   const windows = (): ReturnType<typeof env> => ({ ...env(), platform: 'win32' });
@@ -696,7 +704,7 @@ describe('execGuardOutput: a Bash line on Windows (T2319)', () => {
   });
 });
 
-describe('execGuardOutput, binding the tab to a session', () => {
+describe('execGuardReply, binding the tab to a session', () => {
   const UNBOUND: TabIdentity = { kind: 'unbound', why: 'this tab is not bound to a session of the team' };
 
   it('refuses a start or inbox read naming another session of the team, through any client', async () => {
@@ -767,7 +775,7 @@ describe('execGuardOutput, binding the tab to a session', () => {
   });
 });
 
-describe('execGuardOutput, the variable Claude Code marks its tool calls with', () => {
+describe('execGuardReply, the variable Claude Code marks its tool calls with', () => {
   it('refuses a line that clears CLAUDECODE, in any shell, without reading the identity', async () => {
     for (const payload of [
       bash('env -u CLAUDECODE teamrig inbox read'),

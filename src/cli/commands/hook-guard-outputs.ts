@@ -5,15 +5,14 @@ import { query } from '../../core/git-run.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { checkClient, clientRootOf } from '../../exec/client-integrity.ts';
 import { ClientInstalls, ShellPathSearch } from '../../exec/client-launch.ts';
-import { dbWriteGuardOf, dbWriteGuardOutput } from '../../hooks/db-write-guard.ts';
-import { execGuardOutput, type TabIdentity } from '../../hooks/exec-guard.ts';
+import { dbWriteGuardOf, dbWriteGuardReply } from '../../hooks/db-write-guard.ts';
+import { execGuardReply, type TabIdentity } from '../../hooks/exec-guard.ts';
 import { githubReposOf } from '../../hooks/gh-write-refusals.ts';
 import { remoteReposOf } from '../../hooks/gh-writes.ts';
-import { packageGuardOf, packageGuardOutput } from '../../hooks/package-guard.ts';
+import { packageGuardOf, packageGuardReply } from '../../hooks/package-guard.ts';
 import { commitsOf, protectedBranchesOf, pushGuardReply, pushToProtectedOf, skipHooksOf, type PushClearance } from '../../hooks/push-guard.ts';
 import { secretGuardOf, secretGuardOutput, secretPatternsOf } from '../../hooks/secret-guard.ts';
 import { serviceRoleGuardOutput } from '../../hooks/service-role-guard.ts';
-import { sessionIdOf } from '../../inbox/inbox.ts';
 import type { HookEvent, HookReply } from '../../ports/host/index.ts';
 import { approvedTaskOf } from '../../register/approval.ts';
 import { JsonlEventLog } from '../../register/store.ts';
@@ -104,12 +103,12 @@ export function pushGuardReplyOf(runtime: CliRuntime, guard: GuardLoad, event: H
 }
 
 /**
- * The package guard's answer: it refuses, or asks about, a package runner that would fetch and run a package ad hoc,
+ * The package guard's reply: it refuses, or asks about, a package runner that would fetch and run a package ad hoc,
  * an install of a version the registry does not vouch for, and a package-manager call that would rewrite node_modules
- * through a link.
+ * through a link; none when it lets the call go.
  */
-export function packageGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload: unknown): Promise<string> {
-  return packageGuardOutput(payload, {
+export function packageGuardReplyOf(runtime: CliRuntime, guard: GuardLoad, event: HookEvent): Promise<HookReply | undefined> {
+  return packageGuardReply(event, {
     ...packageGuardOf(guard.load),
     cwd: runtime.cwd,
     home: runtime.userHome,
@@ -117,21 +116,19 @@ export function packageGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payl
     tree: runtime.worktrees.files,
     registry: runtime.packageRegistry,
     clock: runtime.clock,
-    platform: runtime.platform,
   });
 }
 
 /**
- * The db-write guard's answer: it asks about, or refuses as `dbWriteGuard.writes` says, a line that writes to a database
- * by hand, so the owner sees counts or a preview first.
+ * The db-write guard's reply: it asks about, or refuses as `dbWriteGuard.writes` says, a line that writes to a database
+ * by hand, so the owner sees counts or a preview first; none when it lets the call go.
  */
-export function dbWriteGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload: unknown): Promise<string> {
-  return dbWriteGuardOutput(payload, {
+export function dbWriteGuardReplyOf(runtime: CliRuntime, guard: GuardLoad, event: HookEvent): Promise<HookReply | undefined> {
+  return dbWriteGuardReply(event, {
     ...dbWriteGuardOf(guard.load),
     cwd: runtime.cwd,
     home: runtime.userHome,
     files: runtime.files,
-    platform: runtime.platform,
   });
 }
 
@@ -151,14 +148,14 @@ export function secretGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, paylo
  * Who this tab runs as, for the exec guard: its team session and the roster to read a `--session` word with. It never
  * throws: a config or roster it cannot read leaves the tab unbound, so every review from it is refused, saying why.
  */
-async function tabIdentityOf(runtime: CliRuntime, kit: Kit | undefined, payload: unknown): Promise<TabIdentity> {
+async function tabIdentityOf(runtime: CliRuntime, kit: Kit | undefined, hostSession: string | null): Promise<TabIdentity> {
   if (kit === undefined || kit.load.status !== 'loaded') {
     return { kind: 'unbound', why: 'the team config did not load' };
   }
   const { config } = kit.load;
   try {
     const roster = await rosterOf(runtime, kit, config);
-    const session = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
+    const session = await teamSessionOf(runtime, kit, roster, hostSession);
     if (session === undefined) {
       return { kind: 'unbound', why: 'this tab is not bound to a session of the team' };
     }
@@ -173,18 +170,18 @@ async function tabIdentityOf(runtime: CliRuntime, kit: Kit | undefined, payload:
 }
 
 /**
- * The exec guard's answer: it refuses a `teamrig exec` review run as anyone but the tab's own session, and any
- * `teamrig exec` call through a client that is no install of this plugin, or one whose files differ from its build.
+ * The exec guard's reply: it refuses a `teamrig exec` review run as anyone but the tab's own session, and any
+ * `teamrig exec` call through a client that is no install of this plugin, or one whose files differ from its build;
+ * none when it lets the call go.
  */
-export function execGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload: unknown): Promise<string> {
-  return execGuardOutput(payload, {
+export function execGuardReplyOf(runtime: CliRuntime, guard: GuardLoad, event: HookEvent): Promise<HookReply | undefined> {
+  return execGuardReply(event, {
     cwd: runtime.cwd,
     home: runtime.userHome,
-    identity: () => tabIdentityOf(runtime, guard.kit, payload),
+    identity: () => tabIdentityOf(runtime, guard.kit, event.session ?? null),
     installs: new ClientInstalls(clientRootOf(runtime.self.script), runtime.platform),
     search: new ShellPathSearch({ env: runtime.env, platform: runtime.platform, probe: runtime.probe }),
     checkClient: (root) => checkClient(root, runtime.files),
-    platform: runtime.platform,
     ghWrites: {
       github: githubReposOf(guard.load),
       remotesOf: (dir) => {
