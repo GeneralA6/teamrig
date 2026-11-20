@@ -79,6 +79,14 @@ function reachOf(tree: TeamTree, own: string, team: string): TeamReach {
   return tree.ancestorsOf(own).includes(team) ? 'above' : 'other';
 }
 
+/**
+ * A leader as the document serves one: an id, or none. A config that names no `roles.lead` is still served, and its
+ * lead tree then answers the empty id for every session's leader; the contract's leader is a session's id or null.
+ */
+function namedLeader(leader: string | undefined): string | undefined {
+  return leader === '' ? undefined : leader;
+}
+
 /** One team's sessions as its files hold them now, and the lines of its logs that could not be read. */
 async function teamInputOf(runtime: CliRuntime, tree: TeamTree, own: string, { kit, config }: TreeTeam): Promise<TeamRead> {
   const { files } = runtime;
@@ -104,8 +112,8 @@ async function teamInputOf(runtime: CliRuntime, tree: TeamTree, own: string, { k
       name: roster.nameOf(id) ?? id,
       formerNames: roster.formerNamesOf(id),
       roles: roster.rolesOf(id),
-      leader: leads.leaderOf(id) ?? null,
-      ledBy: leads.chainOf(id),
+      leader: namedLeader(leads.leaderOf(id)) ?? null,
+      ledBy: leads.chainOf(id).filter((leader) => namedLeader(leader) !== undefined),
       leads: leads.membersOf(id).length,
       launch: { model: launch.model ?? null, effort: launch.effort ?? null, text: describeLaunch(launch) },
       hire: hires.get(id) ?? null,
