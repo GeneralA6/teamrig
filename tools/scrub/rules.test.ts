@@ -75,6 +75,7 @@ describe('generic scrub rules', () => {
       ['stripe-key', join('sk', '_live_', 'j5'.repeat(12))],
       ['jwt', join('eyJ', 'f'.repeat(10), '.eyJ', 'g'.repeat(10), '.', 'h'.repeat(10))],
       ['npm-token', join('npm', '_', 'p3'.repeat(18))],
+      ['discord-webhook', join('https://discord', '.com/api/webhooks/', '1'.repeat(18), '/', 'q2'.repeat(34))],
       ['slack-webhook', join('https://hooks.slack', '.com/services/', 'T0AB12CD3', '/', 'B0EF45GH6', '/', 'r1'.repeat(12))],
       ['assigned-secret', join('password', ': "', 'i9'.repeat(8), '"')],
       ['assigned-secret', join('DB_', 'PASSWORD', ' = "', 'k8'.repeat(8), '"')],
