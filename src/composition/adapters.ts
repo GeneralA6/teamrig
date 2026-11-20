@@ -9,6 +9,9 @@ export const HOST_ADAPTERS: AdapterTable = {
   'claude-code': '../adapters/hosts/claude-code',
 };
 
+/** The host teamrig asks its host ports of, until a team's config names another. */
+export const DEFAULT_HOST = 'claude-code';
+
 export const CONNECTOR_ADAPTERS: AdapterTable = {
   github: '../adapters/connectors/github',
   jira: '../adapters/connectors/jira',
