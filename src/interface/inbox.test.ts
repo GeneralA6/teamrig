@@ -93,8 +93,17 @@ describe('inboxBody', () => {
     const shape = new SecretScanner().find(SECRET)?.description ?? '';
     const body = bodyOf([line]);
     assert.deepEqual(body.lines[0]?.text, { text: cutText(shape), source: 'team' });
-    assert.deepEqual(body.cuts, [{ id: lineHash(line), field: 'text', shape }]);
+    assert.deepEqual(body.cuts, [{ id: 'cut-1', field: 'text', shape }]);
     assert.equal(JSON.stringify(body).includes('hunter2'), false);
+  });
+
+  it('keys a cut line by its place in the file, never by a fingerprint of its words', () => {
+    const secret = posted(1, 'lead', `use ${SECRET}`);
+    const lines = [posted(80, 'lead', 'long read'), secret, posted(1, 'lead', 'plain'), secret];
+    const body = bodyOf(lines);
+    assert.deepEqual(body.lines.map((line) => line.key), ['cut-2', lineHash(lines[2] ?? ''), 'cut-4']);
+    assert.deepEqual(body.cuts.map((cut) => cut.id), ['cut-2', 'cut-4']);
+    assert.equal(JSON.stringify(body).includes(lineHash(secret)), false);
   });
 
   it('never scans a line it leaves out', () => {
