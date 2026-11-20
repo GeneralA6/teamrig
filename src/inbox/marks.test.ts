@@ -18,8 +18,18 @@ describe('parseMark', () => {
     assert.deepEqual(parse(v1), { kind: 'mark', mark: v1 });
   });
 
+  it('reads a mark as a later teamrig will write it, naming the tab hostSession (T4762)', () => {
+    const base = { v: 2, area: 'alpha', line: 3, at: '2030-01-07T09:00:00.000Z', lastLineHash: 'abcd' };
+    const read = { kind: 'mark', mark: { ...base, claudeSession: SESSION } };
+    assert.deepEqual(parse({ ...base, hostSession: SESSION }), read);
+    assert.deepEqual(parse({ ...base, hostSession: null }), { kind: 'mark', mark: { ...base, claudeSession: null } });
+    assert.deepEqual(parse({ ...base, hostSession: 'nope' }), { kind: 'unreadable' });
+    // A mark of this format written with the old name still reads: the reader takes both names on every format.
+    assert.deepEqual(parse({ ...base, claudeSession: SESSION }), read);
+  });
+
   it('skips newer marks and rejects malformed ones', () => {
-    assert.deepEqual(parse({ v: 2 }), { kind: 'newer' });
+    assert.deepEqual(parse({ v: 3 }), { kind: 'newer' });
     const base = { area: 'alpha', line: 3, at: '2030-01-07T09:00:00.000Z', claudeSession: null };
     for (const bad of [{ area: '../x' }, { line: -1 }, { at: 'soon' }, { claudeSession: 'nope' }, { lastLineHash: 7 }]) {
       assert.deepEqual(parse({ ...base, ...bad }), { kind: 'unreadable' }, JSON.stringify(bad));

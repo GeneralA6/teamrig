@@ -1,8 +1,14 @@
 import { isNonNegativeInteger, stringField } from '../core/guards.ts';
+import { hostSessionValue } from '../core/host-session.ts';
 import { parseJsonl, type JsonlRecord } from '../core/jsonl.ts';
 import { SESSION_NAME } from '../register/model.ts';
 
 export const MARK_VERSION = 1;
+/**
+ * The version a later teamrig writes, naming the tab `hostSession` (T4762, src/core/host-session.ts): read from now
+ * on and written by none yet, so every tab reads it before the first one writes it.
+ */
+export const MARK_NEXT_VERSION = 2;
 
 /** A Claude Code session id, as hook stdin and `$CLAUDE_CODE_SESSION_ID` carry it. */
 export const CLAUDE_SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -28,14 +34,14 @@ export type MarkParse =
   | { readonly kind: 'unreadable' };
 
 export function parseMark(line: JsonlRecord): MarkParse {
-  if (line.version > MARK_VERSION) {
+  if (line.version > MARK_NEXT_VERSION) {
     return { kind: 'newer' };
   }
   const { record } = line;
   const area = stringField(record, 'area');
   const count = record['line'];
   const at = stringField(record, 'at');
-  const claudeSession = record['claudeSession'] ?? null;
+  const claudeSession = hostSessionValue(record, 'claudeSession') ?? null;
   const lastLineHash = record['lastLineHash'] ?? null;
   const valid =
     area !== undefined &&
