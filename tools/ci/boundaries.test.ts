@@ -34,6 +34,24 @@ describe('boundaryFindings: who imports an adapter', () => {
     assert.deepEqual(found(file('tools/docs/pages/draw.ts', "import host from '../../../src/adapters/hosts/first/index.ts';")), ['1 adapter-reach src/adapters/hosts/first/index.ts']);
   });
 
+  it('refuses shipped code importing an adapter, and lets the spec beside it and the fakes drive one', () => {
+    const adapter = "import { isIssueQuery } from '../adapters/connectors/first/testing/requests.ts';";
+    assert.deepEqual(found(file('src/cli/issue-sync.ts', adapter)), ['1 adapter-reach src/adapters/connectors/first/testing/requests.ts']);
+    assert.deepEqual(found(file('src/cli/issue-sync.test.ts', adapter)), []);
+    assert.deepEqual(found(file('src/testing/cli-harness.ts', adapter)), []);
+  });
+
+  it('lets no spec or fake outside src reach an adapter, and no shipped file whose name only holds the word test', () => {
+    const adapter = "import host from '../../../src/adapters/hosts/first/index.ts';";
+    assert.deepEqual(found(file('tools/docs/pages/draw.test.ts', adapter)), ['1 adapter-reach src/adapters/hosts/first/index.ts']);
+    assert.deepEqual(found(file('tools/docs/testing/draw.ts', adapter)), ['1 adapter-reach src/adapters/hosts/first/index.ts']);
+    assert.deepEqual(found(file('src/cli/test.ts', "import host from '../adapters/hosts/first/index.ts';")), ['1 adapter-reach src/adapters/hosts/first/index.ts']);
+  });
+
+  it('still holds a core spec importing an adapter to the core rule', () => {
+    assert.deepEqual(found(file('src/core/run.test.ts', "import host from '../adapters/hosts/first/index.ts';")), ['1 core-imports src/adapters/hosts/first/index.ts']);
+  });
+
   it('counts a core file importing an adapter under both rules', () => {
     assert.deepEqual(found(file('src/core/run.ts', "import host from '../adapters/hosts/first/index.ts';")), ['1 core-imports src/adapters/hosts/first/index.ts', '1 adapter-reach src/adapters/hosts/first/index.ts']);
   });
@@ -95,7 +113,7 @@ describe('boundaryCounts', () => {
     const findings = boundaryFindings([file('src/core/run.ts', "import { b } from '../cli/b.ts';", 'const jiraKey = 1;', 'const grokKey = 2;'), file('src/adapters/hosts/first/index.ts', "import { isRecord } from '../../../core/guards.ts';")]);
     assert.deepEqual(boundaryCounts(findings), [
       '1 imports from src/core into another src folder',
-      '0 imports of an adapter from outside src/adapters and src/composition',
+      '0 imports of an adapter by shipped code outside src/adapters and src/composition',
       '1 imports by an adapter beyond its own folder and the plugin API',
       '2 lines naming a tool outside src/adapters and src/composition',
     ]);
