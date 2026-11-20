@@ -1,4 +1,4 @@
-import { SHIP_TOKEN, TOKEN_PREFIX } from '../github/tokens.ts';
+import { SHIP_TOKEN, TOKEN_PREFIX } from '../issues/token-names.ts';
 import type { ProgramRun } from '../package-guard/programs.ts';
 import type { SecretFinding } from './findings.ts';
 

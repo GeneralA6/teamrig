@@ -31,7 +31,9 @@ import type { FieldValue, HostField, HostFieldRead, IssueFields } from '../issue
 import type { IssueState, IssueThread } from '../issues/issue.ts';
 import type { HostPosts } from '../issues/post.ts';
 import { LABEL_FILE, parseLabelFile } from '../issues/label-file.ts';
+import { isLogin } from '../issues/login.ts';
 import { MAX_COMMENT } from '../issues/write.ts';
+import { plainLine } from '../core/printable.ts';
 import { exitText } from '../open/processes.ts';
 import type { Env } from '../core/home.ts';
 import {
@@ -52,7 +54,6 @@ import {
   issueTypeSetArgs,
   jobLogArgs,
   labelReadArgs,
-  isLogin,
   labelCreateArgs,
   labelFileReadArgs,
   subIssueAddArgs,
@@ -65,7 +66,7 @@ import {
   type WatchPath,
 } from './gh.ts';
 import { type ProbeAnswer, probeAnswerOf } from './probe.ts';
-import { ghFailureKind, ISSUE_LIMIT, type IssueList, listIssues, plainLine, readCommentsIn, type ReadKind, runRead, startFailureText } from './issues.ts';
+import { ghFailureKind, ISSUE_LIMIT, type IssueList, listIssues, readCommentsIn, type ReadKind, runRead, startFailureText } from './issues.ts';
 import { readFields } from './fields.ts';
 import { failedLogExcerpt } from './job-log.ts';
 import { listLinks } from './links.ts';

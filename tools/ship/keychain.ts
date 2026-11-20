@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { SHIP_TOKEN } from '../../src/github/tokens.ts';
+import { SHIP_TOKEN } from '../../src/issues/token-names.ts';
 
 /**
  * Reads a generic credential's secret from Windows Credential Manager (CredReadW), so ship's gh calls get a

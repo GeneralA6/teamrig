@@ -3,7 +3,9 @@ import type { Env } from '../core/home.ts';
 import { endOf, type ShellEnd } from '../core/shell-end.ts';
 import type { CloseReason, IssueDraft, LabelSpec } from '../issues/host.ts';
 import { LABEL_FILE, parseLabelFile } from '../issues/label-file.ts';
+import { isLogin } from '../issues/login.ts';
 import { areaLabelSpec, MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
+import { MENTION_PAGE_SIZE, MENTION_PAGES_MAX } from '../issues/scan-caps.ts';
 import { labelRefusal } from '../issues/write.ts';
 import { GH_PROGRAM } from './gh-program.ts';
 import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
@@ -55,14 +57,6 @@ const LABEL_FIELD = 'labels[]';
 
 /** The field gh sends as one item of the issue's assignee list. */
 const ASSIGNEE_FIELD = 'assignees[]';
-
-/** A GitHub login: letters, digits and single inner hyphens, at most 39, so it can name no other path or field. */
-const LOGIN = /^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$/u;
-
-/** Whether `login` has the shape of a GitHub login. */
-export function isLogin(login: string): boolean {
-  return LOGIN.test(login);
-}
 
 /** The command line that opens one issue: the REST create, every field raw, so no value is read as a file or a number. */
 export function issueCreateArgs(draft: IssueDraft): string[] {
@@ -809,12 +803,6 @@ export function isAllowedGh(args: readonly string[]): boolean {
 /** The lists the mention scan pages through, each changed since a time: comments on issues and pull requests, inline review comments, and the issues and pull requests themselves for their bodies. */
 export const MENTION_LISTS = ['issues/comments', 'pulls/comments', 'issues'] as const;
 export type MentionList = (typeof MENTION_LISTS)[number];
-
-/** The page size of a mention list and of a pull request's reviews: GitHub's largest. */
-export const MENTION_PAGE_SIZE = 100;
-
-/** The most pages of one list the scan reads in a run; past it, the rest is cut off and said so. */
-export const MENTION_PAGES_MAX = 10;
 
 /** A time as the scan sends it: whole seconds in UTC, which GitHub reads as ISO 8601. */
 export const MENTION_SINCE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
