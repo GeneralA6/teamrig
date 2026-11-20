@@ -5,7 +5,7 @@ import { LeadTree } from '../../config/lead-tree.ts';
 import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { recordConfigDir } from '../../budget/config-dir.ts';
-import { errorMessage, isRecord, type JsonRecord } from '../../core/guards.ts';
+import { errorMessage } from '../../core/guards.ts';
 import { claudeConfigDir, claudeTempDir, KIT_NAME, resolveKitHome } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { routeReminderOf } from '../../inbox/route.ts';
@@ -792,12 +792,12 @@ async function askBlockOf(runtime: CliRuntime, scope: SessionScope, stopActive: 
  * notice's title, else before the session's topic. Undefined with tab status off, which leaves the notice's
  * own title, at a block, whose turn goes on, and on an error.
  */
-async function stopTabTitleOf(runtime: CliRuntime, team: TeamScope, roster: Roster | undefined, payload: JsonRecord, decision: StopDecision): Promise<string | undefined> {
+async function stopTabTitleOf(runtime: CliRuntime, team: TeamScope, roster: Roster | undefined, event: HookEvent, decision: StopDecision): Promise<string | undefined> {
   if (!tabStatusOn(runtime.env, team.config) || decision.kind === 'block') {
     return undefined;
   }
   const own = { team: team.kit.paths.team, roster: roster ?? (await rosterOf(runtime, team.kit, team.config)) };
-  return tabTitleOf(runtime, payload, own, decision.kind === 'notice' ? decision.title : undefined).catch((): string | undefined => undefined);
+  return tabTitleOf(runtime, event, own, decision.kind === 'notice' ? decision.title : undefined).catch((): string | undefined => undefined);
 }
 
 /**
@@ -805,12 +805,12 @@ async function stopTabTitleOf(runtime: CliRuntime, team: TeamScope, roster: Rost
  * that is no session of it. The refresh, the model notices, the budget lines and the verify-by lines fail
  * apart: an error in one leaves the others.
  */
-async function stopReplyOf(runtime: CliRuntime, payload: JsonRecord, event: HookEvent): Promise<HookReply | undefined> {
+async function stopReplyOf(runtime: CliRuntime, event: HookEvent): Promise<HookReply | undefined> {
   const team = await teamScopeOf(runtime, event.cwd);
   const scope = team === undefined ? undefined : await sessionScopeOf(runtime, team, event.session);
   if (scope === undefined) {
     const none: StopDecision = { kind: 'none' };
-    return team === undefined ? undefined : stopReply(none, [], await stopTabTitleOf(runtime, team, undefined, payload, none));
+    return team === undefined ? undefined : stopReply(none, [], await stopTabTitleOf(runtime, team, undefined, event, none));
   }
   await logReply(runtime, { config: scope.config, paths: scope.kit.paths, id: scope.id }, event).catch(() => undefined);
   // Before the refresh, which records a block's state before it prints: this block leaves the rest to the next stop.
@@ -836,9 +836,9 @@ async function stopReplyOf(runtime: CliRuntime, payload: JsonRecord, event: Hook
   const ask = await askBlockOf(runtime, scope, event.stopActive, decision).catch((): string | undefined => undefined);
   if (ask === undefined && decision.kind !== 'block') {
     // Only a turn that ends: a block sends the session on working, which its next tool's end records.
-    await recordTabNeed(runtime, payload, event, scope).catch(() => undefined);
+    await recordTabNeed(runtime, event, scope).catch(() => undefined);
   }
-  return ask === undefined ? stopReply(decision, lines, await stopTabTitleOf(runtime, scope, scope.roster, payload, decision)) : blockReply(ask, lines);
+  return ask === undefined ? stopReply(decision, lines, await stopTabTitleOf(runtime, scope, scope.roster, event, decision)) : blockReply(ask, lines);
 }
 
 /**
@@ -866,8 +866,8 @@ async function stopReplyOf(runtime: CliRuntime, payload: JsonRecord, event: Hook
  */
 export async function stop(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  const reply = isRecord(payload) && event !== undefined ? await stopReplyOf(runtime, payload, event).catch((): HookReply | undefined => undefined) : undefined;
+  const { event } = await readHookInput(runtime);
+  const reply = event === undefined ? undefined : await stopReplyOf(runtime, event).catch((): HookReply | undefined => undefined);
   writeReply(runtime, 'stop', reply);
   return EXIT.ok;
 }

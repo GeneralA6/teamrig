@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { StopDecision } from '../refresh/decide.ts';
 import type { RefreshState } from '../refresh/state.ts';
 import { replyText } from '../testing/host.ts';
-import { blockReply, stopReply, tabTitleSequence } from './stop.ts';
+import { blockReply, stopReply } from './stop.ts';
 
 const STATE: RefreshState = { phase: 'ready', task: 'T12', at: '2030-01-08T10:00:00.000Z', tokens: null, noticed: true, transcript: null, claudePid: null };
 
@@ -56,7 +56,7 @@ describe('stopReply', () => {
   });
 
   it("sets the tab status title at any end but a block's, over a notice's own title", () => {
-    const sequence = tabTitleSequence('ready api');
+    const sequence = '\u001b]0;ready api\u0007';
     assert.deepEqual(JSON.parse(stopOutput({ kind: 'none' }, [], 'ready api')), { terminalSequence: sequence });
     assert.deepEqual(JSON.parse(stopOutput({ kind: 'measure' }, ['BUDGET x'], 'ready api')), { systemMessage: 'BUDGET x', terminalSequence: sequence });
     assert.deepEqual(JSON.parse(stopOutput({ kind: 'notice', state: STATE, message: 'type /clear', title: 'api: type /clear', restart: false }, [], 'ready api')), {
@@ -73,9 +73,5 @@ describe('stopReply', () => {
     assert.deepEqual(blockReply('Retire now.', ['BUDGET x', 'MODEL y']), { verdict: { kind: 'block', reason: 'Retire now.' }, notice: 'BUDGET x\nMODEL y' });
     assert.deepEqual(JSON.parse(blockOutput('Retire now.')), { decision: 'block', reason: 'Retire now.' });
     assert.deepEqual(JSON.parse(blockOutput('Retire now.', ['BUDGET x'])), { decision: 'block', reason: 'Retire now.', systemMessage: 'BUDGET x' });
-  });
-
-  it('sets the tab title with OSC 0', () => {
-    assert.equal(tabTitleSequence('x'), '\u001b]0;x\u0007');
   });
 });

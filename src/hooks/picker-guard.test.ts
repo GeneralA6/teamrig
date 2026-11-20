@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { asksDecision } from '../tabs/status.ts';
+import { hookEventOf } from '../testing/host.ts';
 import { askerOf, guardsPicker, pickerReason, type LeadMeeting } from './picker-guard.ts';
 
 const PICKER = { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion' };
@@ -9,15 +10,15 @@ const CLOSED: LeadMeeting = { open: false, inTab: undefined };
 
 describe('guardsPicker', () => {
   it('looks at a PreToolUse call of the question picker with the switch on', () => {
-    assert.equal(guardsPicker(true, PICKER), true);
+    assert.equal(guardsPicker(true, hookEventOf(PICKER)), true);
   });
 
   it('lets everything go with the switch off, and every other tool or event with it on', () => {
-    assert.equal(guardsPicker(false, PICKER), false);
-    assert.equal(guardsPicker(true, { ...PICKER, tool_name: 'ExitPlanMode' }), false, 'plan mode is the only way out of plan mode');
-    assert.equal(guardsPicker(true, { ...PICKER, tool_name: 'Bash' }), false);
-    assert.equal(guardsPicker(true, { ...PICKER, hook_event_name: 'PostToolUseFailure' }), false, 'the end of a call sets the tab to working');
-    assert.equal(guardsPicker(true, { tool_name: 'AskUserQuestion' }), false);
+    assert.equal(guardsPicker(false, hookEventOf(PICKER)), false);
+    assert.equal(guardsPicker(true, hookEventOf({ ...PICKER, tool_name: 'ExitPlanMode' })), false, 'plan mode is the only way out of plan mode');
+    assert.equal(guardsPicker(true, hookEventOf({ ...PICKER, tool_name: 'Bash' })), false);
+    assert.equal(guardsPicker(true, hookEventOf({ ...PICKER, hook_event_name: 'PostToolUseFailure' })), false, 'the end of a call sets the tab to working');
+    assert.equal(guardsPicker(true, hookEventOf({ tool_name: 'AskUserQuestion' })), false);
   });
 });
 
