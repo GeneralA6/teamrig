@@ -32,10 +32,24 @@ describe('parseSessionRecord', () => {
     assert.deepEqual(parseSessionRecord(formatSessionRecord(RECORD)), RECORD);
   });
 
+  it('writes a record as the very line every installed teamrig reads (T4762)', () => {
+    // The record's own keys are spread into the line, so a renamed property renames the key on disk: this line may
+    // change only in the commit that raises the written format.
+    assert.equal(formatSessionRecord(RECORD), '{"v":1,"claudePid":6900,"claudeSession":"claude-1","at":"2030-01-08T10:00:00.000Z"}\n');
+  });
+
+  it('reads a record a later teamrig wrote, naming the tab hostSession, and one newer still as absent (T4762)', () => {
+    const later = { v: 2, claudePid: 6900, hostSession: 'claude-1', at: '2030-01-08T10:00:00.000Z' };
+    assert.deepEqual(parseSessionRecord(`${JSON.stringify(later)}\n`), RECORD);
+    assert.deepEqual(parseSessionRecord(JSON.stringify({ ...later, transcript: 't.jsonl' })), { ...RECORD, transcript: 't.jsonl' });
+    assert.equal(parseSessionRecord(JSON.stringify({ ...later, v: 3 })), undefined);
+    assert.equal(parseSessionRecord(JSON.stringify({ ...later, hostSession: 7 })), undefined);
+  });
+
   it('reads a damaged file, another format or a bad field as absent', () => {
     const line = (fields: Record<string, unknown>): string => JSON.stringify({ v: 1, ...RECORD, ...fields });
     const badTranscripts = [line({ transcript: 7 }), line({ transcript: '' }), line({ transcript: null })];
-    for (const text of ['{not json', JSON.stringify({ ...RECORD, v: 2 }), line({ claudePid: 0 }), line({ claudePid: -4 }), line({ claudePid: '6900' }), line({ claudeSession: 7 }), line({ at: null }), line({ at: 'yesterday' }), ...badTranscripts]) {
+    for (const text of ['{not json', JSON.stringify({ ...RECORD, v: 3 }), JSON.stringify({ ...RECORD, v: 0 }), JSON.stringify(RECORD), line({ claudePid: 0 }), line({ claudePid: -4 }), line({ claudePid: '6900' }), line({ claudeSession: 7 }), line({ at: null }), line({ at: 'yesterday' }), ...badTranscripts]) {
       assert.equal(parseSessionRecord(text), undefined, text);
     }
   });
