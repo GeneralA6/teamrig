@@ -20,6 +20,7 @@ describe('boundaries-cli', () => {
     repo.write('tools/docs/pages/draw.ts', "import host from '../../../src/adapters/hosts/first/index.ts';\n");
     repo.write('src/core/run.ts', "import { b } from '../cli/b.ts';\n");
     repo.write('src/cli/b.ts', "import host from '../adapters/hosts/first/index.ts';\nexport const codexHome = host;\nexport const jiraKey = 1;\n");
+    repo.write('src/cli/c.ts', "import { FakeTool } from '../testing/fake-tool.ts';\n");
     repo.write('src/adapters/hosts/first/index.ts', "import { isRecord } from '../../../core/guards.ts';\n");
     repo.write('src/cli/notes.md', 'codex\n');
     repo.write('docs/draw.ts', "import host from '../src/adapters/hosts/first/index.ts';\n");
@@ -33,7 +34,7 @@ describe('boundaries-cli', () => {
     crossed();
     const result = check();
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, counted(1, 2, 1, 2));
+    assert.equal(result.stdout, counted(1, 2, 1, 1, 2));
   });
 
   it('--list prints each finding before the counts, src before tools, each sorted by its / path', () => {
@@ -45,16 +46,17 @@ describe('boundaries-cli', () => {
       'src/cli/b.ts:1: adapter-reach: src/adapters/hosts/first/index.ts',
       'src/cli/b.ts:2: tool-names: codex',
       'src/cli/b.ts:3: tool-names: jira',
+      'src/cli/c.ts:1: fakes-reach: src/testing/fake-tool.ts',
       'src/core/run.ts:1: core-imports: src/cli/b.ts',
       'tools/docs/pages/draw.ts:1: adapter-reach: src/adapters/hosts/first/index.ts',
     ];
-    assert.equal(result.stdout, `${findings.join('\n')}\n${counted(1, 2, 1, 2)}`);
+    assert.equal(result.stdout, `${findings.join('\n')}\n${counted(1, 2, 1, 1, 2)}`);
   });
 
   it('counts nothing in a repo with no src or tools folder', () => {
     const result = check(['--list']);
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, counted(0, 0, 0, 0));
+    assert.equal(result.stdout, counted(0, 0, 0, 0, 0));
   });
 
   it('checks its own repo, not the cwd, when no --root is given, and writes nothing in the cwd', () => {
