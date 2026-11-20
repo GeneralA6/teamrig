@@ -50,6 +50,8 @@ export interface HookEvent {
   readonly cwd: string | undefined;
   /** The path of the session's transcript. */
   readonly transcript: string | undefined;
+  /** The title the human gave the session in the host's own lists; undefined when the host sent none or a blank one. */
+  readonly title: string | undefined;
   /** Set when a helper agent, not the session itself, made the call. */
   readonly helper: HookHelper | undefined;
   /** The tool call the event is about. */
@@ -65,6 +67,8 @@ export interface HookEvent {
   /** What started a compaction, in the host's word. */
   readonly trigger: string | undefined;
   readonly model: string | undefined;
+  /** How hard the model is set to think, in the host's word. */
+  readonly effort: string | undefined;
   /** The text of a form or a notice the event shows the human. */
   readonly message: string | undefined;
   /** What failed, on `stop-failed` and `tool-failed`. */
