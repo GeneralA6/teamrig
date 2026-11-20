@@ -2,10 +2,12 @@ import type { TerminalGroup } from '../feature.ts';
 
 /**
  * What a terminal does with the panes its sessions run in: a row per request of the terminal protocol, and one for
- * what it sees of a pane's input. A terminal without a row's request answers it `unserved`.
+ * what it sees of a pane's input. A terminal without a row's request answers it `unserved`; one with no named
+ * windows opens a pane wherever it opens one.
  */
 export const PANE_FEATURES = {
   'pane.open': { doc: 'opens a pane for a session and answers its own id of it', byDefault: 'on' },
+  'pane.window': { doc: 'opens a pane in the window teamrig names, made when none of that name is open', byDefault: 'on' },
   'pane.focus': { doc: "brings a session's pane forward", byDefault: 'on' },
   'pane.close': { doc: "closes a session's pane", byDefault: 'on' },
   'pane.restart': { doc: "restarts a pane's command, resuming the conversation when asked", byDefault: 'on' },

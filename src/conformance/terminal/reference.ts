@@ -21,6 +21,8 @@ export interface ReferenceOptions {
   readonly lies?: readonly TerminalRequest[];
   /** Delivers a wake whatever the pane's state or the wake's token. */
   readonly eager?: boolean;
+  /** Opens every pane wherever it likes, whatever window it is given the name of. */
+  readonly oneWindow?: boolean;
 }
 
 interface Pane extends ShownPane {
@@ -44,6 +46,7 @@ export function referenceTerminal(options: ReferenceOptions = {}): TerminalSubje
   const seesDraft = options.seesDraft ?? true;
   const lies = options.lies ?? [];
   const eager = options.eager ?? false;
+  const oneWindow = options.oneWindow ?? false;
   const panes: Pane[] = [];
   let front: string | undefined;
 
@@ -89,7 +92,7 @@ export function referenceTerminal(options: ReferenceOptions = {}): TerminalSubje
     capabilities: () => Promise.resolve({ requests: serves, interfaces: ['1.0'], seesDraft }),
     open: (request) =>
       answer('open', { kind: 'opened', pane: 'pane-1' }, () => {
-        const id = add({ title: request.title, folder: request.folder, argv: request.argv, window: request.window, identity: request.identity, token: request.wakeToken });
+        const id = add({ title: request.title, folder: request.folder, argv: request.argv, window: oneWindow ? undefined : request.window, identity: request.identity, token: request.wakeToken });
         if (request.focus === 'take' || front === undefined) {
           front = id;
         }

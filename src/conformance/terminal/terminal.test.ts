@@ -51,6 +51,10 @@ describe('the terminal contract', () => {
     assert.ok(failed.includes('open-shows-the-pane') && failed.includes('open-ids-differ'), failed.join(', '));
   });
 
+  it('catches a terminal that opens every pane where it likes, by the window case alone', async () => {
+    assert.deepEqual(await failedBy({ oneWindow: true }), ['open-in-the-named-window']);
+  });
+
   it('catches a terminal that delivers whatever the pane does and whatever token the wake carries', async () => {
     assert.deepEqual(await failedBy({ eager: true }), ['deliver-held-in-a-busy-pane', 'deliver-held-by-a-question', 'deliver-once-idle-again', 'deliver-refused-with-a-wrong-token', 'draft-is-not-idle']);
   });
