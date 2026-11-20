@@ -51,8 +51,13 @@ export class ServedText {
     return [...this.found];
   }
 
-  /** A team text field of record `id`; null stays null. */
-  plain(id: string, field: string, text: string | null): string | null {
+  /** A team text field of record `id`. */
+  plain(id: string, field: string, text: string): string {
+    return this.scanned(id, field, text);
+  }
+
+  /** {@link plain} for a field that may be unset. */
+  plainOrNull(id: string, field: string, text: string | null): string | null {
     return text === null ? null : this.scanned(id, field, text);
   }
 

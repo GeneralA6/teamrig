@@ -57,7 +57,7 @@ describe('the public interface data', () => {
     assert.deepEqual(served.marked('T1', 'title', raw, 'team'), { text: raw, source: 'team' });
     assert.deepEqual(served.marked('T1', 'title', raw, 'outside'), { text: 'line one\\nline \\x1b[31mtwo\\u202e', source: 'outside' });
     assert.equal(served.plain('T1', 'note', raw), raw);
-    assert.deepEqual([served.plain('T1', 'note', null), served.markedOrNull('T1', 'description', null, 'outside')], [null, null]);
+    assert.deepEqual([served.plainOrNull('T1', 'note', null), served.markedOrNull('T1', 'description', null, 'outside')], [null, null]);
     assert.deepEqual(served.cuts, []);
   });
 
@@ -68,10 +68,12 @@ describe('the public interface data', () => {
     const served = new api.ServedText(scanner);
     const text = `the login is ${SECRET} and more words`;
     assert.equal(served.plain('T7', 'note', text), `[cut: ${shape}]`);
+    assert.equal(served.plainOrNull('T7', 'proof', text), `[cut: ${shape}]`);
     assert.deepEqual(served.marked('T7', 'title', text, 'outside'), { text: `[cut: ${shape}]`, source: 'outside' });
     assert.deepEqual(served.markedOrNull('k1', 'text', text, 'team'), { text: api.cutText(shape), source: 'team' });
     assert.deepEqual(served.cuts, [
       { id: 'T7', field: 'note', shape },
+      { id: 'T7', field: 'proof', shape },
       { id: 'T7', field: 'title', shape },
       { id: 'k1', field: 'text', shape },
     ]);
