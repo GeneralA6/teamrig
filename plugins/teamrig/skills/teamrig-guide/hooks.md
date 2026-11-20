@@ -15,7 +15,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash`, `PowerShell`, `Read`, `Grep`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment, a Kubernetes secret's data or a dump command's output into the conversation, or whose command line or written text holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook db-write-guard` | Refuses a line that writes to a database by hand (a built-in SQL client, a database program or Node client module the team names, a data script the team names run with its apply flag), naming the counts or preview to show the owner first, unless `dbWriteGuard.writes` is `allow` ([the db-write guard](#before-a-shell-command-the-db-write-guard)) |
 | `PostToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-redact` | Replaces each secret a call's result holds before Claude and the transcript see it, and tells the session which kinds it held and the task it filed to rotate each ([the secret redactor](#after-a-tool-call-the-secret-redactor)) |
-| `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, every `owner note` or `owner next`, which act as the owner, a settings writer's `--yes` write, which changes a permission, every `hook` command, which takes its tab from its stdin, a bound tab's `start` or `inbox read` as another session, a line that changes `$CLAUDECODE`, and a shell fed its commands from a pipe ([the exec guard](#before-a-shell-command-the-exec-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, every `owner note` or `owner next`, which act as the owner, a settings writer's `--yes` write, which changes a permission, every `hook` command, which takes its tab from its stdin, a bound tab's `start` or `inbox read` as another session, a line that changes `$CLAUDECODE`, a shell fed its commands from a pipe, and a raw `gh` write on one of the team's GitHub repositories ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook service-role-guard` | Refuses a session's `teamrig roles grant` or `revoke` (the owner runs it from their own terminal), and refuses a session's own write of `serviceRoles` in the team config ([the service-role guard](#before-a-write-or-a-shell-command-the-service-role-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
@@ -820,6 +820,20 @@ them (`echo "exec approve R1"`). A command word only known when it runs counts o
   `... | iex`, `x | bash -c bash`), whatever feeds it, as the pipe can carry a review the line never shows. Run the
   commands directly, or hand the shell a heredoc, which the guard reads as written. A shell with no pipe into it
   (`bash --version`, a bare `cmd`) passes.
+- **a raw `gh` write on one of the team's repositories** (`github.repos`). gh writes with whatever login its keyring
+  holds, which may be another project's key that cannot write there, and past teamrig's check of who may, so on
+  those repositories raw `gh` only reads. A read is a command on a short list: `view`, `list`, `status`, `diff`,
+  `checks`, `search`, `browse`, a `pr checkout`, `repo clone`, `release download` or `run download`, a `gh api` GET
+  with no body, and a GraphQL query. Every other command is a write, any command gh adds later too. A write is placed
+  on its `-R` repository and those its words name, else on `GH_REPO` or the folder's git remotes. The reason names
+  the teamrig command that writes it with the team's saved key: `teamrig issue reply` for a comment, `issue close`,
+  `issue edit`, `issue label` and `issue assign`, `teamrig add --issue` to open an issue, and `teamrig merge` for a
+  pull request; a write no command does goes to the session's lead. A write it cannot place is refused too: an
+  account or organization write, an alias or extension, a GraphQL mutation, a word only known when it runs, or a
+  folder's write on a line that may change which repository the folder is (`git remote set-url`, a `GH_REPO` or
+  `GIT_DIR` it sets, a git alias); name the repository with `-R`. Every write is refused while the team config does
+  not load. A repository outside `github.repos` keeps plain `gh`, so a contributor's own fork works, and a team with
+  no `github.repos` is not checked.
 
 It always refuses and never asks; no config key turns it off. The guard reads only the call, so it cannot see:
 
@@ -1963,7 +1977,7 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
 - **The db-write guard** refuses a line that writes to a database by hand on its own, whatever the mode, unless
   `dbWriteGuard.writes` is `allow`.
 - **The exec guard** refuses a privileged command's review run as another session or the owner, any
-  `exec` call through a client that is no install of the plugin or was changed, every `owner` and `hook` command, and a shell fed its commands from a pipe, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
+  `exec` call through a client that is no install of the plugin or was changed, every `owner` and `hook` command, a shell fed its commands from a pipe, and a raw `gh` write on the team's repositories, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
   `exec` too. A team that wants each review asked as well allows the rest by name (`Bash(teamrig exec request:*)`,
   `dry-run`, `status`, `run`) instead of the one rule.
 - **The read-only allow** (`readonlyShell.enabled`) lets a shell line that only reads run with no prompt in default
