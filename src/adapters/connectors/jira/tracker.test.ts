@@ -184,6 +184,8 @@ describe('listing a Jira project', () => {
         jiraIssue('ENG-2', { status: CLOSED, resolution: { name: 'Done' }, statuscategorychangedate: '2026-11-10T02:00:00.000+0200', resolutiondate: '2026-11-11T02:00:00.000+0200' }),
         jiraIssue('ENG-3', { status: CLOSED, resolutiondate: '2026-11-12T10:00:00.000+0000' }),
         jiraIssue('ENG-4', { status: CLOSED, resolution: {} }),
+        jiraIssue('ENG-8', { status: CLOSED, resolution: { name: "Won't Do" } }),
+        jiraIssue('ENG-9', { status: CLOSED, resolution: { name: 'Shipped' } }),
         jiraIssue('ENG-5', { resolution: { name: 'Done' } }),
         jiraIssue('ENG-6', { status: {} }),
         jiraIssue('ENG-7', { status: 'no status' }),
@@ -192,9 +194,11 @@ describe('listing a Jira project', () => {
     assert.deepEqual(await tracker.list(REPO, '2026-11-10'), {
       kind: 'listed',
       issues: [
-        hostIssue(2, { state: 'closed', stateReason: 'Done', closedAt: '2026-11-10T00:00:00.000Z' }),
+        hostIssue(2, { state: 'closed', stateReason: 'COMPLETED', closedAt: '2026-11-10T00:00:00.000Z' }),
         hostIssue(3, { state: 'closed', closedAt: '2026-11-12T10:00:00.000Z' }),
         hostIssue(4, { state: 'closed' }),
+        hostIssue(8, { state: 'closed', stateReason: 'NOT_PLANNED' }),
+        hostIssue(9, { state: 'closed', stateReason: 'Shipped' }),
         hostIssue(5),
         hostIssue(6),
         hostIssue(7),
