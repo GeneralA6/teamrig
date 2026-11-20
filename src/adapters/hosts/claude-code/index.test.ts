@@ -30,15 +30,25 @@ describe('the Claude Code adapter', () => {
     assert.match(errors.kind === 'partial' ? errors.missing : '', /rate-limit hit.*context too long/);
   });
 
-  it('enters through defineHost with that declaration, and names every host port, the transcripts, the usage meter and the status line filled', () => {
+  it('enters through defineHost with that declaration, and fills every host port', () => {
     assert.equal(adapter.declaration, declaration);
     assert.deepEqual(hostAdapterProblems(adapter), []);
     const ports = adapter.create(hostDeps());
     assert.deepEqual(Object.keys(ports), ['hooks', 'toolCall', 'transcripts', 'usage', 'statusLine']);
-    assert.equal(isUnsupported(ports.hooks), true);
-    assert.equal(isUnsupported(ports.toolCall), true);
+    assert.equal(isUnsupported(ports.hooks), false);
+    assert.equal(isUnsupported(ports.toolCall), false);
     assert.equal(ports.transcripts, transcriptReader);
     assert.equal(ports.usage, usageMeter);
     assert.equal(ports.statusLine, statusLine);
+  });
+
+  it('reads a hook call for the platform it was built on', () => {
+    const payload = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'echo a\\\\b' } });
+    const readings = (platform: NodeJS.Platform): readonly string[] | undefined => {
+      const call = adapter.create(hostDeps({ platform })).hooks.parse(payload)?.call;
+      return call?.kind === 'shell' ? call.readings : undefined;
+    };
+    assert.deepEqual(readings('linux'), ['echo a\\\\b']);
+    assert.deepEqual(readings('win32'), ['echo a\\\\b', 'echo a\\b']);
   });
 });
