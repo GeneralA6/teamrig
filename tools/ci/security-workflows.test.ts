@@ -23,20 +23,26 @@ describe('every workflow', () => {
     }
   });
 
-  it('gives the token read-only contents by default, and never runs a fork pull request with secrets', () => {
+  it('gives the token read-only contents by default, none in release-merge.yml, and never runs a fork pull request with secrets', () => {
     for (const [name, text] of workflows) {
-      assert.match(text, /^permissions:\n {2}contents: read\n/m, name);
+      assert.match(text, name === 'release-merge.yml' ? /^permissions: \{\}\n/m : /^permissions:\n {2}contents: read\n/m, name);
       assert.doesNotMatch(text, /pull_request_target/, name);
     }
   });
 
-  it('never merges a pull request, so no dependency update lands without a person checking it', () => {
+  it('never merges a pull request by gh or auto-merge, so no dependency update lands without a person checking it', () => {
     for (const [name, text] of workflows) {
       assert.doesNotMatch(text, /gh pr merge|--auto\b|enablePullRequestAutoMerge|dependabot\/fetch-metadata/, name);
     }
   });
 
-  it('writes pull requests only from release.yml, once, to open the release pull request a person merges', () => {
+  it('merges only from release-merge.yml, whose gate passes nothing but a release pull request', () => {
+    for (const [name, text] of workflows) {
+      assert.equal(text.includes('release-merge-cli.ts merge'), name === 'release-merge.yml', name);
+    }
+  });
+
+  it('writes pull requests only from release.yml, once, to open the release pull request', () => {
     for (const [name, text] of workflows) {
       assert.equal(text.match(/pull-requests: write/g)?.length ?? 0, name === 'release.yml' ? 1 : 0, name);
     }
