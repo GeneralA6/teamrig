@@ -1,0 +1,105 @@
+import type { JsonRecord } from '../../core/guards.ts';
+
+/**
+ * What a tool call is for, whatever the host names the tool: the core's guards and reminders ask for a kind and its
+ * fields, never for a tool's name or the keys of its input. `task-input` is a host's own task list; `other` is every
+ * tool the core has no rule for.
+ */
+export const TOOL_KINDS = ['shell', 'read', 'edit', 'search', 'web', 'helper', 'skill', 'ask', 'schedule', 'message', 'task-input', 'other'] as const;
+
+export type ToolKind = (typeof TOOL_KINDS)[number];
+
+/** The shell languages a shell call's command is written in: a guard parses each by its own rules. */
+export const SHELL_DIALECTS = ['bash', 'powershell'] as const;
+
+export type ShellDialect = (typeof SHELL_DIALECTS)[number];
+
+/** What every tool call carries, of whatever kind. */
+interface ToolCallBase {
+  /** The tool as the host names it: for a refusal's text and the logs, never for a decision. */
+  readonly name: string;
+  /** The call's input as the host sent it, for the few readers of a field no kind names. */
+  readonly input: JsonRecord;
+  /** The host's id of this one call, where it gives one. */
+  readonly id?: string | undefined;
+  /** What the tool answered, on the events that come after it ran. */
+  readonly response?: unknown;
+}
+
+/** A command line handed to a shell. */
+export interface ShellCall extends ToolCallBase {
+  readonly kind: 'shell';
+  readonly dialect: ShellDialect;
+  /** The command as written; undefined when the call carries none. */
+  readonly command: string | undefined;
+  /**
+   * Every text the shell may run for this call: the command as written and, where the host rewrites it on its way
+   * to the shell, each rewritten text. A guard weighs each reading and takes the stricter verdict.
+   */
+  readonly readings: readonly string[];
+}
+
+/** One file read. */
+export interface ReadCall extends ToolCallBase {
+  readonly kind: 'read';
+  readonly path: string | undefined;
+}
+
+/** One file written or changed. */
+export interface EditCall extends ToolCallBase {
+  readonly kind: 'edit';
+  readonly path: string | undefined;
+  /** Every text the call writes into the file, in the input's order. */
+  readonly texts: readonly string[];
+}
+
+/** A search of file names or of file contents. */
+export interface SearchCall extends ToolCallBase {
+  readonly kind: 'search';
+  readonly path: string | undefined;
+  readonly glob: string | undefined;
+  /** Whether the answer shows lines of the files it matched, not only their names. */
+  readonly showsContent: boolean;
+}
+
+/** A page fetched or a web search. */
+export interface WebCall extends ToolCallBase {
+  readonly kind: 'web';
+  readonly url: string | undefined;
+}
+
+/** A helper agent started. */
+export interface HelperCall extends ToolCallBase {
+  readonly kind: 'helper';
+  readonly type: string | undefined;
+}
+
+/** A skill loaded. */
+export interface SkillCall extends ToolCallBase {
+  readonly kind: 'skill';
+  readonly skill: string | undefined;
+}
+
+/** A message to another agent. */
+export interface MessageCall extends ToolCallBase {
+  readonly kind: 'message';
+  readonly to: string | undefined;
+  readonly text: string | undefined;
+}
+
+/** A call of a kind that carries no field of its own. */
+export interface PlainCall extends ToolCallBase {
+  readonly kind: 'ask' | 'schedule' | 'task-input' | 'other';
+}
+
+export type ToolCall = ShellCall | ReadCall | EditCall | SearchCall | WebCall | HelperCall | SkillCall | MessageCall | PlainCall;
+
+/** The port that reads a host's tool call into a {@link ToolCall}. */
+export interface ToolCallShape {
+  /** The call of the tool the host names `name`, with the input it sent; a tool the host does not know is `other`. */
+  normalize(name: string, input: JsonRecord): ToolCall;
+}
+
+export function isToolKind(value: unknown): value is ToolKind {
+  return TOOL_KINDS.some((kind) => kind === value);
+}
