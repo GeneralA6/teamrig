@@ -10,7 +10,15 @@ export function hostDeps(over: Partial<HostDeps> = {}): HostDeps {
   return { env: {}, platform: 'linux', run: noProgram, ...over };
 }
 
+/**
+ * The scanner a loader hands a connector, also finding the team's `extra` patterns. An adapter's spec builds its
+ * scanner here: the plugin API hands an adapter the scanner's type alone, never the class.
+ */
+export function secretScanner(extra: readonly string[] = []): SecretScanner {
+  return new SecretScanner(extra);
+}
+
 /** What a loader hands a connector adapter, with no credential stored, no program to run and no API that answers; `over` replaces fields. */
 export function connectorDeps(over: Partial<ConnectorDeps> = {}): ConnectorDeps {
-  return { run: noProgram, http: new FakeHttp(), credentials: new FakeCredentials(), env: {}, scanner: new SecretScanner(), stamp: true, ...over };
+  return { run: noProgram, http: new FakeHttp(), credentials: new FakeCredentials(), env: {}, scanner: secretScanner(), stamp: true, ...over };
 }

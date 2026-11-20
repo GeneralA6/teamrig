@@ -1,8 +1,5 @@
-import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import type { HostLinks } from '../issues/host.ts';
-import type { LinkedIssue } from '../issues/issue.ts';
+import { isRecord, plainLine, recordField, stringField, type HostLinks, type JsonRecord, type LinkedIssue } from '../../../plugin-api/index.ts';
 import { HOST_ID, type GhRunner } from './gh.ts';
-import { plainLine } from '../core/printable.ts';
 import { ISSUE_READ, nodesOf, runRead } from './issues.ts';
 import { linksPageArgs } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';

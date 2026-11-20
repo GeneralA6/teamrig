@@ -24,7 +24,7 @@ import type { RepoState } from '../push-guard/push.ts';
 import type { SecretsGit } from '../secret-guard/secrets-git.ts';
 import type { CredentialStore } from '../core/credentials.ts';
 import type { HttpClient } from '../core/http.ts';
-import type { GhRunner } from '../github/gh.ts';
+import type { GhRunner } from '../adapters/connectors/github/gh.ts';
 import type { ShellRunner } from '../test-run/shell.ts';
 import type { HostCpu } from '../delivery/cpu.ts';
 import type { HostMemory } from '../delivery/memory.ts';
