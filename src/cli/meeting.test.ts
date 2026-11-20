@@ -5,6 +5,7 @@ import { MeterLog } from '../budget/calibration.ts';
 import { SPOTLIGHT_VARS } from '../meeting/spotlight.ts';
 import { MEETING_LAPSE_MS, MeetingStore } from '../meeting/state.ts';
 import { MergeLog, type SelfMerge } from '../merge/merge-log.ts';
+import { layoutPaths } from '../register/layout.ts';
 import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { APP, CliHarness, EVENTS_PATH, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
@@ -258,6 +259,17 @@ describe('runCli: the daily meeting', () => {
       "RECORDED 1 decision(s), each told to its task's owner",
       '  alpha T1: owner decided: the middle tier (its wait on the owner cleared: act on it, set its next status)',
     ]);
+  });
+
+  it("prints a card's what and why from the history once a compaction left its description out of the snapshot (T4781)", async () => {
+    const kit = await teamBeforeTheMeeting();
+    kit.clock.advance(3 * 24 * 60 * MINUTE);
+    await rotateRegister(kit.files, EVENTS_PATH, { now: new Date(kit.clock.now()) });
+    assert.ok(!(kit.files.get(layoutPaths(EVENTS_PATH).snapshot) ?? 'which tier ships first').includes('which tier ships first'), 'the snapshot holds no description');
+    const agenda = await kit.run(['meeting', 'agenda', '--session', 'lead']);
+    assert.equal(agenda.code, EXIT.ok, agenda.stderr.join('\n'));
+    const card = agenda.stdout.findIndex((line) => line.startsWith('  T1 waiting, '));
+    assert.deepEqual(agenda.stdout.slice(card + 1, card + 3), ['    what and why: which tier ships first', `    decide: ${TEST_CARD.question}`], agenda.stdout.join('\n'));
   });
 
   it('carries every card with no answer to the next meeting, which asks it first; a Decided or a Later is done (T2775)', async () => {
