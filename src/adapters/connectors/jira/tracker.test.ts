@@ -584,6 +584,60 @@ describe("Jira's own id of an issue (T4754)", () => {
   });
 });
 
+describe('a Jira issue as it is now (T4754)', () => {
+  const READ = `${ISSUE}?fields=description,status,labels,assignee`;
+  const NOT_AN_ISSUE = failed("Jira's answer for ENG-12 did not read as an issue");
+
+  it('reads an open issue with its labels, the account holding it and its description as text', async () => {
+    const { tracker, http } = kit();
+    const fields = { description: doc('What is wrong.'), labels: ['bug', 'status:in-review'], assignee: { accountId: '712020:0a1b2c3d' } };
+    http.answers('GET', READ, 200, JSON.stringify(jiraIssue('ENG-12', fields)));
+    assert.deepEqual(await tracker.thread(TARGET), {
+      kind: 'read',
+      thread: { state: 'open', labels: ['bug', 'status:in-review'], assignees: ['712020:0a1b2c3d'], pull: false, body: 'What is wrong.' },
+    });
+    assert.deepEqual(sent(http), [['GET', '/issue/ENG-12?fields=description,status,labels,assignee']]);
+  });
+
+  it('reads a closed issue by its status, and one nobody holds with no description', async () => {
+    const { tracker, http } = kit();
+    http
+      .answers('GET', READ, 200, JSON.stringify(jiraIssue('ENG-12', { status: CLOSED, labels: [], assignee: null, description: null })))
+      .answers('GET', READ, 200, JSON.stringify(jiraIssue('ENG-12', { labels: ['bug'], assignee: { displayName: 'No id' } })));
+    assert.deepEqual(await tracker.thread(TARGET), { kind: 'read', thread: { state: 'closed', labels: [], assignees: [], pull: false, body: '' } });
+    assert.deepEqual(await tracker.thread(TARGET), { kind: 'read', thread: { state: 'open', labels: ['bug'], assignees: [], pull: false, body: '' } });
+  });
+
+  it('is missing for an issue Jira does not show', async () => {
+    const { tracker, http } = kit();
+    http.answers('GET', READ, 404);
+    assert.deepEqual(await tracker.thread(TARGET), { kind: 'missing' });
+  });
+
+  it('fails on an answer with no status or no list of labels, never reading it as an open issue with no label', async () => {
+    const { tracker, http } = kit();
+    http
+      .answers('GET', READ, 200, '{"key":"ENG-12","fields":{"labels":[]}}')
+      .answers('GET', READ, 200, '{"key":"ENG-12","fields":{"status":"Done","labels":[]}}')
+      .answers('GET', READ, 200, JSON.stringify(jiraIssue('ENG-12')))
+      .answers('GET', READ, 200, JSON.stringify(jiraIssue('ENG-12', { labels: ['bug', 7] })))
+      .answers('GET', READ, 200, '{"key":"ENG-12"}')
+      .answers('GET', READ, 200, '[]');
+    for (let read = 0; read < 6; read += 1) {
+      assert.deepEqual(await tracker.thread(TARGET), NOT_AN_ISSUE);
+    }
+    assert.equal(http.requests.length, 6);
+  });
+
+  it('passes on why a read failed, and asks nothing for a repo that names no project', async () => {
+    const { tracker, http } = kit();
+    http.answers('GET', READ, 500);
+    assert.deepEqual(await tracker.thread(TARGET), failed('Jira answered 500'));
+    assert.deepEqual(await tracker.thread({ repo: 'acme', number: 12 }), failed(NOT_A_PROJECT));
+    assert.equal(http.requests.length, 1);
+  });
+});
+
 describe('who holds a Jira issue (T4754)', () => {
   const ACCOUNT = '712020:0a1b2c3d';
   const ASKED = 'accountId=712020%3A0a1b2c3d';
