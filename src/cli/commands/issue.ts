@@ -435,5 +435,5 @@ async function hostsAfter(checked: CheckedRepo, runtime: CliRuntime, posted: Pos
     runtime.out.stdout(`OFF ${ENV.github}=${GITHUB_OFF} turns GitHub off on this machine; nothing was written`);
     return undefined;
   }
-  return hostsOf(kind, runtime, scanner, config.github.stamp);
+  return hostsOf(kind, runtime, scanner, config.github.stamp, config.connectors);
 }

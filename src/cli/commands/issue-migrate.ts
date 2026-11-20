@@ -99,7 +99,7 @@ function planLines(plan: MigratePlan): string[] {
 async function openIssues(runtime: CliRuntime, team: Team, by: string, creates: readonly MigrateCreate[], scanner: SecretScanner): Promise<ExitCode> {
   const say = (line: string): void => runtime.out.stdout(line);
   // planMigration plans issues only for github.repos, GitHub's list, so every one opens on GitHub's tracker.
-  const host = (await hostsOf(GITHUB_REPOS_HOST, runtime, scanner, team.config.github.stamp)).tracker;
+  const host = (await hostsOf(GITHUB_REPOS_HOST, runtime, scanner, team.config.github.stamp, team.config.connectors)).tracker;
   const told = new Set<string>();
   let opened = 0;
   const stopped = (id: string): string => `STOPPED at ${id} after opening ${opened} issue(s); fix the cause and rerun: tasks holding their issue are skipped`;

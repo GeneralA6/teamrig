@@ -7,7 +7,7 @@ import type { TaskFields } from '../../register/events.ts';
 import type { AddInput, Verdict } from '../../register/policy.ts';
 import type { WriteResult } from '../../register/register.ts';
 import type { Flags } from '../args.ts';
-import { hostsOf } from '../issue-hosts.ts';
+import { hostsOf, type ConnectorSections } from '../issue-hosts.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { GITHUB_OFF, githubOff } from './issue-sync-auto.ts';
 
@@ -39,10 +39,11 @@ export type IssueAddEnd = { readonly kind: 'stopped'; readonly code: ExitCode } 
 /**
  * The tracker a new task's issue opens on: GitHub's (the issue's repository is one of github.repos), with the token
  * saved for the repository's owner, or none while GitHub is off here. stamp is the team's github.stamp: whether the
- * issue's body ends with the made-with-teamrig footer.
+ * issue's body ends with the made-with-teamrig footer; sections is the team's connectors map, of which the tracker's
+ * connector reads its own section.
  */
-export async function addIssueHost(runtime: CliRuntime, scanner: SecretScanner, stamp: boolean): Promise<Tracker | undefined> {
-  return githubOff(runtime.env) ? undefined : (await hostsOf(GITHUB_REPOS_HOST, runtime, scanner, stamp)).tracker;
+export async function addIssueHost(runtime: CliRuntime, scanner: SecretScanner, stamp: boolean, sections: ConnectorSections): Promise<Tracker | undefined> {
+  return githubOff(runtime.env) ? undefined : (await hostsOf(GITHUB_REPOS_HOST, runtime, scanner, stamp, sections)).tracker;
 }
 
 /**

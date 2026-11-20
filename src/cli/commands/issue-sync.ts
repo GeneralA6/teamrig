@@ -100,7 +100,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   const claimRead = new Map<string, readonly HostIssue[]>();
   // github.repos is GitHub's list, so every repository it names is GitHub's: its issues on the tracker (host), its
   // pull requests, checks, posts and label file on the code host.
-  const { tracker: host, codeHost } = await hostsOf(GITHUB_REPOS_HOST, runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp);
+  const { tracker: host, codeHost } = await hostsOf(GITHUB_REPOS_HOST, runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp, config.connectors);
   const told = new Set<string>();
   const ends: RepoEnd[] = [];
   const added: AddedTask[] = [];

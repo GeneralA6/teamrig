@@ -213,7 +213,7 @@ async function probeRound(
   marks: ReadonlyMap<string, WatchMarks>,
 ): Promise<{ readonly round: ProbeRound; readonly pending: ReadonlyMap<string, WatchMarks> }> {
   // The probe goes over github.repos, GitHub's list, and asks its tracker.
-  const host = (await hostsOf(GITHUB_REPOS_HOST, runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp)).tracker;
+  const host = (await hostsOf(GITHUB_REPOS_HOST, runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp, config.connectors)).tracker;
   const pending = new Map<string, WatchMarks>();
   let failed = false;
   for (const repo of config.github.repos) {
