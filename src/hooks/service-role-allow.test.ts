@@ -60,6 +60,13 @@ describe('service-role allow: the daily cap and the log', () => {
     });
   });
 
+  it('writes the line as it does today, naming the tab claudeSession: the cap reads the role and the time, never the id (T4762)', () => {
+    assert.equal(
+      line('2030-01-07T12:00:00.000Z', 'github'),
+      '{"v":1,"at":"2030-01-07T12:00:00.000Z","session":"alpha","claudeSession":"c","tool":"Bash","event":"PreToolUse","answer":"role","role":"github","command":"issue close","target":"acme/web#7"}\n',
+    );
+  });
+
   it('allows a call naming its role, and refuses past the cap, saying when it runs again and the route (T3356)', () => {
     assert.equal(decisionOf(roleAllowOutput('github', call)), 'allow');
     const capped = roleCapOutput('github', 10);
