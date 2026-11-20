@@ -79,6 +79,7 @@ export {
   isToolKind,
   isUnsupported,
   unsupported,
+  type AskCall,
   type BackgroundMark,
   type CallUsage,
   type CompactEntry,
