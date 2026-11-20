@@ -3,18 +3,19 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { DEFAULT_COMMITS } from '../config/defaults.ts';
 import type { CommitGate, PushToProtected, SkipHooks } from '../config/types.ts';
-import { isRecord } from '../core/guards.ts';
+import { isRecord, type JsonRecord } from '../core/guards.ts';
 import type { CommitStat } from '../push-guard/commit-size.ts';
 import type { ConfigValue } from '../push-guard/invocations.ts';
 import { leasedReason, type RepoState } from '../push-guard/push.ts';
 import { ASK_REFUSED_NOTE } from './permission.ts';
 import { testConfig } from '../testing/config.ts';
+import { hookEventOf, replyText } from '../testing/host.ts';
 import {
   allowedPushNote,
   clearedPushNote,
   commitsOf,
   protectedBranchesOf,
-  pushGuardOutput,
+  pushGuardReply,
   pushToProtectedOf,
   skipHooksOf,
   skipHooksReason,
@@ -43,8 +44,15 @@ function env(branch = 'feature') {
     commitLog: { between: () => [] },
     skipHooks: 'deny',
     clearance: async () => assert.fail('read the clearance outside pushToProtected: lead'),
-    platform: 'linux',
   } satisfies PushGuardEnv;
+}
+
+/**
+ * The hook's stdout for `input`, a hook input as the host sends it on `platform`: the guard's reply as the shipped
+ * host words it, '' when the guard has none.
+ */
+async function pushGuardOutput(input: JsonRecord, guardEnv: PushGuardEnv, platform: NodeJS.Platform = 'linux'): Promise<string> {
+  return replyText('tool-start', await pushGuardReply(hookEventOf(input, platform), guardEnv));
 }
 
 const CHOICES: readonly PushToProtected[] = ['ask', 'allow', 'lead', 'gated'];
@@ -106,7 +114,7 @@ describe('pushGuardOutput', () => {
     assert.equal(await pushGuardOutput(payload('git push origin feature'), env()), '');
     assert.equal(await pushGuardOutput(payload("cat > n.md <<'EOF'\ngit push origin main\nEOF"), env()), '');
     assert.equal(await pushGuardOutput({ tool_name: 'Read', tool_input: { file_path: 'x' } }, env()), '');
-    assert.equal(await pushGuardOutput('not an object', env()), '');
+    assert.equal(await pushGuardOutput({ tool_name: 'Bash', tool_input: {} }, env()), '');
   });
 
   it('reads PowerShell commands with the PowerShell escape rules', async () => {
@@ -391,22 +399,22 @@ describe('pushGuardOutput: skipped hooks', () => {
 describe('pushGuardOutput: a Bash line on Windows (T2319)', () => {
   /** A run of n backslashes; on Windows bash receives each run not before a double quote halved, rounded up. */
   const bs = (n: number): string => '\\'.repeat(n);
-  const windows = (branch = 'feature'): PushGuardEnv => ({ ...env(branch), platform: 'win32' });
+  const onWindows = (input: JsonRecord, branch = 'feature'): Promise<string> => pushGuardOutput(input, env(branch), 'win32');
   const hiddenSeparator = (command: string): string => `echo a${bs(3)}; ${command}`;
   const hiddenBacktick = (command: string): string => `echo "p${bs(3)}\`${command}; echo ${bs(3)}\`q"`;
 
   it('asks about a push bash runs behind a separator or backtick the line as written escapes', async () => {
     for (const command of [hiddenSeparator('git push origin HEAD:main'), hiddenBacktick('git push origin HEAD:main')]) {
-      assert.equal(decisionOf(await pushGuardOutput(payload(command), windows())), 'deny', command);
+      assert.equal(decisionOf(await onWindows(payload(command))), 'deny', command);
       assert.equal(await pushGuardOutput(payload(command), env()), '', `off Windows bash runs the line as written: ${command}`);
     }
   });
 
   it('keeps the strictest reading: a hidden force-push and a hidden skip of the hooks are refused', async () => {
-    const forced = hookOutput(await pushGuardOutput(payload(hiddenSeparator('git push --force origin main')), windows()));
+    const forced = hookOutput(await onWindows(payload(hiddenSeparator('git push --force origin main'))));
     assert.equal(forced.decision, 'deny');
     assert.match(forced.reason, /^Force-pushing, mirroring or deleting a protected branch \(main\)/);
-    const skipped = hookOutput(await pushGuardOutput(payload(hiddenSeparator('git commit --no-verify -m fix')), windows()));
+    const skipped = hookOutput(await onWindows(payload(hiddenSeparator('git commit --no-verify -m fix'))));
     assert.equal(skipped.decision, 'deny');
     assert.match(skipped.reason, /git commit \(--no-verify\)/);
   });
@@ -415,14 +423,14 @@ describe('pushGuardOutput: a Bash line on Windows (T2319)', () => {
     const written = `echo a${bs(2)}; git checkout -b topic; git push origin HEAD`;
     assert.equal(await pushGuardOutput(payload(written), env('main')), '', 'as written, the push sends the new topic branch');
     assert.equal(decisionOf(await pushGuardOutput(payload(`echo a${bs(1)}; git checkout -b topic; git push origin HEAD`), env('main'))), 'deny', 'as bash receives it, the checkout is echoed');
-    assert.equal(decisionOf(await pushGuardOutput(payload(written), windows('main'))), 'deny');
+    assert.equal(decisionOf(await onWindows(payload(written), 'main')), 'deny');
   });
 
   it('leaves a line whose readings both only push a feature branch or run no git, and a PowerShell line as written', async () => {
     for (const command of [`grep 'a${bs(4)}b' f`, `echo a${bs(3)}; git push origin feature`, `git log --grep 'x${bs(2)}y'`]) {
-      assert.equal(await pushGuardOutput(payload(command), windows()), '', command);
+      assert.equal(await onWindows(payload(command)), '', command);
     }
-    assert.equal(await pushGuardOutput(payload(`echo a${bs(3)}; git status`, { tool_name: 'PowerShell' }), windows()), '');
+    assert.equal(await onWindows(payload(`echo a${bs(3)}; git status`, { tool_name: 'PowerShell' })), '');
   });
 });
 

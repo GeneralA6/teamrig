@@ -10,10 +10,11 @@ import { execGuardOutput, type TabIdentity } from '../../hooks/exec-guard.ts';
 import { githubReposOf } from '../../hooks/gh-write-refusals.ts';
 import { remoteReposOf } from '../../hooks/gh-writes.ts';
 import { packageGuardOf, packageGuardOutput } from '../../hooks/package-guard.ts';
-import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf, skipHooksOf, type PushClearance } from '../../hooks/push-guard.ts';
+import { commitsOf, protectedBranchesOf, pushGuardReply, pushToProtectedOf, skipHooksOf, type PushClearance } from '../../hooks/push-guard.ts';
 import { secretGuardOf, secretGuardOutput, secretPatternsOf } from '../../hooks/secret-guard.ts';
 import { serviceRoleGuardOutput } from '../../hooks/service-role-guard.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
+import type { HookEvent, HookReply } from '../../ports/host/index.ts';
 import { approvedTaskOf } from '../../register/approval.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
@@ -35,7 +36,7 @@ import { teamSessionOf } from './hook-input.ts';
  * register. A child team's lead is no lead of the whole tree: its push needs the parent team's lead's approval (T1140).
  * It never throws: a register or tree it cannot read clears nothing, so the push is refused, saying why.
  */
-async function pushClearanceOf(runtime: CliRuntime, kit: Kit | undefined, payload: unknown): Promise<PushClearance> {
+async function pushClearanceOf(runtime: CliRuntime, kit: Kit | undefined, hostSession: string | null): Promise<PushClearance> {
   if (kit === undefined || kit.load.status !== 'loaded') {
     // Not reached: without a loaded config the guard asks (pushToProtectedOf), so it never reads the clearance.
     return { kind: 'none', approver: 'the lead', why: 'the team config did not load' };
@@ -45,7 +46,7 @@ async function pushClearanceOf(runtime: CliRuntime, kit: Kit | undefined, payloa
   const tree = new LeadTree(config);
   try {
     const roster = await rosterOf(runtime, kit, config);
-    const session = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
+    const session = await teamSessionOf(runtime, kit, roster, hostSession);
     if (session === undefined) {
       return { kind: 'none', approver: lead, why: 'this tab is not bound to a session of the team, so the guard cannot tell whose push it is' };
     }
@@ -86,10 +87,10 @@ async function leadClearanceOf(runtime: CliRuntime, kit: Kit, config: KitConfig)
     : { kind: 'approved', by: approved.by, task: approved.task.id };
 }
 
-/** The push guard's answer: it asks before a push to a protected branch and refuses a force-push of one. */
-export function pushGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload: unknown): Promise<string> {
+/** The push guard's reply: it asks before a push to a protected branch and refuses a force-push of one; none when it lets the call go. */
+export function pushGuardReplyOf(runtime: CliRuntime, guard: GuardLoad, event: HookEvent): Promise<HookReply | undefined> {
   const { kit, load } = guard;
-  return pushGuardOutput(payload, {
+  return pushGuardReply(event, {
     cwd: runtime.cwd,
     home: runtime.userHome,
     repo: runtime.git,
@@ -98,8 +99,7 @@ export function pushGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload
     commits: commitsOf(load),
     commitLog: runtime.commitLog,
     skipHooks: skipHooksOf(load),
-    clearance: () => pushClearanceOf(runtime, kit, payload),
-    platform: runtime.platform,
+    clearance: () => pushClearanceOf(runtime, kit, event.session ?? null),
   });
 }
 

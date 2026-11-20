@@ -71,11 +71,11 @@ import { restartOrPark, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
 import { promptSecretBlock } from './hook-prompt-secret.ts';
 import { guardLoadOf, hookTeam } from './hook-guard-load.ts';
-import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf, serviceRoleGuardOutputOf } from './hook-guard-outputs.ts';
+import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardReplyOf, secretGuardOutputOf, serviceRoleGuardOutputOf } from './hook-guard-outputs.ts';
 import { checkHooklessTabs } from './hook-hookless.ts';
 import { dueFactsAt, inMeetingNow } from './hook-refresh-mod.ts';
 import { recordSessionStart } from './hook-session-record.ts';
-import { envSession, hookScopeOf, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, turnLeadPathsOf, type SessionScope, type TeamScope } from './hook-input.ts';
+import { envSession, hookScopeOf, parseJson, readHookInput, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, turnLeadPathsOf, writeReply, type SessionScope, type TeamScope } from './hook-input.ts';
 import { recordTabNeed } from './hook-tab-need.ts';
 import { tabStatusOn, tabTitleOf } from './hook-tab-status.ts';
 import { logPrompt, logReply, logStart } from './hook-turn-log.ts';
@@ -93,15 +93,12 @@ import { verifyByLinesOf, verifyStartNoteOf } from './verify-queue.ts';
 /** PreToolUse on Bash and PowerShell: asks before a push to a protected branch, refuses a force-push of one. */
 export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
+  const { payload, event } = await readHookInput(runtime);
   const guard = await guardLoadOf(payload, runtime);
-  if (guard === undefined) {
+  if (guard === undefined || event === undefined) {
     return EXIT.ok;
   }
-  const output = await pushGuardOutputOf(runtime, guard, payload);
-  if (output !== '') {
-    runtime.out.stdout(output);
-  }
+  writeReply(runtime, 'tool-start', await pushGuardReplyOf(runtime, guard, event));
   return EXIT.ok;
 }
 
