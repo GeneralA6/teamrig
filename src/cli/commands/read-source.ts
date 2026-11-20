@@ -49,6 +49,12 @@ export interface DocumentSource {
   build(): Promise<Built>;
 }
 
+/** `load`, run at the first call and answered from that one run after it. */
+export function once<T>(load: () => Promise<T>): () => Promise<T> {
+  let loaded: Promise<T> | undefined;
+  return () => (loaded ??= load());
+}
+
 /** Each path's stamp, in order; null for a file that is not there. */
 export async function stampsOf(runtime: CliRuntime, paths: readonly string[]): Promise<(string | null)[]> {
   const stamps: (string | null)[] = [];

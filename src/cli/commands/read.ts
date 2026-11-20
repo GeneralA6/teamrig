@@ -29,12 +29,13 @@ import { layoutPaths, MissingSegmentError, readWorkingSet, type LayoutPaths } fr
 import type { RegisterSnapshot } from '../../register/snapshot.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
 import { sessionRef } from '../inputs.ts';
-import { findTeam, loadedConfig, openKit, pastOrPresentIdOf, rosterOf } from '../kit.ts';
+import { foundTeamOf, loadedConfig, lookForTeam, openKit, pastOrPresentIdOf, rosterOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
+import { configSource, teamlessConfigSource } from './read-config.ts';
 import { meetingsSource } from './read-meetings.ts';
 import { selfOf, sessionsSource } from './read-sessions.ts';
-import { configProblemsOf, servedPathOf, skippedOf, stampsOf, type DocumentSource, type ReadScope, type ServedFolder } from './read-source.ts';
+import { configProblemsOf, once, servedPathOf, skippedOf, stampsOf, type DocumentSource, type ReadScope, type ServedFolder } from './read-source.ts';
 
 /** The trackers a document names a ref or a source by; a second one is one more entry here. */
 const CONNECTORS: readonly Connector[] = [GITHUB_CONNECTOR];
@@ -59,12 +60,18 @@ interface ReadRequest {
 /** A host's conversation id is opaque; this only keeps one a shell or a path could misread out of the run. */
 const CONVERSATION_PATTERN = /^[\w.:-]{1,128}$/;
 
-/** The documents this teamrig can build; the rest of interface 1 joins here, one by one. */
-const SOURCES: Partial<Record<DocumentName, (scope: ReadScope) => DocumentSource>> = {
+/** How each document of interface 1 is built for a team; a new document is one more entry. */
+const SOURCES: Record<DocumentName, (scope: ReadScope) => DocumentSource> = {
   tasks: tasksSource,
   inbox: inboxSource,
   sessions: sessionsSource,
   meetings: meetingsSource,
+  config: configSource,
+};
+
+/** The documents a run with no team is still answered: what a setup screen reads before there is a team to read. */
+const TEAMLESS: Partial<Record<DocumentName, (runtime: CliRuntime) => DocumentSource>> = {
+  config: teamlessConfigSource,
 };
 
 /**
@@ -158,16 +165,9 @@ function documentsOf(names: readonly string[]): DocumentName[] {
     if (documents.includes(name)) {
       throw new UsageError(`document ${name} is asked twice`);
     }
-    if (SOURCES[name] === undefined) {
-      throw new UsageError(`document ${name} is not served yet; this teamrig serves ${servedDocuments().join(', ')}`);
-    }
     documents.push(name);
   }
   return documents;
-}
-
-function servedDocuments(): DocumentName[] {
-  return DOCUMENTS.filter((name) => SOURCES[name] !== undefined);
 }
 
 async function answersOf(request: ReadRequest, runtime: CliRuntime): Promise<object[]> {
@@ -175,17 +175,44 @@ async function answersOf(request: ReadRequest, runtime: CliRuntime): Promise<obj
   if (!range.served) {
     throw new RefusedError(range.reason);
   }
-  const scope = await scopeOf(request, runtime);
+  const { sources, warnings } = await sourcesOf(request, runtime);
   const answers: object[] = [];
-  for (const name of request.documents) {
-    const source = SOURCES[name]?.(scope);
-    if (source !== undefined) {
-      const revision = revisionOf(await source.parts());
-      const built = await source.build();
-      answers.push(answerOf(name, revision, [...scope.warnings, ...built.problems], built.body));
-    }
+  for (const [name, source] of sources) {
+    const revision = revisionOf(await source.parts());
+    const built = await source.build();
+    answers.push(answerOf(name, revision, [...warnings, ...built.problems], built.body));
   }
   return answers;
+}
+
+/** What one run answers from: each document asked with its source, in the order asked. */
+interface ReadSources {
+  readonly sources: ReadonlyMap<DocumentName, DocumentSource>;
+  /** What every document of the run carries in its problems. */
+  readonly warnings: readonly string[];
+}
+
+/**
+ * The sources of the documents asked. A run with no team is answered only when every document asked has an answer
+ * for one ({@link TEAMLESS}) and no `--team` is named; any other is refused as every command with no team is, since
+ * a run answers every document it was asked or none.
+ */
+async function sourcesOf(request: ReadRequest, runtime: CliRuntime): Promise<ReadSources> {
+  const found = await lookForTeam(runtime);
+  if (found.kind === 'none' && request.team === undefined) {
+    const teamless = new Map<DocumentName, DocumentSource>();
+    for (const name of request.documents) {
+      const source = TEAMLESS[name]?.(runtime);
+      if (source !== undefined) {
+        teamless.set(name, source);
+      }
+    }
+    if (teamless.size === request.documents.length) {
+      return { sources: teamless, warnings: [] };
+    }
+  }
+  const scope = await scopeOf(request, runtime, foundTeamOf(found).team);
+  return { sources: new Map(request.documents.map((name) => [name, SOURCES[name](scope)])), warnings: scope.warnings };
 }
 
 /**
@@ -194,8 +221,7 @@ async function answersOf(request: ReadRequest, runtime: CliRuntime): Promise<obj
  * With `--conversation` and no session named, the asker is the session of the caller's team that conversation runs
  * in, so a host that knows only its conversation still reads its own inbox.
  */
-async function scopeOf(request: ReadRequest, runtime: CliRuntime): Promise<ReadScope> {
-  const own = (await findTeam(runtime)).team;
+async function scopeOf(request: ReadRequest, runtime: CliRuntime, own: string): Promise<ReadScope> {
   const tree = once(() => loadTree(runtime));
   const team = request.team ?? own;
   if (team !== own && !(await tree()).tree.ancestorsOf(own).includes(team)) {
@@ -220,12 +246,6 @@ async function scopeOf(request: ReadRequest, runtime: CliRuntime): Promise<ReadS
     sinceHours: request.sinceHours,
     warnings: configProblemsOf(kit.paths, load),
   };
-}
-
-/** `load`, run at the first call and answered from that one run after it. */
-function once<T>(load: () => Promise<T>): () => Promise<T> {
-  let loaded: Promise<T> | undefined;
-  return () => (loaded ??= load());
 }
 
 /**
