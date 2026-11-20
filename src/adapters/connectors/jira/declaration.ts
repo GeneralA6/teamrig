@@ -1,4 +1,5 @@
 import type { ConnectorDeclaration, Support } from '../../../plugin-api/index.ts';
+import { CONFIG_KEYS } from './config.ts';
 
 /**
  * What the Jira Cloud connector says of itself. A row says what this adapter does today, not what Jira could do: a
@@ -34,7 +35,7 @@ export const declaration: ConnectorDeclaration = {
   name: 'Jira',
   kinds: ['tracker'],
   refPrefix: 'jira:',
-  configKeys: {},
+  configKeys: CONFIG_KEYS,
   manifest: {
     'tracker.issue-import': partial(
       "a description's formatting, and the reporter's tie to the project",
@@ -43,8 +44,8 @@ export const declaration: ConnectorDeclaration = {
     'tracker.accept-label': unsupported('the Jira connector does not read who put a label on an issue yet, so the accept label takes no issue'),
     'tracker.watch': partial('a free look for a change', 'each look for a change is one Jira search, which counts against the site\'s rate limit'),
     'tracker.issue-open': partial(
-      'Markdown, and a chosen issue type',
-      "an issue opens in Jira as a Task, or as the project's first type that is no sub-task when it has no Task, its body as plain paragraphs: its Markdown marks show as typed",
+      'Markdown, and a type chosen for one issue',
+      "an issue opens in Jira as the type the team's connectors.jira.issueType names, without it as a Task, or as the project's first type that is no sub-task when it has no Task, its body as plain paragraphs: its Markdown marks show as typed",
     ),
     'tracker.comment': partial('Markdown', 'a comment is posted to Jira as plain paragraphs: its Markdown marks show as typed'),
     'tracker.edit-body': partial('Markdown', 'a description is written to Jira as plain paragraphs: its Markdown marks show as typed'),

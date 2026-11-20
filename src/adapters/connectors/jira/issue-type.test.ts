@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { OPENING_TYPE, openingType } from './issue-type.ts';
+import { OPENING_TYPE, openableNames, openingType } from './issue-type.ts';
 
 const EPIC = { id: '10000', name: 'Epic', subtask: false };
 const SUB_TASK = { id: '10003', name: 'Sub-task', subtask: true };
@@ -30,5 +30,17 @@ describe('the type a new Jira issue opens as (T4754)', () => {
     assert.equal(openingType({}), undefined);
     assert.equal(openingType([TASK]), undefined);
     assert.equal(openingType(undefined), undefined);
+  });
+
+  it("is the type the team's config names, its name in any case, and no other when the project lacks it (T4766)", () => {
+    assert.equal(openingType({ issueTypes: [EPIC, TASK, BUG] }, 'Bug'), '10004');
+    assert.equal(openingType({ issueTypes: [EPIC, TASK, BUG] }, 'epic'), '10000');
+    assert.equal(openingType({ issueTypes: [EPIC, TASK] }, 'Bug'), undefined);
+    assert.equal(openingType({ issueTypes: [SUB_TASK, TASK] }, 'Sub-task'), undefined);
+  });
+
+  it('names the types an issue can open as, a sub-task and a type with no name left out (T4766)', () => {
+    assert.deepEqual(openableNames({ issueTypes: [EPIC, SUB_TASK, TASK, { id: '9' }] }), ['Epic', 'Task']);
+    assert.deepEqual(openableNames({}), []);
   });
 });

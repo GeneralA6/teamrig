@@ -34,7 +34,7 @@ import {
 import { adfText, textAdf, type AdfDoc } from './adf.ts';
 import type { JiraAnswer, JiraClient } from './client.ts';
 import { NOT_BUILT } from './declaration.ts';
-import { openingType } from './issue-type.ts';
+import { openableNames, openingType } from './issue-type.ts';
 import { stateReasonOf } from './resolution.ts';
 import { browseUrl, credentialName, issueKey, issueNumber, parseProject, projectProblem, type JiraProject } from './site.ts';
 import { closingStep, isDoneStatus } from './transitions.ts';
@@ -240,16 +240,25 @@ function labelProblem(label: string): string | undefined {
   return label === '' || /\s/.test(label) ? `${JSON.stringify(label)} cannot be a Jira label: one holds no space` : undefined;
 }
 
+/** What an open answers when the project has no type of the name the team's config asks for: the ones it has, to pick from. */
+function noSuchType(project: JiraProject, wanted: string, has: readonly string[]): string {
+  const names = has.length === 0 ? 'none' : has.join(', ');
+  return `${project.key} has no issue type ${JSON.stringify(wanted)} the sign-in may open an issue as (it has ${names}): name one of them in connectors.jira.issueType`;
+}
+
 export class JiraTracker implements Tracker {
   readonly name = 'Jira';
   private readonly client: JiraClient;
   private readonly stamp: boolean;
   /** The id of the type a new issue opens as, by project (`<site>/<KEY>`). */
   private readonly openingTypes = new Map<string, string>();
+  /** The type the team's config names for a new issue (`connectors.jira.issueType`), or undefined for the tracker's own pick. */
+  private readonly issueType: string | undefined;
 
-  constructor(client: JiraClient, stamp: boolean) {
+  constructor(client: JiraClient, stamp: boolean, issueType?: string) {
     this.client = client;
     this.stamp = stamp;
+    this.issueType = issueType;
   }
 
   /** Reached with the site's saved sign-in only; the scope is the site, as one sign-in serves all its projects. */
@@ -650,9 +659,9 @@ export class JiraTracker implements Tracker {
     if (answer.kind !== 'ok') {
       return answer.kind === 'missing' ? failed(this.noProject(project)) : answer;
     }
-    const id = openingType(answer.body);
+    const id = openingType(answer.body, this.issueType);
     if (id === undefined) {
-      return failed(`Jira names no issue type the sign-in may open an issue of ${project.key} as`);
+      return failed(this.issueType === undefined ? `Jira names no issue type the sign-in may open an issue of ${project.key} as` : noSuchType(project, this.issueType, openableNames(answer.body)));
     }
     this.openingTypes.set(name, id);
     return { kind: 'type', id };

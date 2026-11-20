@@ -13,6 +13,17 @@ const SITE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 /** A project key as `repo` holds it, in lowercase: Jira's own is the same text in capitals. */
 const PROJECT = /^[a-z][a-z0-9_]*$/;
 
+/** Whether `name` can be a site's name. */
+export function isSite(name: string): boolean {
+  return SITE.test(name);
+}
+
+/** The project key `text` spells, in either case, as Jira spells it in capitals; undefined when it spells none. */
+export function projectKey(text: string): string | undefined {
+  const lower = text.toLowerCase();
+  return PROJECT.test(lower) ? lower.toUpperCase() : undefined;
+}
+
 /** One project of one site. */
 export interface JiraProject {
   readonly site: string;

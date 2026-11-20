@@ -65,11 +65,15 @@ describe('the Jira declaration', () => {
     assert.deepEqual(NOT_BUILT, { links: 'the Jira connector does not read or write issue links yet' });
   });
 
-  it('says an issue opens as a Task or the first type that can stand alone, its body as plain text (T4754)', () => {
+  it("declares the keys of its config section, each with its line (T4766)", () => {
+    assert.deepEqual(Object.keys(declaration.configKeys), ['site', 'projects', 'issueType']);
+  });
+
+  it("says an issue opens as the type the team's config names, else a Task or the first type that can stand alone, its body as plain text (T4754, T4766)", () => {
     assert.deepEqual(declaration.manifest['tracker.issue-open'], {
       kind: 'partial',
-      missing: 'Markdown, and a chosen issue type',
-      notice: "an issue opens in Jira as a Task, or as the project's first type that is no sub-task when it has no Task, its body as plain paragraphs: its Markdown marks show as typed",
+      missing: 'Markdown, and a type chosen for one issue',
+      notice: "an issue opens in Jira as the type the team's connectors.jira.issueType names, without it as a Task, or as the project's first type that is no sub-task when it has no Task, its body as plain paragraphs: its Markdown marks show as typed",
       proofs: [],
     });
   });
