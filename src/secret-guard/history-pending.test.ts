@@ -17,6 +17,8 @@ const secrets = new PromptSecrets();
 const blockedPrompt = join('use ', TOKEN, ' for CI');
 const found = secrets.secretsIn(blockedPrompt);
 const MINUTE = 60 * 1000;
+const BLOCKED_AT = '2030-01-08T10:00:00Z';
+const HASHES = [...new Set(found.map(({ hash }) => hash))];
 
 function entry(display: string): string {
   return `${JSON.stringify({ display, pastedContents: {}, timestamp: 1, project: '/work/app', sessionId: 's1' })}\n`;
@@ -96,6 +98,29 @@ describe('HistoryPending', () => {
     assert.deepEqual(pendingNames(files), []);
     assert.equal(files.get(places.history), KEEP + entry(blockedPrompt));
     assert.deepEqual(events(files), ['blocked', 'expired', 'expired']);
+  });
+
+  it('writes the pending record as it does today, naming the session claude (T4762)', async () => {
+    const files = new MemoryFiles({ [places.history]: KEEP });
+    await new HistoryPending(files, new FakeClock(BLOCKED_AT), secrets, KIT).blocked('c1', CLAUDE_DIR, found);
+
+    assert.deepEqual(
+      pendingNames(files).map((path) => files.get(path)),
+      [`{"v":1,"at":${Date.parse(BLOCKED_AT)},"claude":"c1","claudeDir":"${CLAUDE_DIR}","hashes":${JSON.stringify(HASHES)}}`],
+    );
+  });
+
+  it('cleans for a record a later teamrig wrote, naming the session hostSession (T4762)', async () => {
+    const later = `{"v":2,"at":${Date.parse(BLOCKED_AT)},"hostSession":"c1","claudeDir":"${CLAUDE_DIR}","hashes":${JSON.stringify(HASHES)}}`;
+    const files = new MemoryFiles({ [places.history]: KEEP + entry(blockedPrompt), [`${KIT}/history-clean/pending/1-later.json`]: later });
+    const clock = new FakeClock(BLOCKED_AT);
+    clock.advance(MINUTE);
+
+    await new HistoryPending(files, clock, secrets, KIT).sweep();
+
+    assert.equal(files.get(places.history), KEEP);
+    assert.deepEqual(pendingNames(files), []);
+    assert.deepEqual(events(files), ['cleaned', 'settled']);
   });
 
   it('keeps the record and logs the failure when a clean fails', async () => {

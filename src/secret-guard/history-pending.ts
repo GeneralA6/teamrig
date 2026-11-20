@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { errorMessage, isStringArray, numberField, stringField } from '../core/guards.ts';
+import { hostSessionOf } from '../core/host-session.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import type { Clock } from '../core/lock.ts';
 import { cleanHistory, historyPlaces, type HistoryClean } from './history-clean.ts';
@@ -122,14 +123,18 @@ export class HistoryPending {
   }
 }
 
-/** A pending record from its file; undefined for a damaged or foreign one, which the sweep drops. */
+/**
+ * A pending record from its file; undefined for a damaged or foreign one, which the sweep drops. A later teamrig's
+ * record names the session `hostSession` (T4762, src/core/host-session.ts) and is cleaned for all the same: both
+ * share the folder until every tab has reloaded, and a record dropped here would leave its secret in the history.
+ */
 function pendingOf(text: string | undefined): PendingClean | undefined {
   const record = text === undefined ? undefined : parseObject(text);
   if (record === undefined) {
     return undefined;
   }
   const at = numberField(record, 'at');
-  const claude = stringField(record, 'claude');
+  const claude = hostSessionOf(record, 'claude');
   const claudeDir = stringField(record, 'claudeDir');
   const hashes = record['hashes'];
   return at === undefined || claude === undefined || claudeDir === undefined || !isStringArray(hashes) ? undefined : { at, claude, claudeDir, hashes };
