@@ -1,4 +1,13 @@
-import { isRecord, stringField, type JsonRecord, type ShellDialect, type ToolCall, type ToolCallShape } from '../../../plugin-api/index.ts';
+import {
+  isRecord,
+  stringField,
+  type JsonRecord,
+  type ShellDialect,
+  type TextChange,
+  type TextReplacement,
+  type ToolCall,
+  type ToolCallShape,
+} from '../../../plugin-api/index.ts';
 import { bashReadings } from './bash-readings.ts';
 
 /** Reads one tool's input into the call the core knows. */
@@ -16,17 +25,57 @@ function shell(dialect: ShellDialect): Reader {
 /** The keys under which a file-writing tool carries the text it writes: Write, Edit and each MultiEdit edit, NotebookEdit. */
 const WRITTEN_TEXT_KEYS = ['content', 'new_string', 'new_source'] as const;
 
-const edit: Reader = (name, input) => {
-  const edits = input['edits'];
-  const records = [input, ...(Array.isArray(edits) ? edits.filter(isRecord) : [])];
-  return {
-    kind: 'edit',
-    name,
-    input,
-    path: stringField(input, 'file_path') ?? stringField(input, 'notebook_path'),
-    texts: records.flatMap((record) => WRITTEN_TEXT_KEYS.flatMap((key) => stringField(record, key) ?? [])),
-  };
+/** Reads the change a file-writing tool's input makes to its file's text, undefined when it does not read as one. */
+type ChangeReader = (input: JsonRecord) => TextChange | undefined;
+
+/** The replacement an Edit, or one edit of a MultiEdit, makes. */
+function replacementOf(input: JsonRecord): TextReplacement | undefined {
+  const from = stringField(input, 'old_string');
+  const to = stringField(input, 'new_string');
+  return from === undefined || to === undefined ? undefined : { from, to, all: input['replace_all'] === true };
+}
+
+/** A Write leaves the text it carries, whatever the file held. */
+const wholeText: ChangeReader = (input) => {
+  const text = stringField(input, 'content');
+  return text === undefined ? undefined : { kind: 'whole', text };
 };
+
+const oneReplacement: ChangeReader = (input) => {
+  const one = replacementOf(input);
+  return one === undefined ? undefined : { kind: 'replacements', replacements: [one] };
+};
+
+/** A MultiEdit's edits in order; one that does not read as a replacement leaves the whole change unknown. */
+const eachReplacement: ChangeReader = (input) => {
+  const edits: unknown = input['edits'];
+  if (!Array.isArray(edits)) {
+    return undefined;
+  }
+  const replacements = edits.flatMap((edit: unknown) => {
+    const one = isRecord(edit) ? replacementOf(edit) : undefined;
+    return one === undefined ? [] : [one];
+  });
+  return replacements.length === edits.length ? { kind: 'replacements', replacements } : undefined;
+};
+
+/** A NotebookEdit changes one cell's source, which says nothing of the file's text as a whole. */
+const noTextChange: ChangeReader = () => undefined;
+
+function edit(changeOf: ChangeReader): Reader {
+  return (name, input) => {
+    const edits = input['edits'];
+    const records = [input, ...(Array.isArray(edits) ? edits.filter(isRecord) : [])];
+    return {
+      kind: 'edit',
+      name,
+      input,
+      path: stringField(input, 'file_path') ?? stringField(input, 'notebook_path'),
+      texts: records.flatMap((record) => WRITTEN_TEXT_KEYS.flatMap((key) => stringField(record, key) ?? [])),
+      change: changeOf(input),
+    };
+  };
+}
 
 function plain(kind: 'ask' | 'schedule'): Reader {
   return (name, input) => ({ kind, name, input });
@@ -50,10 +99,10 @@ const READERS: Readonly<Record<string, Reader>> = {
   Bash: shell('bash'),
   PowerShell: shell('powershell'),
   Read: (name, input) => ({ kind: 'read', name, input, path: stringField(input, 'file_path') }),
-  Write: edit,
-  Edit: edit,
-  MultiEdit: edit,
-  NotebookEdit: edit,
+  Write: edit(wholeText),
+  Edit: edit(oneReplacement),
+  MultiEdit: edit(eachReplacement),
+  NotebookEdit: edit(noTextChange),
   Grep: (name, input) => ({
     kind: 'search',
     name,
