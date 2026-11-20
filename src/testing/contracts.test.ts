@@ -98,4 +98,5 @@ describe('suiteOf', () => {
   });
 });
 
-describeContracts(host());
+// The sample host is no adapter of the kit: it is held to no contract of the kit's own, only to what it binds.
+describeContracts(host(), { kit: [] });
