@@ -2,10 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { TEST_CARD, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
-import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { CliHarness, EVENTS_PATH, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { rotateRegister } from '../testing/rotation.ts';
 import { WakeAsks, type WakeAsk } from '../wake/asks.ts';
 import { EXIT } from './runtime.ts';
+
+const DAY_MS = 86_400_000;
 
 /** Batch times at the lead's checkpoints; the clock is Tue 01-08 10:00, after the 19:03 one of the day before. */
 const BATCHED = { ...TEAM, decisions: { batchTimesUtc: ['13:03', '19:03'], batchAt: 2 } };
@@ -40,6 +43,17 @@ describe('runCli: the owner decisions the lead asks in batches', () => {
     assert.match(listed.stdout[2] ?? '', /^ {2}T1 waiting, Improvements, score 3\.33, p2, owner alpha \| Pick the pricing tier/);
     assert.ok(listed.stdout.includes(`    decide: ${TEST_CARD.question}`), listed.stdout.join('\n'));
     assert.deepEqual(await decisionLines(kit, 'lead'), []);
+  });
+
+  it("prints a card's what and why from the history once a compaction left its description out of the snapshot (T4781)", async () => {
+    const kit = new CliHarness(BATCHED);
+    await ownerWait(kit, 'Pick the pricing tier');
+    kit.clock.advance(3 * DAY_MS);
+    await rotateRegister(kit.files, EVENTS_PATH, { now: new Date(kit.clock.now()) });
+    const listed = await kit.run(['decisions', '--session', 'alpha']);
+    assert.equal(listed.code, EXIT.ok, listed.stderr.join('\n'));
+    const card = listed.stdout.findIndex((line) => line.startsWith('  T1 waiting, '));
+    assert.deepEqual(listed.stdout.slice(card + 1, card + 3), ['    what and why: what and why', `    decide: ${TEST_CARD.question}`], listed.stdout.join('\n'));
   });
 
   it("is due once batchAt waits are not yet asked: the lead's check names it until the lead records the batch asked", async () => {
