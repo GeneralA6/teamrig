@@ -1,13 +1,12 @@
-import { join } from 'node:path';
 import type { KitConfig } from '../../config/types.ts';
-import { claudeConfigDir } from '../../core/home.ts';
 import { readonlyRulesOf, readonlyShellReply, type PrintsSecret } from '../../hooks/readonly-shell.ts';
 import type { ReadonlyRules } from '../../readonly-shell/rules.ts';
 import { secretFindingsOf } from '../../hooks/secret-guard.ts';
 import type { HookEvent, HookReply } from '../../ports/host/index.ts';
-import { newestSnapshotExports } from '../../readonly-shell/snapshot.ts';
+import { newestSnapshotExports, UNREAD_SNAPSHOT } from '../../readonly-shell/snapshot.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
+import { pathsIfKnown } from '../host.ts';
 import { openKit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { readHookInput, sessionTeam, writeReply } from './hook-input.ts';
@@ -20,7 +19,8 @@ export interface ReadonlyCheck {
 
 /** The team's read-only check, built whether `readonlyShell.enabled` is on or not: each hook decides when it applies. */
 export async function readonlyCheckOf(runtime: CliRuntime, config: KitConfig): Promise<ReadonlyCheck> {
-  const snapshot = await newestSnapshotExports(runtime.files, join(claudeConfigDir(runtime.env, runtime.userHome), 'shell-snapshots'));
+  const snapshots = pathsIfKnown(runtime)?.shellSnapshots(runtime.userHome);
+  const snapshot = snapshots === undefined ? UNREAD_SNAPSHOT : await newestSnapshotExports(runtime.files, snapshots);
   const secrets = secretRulesOf(config.secretGuard, runtime.userHome, runtime.platform, config.register.secretPatterns);
   return {
     rules: readonlyRulesOf(config.readonlyShell, runtime.env, snapshot),
