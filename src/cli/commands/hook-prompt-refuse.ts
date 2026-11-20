@@ -37,7 +37,7 @@ async function promptRefuseOutputOf(runtime: CliRuntime, payload: JsonRecord, ev
   if (tool === undefined || kit.load.status !== 'loaded') {
     return '';
   }
-  const route = await callRouteOf(runtime, kit, kit.load.config, payload, deps.table);
+  const route = await callRouteOf(runtime, kit, kit.load.config, event, deps.table);
   // The prompt would wait for a person under refuse, so a provably read-only line runs even with the read-only allow off.
   const check = await readonlyCheckOf(runtime, kit.load.config);
   const answer = promptAnswerOf(tool, payload, () => callReads(event, check.rules, check.printsSecret), route?.id);

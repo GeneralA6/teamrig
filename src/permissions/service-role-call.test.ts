@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { COMMAND_TABLE } from '../cli/run.ts';
-import { roleCallOf, roleScanTextOf, toolRoleCallOf, type RoleCallContext } from './service-role-call.ts';
+import { shellCallOf } from '../testing/host.ts';
+import { roleCallOf, roleScanTextOf, shellRoleCallOf, type RoleCallContext } from './service-role-call.ts';
 
 const SHIP_TOOL = '/repo/.ship/tools/ship/ship.ts';
 const CONTEXT: RoleCallContext = { cli: COMMAND_TABLE, ownClient: async (word) => word === 'teamrig', repos: ['acme/web'], isShipTool: (word) => word === SHIP_TOOL };
@@ -82,12 +83,12 @@ describe('service-role call: the shapes', () => {
     }
   });
 
-  it('reads a Bash call alone, as each text its shell may run', async () => {
+  it('reads a bash call alone, as each text its shell may run', async () => {
     const line = 'teamrig issue close acme/web#7 --comment "done" --session gh';
-    assert.deepEqual(await toolRoleCallOf('Bash', line, 'win32', CONTEXT), { command: 'issue close', target: 'acme/web#7', session: 'gh' });
-    assert.equal(await toolRoleCallOf('PowerShell', line, 'win32', CONTEXT), undefined);
-    assert.equal(await toolRoleCallOf(undefined, line, 'linux', CONTEXT), undefined);
-    assert.equal(await toolRoleCallOf('Bash', 'teamrig issue close acme/web#7 --comment "a\\\\b"', 'win32', CONTEXT), undefined, 'a line with two readings');
+    assert.deepEqual(await shellRoleCallOf(shellCallOf('Bash', line, 'win32'), CONTEXT), { command: 'issue close', target: 'acme/web#7', session: 'gh' });
+    assert.equal(await shellRoleCallOf(shellCallOf('PowerShell', line, 'win32'), CONTEXT), undefined);
+    assert.equal(await shellRoleCallOf(shellCallOf('PowerShell', line, 'linux'), CONTEXT), undefined);
+    assert.equal(await shellRoleCallOf(shellCallOf('Bash', 'teamrig issue close acme/web#7 --comment "a\\\\b"', 'win32'), CONTEXT), undefined, 'a line with two readings');
   });
 });
 
@@ -101,7 +102,7 @@ describe('service-role call: a queued ship or merge (T2984)', () => {
       session: 'alpha',
       ship: { tool: SHIP_TOOL, worktree: '/w/t1-cli', files: ['/t/T1/plan.json'], task: 'T1', merges: false, release: undefined },
     });
-    const merge = await toolRoleCallOf('Bash', `${ship.replace('--kind test', '--kind ship')} --merge --approved 0123abc --note-file /t/T1/pr.md`, 'win32', CONTEXT);
+    const merge = await shellRoleCallOf(shellCallOf('Bash', `${ship.replace('--kind test', '--kind ship')} --merge --approved 0123abc --note-file /t/T1/pr.md`, 'win32'), CONTEXT);
     assert.deepEqual(merge?.command, 'queue merge');
     assert.ok(merge !== undefined && 'ship' in merge && merge.ship.merges);
   });

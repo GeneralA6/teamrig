@@ -1,4 +1,4 @@
-import { toolCommandReadings } from '../core/bash-tool-readings.ts';
+import type { ShellCall } from '../ports/host/index.ts';
 import { matchesGitCommit, matchesGitPush, type GitContext } from './route-git.ts';
 import { KIT_SHAPES, matchesKit, type KitContext, type KitShape } from './route-kit.ts';
 import { plainWordsOf } from './route-line.ts';
@@ -97,11 +97,11 @@ export async function routeOf(line: string, context: RouteContext): Promise<Sanc
 }
 
 /**
- * The route a shell tool call runs: one only when each text its shell may run (`toolCommandReadings`) is that route.
- * A Bash line on Windows reaches bash with its backslash runs halved, which can split or join its words, so a line
- * that is a route only as written is judged as bash runs it (T2332).
+ * The route a shell call runs: one only when each text its shell may run (the call's `readings`) is that route. Where
+ * the host rewrites a line on its way to the shell, which can split or join its words, a line that is a route only as
+ * written is judged as the shell runs it (T2332).
  */
-export async function toolRouteOf(tool: string | undefined, line: string, platform: NodeJS.Platform, context: RouteContext): Promise<SanctionedRoute | undefined> {
-  const [first, ...rest] = await Promise.all(toolCommandReadings(tool, line, platform).map((reading) => routeOf(reading, context)));
+export async function shellRouteOf(call: ShellCall, context: RouteContext): Promise<SanctionedRoute | undefined> {
+  const [first, ...rest] = await Promise.all(call.readings.map((reading) => routeOf(reading, context)));
   return first !== undefined && rest.every((route) => route === first) ? first : undefined;
 }

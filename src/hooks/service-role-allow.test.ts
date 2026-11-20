@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { toJsonlLine } from '../core/jsonl.ts';
 import { ASK_REFUSED_NOTE } from './permission.ts';
-import { ROLE_CAP_WINDOW_MS, roleAllowOutput, roleAllowRecord, roleAllowsSince, roleCapOutput } from './service-role-allow.ts';
+import { replyText } from '../testing/host.ts';
+import { ROLE_CAP_WINDOW_MS, roleAllowRecord, roleAllowReply, roleAllowsSince, roleCapReply } from './service-role-allow.ts';
 
 function recordOf(output: string): JsonRecord {
   const parsed: unknown = JSON.parse(output);
@@ -68,8 +69,8 @@ describe('service-role allow: the daily cap and the log', () => {
   });
 
   it('allows a call naming its role, and refuses past the cap, saying when it runs again and the route (T3356)', () => {
-    assert.equal(decisionOf(roleAllowOutput('github', call)), 'allow');
-    const capped = roleCapOutput('github', 10);
+    assert.equal(decisionOf(replyText('tool-start', roleAllowReply('github', call))), 'allow');
+    const capped = replyText('tool-start', roleCapReply('github', 10));
     assert.equal(decisionOf(capped), 'deny');
     const reason = stringField(recordField(recordOf(capped), 'hookSpecificOutput') ?? {}, 'permissionDecisionReason') ?? '';
     assert.match(reason, /ran its 10 calls .* is refused\. The role runs again once its oldest call of the window is 24 hours old/);

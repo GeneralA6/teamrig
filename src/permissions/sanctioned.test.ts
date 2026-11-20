@@ -4,7 +4,8 @@ import { COMMAND_TABLE } from '../cli/run.ts';
 import { ClientInstalls, type ClientSearch } from '../exec/client-launch.ts';
 import { ownClientOf } from './route-kit.ts';
 import { halvedBackslashRuns } from '../core/bash-tool-readings.ts';
-import { routeOf, SANCTIONED_ROUTES, toolRouteOf, type RouteContext, type RouteId } from './sanctioned.ts';
+import { shellCallOf } from '../testing/host.ts';
+import { routeOf, SANCTIONED_ROUTES, shellRouteOf, type RouteContext, type RouteId } from './sanctioned.ts';
 
 const INSTALL = 'C:/u/.claude/plugins/cache/teamrig/teamrig/0.215.0';
 
@@ -43,23 +44,23 @@ describe('SANCTIONED_ROUTES', () => {
   });
 });
 
-describe('toolRouteOf', () => {
+describe('shellRouteOf', () => {
   /** One word as written (`tr\ canary`); bash on Windows gets `tr\\ canary`, the words `tr\` and `canary`. */
   const SPLIT_BY_HALVING = 'teamrig merge --session tr\\\\\\ canary';
 
   it('reads a line as written, and so does bash, where no shell halves its backslashes', async () => {
     assert.equal(await idOf(SPLIT_BY_HALVING), 'merge');
-    assert.equal((await toolRouteOf('Bash', SPLIT_BY_HALVING, 'linux', CONTEXT))?.id, 'merge');
-    assert.equal((await toolRouteOf('PowerShell', SPLIT_BY_HALVING, 'win32', CONTEXT))?.id, 'merge');
+    assert.equal((await shellRouteOf(shellCallOf('Bash', SPLIT_BY_HALVING, 'linux'), CONTEXT))?.id, 'merge');
+    assert.equal((await shellRouteOf(shellCallOf('PowerShell', SPLIT_BY_HALVING, 'win32'), CONTEXT))?.id, 'merge');
   });
 
   it('finds no route in a Windows Bash line whose halved text bash runs is not that route', async () => {
     assert.equal(await idOf(halvedBackslashRuns(SPLIT_BY_HALVING)), undefined);
-    assert.equal(await toolRouteOf('Bash', SPLIT_BY_HALVING, 'win32', CONTEXT), undefined);
+    assert.equal(await shellRouteOf(shellCallOf('Bash', SPLIT_BY_HALVING, 'win32'), CONTEXT), undefined);
   });
 
   it('finds the route of a Windows Bash line with no backslash run to halve', async () => {
-    assert.equal((await toolRouteOf('Bash', 'teamrig merge --session tr-canary', 'win32', CONTEXT))?.id, 'merge');
+    assert.equal((await shellRouteOf(shellCallOf('Bash', 'teamrig merge --session tr-canary', 'win32'), CONTEXT))?.id, 'merge');
   });
 
   it('finds the route of a Windows Bash line whose halved text is that same route', async () => {
@@ -67,7 +68,7 @@ describe('toolRouteOf', () => {
     const STILL_A_ROUTE = 'teamrig merge --session tr\\\\-canary';
     assert.notEqual(halvedBackslashRuns(STILL_A_ROUTE), STILL_A_ROUTE);
     assert.equal(await idOf(halvedBackslashRuns(STILL_A_ROUTE)), 'merge');
-    assert.equal((await toolRouteOf('Bash', STILL_A_ROUTE, 'win32', CONTEXT))?.id, 'merge');
+    assert.equal((await shellRouteOf(shellCallOf('Bash', STILL_A_ROUTE, 'win32'), CONTEXT))?.id, 'merge');
   });
 });
 
