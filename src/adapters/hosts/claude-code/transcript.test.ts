@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
+import { FolderNames } from '../../../testing/folder-names.ts';
+import { loadRecording } from '../../../testing/recorded.ts';
 import { apiErrorLine, compactLine, promptLine, replyLine, resultsLine, sessionStartNoteLine, summaryLine, systemLine, textLine } from '../../../testing/transcript-lines.ts';
 import { transcriptReader } from './transcript.ts';
 
@@ -331,5 +334,38 @@ describe('reading only some kinds of entry', () => {
     assert.deepEqual(transcriptReader.entry(torn, ['input']), { kind: 'unread', reason: 'damaged' });
     assert.equal(transcriptReader.entry(torn, ['reply', 'compact']), undefined);
     assert.deepEqual(transcriptReader.entry(torn, ['other']), { kind: 'unread', reason: 'damaged' });
+  });
+});
+
+describe('the recorded session read as entries', () => {
+  const recording = loadRecording('claude-code', new FolderNames({ cwd: resolve('/', 'work', 'app'), temp: resolve('/', 'tmp'), home: resolve('/', 'u') }));
+  const lines = recording.transcripts.flatMap((transcript) =>
+    transcript.text
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .map((line, index) => ({ where: `${transcript.file} line ${index + 1}`, line })),
+  );
+  const kinds = ['input', 'reply', 'compact', 'hook-note', 'other'] as const;
+
+  it('reads every line the host wrote: none is damaged, and the session has inputs and replies in both threads', () => {
+    assert.equal(recording.transcripts.length >= 2, true, 'the session and a helper were recorded');
+    const read = lines.map(({ where, line }) => ({ where, entry: transcriptReader.entry(line) }));
+    assert.deepEqual(
+      read.filter(({ entry }) => entry === undefined || entry.kind === 'unread').map(({ where }) => where),
+      [],
+    );
+    const seen = new Set(read.map(({ entry }) => (entry === undefined || entry.kind === 'unread' ? 'none' : `${entry.kind} ${entry.thread ?? 'unmarked'}`)));
+    for (const expected of ['input main', 'reply main', 'input helper', 'reply helper']) {
+      assert.equal(seen.has(expected), true, `no ${expected} line in the recording`);
+    }
+  });
+
+  it('reads each line alike with the filter of its own kind, and as nothing with any other', () => {
+    for (const { where, line } of lines) {
+      const whole = transcriptReader.entry(line);
+      for (const kind of kinds) {
+        assert.deepEqual(transcriptReader.entry(line, [kind]), whole?.kind === kind ? whole : undefined, `${where} read as only ${kind}`);
+      }
+    }
   });
 });
