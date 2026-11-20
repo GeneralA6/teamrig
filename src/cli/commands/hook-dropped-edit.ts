@@ -1,12 +1,12 @@
-import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { droppedEditReason, droppedEditsOf, type TranscriptThread } from '../../hooks/dropped-edit.ts';
 import { blockOutput } from '../../hooks/stop.ts';
 import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
+import type { HookEvent } from '../../ports/host/index.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { transcriptsOf } from '../host.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { parseJson, sessionTeam } from './hook-input.ts';
+import { readHookInput, sessionTeam } from './hook-input.ts';
 
 /**
  * How much of a helper's own transcript a SubagentStop reads: past the largest seen (15 MB), so a
@@ -17,12 +17,11 @@ export const HELPER_TRANSCRIPT_BYTES = 16 * 1024 * 1024;
 /**
  * The instruction for an agent whose turn ends with a refused skill edit it never redid (dropped-edit.ts);
  * none on a stop this hook already blocked (so it asks once), without the transcript or when none was
- * dropped. `thread` picks the transcript: the session's (`transcript_path`) or the helper's own
- * (`agent_transcript_path`).
+ * dropped. `thread` picks the transcript the event names: the session's or the helper's own.
  */
-export async function droppedEditReasonOf(runtime: CliRuntime, payload: JsonRecord, thread: TranscriptThread): Promise<string | undefined> {
-  const transcript = stringField(payload, thread === 'main' ? 'transcript_path' : 'agent_transcript_path');
-  if (payload['stop_hook_active'] === true || transcript === undefined) {
+export async function droppedEditReasonOf(runtime: CliRuntime, event: HookEvent, thread: TranscriptThread): Promise<string | undefined> {
+  const transcript = thread === 'main' ? event.transcript : event.helper?.transcript;
+  if (event.stopActive || transcript === undefined) {
     return undefined;
   }
   const bytes = thread === 'main' ? TRANSCRIPT_TAIL_BYTES : HELPER_TRANSCRIPT_BYTES;
@@ -31,9 +30,9 @@ export async function droppedEditReasonOf(runtime: CliRuntime, payload: JsonReco
   return dropped.length === 0 ? undefined : droppedEditReason(dropped, KIT_NAME);
 }
 
-/** The SubagentStop's reason for this payload; none outside a team. */
-async function helperReasonOf(runtime: CliRuntime, payload: JsonRecord): Promise<string | undefined> {
-  return (await sessionTeam(payload, runtime)).kind === 'team' ? droppedEditReasonOf(runtime, payload, 'helper') : undefined;
+/** The SubagentStop's reason for this event; none outside a team. */
+async function helperReasonOf(runtime: CliRuntime, event: HookEvent): Promise<string | undefined> {
+  return (await sessionTeam(event.cwd, runtime)).kind === 'team' ? droppedEditReasonOf(runtime, event, 'helper') : undefined;
 }
 
 /**
@@ -44,8 +43,8 @@ async function helperReasonOf(runtime: CliRuntime, payload: JsonRecord): Promise
  */
 export async function subagentStop(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  const reason = isRecord(payload) ? await helperReasonOf(runtime, payload).catch((): string | undefined => undefined) : undefined;
+  const { event } = await readHookInput(runtime);
+  const reason = event === undefined ? undefined : await helperReasonOf(runtime, event).catch((): string | undefined => undefined);
   if (reason !== undefined) {
     runtime.out.stdout(blockOutput(reason));
   }

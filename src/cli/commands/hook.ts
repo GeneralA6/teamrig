@@ -43,6 +43,7 @@ import {
   type StopDecision,
   type StopFacts,
 } from '../../refresh/decide.ts';
+import type { HookEvent } from '../../ports/host/index.ts';
 import { ownerTurnsLine, ownerTurnsText, type OwnerTurn } from '../../refresh/owner-turns.ts';
 import { carryLines, carryStartOf, readCarry, type CarriedCron, type Carry, type CarryPlaces, type CarryStart } from '../../refresh/carry.ts';
 import { claudeProcessOf } from '../../refresh/restart.ts';
@@ -74,7 +75,7 @@ import { dbWriteGuardReplyOf, execGuardReplyOf, packageGuardReplyOf, pushGuardRe
 import { checkHooklessTabs } from './hook-hookless.ts';
 import { dueFactsAt, inMeetingNow } from './hook-refresh-mod.ts';
 import { recordSessionStart } from './hook-session-record.ts';
-import { envSession, hookScopeOf, parseJson, readHookInput, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, turnLeadPathsOf, writeReply, type SessionScope, type TeamScope } from './hook-input.ts';
+import { envSession, hookScopeOf, readHookInput, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, turnLeadPathsOf, writeReply, type SessionScope, type TeamScope } from './hook-input.ts';
 import { recordTabNeed } from './hook-tab-need.ts';
 import { tabStatusOn, tabTitleOf } from './hook-tab-status.ts';
 import { logPrompt, logReply, logStart } from './hook-turn-log.ts';
@@ -244,12 +245,12 @@ async function cancelledRestartLine(runtime: CliRuntime, kit: Kit, id: string, r
  */
 export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
+  const { payload, event } = await readHookInput(runtime);
   const claudeSession = sessionIdOf(payload);
   if (claudeSession === null) {
     return EXIT.ok;
   }
-  const found = await sessionTeam(payload, runtime);
+  const found = await sessionTeam(event?.cwd, runtime);
   switch (found.kind) {
     case 'none':
       return EXIT.ok;
@@ -310,13 +311,13 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
  */
 export async function coldSend(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
+  const { event } = await readHookInput(runtime);
   const claudeSession = event?.session;
   const message = event === undefined ? undefined : sentMessageOf(event);
   if (claudeSession === undefined || message === undefined) {
     return EXIT.ok;
   }
-  const found = await sessionTeam(payload, runtime);
+  const found = await sessionTeam(event?.cwd, runtime);
   if (found.kind !== 'team') {
     return EXIT.ok;
   }
@@ -341,12 +342,12 @@ export async function coldSend(args: ParsedArgs, runtime: CliRuntime): Promise<E
  */
 export async function failedSend(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
+  const { event } = await readHookInput(runtime);
   const failed = event === undefined ? undefined : failedSendOf(event);
   if (failed === undefined) {
     return EXIT.ok;
   }
-  const found = await sessionTeam(payload, runtime);
+  const found = await sessionTeam(event?.cwd, runtime);
   if (found.kind !== 'team') {
     return EXIT.ok;
   }
@@ -366,12 +367,12 @@ export async function failedSend(args: ParsedArgs, runtime: CliRuntime): Promise
  */
 export async function routeReminder(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
+  const { event } = await readHookInput(runtime);
   const sent = event === undefined ? undefined : deliveredSendOf(event);
   if (event === undefined || sent === undefined) {
     return EXIT.ok;
   }
-  const found = await sessionTeam(payload, runtime);
+  const found = await sessionTeam(event.cwd, runtime);
   if (found.kind !== 'team') {
     return EXIT.ok;
   }
@@ -400,20 +401,20 @@ export async function routeReminder(args: ParsedArgs, runtime: CliRuntime): Prom
  */
 export async function helperGateHook(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  if (!isRecord(payload)) {
+  const { event } = await readHookInput(runtime);
+  if (event === undefined) {
     return EXIT.ok;
   }
-  const output = await helperGateOf(runtime, payload).catch(() => undefined);
+  const output = await helperGateOf(runtime, event).catch(() => undefined);
   if (output !== undefined) {
     runtime.out.stdout(output);
   }
   return EXIT.ok;
 }
 
-async function helperGateOf(runtime: CliRuntime, payload: JsonRecord): Promise<string | undefined> {
-  const scope = await hookScopeOf(runtime, payload);
-  return scope === undefined ? undefined : helperGateOutput(runtime, scope, stringField(payload, 'transcript_path'));
+async function helperGateOf(runtime: CliRuntime, event: HookEvent): Promise<string | undefined> {
+  const scope = await hookScopeOf(runtime, event);
+  return scope === undefined ? undefined : helperGateOutput(runtime, scope, event.transcript);
 }
 
 type TeamParts = Pick<
@@ -446,7 +447,7 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
   const refresh = await refreshStartOf(runtime, kit, config, roster, payload);
   const fromEnv = envSession(runtime);
   const kitTree = await loadTree(runtime);
-  const session = fromEnv ?? (await startSessionOf(runtime, kit, roster, payload));
+  const session = fromEnv ?? (await startSessionOf(runtime, kit, roster, claudeSession ?? undefined));
   const id = rosterIdOf(roster, session);
   if (id !== undefined) {
     await logStart(runtime, { config, paths: kit.paths, id }, payload).catch(() => undefined);
@@ -817,16 +818,16 @@ async function stopTabTitleOf(runtime: CliRuntime, team: TeamScope, roster: Rost
  * on) in a tab that is no session of it. The refresh, the model notices, the budget lines and the verify-by
  * lines fail apart: an error in one leaves the others.
  */
-async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<string> {
-  const team = await teamScopeOf(runtime, payload);
-  const scope = team === undefined ? undefined : await sessionScopeOf(runtime, team, payload);
+async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord, event: HookEvent): Promise<string> {
+  const team = await teamScopeOf(runtime, event.cwd);
+  const scope = team === undefined ? undefined : await sessionScopeOf(runtime, team, event.session);
   if (scope === undefined) {
     const none: StopDecision = { kind: 'none' };
     return team === undefined ? '' : stopOutput(none, [], await stopTabTitleOf(runtime, team, undefined, payload, none));
   }
   await logReply(runtime, { config: scope.config, paths: scope.kit.paths, id: scope.id }, payload).catch(() => undefined);
   // Before the refresh, which records a block's state before it prints: this block leaves the rest to the next stop.
-  const dropped = await droppedEditReasonOf(runtime, payload, 'main').catch((): string | undefined => undefined);
+  const dropped = await droppedEditReasonOf(runtime, event, 'main').catch((): string | undefined => undefined);
   if (dropped !== undefined) {
     return blockOutput(dropped);
   }
@@ -848,7 +849,7 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
   const ask = await askBlockOf(runtime, scope, payload, decision).catch((): string | undefined => undefined);
   if (ask === undefined && decision.kind !== 'block') {
     // Only a turn that ends: a block sends the session on working, which its next tool's end records.
-    await recordTabNeed(runtime, payload, scope).catch(() => undefined);
+    await recordTabNeed(runtime, payload, event, scope).catch(() => undefined);
   }
   return ask === undefined ? stopOutput(decision, lines, await stopTabTitleOf(runtime, scope, scope.roster, payload, decision)) : blockOutput(ask, lines);
 }
@@ -878,8 +879,8 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
  */
 export async function stop(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  const output = isRecord(payload) ? await stopOutputOf(runtime, payload).catch(() => '') : '';
+  const { payload, event } = await readHookInput(runtime);
+  const output = isRecord(payload) && event !== undefined ? await stopOutputOf(runtime, payload, event).catch(() => '') : '';
   if (output !== '') {
     runtime.out.stdout(output);
   }
@@ -894,8 +895,8 @@ export async function stop(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
  */
 export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  const found = await sessionTeam(payload, runtime);
+  const { payload, event } = await readHookInput(runtime);
+  const found = await sessionTeam(event?.cwd, runtime);
   switch (found.kind) {
     case 'none':
       return EXIT.ok;
@@ -909,7 +910,7 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
   const helper = helperOf(payload);
   if (helper !== undefined) {
     // A compaction inside a helper: the helper's rules again, and none of the session's side effects.
-    runtime.out.stdout(sessionStartOutput(await helperContextOf(runtime, kit, payload, helper.agentType)));
+    runtime.out.stdout(sessionStartOutput(await helperContextOf(runtime, kit, event?.session, helper.agentType)));
     return EXIT.ok;
   }
   const parts: TeamParts =

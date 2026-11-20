@@ -10,7 +10,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { transcriptsIfKept } from '../host.ts';
 import { openKit, rosterOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { parseJson, sessionTeam } from './hook-input.ts';
+import { readHookInput, sessionTeam, type HookOrigin } from './hook-input.ts';
 import { pickerRefusal } from './hook-picker-guard.ts';
 import { recordTabNeed } from './hook-tab-need.ts';
 
@@ -65,14 +65,15 @@ export async function tabTitleOf(runtime: CliRuntime, payload: JsonRecord, own: 
 
 /**
  * The tab title this payload sets, as a terminal sequence; undefined with tab status off or no change. A question
- * picker the picker guard refuses leaves the title: the picker never opens, and the session goes on.
+ * picker the picker guard refuses leaves the title: the picker never opens, and the session goes on. `origin` is the
+ * hook event's, which finds the session's team.
  */
-export async function tabSequenceOf(runtime: CliRuntime, payload: JsonRecord): Promise<string | undefined> {
+export async function tabSequenceOf(runtime: CliRuntime, payload: JsonRecord, origin: HookOrigin): Promise<string | undefined> {
   // The switch first: it costs no file read, and on most machines it is off.
   if (!titleLeftToHooks(runtime.env)) {
     return undefined;
   }
-  const found = await sessionTeam(payload, runtime);
+  const found = await sessionTeam(origin.cwd, runtime);
   const kit = found.kind === 'team' ? await openKit(runtime, found.team) : undefined;
   if (kit?.load.status !== 'loaded' || !kit.load.config.tabStatus.enabled) {
     return undefined;
@@ -85,8 +86,8 @@ export async function tabSequenceOf(runtime: CliRuntime, payload: JsonRecord): P
 }
 
 /** What the hook prints for this payload: the tab title's terminal sequence in Claude Code's JSON, or '' for none. */
-export async function tabStatusOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<string> {
-  const sequence = await tabSequenceOf(runtime, payload);
+export async function tabStatusOutputOf(runtime: CliRuntime, payload: JsonRecord, origin: HookOrigin): Promise<string> {
+  const sequence = await tabSequenceOf(runtime, payload, origin);
   return sequence === undefined ? '' : JSON.stringify({ terminalSequence: sequence });
 }
 
@@ -98,11 +99,11 @@ export async function tabStatusOutputOf(runtime: CliRuntime, payload: JsonRecord
  */
 export async function tabStatus(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  if (!isRecord(payload)) {
+  const { payload, event } = await readHookInput(runtime);
+  if (!isRecord(payload) || event === undefined) {
     return EXIT.ok;
   }
-  const [output] = await Promise.all([tabStatusOutputOf(runtime, payload).catch(() => ''), recordTabNeed(runtime, payload).catch(() => undefined)]);
+  const [output] = await Promise.all([tabStatusOutputOf(runtime, payload, event).catch(() => ''), recordTabNeed(runtime, payload, event).catch(() => undefined)]);
   if (output !== '') {
     runtime.out.stdout(output);
   }

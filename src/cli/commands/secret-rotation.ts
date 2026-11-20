@@ -1,6 +1,6 @@
 import { roleHolderOf } from '../../config/roster.ts';
 import { formatAddress, type SessionAddress } from '../../core/address.ts';
-import { errorMessage, type JsonRecord } from '../../core/guards.ts';
+import { errorMessage } from '../../core/guards.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import type { Rotation } from '../../hooks/secret-redact.ts';
 import type { HookEvent } from '../../ports/host/index.ts';
@@ -40,13 +40,13 @@ const every = (leak: Leak, problem: string): readonly Rotation[] => leak.kinds.m
  * task, so a real leak later that day is never folded into a task no one works (T1545). Nothing here throws: a filing
  * that fails is that kind's problem, and the redaction is sent either way.
  */
-export async function fileRotations(runtime: CliRuntime, payload: JsonRecord, event: HookEvent, leak: Leak): Promise<readonly Rotation[]> {
+export async function fileRotations(runtime: CliRuntime, event: HookEvent, leak: Leak): Promise<readonly Rotation[]> {
   try {
-    const team = await teamScopeOf(runtime, payload);
+    const team = await teamScopeOf(runtime, event.cwd);
     if (team === undefined) {
       return every(leak, "the tab's team has no loaded config");
     }
-    const session = (await sessionScopeOf(runtime, team, payload))?.id;
+    const session = (await sessionScopeOf(runtime, team, event.session))?.id;
     const lock = fileLockOf(runtime, team.kit.paths.secretIncidentsLock, { ...team.config.lock, waitMs: LOCK_WAIT_MS });
     return await lock.run(() => rotateEach(runtime, team, session, callOf(event), leak));
   } catch (error) {
