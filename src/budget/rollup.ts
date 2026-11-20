@@ -1,5 +1,6 @@
 import { formatUtcDay } from '../core/time.ts';
-import { parseTranscriptLine, stopFeedbackPromptOf, type CallLine, type ToolUse, type TranscriptLine } from './line.ts';
+import type { TranscriptReader } from '../ports/host/index.ts';
+import { stopFeedbackOf, transcriptLineOf, type CallLine, type ToolUse, type TranscriptLine } from './line.ts';
 import type { DayRollup, TaskRow, UseClass, UseRow } from './rollup-file.ts';
 import { TASKS_PER_TURN, tasksNamedBy } from './tasks.ts';
 import { isCoordinationTool } from './use-class.ts';
@@ -26,8 +27,8 @@ export interface RollupSource {
 }
 
 /** One line of a transcript as the rollup reads it: the meter's lines, and the Stop hook's push that starts a turn here only. */
-export function parseRollupLine(raw: string): TranscriptLine | undefined {
-  return parseTranscriptLine(raw) ?? stopFeedbackPromptOf(raw);
+export function rollupLineOf(reader: TranscriptReader, raw: string): TranscriptLine | undefined {
+  return transcriptLineOf(reader, raw) ?? stopFeedbackOf(reader, raw);
 }
 
 /** A reply while its turn is open. A reply's lines repeat its usage, so the first gives the W and later ones only what they add. */
