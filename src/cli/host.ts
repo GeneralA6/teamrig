@@ -1,4 +1,5 @@
 import { isUnsupported, type HostPorts, type TranscriptReader, type UsageMeter } from '../ports/host/index.ts';
+import type { ContextSource } from '../refresh/usage.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
 /**
@@ -37,6 +38,15 @@ export function transcriptsOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platfo
 export function usageIfMetered(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): UsageMeter | undefined {
   const { usage } = hostOf(runtime);
   return isUnsupported(usage) ? undefined : usage;
+}
+
+/**
+ * What tells a session's context size on this run, or undefined on a host that keeps no readable transcript or prices
+ * no call: a caller then goes on with the size unknown.
+ */
+export function contextSourceIfTold(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): ContextSource | undefined {
+  const { transcripts, usage } = hostOf(runtime);
+  return isUnsupported(transcripts) || isUnsupported(usage) ? undefined : { reader: transcripts, usage };
 }
 
 /** The run's usage meter. A host whose calls teamrig cannot price refuses with its own reason, as `transcriptsOf` does. */

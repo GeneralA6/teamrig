@@ -4,7 +4,7 @@ import type { HostSource } from '../composition/host-ports.ts';
 import { isUnsupported, type HostPorts } from '../ports/host/index.ts';
 import { bareHost } from '../testing/bare-host.ts';
 import { quietWorld } from '../testing/quiet-world.ts';
-import { hostOf, transcriptsIfKept, transcriptsOf, usageIfMetered, usageOf } from './host.ts';
+import { contextSourceIfTold, hostOf, transcriptsIfKept, transcriptsOf, usageIfMetered, usageOf } from './host.ts';
 import { RefusedError } from './runtime.ts';
 
 /** One bare host, kept so a case can tell the very ports it handed in from a copy. */
@@ -60,6 +60,23 @@ describe('usageIfMetered', () => {
     const meter = usageIfMetered({ host: world.host, env: {}, platform: world.platform });
     assert.equal(meter?.ofCall(OUTPUT_ONLY), 2 * (meter?.weights.output ?? Number.NaN));
     assert.equal(usageIfMetered({ host: bare, env: {}, platform: 'linux' }), undefined);
+  });
+});
+
+describe('contextSourceIfTold', () => {
+  it('gives the reader and the meter of a host that has both', () => {
+    const world = quietWorld();
+    const source = contextSourceIfTold({ host: world.host, env: {}, platform: world.platform });
+    assert.deepEqual(source?.reader.entry('not a transcript line'), { kind: 'unread', reason: 'damaged' });
+    assert.equal(source?.usage.contextReading({ ...OUTPUT_ONLY, input: 3, cacheRead: 4 }), 7);
+  });
+
+  it('gives nothing for a host lacking the reader or the meter', () => {
+    const shipped = hostOf({ host: quietWorld().host, env: {}, platform: 'linux' });
+    const noMeter: HostSource = () => ({ ...shipped, usage: BARE.usage });
+    const noReader: HostSource = () => ({ ...shipped, transcripts: BARE.transcripts });
+    assert.equal(contextSourceIfTold({ host: noMeter, env: {}, platform: 'linux' }), undefined);
+    assert.equal(contextSourceIfTold({ host: noReader, env: {}, platform: 'linux' }), undefined);
   });
 });
 

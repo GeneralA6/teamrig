@@ -8,7 +8,7 @@ import { JsonlMarkLog } from '../../inbox/store.ts';
 import { resumeVerdict, type ResumeVerdict } from '../../hiring/rehire.ts';
 import type { RetireRecord } from '../../hiring/record.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
-import { transcriptsIfKept } from '../host.ts';
+import { contextSourceIfTold } from '../host.ts';
 import type { CliRuntime } from '../runtime.ts';
 
 /**
@@ -56,8 +56,8 @@ export function lastSessionOf(runtime: CliRuntime, claudeSession: string, projec
 /** Measures the Claude Code transcript at `transcript`, in whatever folder it sits. It throws when a read fails. */
 export async function measureTranscript(runtime: CliRuntime, transcript: string): Promise<LastSession> {
   const changedAt = await runtime.transcripts.changedAt(transcript);
-  const reader = transcriptsIfKept(runtime);
-  const tokens = changedAt === undefined || reader === undefined ? undefined : await readContextTokens(reader, runtime.files, transcript);
+  const source = contextSourceIfTold(runtime);
+  const tokens = changedAt === undefined || source === undefined ? undefined : await readContextTokens(source, runtime.files, transcript);
   return { transcript, changedAt, tokens };
 }
 
