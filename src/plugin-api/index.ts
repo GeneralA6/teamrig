@@ -88,6 +88,7 @@ export {
   type EntryKind,
   type EntryThread,
   type EnvironmentEntry,
+  type FolderSettings,
   type HelperCall,
   type HookBridge,
   type HookEvent,
