@@ -10,6 +10,7 @@ import { waitAnswerersOf } from './approval.ts';
 import type { SlicedGoal } from './focus.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
 import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, SECURITY_FLAG, typedHandStep, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
+import { holdsDescription } from './description-cut.ts';
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256, type AuditPin } from './hand-step.ts';
 import { verdictIsCurrent, verdictReadOf, type SecurityVerdictPin } from './security-verdict.ts';
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields, type TaskPrep } from './events.ts';
@@ -1282,7 +1283,8 @@ export class RegisterPolicy {
 
   /**
    * A title, description or priority GitHub changed, on the import's own task only. A field the task already has
-   * is left out, judged under the lock, so a sync that raced another changes nothing twice.
+   * is left out, judged under the lock, so a sync that raced another changes nothing twice. A task whose line left
+   * its description out is judged by its mark (description-cut.ts), or every sync would write the body again.
    */
   importUpdate(task: Task, changes: ImportChanges, note: string): Verdict<UpdateChange> {
     const notImported = this.notImported(task);
@@ -1291,7 +1293,7 @@ export class RegisterPolicy {
     }
     const changed: ImportChanges = {
       ...(changes.title !== undefined && changes.title !== task.title ? { title: changes.title } : {}),
-      ...(changes.description !== undefined && changes.description !== task.description ? { description: changes.description } : {}),
+      ...(changes.description !== undefined && !holdsDescription(task, changes.description) ? { description: changes.description } : {}),
       ...(changes.priority !== undefined && changes.priority !== task.priority ? { priority: changes.priority } : {}),
     };
     if (Object.keys(changed).length === 0) {

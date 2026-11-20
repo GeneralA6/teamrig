@@ -7,6 +7,7 @@ import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import { foldEvents, type RegisterState, type Task } from './fold.ts';
 import type { DecisionCard } from './card.ts';
+import { cutTask } from './description-cut.ts';
 import { NO_SLICED_GOALS } from './focus.ts';
 import { CARD_USAGE, DESCRIPTION_NEEDED, GITHUB_ACTOR, normaliseTitle, PROOF_WAITS_USAGE, RegisterPolicy, type AddInput, type AskInput, type AuditSubject, type ImportInput, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
 import type { ProblemReview } from './review.ts';
@@ -1399,6 +1400,20 @@ describe('RegisterPolicy, the GitHub import', () => {
       value: { changes: { description: null }, note: 'description as on GitHub' },
     });
     assert.equal(error(policy.importUpdate(described, { description: 'Now with steps.' }, 'again')), 'nothing to change');
+  });
+
+  it('judges a task whose line left the description out by its mark: the same body changes nothing, an edited one is written', () => {
+    const cut = cutTask(testTask({ ...IMPORTED, description: 'Now with steps.' }));
+    assert.equal(cut.description, null);
+    assert.equal(error(policy.importUpdate(cut, { description: 'Now with steps.' }, 'again')), 'nothing to change');
+    assert.deepEqual(policy.importUpdate(cut, { description: 'Now with stops.' }, 'description as on GitHub'), {
+      ok: true,
+      value: { changes: { description: 'Now with stops.' }, note: 'description as on GitHub' },
+    });
+    assert.deepEqual(policy.importUpdate(cut, { description: null }, 'description as on GitHub'), {
+      ok: true,
+      value: { changes: { description: null }, note: 'description as on GitHub' },
+    });
   });
 
   it('opens, finishes or drops its own tasks, a done with the issue url and no skill', () => {
