@@ -4,6 +4,7 @@
  * its own folder, nothing else, so it ships as it is to whoever builds a host or a connector.
  */
 import { TRANSCRIPT_CONTRACT } from './host/transcript.ts';
+import { USAGE_CONTRACT } from './host/usage.ts';
 import { entryOf, type KitEntry } from './kit.ts';
 import { TERMINAL_CONTRACT } from './terminal/terminal.ts';
 
@@ -13,6 +14,7 @@ export { entryOf, kitProblems, type KitEntry } from './kit.ts';
 export { TERMINAL_CONTRACT, type ShownPane, type TerminalCase, type TerminalSubject, type TerminalWorld } from './terminal/terminal.ts';
 export { nothingTerminal, referenceTerminal, yesTerminal, type ReferenceOptions } from './terminal/reference.ts';
 export { nothingTranscripts, TRANSCRIPT_CONTRACT, yesTranscripts, type TranscriptCase, type TranscriptSubject, type TranscriptWorld, type WorldReply } from './host/transcript.ts';
+export { nothingUsage, USAGE_CONTRACT, yesUsage, type UsageCase, type UsageSubject, type UsageWorld } from './host/usage.ts';
 
 /**
  * Every contract of the kit. A port's contract lives in its own file, under `host/`, `connector/` or `terminal/`,
@@ -22,4 +24,5 @@ export { nothingTranscripts, TRANSCRIPT_CONTRACT, yesTranscripts, type Transcrip
 export const CONTRACTS: readonly KitEntry[] = [
   entryOf(TERMINAL_CONTRACT),
   entryOf(TRANSCRIPT_CONTRACT),
+  entryOf(USAGE_CONTRACT),
 ];

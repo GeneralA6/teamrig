@@ -1,8 +1,9 @@
-import { bind, TRANSCRIPT_CONTRACT, type TranscriptWorld } from '../../../conformance/index.ts';
+import { bind, TRANSCRIPT_CONTRACT, USAGE_CONTRACT, type TranscriptWorld } from '../../../conformance/index.ts';
 import { describeContracts } from '../../../testing/contracts.ts';
 import { promptLine, resultsLine } from '../../../testing/transcript-lines.ts';
 import { declaration } from './declaration.ts';
 import { transcriptReader } from './transcript.ts';
+import { usageMeter } from './usage.ts';
 
 const AT = '2026-01-05T10:00:00.000Z';
 
@@ -25,5 +26,8 @@ const transcriptWorld: TranscriptWorld = {
 describeContracts({
   side: 'host',
   declaration,
-  bound: [bind({ contract: TRANSCRIPT_CONTRACT, make: () => ({ port: transcriptReader, world: transcriptWorld }) })],
+  bound: [
+    bind({ contract: TRANSCRIPT_CONTRACT, make: () => ({ port: transcriptReader, world: transcriptWorld }) }),
+    bind({ contract: USAGE_CONTRACT, make: () => ({ port: usageMeter, world: {} }) }),
+  ],
 });
