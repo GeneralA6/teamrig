@@ -1,6 +1,7 @@
 import { aiTitleOf, customTitleOf } from '../names/title.ts';
 import type { EntryKind, HookEvent, InputEntry, TranscriptReader } from '../ports/host/index.ts';
 import type { BackgroundKind } from '../refresh/running.ts';
+import type { TabState } from './state.ts';
 
 /**
  * Tab status: a colored circle before the terminal tab's title that shows what its session is doing,
@@ -8,9 +9,6 @@ import type { BackgroundKind } from '../refresh/running.ts';
  * pictograph teamrig prints (T460, the owner's ask): a tab title is plain text, so its color can only
  * come from the character itself.
  */
-
-/** What a session is doing, as its tab shows it. */
-export type TabState = 'ready' | 'working' | 'waiting' | 'decision' | 'error' | 'compacting';
 
 /**
  * What a hook event does to the tab: shows a state, gives the title back to the terminal (`reset`, as

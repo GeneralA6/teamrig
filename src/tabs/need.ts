@@ -5,7 +5,8 @@ import type { TeamPaths } from '../core/home.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import type { AskCall, HookEvent, ToolCall } from '../ports/host/index.ts';
 import { isNeedKind, type NeedKind } from './need-kind.ts';
-import { DECISION_MARKER, decisionLineOf, TAB_CIRCLES, type TabState } from './status.ts';
+import type { TabState } from './state.ts';
+import { DECISION_MARKER, decisionLineOf, TAB_CIRCLES } from './status.ts';
 
 /**
  * What each session's tab shows and what it asks the user (T2511), `<team>/state/tabs/<id>.json` each: the tab-status,
