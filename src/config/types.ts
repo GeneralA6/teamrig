@@ -1178,7 +1178,8 @@ export interface DeliveryRepoConfig {
   readonly updateMainCheckout: boolean;
   /**
    * The folder `teamrig worktree add` makes each new worktree in, one folder per branch named after it with each `/`
-   * as `-`. A relative path is in the main checkout; unset: `.claude/worktrees` there.
+   * as `-`. A relative path is in the main checkout; unset: the folder the run's host makes its own worktrees of that
+   * checkout in (`worktreeFolderOf`), and none on a host that names no such folder.
    */
   readonly worktreeFolder?: string;
   /**
