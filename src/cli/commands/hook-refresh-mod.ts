@@ -9,6 +9,7 @@ import { decideCompact, decideMidTurn, handoverHashOf, type AskContext, type Com
 import { readRunningWork } from '../../refresh/running.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { readContextEstimate } from '../../refresh/usage.ts';
+import { transcriptsIfKept } from '../host.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { hookScopeOf, parseJson, type SessionScope } from './hook-input.ts';
@@ -172,7 +173,9 @@ export async function preCompact(args: ParsedArgs, runtime: CliRuntime): Promise
   if (transcript === undefined || scope === undefined) {
     return EXIT.ok;
   }
-  const tokens = await readContextEstimate(runtime.files, transcript);
+  // No readable transcript, no estimate: the compaction goes, since a refusal here would block it.
+  const reader = transcriptsIfKept(runtime);
+  const tokens = reader === undefined ? undefined : await readContextEstimate(reader, runtime.files, transcript);
   const state = await new RefreshStore(runtime.files, scope.kit.paths).state(scope.id);
   const decision = tokens === undefined ? GO : decideCompact(state, { settings: scope.config.refresh, command: KIT_NAME }, { tokens, window: undefined });
   if (decision.kind === 'skip') {

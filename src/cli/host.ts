@@ -10,6 +10,15 @@ export function hostOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): 
 }
 
 /**
+ * The run's transcript reader, or undefined on a host that keeps no transcript teamrig can read: for a caller that
+ * goes on without what a transcript would tell, such as a hook that must never answer by a refusal.
+ */
+export function transcriptsIfKept(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): TranscriptReader | undefined {
+  const { transcripts } = hostOf(runtime);
+  return isUnsupported(transcripts) ? undefined : transcripts;
+}
+
+/**
  * The run's transcript reader. A host that keeps no transcript teamrig can read refuses with its own reason: a
  * command ends on it, and a hook, which lets no error out, does nothing.
  */
