@@ -92,6 +92,7 @@ export {
   type ReplyEntry,
   type ScheduledCarryEntry,
   type ScheduledJob,
+  type TitleEntry,
   type ToolOutcome,
   type TranscriptEntry,
   type TranscriptReader,

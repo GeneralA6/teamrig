@@ -202,13 +202,24 @@ export interface ModelSwitchEntry extends EntryBase {
   readonly reason: string | undefined;
 }
 
+/**
+ * The session's title from here on: the name the person gave it, or the one the host made up from the conversation.
+ * Only the person's names the session; the host's just describes it.
+ */
+export interface TitleEntry extends EntryBase {
+  readonly kind: 'title';
+  readonly by: 'person' | 'host';
+  /** The title as the host wrote it, which may be blank. */
+  readonly text: string;
+}
+
 /** A line of a type no reader uses yet; `type` is the host's name for it, so a check can count unknown ones. */
 export interface OtherEntry extends EntryBase {
   readonly kind: 'other';
   readonly type: string | undefined;
 }
 
-export type TranscriptEntry = InputEntry | ReplyEntry | CompactEntry | TurnEndEntry | ContinuedEntry | HookNoteEntry | ScheduledCarryEntry | EnvironmentEntry | QueuedPromptEntry | ModelSwitchEntry | OtherEntry;
+export type TranscriptEntry = InputEntry | ReplyEntry | CompactEntry | TurnEndEntry | ContinuedEntry | HookNoteEntry | ScheduledCarryEntry | EnvironmentEntry | QueuedPromptEntry | ModelSwitchEntry | TitleEntry | OtherEntry;
 export type EntryKind = TranscriptEntry['kind'];
 
 /** A line that is no entry: damaged or torn text, or JSON that is not an object. It is said, never skipped. */

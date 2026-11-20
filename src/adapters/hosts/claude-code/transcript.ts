@@ -18,6 +18,7 @@ import {
   type ReplyEntry,
   type ScheduledCarryEntry,
   type ScheduledJob,
+  type TitleEntry,
   type ToolOutcome,
   type TranscriptEntry,
   type TranscriptReader,
@@ -33,7 +34,8 @@ import {
 /**
  * The text every line of a kind holds, tested before the line is parsed: Claude Code writes each line as compact
  * JSON, so an entry's own `type` reads `"type":"user"`, while a copy quoted inside another line is escaped. A turn's
- * end has three marks, so its words are the type they share. `other` has none: any line can be one.
+ * end has three marks, so its words are the type they share, and a title has two types, so its words are the end
+ * they share. `other` has none: any line can be one.
  */
 const KIND_WORDS = {
   input: '"type":"user"',
@@ -46,6 +48,7 @@ const KIND_WORDS = {
   environment: '"type":"environment"',
   'queued-prompt': '"type":"queue-operation"',
   'model-switch': '"fallbackModel"',
+  title: '-title"',
   other: undefined,
 } as const satisfies Readonly<Record<EntryKind, string | undefined>>;
 
@@ -343,8 +346,21 @@ function queuedPromptOf(base: Base, entry: JsonRecord): QueuedPromptEntry | unde
   return entry['operation'] === 'enqueue' ? { ...base, kind: 'queued-prompt', text: stringField(entry, 'content') } : undefined;
 }
 
+/**
+ * The session's title: a `custom-title` line holds in `customTitle` the name the person gave it (`--name`,
+ * `/rename`), an `ai-title` line in `aiTitle` the one Claude Code made up from the conversation; undefined for a
+ * line whose title is no text.
+ */
+function titleOf(base: Base, entry: JsonRecord, by: TitleEntry['by']): TitleEntry | undefined {
+  const text = stringField(entry, by === 'person' ? 'customTitle' : 'aiTitle');
+  return text === undefined ? undefined : { ...base, kind: 'title', by, text };
+}
+
 /** A line that carries no message, as the kind its type and marks make it; undefined for a line of no known kind. */
 function markedOf(base: Base, entry: JsonRecord, type: string | undefined): TranscriptEntry | undefined {
+  if (type === 'custom-title' || type === 'ai-title') {
+    return titleOf(base, entry, type === 'custom-title' ? 'person' : 'host');
+  }
   if (type === 'system') {
     return systemOf(base, entry);
   }
