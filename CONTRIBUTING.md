@@ -288,6 +288,18 @@ join; agents follow [`dev-design-issue`](.claude/skills/dev-design-issue/SKILL.m
   goes through a private report, as [SECURITY.md](SECURITY.md) says; a log goes in cut to the lines that matter, with
   every private value taken out.
 
+### Design docs
+
+Every design doc and study lives in [`docs/design/`](docs/design), never beside the user docs, so a design is not read
+as how teamrig works today.
+
+- **When**: write one after a design issue's `Agreed:`, or as a study an issue asks for before anything is agreed.
+- **Its header**: the page opens with a status line, `Status: proposed`, `Status: accepted` or `Status: replaced by
+  <link>`, with the date it was written and a link to its issue.
+- **A record, not a living page**: a design doc is not kept current the way user docs are. When the design changes,
+  its status line changes (to `accepted`, or to `replaced by` a newer doc), and what ships is described in the user
+  docs.
+
 ## Pull requests
 - **The description**: the template asks for What, Why, Reach (see [Where a change lives](#where-a-change-lives)), Changes, Risks (see
   [What a change is held to](#what-a-change-is-held-to)), Old-code proof (for a fix, the regression test that fails
