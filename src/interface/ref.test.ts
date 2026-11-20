@@ -68,6 +68,25 @@ describe('a served ref', () => {
     assert.equal(second.asked, 0);
   });
 
+  it('serves a tracker\'s page only as an https address, and no link for any other', () => {
+    const served = new ServedText(new SecretScanner());
+    const urlOf = (page: string): string | null | undefined => refOf(served, 'T1', 'tr:7', [new PrefixConnector('tracker', 'Tracker', 'tr:', page)])?.url;
+    assert.deepEqual(
+      ['javascript:alert(1)//', ' javascript:alert(1)//', 'file:///srv/items/', 'http://tracker.example/item/', 'data:text/html,', 'not a page ', 'HTTPS://tracker.example/item/'].map(urlOf),
+      [null, null, null, null, null, null, 'https://tracker.example/item/7'],
+    );
+    const known = refOf(served, 'T1', 'tr:7', [new PrefixConnector('tracker', 'Tracker', 'tr:', 'javascript:alert(1)//')]);
+    assert.deepEqual([known?.connector?.id, known?.id], ['tracker', '7']);
+  });
+
+  it('never takes a link from the stored ref\'s own text', () => {
+    const served = new ServedText(new SecretScanner());
+    const tracker = new PrefixConnector('tracker', 'Tracker', 'tr:', 'https://tracker.example/item/');
+    for (const text of ['javascript:alert(1)', 'file:///srv/items/7', 'https://elsewhere.example/7']) {
+      assert.deepEqual(refOf(served, 'T1', text, [tracker]), { text, ...NONE });
+    }
+  });
+
   it('escapes the control marks of a label, which is the tracker\'s word', () => {
     const served = new ServedText(new SecretScanner());
     const ref = refOf(served, 'T1', 'tr:a\u001b[31mb', [new PrefixConnector('tracker', 'Tracker', 'tr:', null)]);
