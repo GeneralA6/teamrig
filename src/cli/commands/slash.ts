@@ -1,4 +1,4 @@
-import { isRecord, stringField } from '../../core/guards.ts';
+import { stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { planSlash, SESSION_FLAG, sessionReads, withSession, type CommandTable } from '../../slash/plan.ts';
 import { joinWords, splitWords } from '../../slash/words.ts';
@@ -7,7 +7,7 @@ import { underClaudeCode } from '../claude-code-env.ts';
 import type { CommandHelp } from '../help.ts';
 import { openKit, rosterOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { readHookInput, sessionTeam, teamSessionOf, type HookOrigin } from './hook-input.ts';
+import { readModRequest, sessionTeam, teamSessionOf, type HookOrigin } from './hook-input.ts';
 
 /** What `hook slash-command` takes from the CLI: its command table, its help and its runner, given so this module never imports run.ts back. */
 export interface SlashDeps {
@@ -34,11 +34,11 @@ interface SlashInput {
   readonly agreed: string | undefined;
 }
 
-function slashInputOf(payload: unknown): SlashInput {
-  if (!isRecord(payload)) {
+function slashInputOf(fields: JsonRecord | undefined): SlashInput {
+  if (fields === undefined) {
     return { args: '', origin: undefined, agreed: undefined };
   }
-  return { args: stringField(payload, 'args') ?? '', origin: stringField(payload, 'origin'), agreed: stringField(payload, 'agreed') };
+  return { args: stringField(fields, 'args') ?? '', origin: stringField(fields, 'origin'), agreed: stringField(fields, 'agreed') };
 }
 
 /**
@@ -111,8 +111,8 @@ export function slashCommand(deps: SlashDeps): (args: ParsedArgs, runtime: CliRu
         `${KIT_NAME} hook slash-command answers /${KIT_NAME} typed in a tab and runs only from the ${KIT_NAME} mod; ${ENV.claudeCode} is set, so Claude Code started this run (a tool call, a script it runs or a hook). Type /${KIT_NAME} <command> in the tab instead.`,
       );
     }
-    const { payload, event } = await readHookInput(runtime);
-    const input = slashInputOf(payload);
+    const request = await readModRequest(runtime);
+    const input = slashInputOf(request?.fields);
     const words = splitWords(input.args);
     if (!words.ok) {
       runtime.out.stderr(deps.help.usageError(words.problem, undefined));
@@ -130,7 +130,7 @@ export function slashCommand(deps: SlashDeps): (args: ParsedArgs, runtime: CliRu
     if (plan.effect === 'write' && (input.origin === undefined || !PERSON_ORIGINS.has(input.origin))) {
       throw new RefusedError(notThePerson(plan.argv, input.origin));
     }
-    const tab = await tabOf(event, runtime);
+    const tab = await tabOf(request?.event, runtime);
     const inTab = tabRuntime(runtime, tab);
     if (plan.kind === 'as-typed') {
       return deps.run(plan.argv, inTab);
