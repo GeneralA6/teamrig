@@ -7,4 +7,6 @@ export interface HostPaths {
   home(userHome: string): string;
   /** The folder the host keeps its temporary files under, on a machine whose temporary folder is `systemTemp`. */
   temp(systemTemp: string): string;
+  /** The folder the host loads that person's own skills from, in every project. */
+  skills(userHome: string): string;
 }
