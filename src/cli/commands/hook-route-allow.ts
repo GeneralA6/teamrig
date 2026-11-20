@@ -9,7 +9,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { guardLoadOf, type GuardLoad } from './hook-guard-load.ts';
-import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardReplyOf, secretGuardOutputOf, serviceRoleGuardOutputOf } from './hook-guard-outputs.ts';
+import { dbWriteGuardReplyOf, execGuardReplyOf, packageGuardReplyOf, pushGuardReplyOf, secretGuardOutputOf, serviceRoleGuardOutputOf } from './hook-guard-outputs.ts';
 import { envSession, readHookInput } from './hook-input.ts';
 import { roleAllowOutputOf } from './hook-role-allow.ts';
 import { callRouteOf } from './hook-route-context.ts';
@@ -26,9 +26,9 @@ export interface RouteAllowDeps {
 async function everyGuardPassed(runtime: CliRuntime, guard: GuardLoad, payload: JsonRecord, event: HookEvent): Promise<boolean> {
   const answers = await Promise.all([
     pushGuardReplyOf(runtime, guard, event),
-    packageGuardOutputOf(runtime, guard, payload),
-    execGuardOutputOf(runtime, guard, payload),
-    dbWriteGuardOutputOf(runtime, guard, payload),
+    packageGuardReplyOf(runtime, guard, event),
+    execGuardReplyOf(runtime, guard, event),
+    dbWriteGuardReplyOf(runtime, guard, event),
     serviceRoleGuardOutputOf(runtime, guard, payload),
   ]);
   return guardsPassed([...answers, secretGuardOutputOf(runtime, guard, payload), passRecordGuardOutput(payload)]);

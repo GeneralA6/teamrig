@@ -71,7 +71,7 @@ import { restartOrPark, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
 import { promptSecretBlock } from './hook-prompt-secret.ts';
 import { guardLoadOf, hookTeam } from './hook-guard-load.ts';
-import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardReplyOf, secretGuardOutputOf, serviceRoleGuardOutputOf } from './hook-guard-outputs.ts';
+import { dbWriteGuardReplyOf, execGuardReplyOf, packageGuardReplyOf, pushGuardReplyOf, secretGuardOutputOf, serviceRoleGuardOutputOf } from './hook-guard-outputs.ts';
 import { checkHooklessTabs } from './hook-hookless.ts';
 import { dueFactsAt, inMeetingNow } from './hook-refresh-mod.ts';
 import { recordSessionStart } from './hook-session-record.ts';
@@ -109,15 +109,12 @@ export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
  */
 export async function packageGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
+  const { payload, event } = await readHookInput(runtime);
   const guard = await guardLoadOf(payload, runtime);
-  if (guard === undefined) {
+  if (guard === undefined || event === undefined) {
     return EXIT.ok;
   }
-  const output = await packageGuardOutputOf(runtime, guard, payload);
-  if (output !== '') {
-    runtime.out.stdout(output);
-  }
+  writeReply(runtime, 'tool-start', await packageGuardReplyOf(runtime, guard, event));
   return EXIT.ok;
 }
 
@@ -127,15 +124,12 @@ export async function packageGuard(args: ParsedArgs, runtime: CliRuntime): Promi
  */
 export async function dbWriteGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
+  const { payload, event } = await readHookInput(runtime);
   const guard = await guardLoadOf(payload, runtime);
-  if (guard === undefined) {
+  if (guard === undefined || event === undefined) {
     return EXIT.ok;
   }
-  const output = await dbWriteGuardOutputOf(runtime, guard, payload);
-  if (output !== '') {
-    runtime.out.stdout(output);
-  }
+  writeReply(runtime, 'tool-start', await dbWriteGuardReplyOf(runtime, guard, event));
   return EXIT.ok;
 }
 
@@ -193,15 +187,12 @@ export async function passRecordGuard(args: ParsedArgs, runtime: CliRuntime): Pr
  */
 export async function execGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
+  const { payload, event } = await readHookInput(runtime);
   const guard = await guardLoadOf(payload, runtime);
-  if (guard === undefined) {
+  if (guard === undefined || event === undefined) {
     return EXIT.ok;
   }
-  const output = await execGuardOutputOf(runtime, guard, payload);
-  if (output !== '') {
-    runtime.out.stdout(output);
-  }
+  writeReply(runtime, 'tool-start', await execGuardReplyOf(runtime, guard, event));
   return EXIT.ok;
 }
 

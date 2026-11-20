@@ -2,13 +2,14 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { DEFAULT_PACKAGE_GUARD } from '../config/defaults.ts';
-import { isRecord, stringField } from '../core/guards.ts';
+import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakePackageRegistry } from '../testing/fake-package-registry.ts';
 import { FakeWorktreeFiles } from '../testing/fake-worktrees.ts';
+import { hookEventOf, replyText } from '../testing/host.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { adHocReason, installReason, linkedModulesReason, lostFlagReason, packageGuardOf, packageGuardOutput, type PackageGuardEnv } from './package-guard.ts';
+import { adHocReason, installReason, linkedModulesReason, lostFlagReason, packageGuardOf, packageGuardReply, type PackageGuardEnv } from './package-guard.ts';
 import { ASK_REFUSED_NOTE } from './permission.ts';
 
 const APP = resolve('/', 'work', 'app');
@@ -21,7 +22,10 @@ const PACKAGES = {
 
 const YOUNG_TYPESCRIPT = 'typescript@5.9.3: published 2 days ago (2026-10-18), inside the 14-day cooldown';
 
-function env(overrides: Partial<PackageGuardEnv> = {}): PackageGuardEnv {
+/** The guard's env, with the platform the host reads the call on: Linux when a spec names none. */
+type SpecEnv = PackageGuardEnv & { readonly platform?: NodeJS.Platform };
+
+function env(overrides: Partial<SpecEnv> = {}): SpecEnv {
   return {
     ...DEFAULT_PACKAGE_GUARD,
     cwd: APP,
@@ -30,13 +34,17 @@ function env(overrides: Partial<PackageGuardEnv> = {}): PackageGuardEnv {
     tree: new FakeWorktreeFiles(),
     registry: new FakePackageRegistry(PACKAGES),
     clock: new FakeClock('2026-10-20T12:00:00Z'),
-    platform: 'linux',
     ...overrides,
   };
 }
 
-function payload(command: string, extra: Readonly<Record<string, string>> = {}): unknown {
+function payload(command: string, extra: Readonly<Record<string, string>> = {}): JsonRecord {
   return { tool_name: 'Bash', tool_input: { command }, ...extra };
+}
+
+/** What the shipped host is handed for the guard's reply to this hook input. */
+async function packageGuardOutput(input: JsonRecord, guardEnv: SpecEnv): Promise<string> {
+  return replyText('tool-start', await packageGuardReply(hookEventOf(input, guardEnv.platform), guardEnv));
 }
 
 /** The decision and reason the output carries, or undefined for no output. */
@@ -51,7 +59,7 @@ function verdictOf(output: string): { readonly decision: string | undefined; rea
   return { decision: stringField(hook, 'permissionDecision'), reason: stringField(hook, 'permissionDecisionReason') };
 }
 
-describe('packageGuardOutput', () => {
+describe('packageGuardReply', () => {
   it('refuses an npx of a tool not installed, naming the call and the vetted route', async () => {
     const verdict = verdictOf(await packageGuardOutput(payload('npx eslint .'), env()));
     assert.equal(verdict?.decision, 'deny');
@@ -93,8 +101,8 @@ describe('packageGuardOutput', () => {
     assert.equal(verdict?.reason, `${lostFlagReason([{ bin: 'tsc', flag: '--version' }])} ${adHocReason(['npx eslint'])}`);
   });
 
-  it('stays quiet for a line with no ad-hoc run or named install, and for input that is not a shell call', async () => {
-    for (const input of [payload('npm ci && npm install && npm test'), 'not a payload', { tool_name: 'Bash', tool_input: {} }]) {
+  it('stays quiet for a line with no ad-hoc run or named install, and for a call that is no shell call or has no line', async () => {
+    for (const input of [payload('npm ci && npm install && npm test'), { tool_name: 'Read', tool_input: { file_path: join(APP, 'a.js') } }, { tool_name: 'Bash', tool_input: {} }, {}]) {
       assert.equal(await packageGuardOutput(input, env()), '');
     }
   });
@@ -144,10 +152,10 @@ describe('packageGuardOutput', () => {
   });
 });
 
-describe('packageGuardOutput: a Bash line on Windows (T2319)', () => {
+describe('packageGuardReply: a Bash line on Windows (T2319)', () => {
   /** A run of n backslashes; on Windows bash receives each run not before a double quote halved, rounded up. */
   const bs = (n: number): string => '\\'.repeat(n);
-  const windows = (overrides: Partial<PackageGuardEnv> = {}): PackageGuardEnv => env({ platform: 'win32', ...overrides });
+  const windows = (overrides: Partial<SpecEnv> = {}): SpecEnv => env({ platform: 'win32', ...overrides });
   const hiddenSeparator = (command: string): string => `echo a${bs(3)}; ${command}`;
   const hiddenBacktick = (command: string): string => `echo "p${bs(3)}\`${command}; echo ${bs(3)}\`q"`;
   const main = resolve('/', 'work', 'main', 'node_modules');
