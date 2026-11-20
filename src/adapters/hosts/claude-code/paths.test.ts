@@ -128,6 +128,10 @@ describe("Claude Code's paths", () => {
     }
   });
 
+  it("names its login, its prompt history and a folder's local settings as the files whose content is a secret", () => {
+    assert.deepEqual(pathsIn({}).secretFiles(), ['~/.claude/.credentials.json', '~/.claude/history.jsonl', '**/.claude/settings.local.json']);
+  });
+
   it('reads the environment of the run it was built for, not a later one', () => {
     const env: Record<string, string> = { CLAUDE_CONFIG_DIR: join('/', 'first') };
     const paths = pathsIn({ ...env });

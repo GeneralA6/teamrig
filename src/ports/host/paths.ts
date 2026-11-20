@@ -60,4 +60,11 @@ export interface HostPaths {
   planFile(userHome: string, slug: string): string;
   /** The folder of the snapshots the host takes of that person's shell and sources before each shell call. */
   shellSnapshots(userHome: string): string;
+  /**
+   * The host's own files whose content is a secret, such as its login and what a person typed into it: globs as the
+   * secret guard reads its list (`secretGuard.paths`), in which `~/` starts at the person's home folder and a glob
+   * with no leading `/` or drive matches at any depth. The guard reads them after its own defaults and before a
+   * team's globs, so a team's `!glob` still keeps one of them readable.
+   */
+  secretFiles(): readonly string[];
 }
