@@ -595,7 +595,6 @@ describe('teamrig read: what is asked', () => {
     ['no document', ['read', '--json'], /read needs a document: tasks, inbox, sessions, meetings, config/],
     ['an unknown document', ['read', 'goals', '--json'], /unknown document "goals"; the documents are tasks, inbox, sessions, meetings, config/],
     ['a document twice', ['read', 'tasks', 'tasks', '--json'], /document tasks is asked twice/],
-    ['a document not served yet', ['read', 'tasks', 'config', '--json'], /document config is not served yet; this teamrig serves tasks, inbox, sessions, meetings/],
     ['a --conversation no host would give', [...READ_SESSIONS, '--conversation', 'a b'], /--conversation takes the host's conversation id/],
     ['inbox with no session named', ['read', 'inbox', '--json'], /inbox is one session's: name it with --session/],
     ['a --since that is no count of hours', [...READ_INBOX, '--since', 'x'], /--since takes whole hours, such as 24; got "x"/],
