@@ -1,3 +1,4 @@
+import { hookFile, RECORDING_FILE } from '../../src/testing/recorded.ts';
 import { stringField, type JsonRecord } from '../lib/guards.ts';
 import { GENERIC_RULES } from '../scrub/rules.ts';
 import { formatFinding, scanText } from '../scrub/scan.ts';
@@ -43,13 +44,7 @@ export const UNRECORDED_REASONS: Readonly<Record<string, string>> = {
   StopFailure: 'fires when a turn ends on an API error, which a recording cannot cause',
 };
 
-/** The recording's own facts, read by the fixture loader. */
-export const RECORDING_FILE = 'recording.json';
 export const SESSION_TRANSCRIPT = 'transcripts/session.jsonl';
-
-export function hookFile(event: string): string {
-  return `hooks/${event}.json`;
-}
 
 /** The fixture file of the `number`th helper that wrote a transcript, counted from 1. */
 export function helperTranscript(number: number): string {

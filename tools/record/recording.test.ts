@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isRecord, stringField, type JsonRecord } from '../lib/guards.ts';
-import { assemble, helperTranscript, hookFile, RECORDING_FILE, SESSION_TRANSCRIPT, UNRECORDED_REASONS, type RawRecording } from './recording.ts';
+import { hookFile, RECORDING_FILE } from '../../src/testing/recorded.ts';
+import { assemble, helperTranscript, SESSION_TRANSCRIPT, UNRECORDED_REASONS, type RawRecording } from './recording.ts';
 import { Scrubber } from './scrub.ts';
 import { cutStandIn } from './transcript.ts';
 
