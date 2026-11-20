@@ -3,13 +3,14 @@ import { toJsonlLine } from '../../core/jsonl.ts';
 import { passRecordGuardOutput } from '../../hooks/pass-record-guard.ts';
 import { guardsPassed, preToolUseRouteOf, routeAllowOn, routeAllowOutput, routeAllowRecord } from '../../hooks/route-allow.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
+import type { HookEvent } from '../../ports/host/index.ts';
 import type { CommandTable } from '../../slash/plan.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { guardLoadOf, type GuardLoad } from './hook-guard-load.ts';
-import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf, serviceRoleGuardOutputOf } from './hook-guard-outputs.ts';
-import { envSession, parseJson } from './hook-input.ts';
+import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardReplyOf, secretGuardOutputOf, serviceRoleGuardOutputOf } from './hook-guard-outputs.ts';
+import { envSession, readHookInput } from './hook-input.ts';
 import { roleAllowOutputOf } from './hook-role-allow.ts';
 import { callRouteOf } from './hook-route-context.ts';
 
@@ -22,9 +23,9 @@ export interface RouteAllowDeps {
 }
 
 /** True when every teamrig guard passed the call, with the same config load its own hook reads (Q7.1). */
-async function everyGuardPassed(runtime: CliRuntime, guard: GuardLoad, payload: JsonRecord): Promise<boolean> {
+async function everyGuardPassed(runtime: CliRuntime, guard: GuardLoad, payload: JsonRecord, event: HookEvent): Promise<boolean> {
   const answers = await Promise.all([
-    pushGuardOutputOf(runtime, guard, payload),
+    pushGuardReplyOf(runtime, guard, event),
     packageGuardOutputOf(runtime, guard, payload),
     execGuardOutputOf(runtime, guard, payload),
     dbWriteGuardOutputOf(runtime, guard, payload),
@@ -38,13 +39,13 @@ async function everyGuardPassed(runtime: CliRuntime, guard: GuardLoad, payload: 
  * role's call (hook-role-allow.ts), once every teamrig guard passed the same call; else ''. Each allow is logged by its
  * route or its role.
  */
-async function routeAllowOutputOf(runtime: CliRuntime, payload: JsonRecord, deps: RouteAllowDeps): Promise<string> {
+async function routeAllowOutputOf(runtime: CliRuntime, payload: JsonRecord, event: HookEvent, deps: RouteAllowDeps): Promise<string> {
   const guard = await guardLoadOf(payload, runtime);
   const kit = guard?.kit;
   if (guard === undefined || kit === undefined || kit.load.status !== 'loaded') {
     return '';
   }
-  const passed = (): Promise<boolean> => everyGuardPassed(runtime, guard, payload);
+  const passed = (): Promise<boolean> => everyGuardPassed(runtime, guard, payload, event);
   if (!routeAllowOn(kit.load.config.prompts)) {
     return roleAllowOutputOf(runtime, kit, payload, deps.table, passed);
   }
@@ -74,8 +75,8 @@ async function routeAllowOutputOf(runtime: CliRuntime, payload: JsonRecord, deps
 export function routeAllow(deps: RouteAllowDeps): (args: ParsedArgs, runtime: CliRuntime) => Promise<ExitCode> {
   return async (args, runtime) => {
     noPositionals(args);
-    const payload = parseJson(await runtime.readStdin());
-    const output = isRecord(payload) ? await routeAllowOutputOf(runtime, payload, deps).catch(() => '') : '';
+    const { payload, event } = await readHookInput(runtime);
+    const output = isRecord(payload) && event !== undefined ? await routeAllowOutputOf(runtime, payload, event, deps).catch(() => '') : '';
     if (output !== '') {
       runtime.out.stdout(output);
     }
