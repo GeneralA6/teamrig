@@ -82,13 +82,45 @@ describe('RefreshStore', () => {
     assert.deepEqual(await store.parked('alpha'), parked);
     assert.deepEqual([files.paths().length, await store.restart('alpha')], [1, undefined], 'the pending restart is another file');
     assert.match(files.get(join(PATHS.refresh, 'alpha.parked.json')) ?? '', /"claudeSession":"c-1"/);
-    for (const bad of [{ at: 3 }, { claudeSession: null }, { transcript: 3 }, { cwd: false }, { supervised: 'no' }, { v: 2 }]) {
+    for (const bad of [{ at: 3 }, { claudeSession: null }, { transcript: 3 }, { cwd: false }, { supervised: 'no' }, { v: 3 }, { v: 0 }]) {
       await files.write(join(PATHS.refresh, 'alpha.parked.json'), JSON.stringify({ v: 1, ...parked, ...bad }));
       assert.equal(await store.parked('alpha'), undefined, JSON.stringify(bad));
     }
     await store.clearParked('alpha');
     await store.clearParked('alpha');
     assert.equal(await store.parked('alpha'), undefined);
+  });
+
+  it('writes the restart files as the very lines every installed teamrig reads (T4762)', async () => {
+    const files = new MemoryFiles();
+    const store = new RefreshStore(files, PATHS);
+    const tab = { claudeSession: 'c-1', transcript: '/t/c-1.jsonl', cwd: null, supervised: false, effort: null };
+    await store.setRestart('alpha', { phase: 'pending', at: AT, pid: 4242, ...tab });
+    await store.setParked('alpha', { at: AT, ...tab });
+    // Each record's own keys are spread into its line, so a renamed property renames the key on disk: these lines
+    // may change only in the commit that raises the written format.
+    const tabText = '"claudeSession":"c-1","transcript":"/t/c-1.jsonl","cwd":null,"supervised":false,"effort":null';
+    assert.equal(files.get(join(PATHS.refresh, 'alpha.restart.json')), `{"v":1,"phase":"pending","at":"${AT}","pid":4242,${tabText}}\n`);
+    assert.equal(files.get(join(PATHS.refresh, 'alpha.parked.json')), `{"v":1,"at":"${AT}",${tabText}}\n`);
+  });
+
+  it('reads the restart files a later teamrig wrote, naming the tab hostSession, and one newer still as none (T4762)', async () => {
+    const files = new MemoryFiles();
+    const store = new RefreshStore(files, PATHS);
+    const tab = { transcript: '/t/c-1.jsonl', cwd: null, supervised: false, effort: null };
+    const restart: RestartRequest = { phase: 'pending', at: AT, pid: 4242, claudeSession: 'c-1', ...tab };
+    const parked: ParkedRestart = { at: AT, claudeSession: 'c-1', ...tab };
+    const restartPath = join(PATHS.refresh, 'alpha.restart.json');
+    const parkedPath = join(PATHS.refresh, 'alpha.parked.json');
+    await files.write(restartPath, `${JSON.stringify({ v: 2, phase: 'pending', at: AT, pid: 4242, hostSession: 'c-1', ...tab })}\n`);
+    await files.write(parkedPath, `${JSON.stringify({ v: 2, at: AT, hostSession: 'c-1', ...tab })}\n`);
+    assert.deepEqual([await store.restart('alpha'), await store.parked('alpha')], [restart, parked]);
+    await files.write(restartPath, JSON.stringify({ v: 3, phase: 'pending', at: AT, pid: 4242, hostSession: 'c-1', ...tab }));
+    await files.write(parkedPath, JSON.stringify({ v: 3, at: AT, hostSession: 'c-1', ...tab }));
+    assert.deepEqual([await store.restart('alpha'), await store.parked('alpha')], [undefined, undefined]);
+    // The lead's request names no tab, so its format does not move.
+    await files.write(join(PATHS.refresh, 'alpha.request.json'), JSON.stringify({ v: 2, by: 'lead', at: AT }));
+    assert.equal(await store.request('alpha'), undefined);
   });
 
   it('keeps the jobs a /clear left live in a file of its own, reads a damaged one as none, and clears it', async () => {
