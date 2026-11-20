@@ -43,7 +43,13 @@ export async function hostsOf(kind: HostKind, runtime: HostRuntime, scanner: Sec
   if (loaded.kind === 'refused') {
     throw new HostAdapterError(kind, loaded.notices);
   }
-  const { tracker, codeHost } = loaded.value.create({
+  const problems: string[] = [];
+  // No command hands a connector its section of the team config yet, so each reads an empty one: its defaults.
+  const build = loaded.value.configure({}, (key, problem) => problems.push(`connectors.${kind}.${key} ${problem}`));
+  if (problems.length > 0) {
+    throw new RefusedError(problems.join('; '));
+  }
+  const { tracker, codeHost } = build({
     run: runtime.run,
     http: runtime.http,
     credentials: runtime.credentials,

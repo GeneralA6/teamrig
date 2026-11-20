@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { connectorAdapterProblems, stampCredit, type ConnectorPorts } from '../../../plugin-api/index.ts';
-import { connectorDeps } from '../../../testing/adapter-deps.ts';
+import { connectorDeps, portsOf } from '../../../testing/adapter-deps.ts';
 import { FakeCredentials } from '../../../testing/fake-credentials.ts';
 import { FakeHttp } from '../../../testing/fake-http.ts';
 import { textAdf } from './adf.ts';
@@ -22,7 +22,7 @@ interface Kit {
 function kit(stamp: boolean = true, saved: boolean = true): Kit {
   const http = new FakeHttp();
   const credentials = saved ? new FakeCredentials().saves('teamrig-jira-acme', 'someone@example.com:the-token') : new FakeCredentials();
-  return { ports: adapter.create(connectorDeps({ http, credentials, stamp })), http };
+  return { ports: portsOf(adapter, connectorDeps({ http, credentials, stamp })), http };
 }
 
 /** The tracker of `ports`; the spec fails when the adapter built none. */

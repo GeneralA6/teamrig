@@ -12,6 +12,7 @@ import { declaration } from './declaration.ts';
  */
 export default defineConnector({
   declaration,
+  parseConfig: () => undefined,
   create: (deps) => {
     const host = new GitHubIssueHost(ghRunnerOver(deps.run), new RepoTokens(deps.credentials, deps.env), deps.scanner, deps.stamp);
     return { tracker: host, codeHost: host };

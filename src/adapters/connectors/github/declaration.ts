@@ -12,6 +12,8 @@ export const declaration: ConnectorDeclaration = {
   name: 'GitHub',
   kinds: ['tracker', 'codehost'],
   refPrefix: 'gh:',
+  // GitHub's keys are still the team config's own `github` section, which the commands read.
+  configKeys: {},
   manifest: {
     'tracker.issue-import': SUPPORTED,
     'tracker.accept-label': SUPPORTED,

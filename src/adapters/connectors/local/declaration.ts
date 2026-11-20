@@ -9,6 +9,7 @@ export const declaration: ConnectorDeclaration = {
   name: 'Local',
   kinds: ['tracker'],
   refPrefix: 'local:',
+  configKeys: {},
   manifest: {
     'tracker.issue-import': NONE,
     'tracker.accept-label': NONE,

@@ -5,7 +5,7 @@ import ts from 'typescript';
 import { loadConnector } from '../composition/loader.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { GITHUB_REPOS_HOST } from '../issues/host.ts';
-import type { ConnectorDeps, ConnectorPorts, ProgramRunner } from '../plugin-api/index.ts';
+import type { ConfigReport, ConnectorDeps, ConnectorPorts, JsonRecord, ProgramRunner } from '../plugin-api/index.ts';
 import { FakeCredentials, TEST_OWNERS } from '../testing/fake-credentials.ts';
 import { FakeGh } from '../testing/fake-gh.ts';
 import { FakeHttp } from '../testing/fake-http.ts';
@@ -29,16 +29,21 @@ function runtimeWith(run: ProgramRunner = noProgram): HostRuntime {
 
 /**
  * A loader that serves one adapter, whatever folder the loader asks for: its declaration is sound and names the id
- * asked for, it builds `ports`, and it keeps what it was handed to build them from. The real loader checks it, so the
+ * asked for, it reports `problems` of its config section, builds `ports`, and keeps what it was handed to build them from. The real loader checks it, so the
  * adapter hostsOf gets is one the loader accepted.
  */
-function serving(ports: ConnectorPorts): { readonly load: ConnectorLoader; readonly given: ConnectorDeps[] } {
+function serving(ports: ConnectorPorts, problems: readonly (readonly [string, string])[] = []): { readonly load: ConnectorLoader; readonly given: ConnectorDeps[] } {
   const given: ConnectorDeps[] = [];
-  const create = (deps: ConnectorDeps): ConnectorPorts => {
-    given.push(deps);
-    return ports;
+  const configure = (_section: JsonRecord, report: ConfigReport): ((deps: ConnectorDeps) => ConnectorPorts) => {
+    for (const [key, problem] of problems) {
+      report(key, problem);
+    }
+    return (deps) => {
+      given.push(deps);
+      return ports;
+    };
   };
-  return { load: (id) => loadConnector(id, () => Promise.resolve({ default: { declaration: connectorDeclarationData({ id }), create } })), given };
+  return { load: (id) => loadConnector(id, () => Promise.resolve({ default: { declaration: connectorDeclarationData({ id }), configure } })), given };
 }
 
 /** What `serving` was handed on its one build. */
@@ -110,6 +115,18 @@ describe('hostsOf', () => {
         message: `the github connector adapter gave no host: ${reasons}`,
       });
     }
+  });
+
+  it("refuses, naming each key by its path in the team config, when the adapter reports its config section, and builds nothing", async () => {
+    const { load, given } = serving(bothPorts(), [
+      ['site', 'must be a host name'],
+      ['projects', 'must list a project key'],
+    ]);
+    await assert.rejects(
+      hostsOf(GITHUB_REPOS_HOST, runtimeWith(), new SecretScanner(), true, load),
+      new RefusedError('connectors.github.site must be a host name; connectors.github.projects must list a project key'),
+    );
+    assert.deepEqual(given, []);
   });
 
   it('loads the GitHub adapter teamrig ships when no loader is given', async () => {

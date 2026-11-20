@@ -38,15 +38,18 @@ describe('an adapter declaration', () => {
 });
 
 describe('an adapter entry', () => {
-  it('is a declaration beside a create function', () => {
+  it('is a declaration beside the function its side needs', () => {
     const declaration = hostDeclarationData();
-    assert.deepEqual(adapterEntry({ declaration, create: () => ({}) }), { declaration });
-    assert.deepEqual(adapterEntry({ create: () => ({}) }), { declaration: undefined });
+    assert.deepEqual(adapterEntry({ declaration, create: () => ({}) }, 'create'), { declaration });
+    assert.deepEqual(adapterEntry({ create: () => ({}) }, 'create'), { declaration: undefined });
+    assert.deepEqual(adapterEntry({ declaration, configure: () => () => ({}) }, 'configure'), { declaration });
   });
 
   it('is nothing else', () => {
-    assert.equal(adapterEntry({ declaration: hostDeclarationData() }), undefined);
-    assert.equal(adapterEntry({ declaration: hostDeclarationData(), create: 'later' }), undefined);
-    assert.equal(adapterEntry(undefined), undefined);
+    assert.equal(adapterEntry({ declaration: hostDeclarationData() }, 'create'), undefined);
+    assert.equal(adapterEntry({ declaration: hostDeclarationData(), create: 'later' }, 'create'), undefined);
+    assert.equal(adapterEntry({ declaration: hostDeclarationData(), create: () => ({}) }, 'configure'), undefined);
+    assert.equal(adapterEntry({ declaration: hostDeclarationData(), configure: () => () => ({}) }, 'create'), undefined);
+    assert.equal(adapterEntry(undefined, 'create'), undefined);
   });
 });

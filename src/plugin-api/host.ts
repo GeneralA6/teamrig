@@ -37,7 +37,7 @@ export function isHostDeclaration(value: unknown): value is HostDeclaration {
 
 /** What stops `value` from being a host adapter's entry; empty when it is one. */
 export function hostAdapterProblems(value: unknown): readonly string[] {
-  const entry = adapterEntry(value);
+  const entry = adapterEntry(value, 'create');
   return entry === undefined ? ['its entry is not made by defineHost: it needs a declaration and a create function'] : hostDeclarationProblems(entry.declaration);
 }
 

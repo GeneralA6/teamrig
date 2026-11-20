@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { API_VERSION, apiVersionNotice, connectorAdapterProblems, connectorDeclarationProblems, featuresOf } from '../../../plugin-api/index.ts';
-import { connectorDeps } from '../../../testing/adapter-deps.ts';
+import { portsOf } from '../../../testing/adapter-deps.ts';
 import { declaration } from './declaration.ts';
 import adapter from './index.ts';
 
@@ -28,6 +28,6 @@ describe('the local adapter', () => {
   it('enters through defineConnector with that declaration, and builds no port', () => {
     assert.equal(adapter.declaration, declaration);
     assert.deepEqual(connectorAdapterProblems(adapter), []);
-    assert.deepEqual(adapter.create(connectorDeps()), {});
+    assert.deepEqual(portsOf(adapter), {});
   });
 });

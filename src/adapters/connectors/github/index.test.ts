@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { API_VERSION, apiVersionNotice, connectorAdapterProblems, connectorDeclarationProblems, featuresOf, type ProgramRequest, type ProgramRunner } from '../../../plugin-api/index.ts';
-import { connectorDeps } from '../../../testing/adapter-deps.ts';
+import { connectorDeps, portsOf } from '../../../testing/adapter-deps.ts';
 import { FakeCredentials, ownerToken } from '../../../testing/fake-credentials.ts';
 import { declaration } from './declaration.ts';
 import adapter from './index.ts';
@@ -34,7 +34,7 @@ describe('the GitHub adapter', () => {
 
   it('builds one host that is both the tracker and the code host, so the two share one read of an owner key', async () => {
     const credentials = new FakeCredentials().savesTokensFor(['acme']);
-    const ports = adapter.create(connectorDeps({ credentials }));
+    const ports = portsOf(adapter, connectorDeps({ credentials }));
     assert.equal(ports.tracker, ports.codeHost);
     assert.equal(ports.tracker.name, 'GitHub');
     assert.equal((await ports.tracker.reach('acme/web', 'read')).kind, 'reached');
@@ -48,7 +48,7 @@ describe('the GitHub adapter', () => {
       asked.push(request);
       return Promise.resolve({ end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ login: 'octo' }), stderr: '' });
     };
-    const ports = adapter.create(connectorDeps({ run, env: { HOME: '/own' }, credentials: new FakeCredentials().savesTokensFor(['acme']) }));
+    const ports = portsOf(adapter, connectorDeps({ run, env: { HOME: '/own' }, credentials: new FakeCredentials().savesTokensFor(['acme']) }));
     assert.deepEqual(await ports.tracker.viewer('acme/web'), { kind: 'found', login: 'octo' });
     assert.deepEqual(
       asked.map((request) => [request.program, request.env]),
@@ -57,7 +57,14 @@ describe('the GitHub adapter', () => {
   });
 
   it('reaches nothing for an owner with no saved key', async () => {
-    const ports = adapter.create(connectorDeps());
+    const ports = portsOf(adapter);
     assert.equal((await ports.tracker.reach('acme/web', 'read')).kind, 'unreachable');
+  });
+
+  it('takes no key of a config section yet, and says so of one it is handed', () => {
+    assert.deepEqual(declaration.configKeys, {});
+    const problems: string[] = [];
+    adapter.configure({ repos: ['acme/web'] }, (key, problem) => problems.push(`${key} ${problem}`));
+    assert.deepEqual(problems, ['repos is no key of the GitHub connector; it takes none']);
   });
 });
