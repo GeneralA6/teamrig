@@ -11,7 +11,7 @@ import { pagedAfter, type SecurityIssue } from './security-alert.ts';
 import type { StepOutcome } from './sync.ts';
 
 /**
- * The automatic GitHub sync's decisions, kept pure (`issue watch` decides when one runs, github/watch.ts): what the
+ * The automatic GitHub sync's decisions, kept pure (`issue watch` decides when one runs, sync/watch.ts): what the
  * owners hear about the tasks it added (`addedLines`), what the lead hears about the repositories it
  * could not read (`failureNews`, only when that set changes, so a lasting failure is told once) and about the
  * outsiders' issues it left out (`leftOutNews`, only for a number not left out before). Pull request news is
@@ -44,7 +44,7 @@ const TITLE_CHARS = 60;
 
 /**
  * The team's automatic sync: when the last one started and finished, the repositories it could not read, by
- * repository the numbers, lowest first, of the open issues the trust rule left out (github/trust.ts), by repository
+ * repository the numbers, lowest first, of the open issues the trust rule left out (sync/trust.ts), by repository
  * what the pull request monitor last read (pull-news.ts), by repository the numbers, lowest first, of the open
  * security issues the owner was paged for (security-alert.ts), by repository the mention scan's watch, when each
  * session was last woken for mentions on an item, by `<session> <ref>` (mention-route.ts), and by repository the

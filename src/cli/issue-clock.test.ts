@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
-import { parseClocks } from '../github/clock.ts';
+import { parseClocks } from '../sync/clock.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { commentNode, FakeGh, ghIssue, ghPull, reviewNode } from '../testing/fake-gh.ts';
 import { EXIT } from './runtime.ts';

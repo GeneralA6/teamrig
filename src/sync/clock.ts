@@ -38,7 +38,7 @@ export interface ThreadPost {
 export interface Thread {
   /** `owner/name`. */
   readonly repo: string;
-  /** As the task list names it (github/map.ts issueRef). */
+  /** As the task list names it (sync/map.ts issueRef). */
   readonly ref: string;
   readonly kind: ThreadKind;
   /** The session that answers it. */
