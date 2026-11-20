@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { FakeCredentials } from '../testing/fake-credentials.ts';
+import { FakeCredentials } from '../../../testing/fake-credentials.ts';
 import { NoAccessError, repoOwner, RepoTokens, TokenMissingError, TokenReadError } from './tokens.ts';
 
 const ENV = { HOME: '/u' };
