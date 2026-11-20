@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import type { HostSource } from '../composition/host-ports.ts';
 import { isUnsupported, unsupported, type HostPorts } from '../ports/host/index.ts';
 import { quietWorld } from '../testing/quiet-world.ts';
-import { hostOf } from './host.ts';
+import { hostOf, transcriptsOf } from './host.ts';
+import { RefusedError } from './runtime.ts';
 
 describe('hostOf', () => {
   it('builds the ports from the environment and platform of the run it is asked for', () => {
@@ -22,5 +23,20 @@ describe('hostOf', () => {
     const { transcripts } = hostOf({ host: world.host, env: {}, platform: world.platform });
     assert.equal(isUnsupported(transcripts), false);
     assert.deepEqual(!isUnsupported(transcripts) && transcripts.entry('not a transcript line'), { kind: 'unread', reason: 'damaged' });
+  });
+});
+
+describe('transcriptsOf', () => {
+  it('gives the reader of a host that has one', () => {
+    const world = quietWorld();
+    assert.deepEqual(transcriptsOf({ host: world.host, env: {}, platform: world.platform }).entry('not a transcript line'), { kind: 'unread', reason: 'damaged' });
+  });
+
+  it('refuses with the reason of a host that keeps no transcript', () => {
+    const host: HostSource = () => ({ transcripts: unsupported('no transcript is kept') });
+    assert.throws(
+      () => transcriptsOf({ host, env: {}, platform: 'linux' }),
+      (error) => error instanceof RefusedError && error.message === 'no transcript is kept',
+    );
   });
 });
