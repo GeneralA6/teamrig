@@ -5,6 +5,7 @@ import type { TranscriptSource } from '../budget/discover.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { promptLine, replyLine, transcript } from '../testing/transcript-lines.ts';
 import type { ScorecardSkills } from './scorecard.ts';
 import { RUN_IDLE_MS, SCORECARD_DAYS_KEPT, scanTranscripts, type ScanResult } from './scorecard-scan.ts';
@@ -46,7 +47,7 @@ class World {
   readonly store = new ScorecardStore(this.files, STATE);
 
   scan(maxBytes = 1024 * 1024, source: TranscriptSource = this.transcripts, since = SINCE): Promise<ScanResult> {
-    return scanTranscripts({ source, store: this.store, clock: this.clock }, { projectsDir: PROJECTS, skills: SKILLS, since, maxBytes });
+    return scanTranscripts({ source, reader: shippedTranscripts(), store: this.store, clock: this.clock }, { projectsDir: PROJECTS, skills: SKILLS, since, maxBytes });
   }
 }
 

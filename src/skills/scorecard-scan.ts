@@ -1,8 +1,9 @@
 import { findLineAtOrAfter, readLines } from '../budget/cursor.ts';
 import { discoverTranscripts, type TranscriptSource } from '../budget/discover.ts';
-import { parseTranscriptLine } from '../budget/line.ts';
+import { transcriptLineOf } from '../budget/line.ts';
 import type { Clock } from '../core/lock.ts';
 import { formatUtcDay, MS_PER_DAY } from '../core/time.ts';
+import type { TranscriptReader } from '../ports/host/index.ts';
 import { newThread, ScorecardTally, ThreadFold, type ScorecardSkills, type ScorecardState, type ThreadCursor } from './scorecard.ts';
 import type { ScorecardStore } from './scorecard-store.ts';
 
@@ -17,6 +18,8 @@ export const SCAN_CHUNK_BYTES = 32 * 1024 * 1024;
 
 export interface ScanDeps {
   readonly source: TranscriptSource;
+  /** The host's reader of a transcript's lines. */
+  readonly reader: TranscriptReader;
   readonly store: ScorecardStore;
   readonly clock: Clock;
 }
@@ -72,7 +75,7 @@ export async function scanTranscripts(deps: ScanDeps, run: ScanRun): Promise<Sca
       budget -= batch.bytes;
       bytesRead += batch.bytes;
       for (const raw of batch.lines) {
-        const line = parseTranscriptLine(raw);
+        const line = transcriptLineOf(deps.reader, raw);
         if (line !== undefined) {
           fold.line(line);
         }
