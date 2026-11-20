@@ -287,8 +287,10 @@ describe('teamrig read inbox', () => {
     const result = await kit.run(READ_INBOX);
     const answer = served(result);
     assert.deepEqual(linesOf(answer)[0]?.['text'], { text: `[cut: ${shape}]`, source: 'team' });
-    assert.deepEqual(answer['cuts'], [{ id: lineHash(line), field: 'text', shape }]);
+    // A cut line is keyed by its place in the file: its fingerprint would let a reader confirm a guess of its words.
+    assert.deepEqual([linesOf(answer)[0]?.['key'], answer['cuts']], ['cut-1', [{ id: 'cut-1', field: 'text', shape }]]);
     assert.equal(result.stdout.join('\n').includes('zebra'), false);
+    assert.equal(result.stdout.join('\n').includes(lineHash(line)), false);
   });
 
   it('serves the lines and counts a damaged read mark in problems', async () => {

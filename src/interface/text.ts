@@ -51,6 +51,11 @@ export class ServedText {
     return [...this.found];
   }
 
+  /** Whether serving `text` would cut it: asked first by a record whose own id is made from its text. */
+  wouldCut(text: string): boolean {
+    return this.shapes.find(text) !== undefined;
+  }
+
   /** A team text field of record `id`. */
   plain(id: string, field: string, text: string): string {
     return this.scanned(id, field, text);
