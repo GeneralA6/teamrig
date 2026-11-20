@@ -5,17 +5,23 @@ import { formatConfig } from '../../config/load.ts';
 import { isRecord, isStringArray, recordField, type JsonRecord } from '../../core/guards.ts';
 import { toJsonlLine } from '../../core/jsonl.ts';
 import { SecretScanner } from '../../core/secrets.ts';
+import { HiringLog } from '../../hiring/log.ts';
 import { inboxLineOf } from '../../inbox/inbox.ts';
 import { lineHash } from '../../inbox/line-hash.ts';
 import { layoutPaths } from '../../register/layout.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
+import { formatSessionRecord } from '../../sessions/record.ts';
+import { formatTabNeed } from '../../tabs/need.ts';
 import { CliHarness, CONFIG_PATH, EVENTS_PATH, TEAM, TEAM_HOME, type CliResult } from '../../testing/cli-harness.ts';
 import { rotateRegister } from '../../testing/rotation.ts';
-import { teamInboxOf, treeHarness } from '../../testing/team-tree.ts';
+import { teamConfigOf, teamHomeOf, teamInboxOf, treeHarness } from '../../testing/team-tree.ts';
 import { EXIT } from '../runtime.ts';
 
 const READ_TASKS = ['read', 'tasks', '--json'] as const;
 const READ_INBOX = ['read', 'inbox', '--json', '--session', 'alpha'] as const;
+const READ_SESSIONS = ['read', 'sessions', '--json'] as const;
+/** A host's conversation id, as a start record holds one. */
+const CONVERSATION = '0123abcd-0000-4000-8000-0000000000c1';
 const ALPHA_INBOX = teamInboxOf('app', 'alpha');
 const INBOX_MARKS = join(TEAM_HOME, 'state', 'inbox-marks.jsonl');
 const HOUR_MS = 3_600_000;
@@ -103,6 +109,31 @@ function linesOf(answer: JsonRecord): JsonRecord[] {
 /** Each served line as its words and whether it is unread. */
 function wordsOf(answer: JsonRecord): unknown[][] {
   return linesOf(answer).map((line) => [recordField(line, 'text')?.['text'], line['unread']]);
+}
+
+function sessionsOf(answer: JsonRecord): JsonRecord[] {
+  const sessions = answer['sessions'];
+  if (!Array.isArray(sessions)) {
+    throw new Error('the answer has no sessions list');
+  }
+  return sessions.filter(isRecord);
+}
+
+function sessionOf(answer: JsonRecord, team: string, id: string): JsonRecord {
+  const found = sessionsOf(answer).find((row) => row['team'] === team && row['id'] === id);
+  if (found === undefined) {
+    throw new Error(`the answer serves no session ${team}/${id}`);
+  }
+  return found;
+}
+
+function tabOf(team: string, id: string): string {
+  return join(teamHomeOf(team), 'state', 'tabs', `${id}.json`);
+}
+
+/** Where a session's last start is recorded, with the host's conversation it started in. */
+function startRecordOf(team: string, id: string): string {
+  return join(teamHomeOf(team), 'state', 'sessions', `${id}.json`);
 }
 
 /** Every file with its bytes and its stamp, so a rewrite with the same bytes shows too. */
@@ -300,8 +331,218 @@ describe('teamrig read inbox', () => {
   });
 });
 
+const AS_UI = { env: { TEAMRIG_TEAM: 'ui' } };
+
+describe('teamrig read sessions', () => {
+  const NO_TAB = { unread: null, state: null, ask: null, since: null, host: { id: 'claude-code', name: 'Claude Code' }, conversation: null };
+
+  it('serves every team of the tree, the root first, and each team\'s sessions in its config\'s order', async () => {
+    const kit = await treeHarness();
+    const answer = served(await kit.run(READ_SESSIONS, AS_UI));
+    assert.deepEqual(
+      [answer['self'], answer['teams'], answer['failures'], answer['cuts'], problemsOf(answer)],
+      [
+        null,
+        [
+          { id: 'app', parent: null, active: 3, retired: 0 },
+          { id: 'ops', parent: 'app', active: 2, retired: 0 },
+          { id: 'web', parent: 'app', active: 3, retired: 0 },
+          { id: 'ui', parent: 'web', active: 2, retired: 0 },
+        ],
+        [],
+        [],
+        [],
+      ],
+    );
+    assert.deepEqual(
+      sessionsOf(answer).map((row) => `${String(row['team'])}/${String(row['id'])}`),
+      ['app/lead', 'app/alpha', 'app/bravo', 'ops/lead', 'ops/run', 'web/lead', 'web/front', 'web/back', 'ui/lead', 'ui/pixel'],
+    );
+    assert.match(String(answer['revision']), REVISION);
+  });
+
+  it('serves a session\'s name, its place under its leader and what it starts on', async () => {
+    const kit = await treeHarness({ leads: { alpha: ['bravo'] }, launch: { bravo: { model: 'sonnet', effort: 'high' } } });
+    const answer = served(await kit.run(READ_SESSIONS));
+    const member = { formerNames: [], active: true, hire: null, rehiredFrom: null, retire: null, ...NO_TAB };
+    assert.deepEqual(sessionOf(answer, 'app', 'bravo'), {
+      team: 'app',
+      id: 'bravo',
+      name: 'app-bravo',
+      roles: [],
+      leader: 'alpha',
+      ledBy: ['alpha', 'lead'],
+      leads: 0,
+      launch: { model: 'sonnet', effort: 'high', text: 'model sonnet at high effort' },
+      ...member,
+    });
+    const lead = sessionOf(answer, 'app', 'lead');
+    assert.deepEqual([lead['roles'], lead['leader'], lead['ledBy'], lead['leads']], [['lead'], null, [], 1]);
+    assert.deepEqual(sessionOf(answer, 'app', 'alpha')['launch'], { model: null, effort: null, text: 'the default model and effort' });
+  });
+
+  it('reads a session\'s state from its tab file and serves the ask\'s kind and task, never its words', async () => {
+    const kit = await treeHarness();
+    const since = new Date(kit.clock.now()).toISOString();
+    await kit.files.write(tabOf('ui', 'pixel'), formatTabNeed({ session: 'pixel', state: 'waiting', kind: 'permission', text: 'Run the wipe?', task: 'T12', pid: 7, since }));
+    await kit.files.write(tabOf('app', 'alpha'), formatTabNeed({ session: 'alpha', state: 'working', kind: null, text: null, task: null, pid: 7, since }));
+    const result = await kit.run(READ_SESSIONS);
+    const answer = served(result);
+    const stateOf = (team: string, id: string): unknown[] => ['state', 'ask', 'since'].map((field) => sessionOf(answer, team, id)[field]);
+    assert.deepEqual(
+      [stateOf('ui', 'pixel'), stateOf('app', 'alpha'), stateOf('app', 'bravo')],
+      [
+        ['asking', { kind: 'permission', task: 'T12' }, since],
+        ['busy', null, since],
+        [null, null, null],
+      ],
+    );
+    assert.doesNotMatch(result.stdout.join('\n'), /Run the wipe/);
+  });
+
+  it('counts a session\'s unread inbox lines, and serves null for one that never read its inbox', async () => {
+    const kit = new CliHarness();
+    await post(kit, 'lead', 'alpha', 'First');
+    await markRead(kit);
+    await post(kit, 'lead', 'alpha', 'Second');
+    await post(kit, 'lead', 'bravo', 'Third');
+    const answer = served(await kit.run(READ_SESSIONS));
+    assert.deepEqual([sessionOf(answer, 'app', 'alpha')['unread'], sessionOf(answer, 'app', 'bravo')['unread']], [1, null]);
+  });
+
+  it('serves a retired session after its team\'s own, on no team and with its retirement', async () => {
+    const kit = await treeHarness();
+    const at = kit.clock.now();
+    await new HiringLog(kit.files, join(TEAM_HOME, 'state', 'hires.jsonl')).append({ kind: 'retire', session: 'gone', reason: 'The job is done', heir: 'alpha', by: 'lead', at });
+    const answer = served(await kit.run(READ_SESSIONS));
+    assert.deepEqual(Array.isArray(answer['teams']) ? answer['teams'][0] : undefined, { id: 'app', parent: null, active: 3, retired: 1 });
+    assert.deepEqual(
+      sessionsOf(answer).map((row) => `${String(row['team'])}/${String(row['id'])}`).slice(0, 5),
+      ['app/lead', 'app/alpha', 'app/bravo', 'app/gone', 'ops/lead'],
+    );
+    const gone = sessionOf(answer, 'app', 'gone');
+    assert.deepEqual(
+      [gone['name'], gone['active'], gone['host'], gone['retire']],
+      ['app-gone', false, null, { at: new Date(at).toISOString(), by: 'lead', reason: 'The job is done', heir: 'alpha' }],
+    );
+  });
+
+  it('answers self with the session the conversation runs in, the newest start when two sessions hold it', async () => {
+    const kit = await treeHarness();
+    const startOf = (at: string): string => formatSessionRecord({ claudePid: 7, claudeSession: CONVERSATION, at });
+    await kit.files.write(startRecordOf('ui', 'pixel'), startOf('2030-01-08T09:00:00.000Z'));
+    const asked = [...READ_SESSIONS, '--conversation', CONVERSATION];
+    const one = served(await kit.run(asked, AS_UI));
+    assert.deepEqual([one['self'], sessionOf(one, 'ui', 'pixel')['conversation']], [{ team: 'ui', session: 'pixel' }, CONVERSATION]);
+    await kit.files.write(startRecordOf('web', 'front'), startOf('2030-01-08T09:30:00.000Z'));
+    const two = served(await kit.run(asked, AS_UI));
+    // A conversation id is served for the caller's own team only, so the team above answers `self` and keeps its id.
+    assert.deepEqual([two['self'], sessionOf(two, 'web', 'front')['conversation']], [{ team: 'web', session: 'front' }, null]);
+    const unasked = served(await kit.run(READ_SESSIONS));
+    const unknown = served(await kit.run([...READ_SESSIONS, '--conversation', 'no-such-conversation']));
+    assert.deepEqual([unasked['self'], unknown['self']], [null, null]);
+    assert.equal(new Set([unasked['revision'], unknown['revision'], served(await kit.run(asked))['revision']]).size, 3);
+  });
+
+  it('serves the inbox of the conversation\'s session when no session is named, and --session\'s when one is', async () => {
+    const kit = await treeHarness();
+    await kit.files.write(startRecordOf('app', 'alpha'), formatSessionRecord({ claudePid: 7, claudeSession: CONVERSATION, at: '2030-01-08T09:00:00.000Z' }));
+    await post(kit, 'lead', 'alpha', 'For alpha');
+    await post(kit, 'lead', 'bravo', 'For bravo');
+    const own = served(await kit.run(['read', 'inbox', '--json', '--conversation', CONVERSATION]));
+    const named = served(await kit.run(['read', 'inbox', '--json', '--conversation', CONVERSATION, '--session', 'bravo']));
+    assert.deepEqual([wordsOf(own), wordsOf(named)], [[['For alpha', true]], [['For bravo', true]]]);
+  });
+
+  it('is a usage error for inbox when no session of the caller\'s team holds the conversation', async () => {
+    const kit = await treeHarness();
+    await kit.files.write(startRecordOf('ui', 'pixel'), formatSessionRecord({ claudePid: 7, claudeSession: CONVERSATION, at: '2030-01-08T09:00:00.000Z' }));
+    const result = await kit.run(['read', 'inbox', '--json', '--conversation', CONVERSATION]);
+    assert.deepEqual([result.code, result.stdout], [EXIT.usage, []]);
+    assert.match(result.stderr.join('\n'), new RegExp(`inbox is one session's: no session of team app holds conversation ${CONVERSATION}; name it with --session`));
+  });
+
+  it('serves the same whatever --team names: the tree is the caller\'s own', async () => {
+    const kit = await treeHarness();
+    assert.deepEqual(served(await kit.run([...READ_SESSIONS, '--team', 'web'], AS_UI)), served(await kit.run(READ_SESSIONS, AS_UI)));
+  });
+
+  it('names a team folder whose config cannot be read in failures and problems, and serves the rest', async () => {
+    const kit = await treeHarness();
+    await kit.files.write(teamConfigOf('torn'), '{ not json');
+    await kit.files.write(join(teamHomeOf('bare'), 'state', 'note.md'), 'no config here');
+    const answer = served(await kit.run(READ_SESSIONS));
+    const failures = Array.isArray(answer['failures']) ? answer['failures'].filter(isRecord) : [];
+    assert.deepEqual(failures.map((failure) => failure['team']), ['torn']);
+    assert.match(String(failures[0]?.['reason']), /^the team config cannot be read: /);
+    assert.deepEqual(problemsOf(answer), [`team torn: ${String(failures[0]?.['reason'])}`]);
+    assert.equal(sessionsOf(answer).length, 10);
+  });
+
+  it('counts a damaged line of a hire log in problems', async () => {
+    const kit = new CliHarness();
+    const hires = join(TEAM_HOME, 'state', 'hires.jsonl');
+    await kit.files.write(hires, '{not json\n');
+    assert.deepEqual(problemsOf(served(await kit.run(READ_SESSIONS))), [`${hires}: 1 damaged or newer line(s) left out`]);
+  });
+
+  it('keeps its revision while no file it reads changes, and moves it with a tab file, a start record and a new team', async () => {
+    const kit = await treeHarness();
+    const revision = async (): Promise<unknown> => served(await kit.run(READ_SESSIONS))['revision'];
+    const first = await revision();
+    assert.equal(await revision(), first);
+    const since = new Date(kit.clock.now()).toISOString();
+    await kit.files.write(tabOf('ui', 'pixel'), formatTabNeed({ session: 'pixel', state: 'ready', kind: null, text: null, task: null, pid: 7, since }));
+    const withTab = await revision();
+    await kit.files.write(startRecordOf('ops', 'run'), formatSessionRecord({ claudePid: 7, claudeSession: CONVERSATION, at: since }));
+    const withStart = await revision();
+    await kit.files.write(teamConfigOf('new'), formatConfig({ configVersion: 1, team: { id: 'new', parent: 'app' }, sessions: ['lead'], roles: { lead: 'lead' } }));
+    assert.equal(new Set([first, withTab, withStart, await revision()]).size, 4);
+  });
+
+  it('serves a hire\'s words for the caller\'s own team and the teams above it, and null for a team beside or below', async () => {
+    const kit = await treeHarness();
+    const hired = async (team: string, session: string): Promise<void> => {
+      const log = new HiringLog(kit.files, join(teamHomeOf(team), 'state', 'hires.jsonl'));
+      await log.append({ kind: 'hire', session, scope: `the ${team} job`, reason: `${team} fell behind`, reviewBy: '2030-01-16', by: 'lead', at: kit.clock.now() });
+    };
+    await hired('ops', 'run');
+    await hired('web', 'front');
+    await hired('ui', 'pixel');
+    const wordsOfHire = (answer: JsonRecord, team: string, id: string): unknown[] => {
+      const hire = sessionOf(answer, team, id)['hire'];
+      return isRecord(hire) ? [hire['scope'], hire['reason'], hire['by'], hire['reviewBy']] : [];
+    };
+    const launchTextOf = (answer: JsonRecord, team: string, id: string): unknown => recordField(sessionOf(answer, team, id), 'launch')?.['text'];
+    const fromUi = served(await kit.run(READ_SESSIONS, AS_UI));
+    const fromApp = served(await kit.run(READ_SESSIONS));
+    assert.deepEqual(
+      [wordsOfHire(fromUi, 'ui', 'pixel'), wordsOfHire(fromUi, 'web', 'front'), wordsOfHire(fromUi, 'ops', 'run'), wordsOfHire(fromApp, 'ui', 'pixel')],
+      [
+        ['the ui job', 'ui fell behind', 'lead', '2030-01-16'],
+        ['the web job', 'web fell behind', 'lead', '2030-01-16'],
+        [null, null, 'lead', '2030-01-16'],
+        [null, null, 'lead', '2030-01-16'],
+      ],
+    );
+    const DEFAULT_LAUNCH = 'the default model and effort';
+    assert.deepEqual(
+      [launchTextOf(fromUi, 'ui', 'pixel'), launchTextOf(fromUi, 'app', 'alpha'), launchTextOf(fromUi, 'ops', 'run'), launchTextOf(fromApp, 'ui', 'pixel')],
+      [DEFAULT_LAUNCH, DEFAULT_LAUNCH, null, null],
+    );
+    assert.deepEqual([fromUi['cuts'], fromApp['cuts']], [[], []]);
+  });
+
+  it('writes no file', async () => {
+    const kit = await treeHarness();
+    await post(kit, 'lead', 'alpha', 'First');
+    const before = await storeOf(kit);
+    served(await kit.run([...READ_SESSIONS, '--conversation', CONVERSATION]));
+    assert.deepEqual(await storeOf(kit), before);
+  });
+});
+
 describe('teamrig read --team', () => {
-  const AS_UI = { env: { TEAMRIG_TEAM: 'ui' } };
 
   it('is a usage error for inbox, which is the asking session\'s own team\'s', async () => {
     const kit = await treeHarness();
@@ -341,7 +582,8 @@ describe('teamrig read: what is asked', () => {
     ['no document', ['read', '--json'], /read needs a document: tasks, inbox, sessions, meetings, config/],
     ['an unknown document', ['read', 'goals', '--json'], /unknown document "goals"; the documents are tasks, inbox, sessions, meetings, config/],
     ['a document twice', ['read', 'tasks', 'tasks', '--json'], /document tasks is asked twice/],
-    ['a document not served yet', ['read', 'tasks', 'sessions', '--json'], /document sessions is not served yet; this teamrig serves tasks, inbox/],
+    ['a document not served yet', ['read', 'tasks', 'meetings', '--json'], /document meetings is not served yet; this teamrig serves tasks, inbox, sessions/],
+    ['a --conversation no host would give', [...READ_SESSIONS, '--conversation', 'a b'], /--conversation takes the host's conversation id/],
     ['inbox with no session named', ['read', 'inbox', '--json'], /inbox is one session's: name it with --session/],
     ['a --since that is no count of hours', [...READ_INBOX, '--since', 'x'], /--since takes whole hours, such as 24; got "x"/],
     ['no --json', ['read', 'tasks'], /read answers only as JSON in interface 1: add --json/],
