@@ -184,7 +184,7 @@ class TranscriptFold {
     this.reader = host.reader;
     this.usage = host.usage;
     this.call = cursor.call;
-    this.tracker = new PatternTracker(cursor.patterns, transcript.weight);
+    this.tracker = new PatternTracker(cursor.patterns, host.usage, transcript.weight);
     this.misses = new MissTracker(cursor.misses, (day) => tally.counter(day));
     this.turn = transcript.own ? new TurnTasks(cursor.turn, (day, task, w) => tally.chargeTask(day, task, w)) : undefined;
     this.tally = tally;
