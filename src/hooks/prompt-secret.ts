@@ -14,7 +14,9 @@ export type HistoryOutcome =
   /** The clean failed, and the blocked prompt is pending: the next prompt cleans again. */
   | { readonly kind: 'retry' }
   /** Not even recorded as pending: nothing cleans for it again. */
-  | { readonly kind: 'failed' };
+  | { readonly kind: 'failed' }
+  /** No clean ran: the host tells none of its folders, so a prompt history it may keep cannot be looked for. */
+  | { readonly kind: 'unknown' };
 
 function counted(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
@@ -30,6 +32,8 @@ function outcomeNote(outcome: HistoryOutcome): string | undefined {
       return "Cleaning it out of Claude Code's prompt history failed; your next prompt tries again.";
     case 'failed':
       return "Cleaning it out of Claude Code's prompt history failed: an earlier prompt that held it may stay in history.jsonl.";
+    case 'unknown':
+      return `${KIT_NAME} does not know where this host keeps a prompt history, so it cleaned none.`;
   }
 }
 

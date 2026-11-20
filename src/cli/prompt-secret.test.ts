@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { isRecord, recordField, stringField } from '../core/guards.ts';
 import { APP, CLAUDE_SESSION, CliHarness, KIT, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import { EXIT } from './runtime.ts';
 
 const HISTORY = join(USER_HOME, '.claude', 'history.jsonl');
@@ -84,6 +85,16 @@ describe('hook inbox-reminder: a prompt that holds a secret', () => {
     assert.match(blockReason(await kit.run(['hook', 'inbox-reminder'], { stdin: prompt(`push with ${TOKEN}`), env: ALPHA, files })), /failed; your next prompt tries again\.$/);
     await kit.run(['hook', 'inbox-reminder'], { stdin: prompt('go on'), env: ALPHA });
     assert.equal(kit.files.get(HISTORY), '');
+  });
+
+  it('is stopped on a host that tells none of its folders too, with no history cleaned and no clean left pending', async () => {
+    const kit = new CliHarness(TEAM);
+    await kit.files.write(HISTORY, historyLine(`use ${TOKEN} for the push`));
+    const reason = blockReason(await kit.run(['hook', 'inbox-reminder'], { stdin: prompt(`push with ${TOKEN}`), env: ALPHA, host: NO_PATHS_HOST }));
+    assert.match(reason, /holds a secret \(GitHub token\)/);
+    assert.match(reason, /does not know where this host keeps a prompt history, so it cleaned none\.$/);
+    assert.equal(kit.files.get(HISTORY), historyLine(`use ${TOKEN} for the push`), 'a file of another host is left alone');
+    assert.deepEqual(await kit.files.list(PENDING), []);
   });
 
   it('is stopped when its clean cannot be recorded, saying an earlier prompt may stay in the history', async () => {
