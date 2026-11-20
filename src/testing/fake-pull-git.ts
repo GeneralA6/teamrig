@@ -1,5 +1,5 @@
 import type { GitOutcome } from '../core/git-run.ts';
-import { pullRef, type MergeTreeOutcome, type PullGit } from '../github/pull-conflicts.ts';
+import { pullRef, type MergeTreeOutcome, type PullGit } from '../sync/pull-conflicts.ts';
 
 /**
  * A clone for the pull request conflict check, in memory: its origin is `acme/web` on GitHub, with `main` at `base`

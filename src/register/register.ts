@@ -200,7 +200,7 @@ export class Register {
   }
 
   /**
-   * The GitHub import's writes (github/sync.ts): each is judged again under the lock, on the register as it
+   * The GitHub import's writes (sync/sync.ts): each is judged again under the lock, on the register as it
    * then stands, and written by GITHUB_ACTOR, which is on no roster. The policy limits them to the import's
    * own tasks: a new one per issue, its title and priority, and open, done or dropped as GitHub has it.
    */

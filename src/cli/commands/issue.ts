@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { ENV } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { KitConfig } from '../../config/types.ts';
-import { issueRef } from '../../github/map.ts';
+import { issueRef } from '../../sync/map.ts';
 import { assignIssue, loginRefusal, MAX_ASSIGN_LOGINS } from '../../issues/assign.ts';
 import { CLOSE_REASONS, hostKindOf, parseIssueTarget, targetText, type CloseReason, type HostKind, type IssueTarget } from '../../issues/host.ts';
 import { bareRef, refOf } from '../../issues/ref.ts';

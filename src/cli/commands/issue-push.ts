@@ -1,7 +1,7 @@
 import { ENV } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import type { RepoFailure } from '../../github/auto.ts';
-import { closedSince } from '../../github/sync.ts';
+import type { RepoFailure } from '../../sync/auto.ts';
+import { closedSince } from '../../sync/sync.ts';
 import { GITHUB_REPOS_HOST, targetText, type PullRequests, type Tracker } from '../../issues/host.ts';
 import { applyPush } from '../../issues/push-apply.ts';
 import { planAssigned, viewerOf } from '../../issues/push-assignees.ts';

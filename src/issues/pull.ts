@@ -56,7 +56,7 @@ export interface HostPull {
   /**
    * Its newest comments and submitted reviews, as many of each as the host reads, oldest first: when and by whom,
    * never their text; empty from a read of changed pull requests, which asks for none. The response clock reads who
-   * spoke last (src/github/clock.ts).
+   * spoke last (src/sync/clock.ts).
    */
   readonly posts: readonly IssueComment[];
   /** The branch it would merge. */
