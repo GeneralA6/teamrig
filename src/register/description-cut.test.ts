@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
-import { cutOf, cutTask, holdsDescription, parseDescriptionCut, textHash } from './description-cut.ts';
+import { cutOf, cutTask, describedTask, holdsDescription, parseDescriptionCut, textHash } from './description-cut.ts';
 
 /** FNV-1a (32 bits) over the text's UTF-16LE bytes, worked in whole numbers: a second way to the same digits. */
 function referenceHash(text: string): string {
@@ -85,6 +85,29 @@ describe('holdsDescription', () => {
     assert.equal(holdsDescription(task, 'Add a health chick'), false, 'an edit of the same length');
     assert.equal(holdsDescription(task, 'Add a health check.'), false);
     assert.equal(holdsDescription(task, null), false, 'a cut task has a description');
+  });
+});
+
+describe('describedTask', () => {
+  const whole = testTask({ description: 'Add a health check', note: 'as the history folds it' });
+
+  it('gives a cut task the text the history holds, and no mark', () => {
+    const cut = cutTask(testTask({ description: 'Add a health check', note: 'as the working set folds it' }));
+    assert.deepEqual(describedTask(cut, whole), testTask({ description: 'Add a health check', note: 'as the working set folds it' }));
+  });
+
+  it('returns a task that is not cut as is', () => {
+    const none = testTask();
+    const held = testTask({ description: 'Add a readiness check' });
+    assert.equal(describedTask(none, whole), none);
+    assert.equal(describedTask(held, whole), held);
+  });
+
+  it('leaves a cut task cut when the history lacks it, or holds another text than the one cut', () => {
+    const cut = cutTask(testTask({ description: 'Add a health check' }));
+    assert.equal(describedTask(cut, undefined), cut);
+    assert.equal(describedTask(cut, testTask({ description: 'Add a health chick' })), cut);
+    assert.equal(describedTask(cut, testTask()), cut);
   });
 });
 
