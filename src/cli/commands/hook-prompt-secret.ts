@@ -1,6 +1,6 @@
-import { isRecord, stringField } from '../../core/guards.ts';
 import { claudeConfigDir } from '../../core/home.ts';
-import { promptBlockOutput, promptSecretReason, type HistoryOutcome } from '../../hooks/prompt-secret.ts';
+import { promptSecretReason, type HistoryOutcome } from '../../hooks/prompt-secret.ts';
+import type { HookReply } from '../../ports/host/index.ts';
 import { HistoryPending } from '../../secret-guard/history-pending.ts';
 import { PromptSecrets } from '../../secret-guard/prompt-secrets.ts';
 import type { CliRuntime } from '../runtime.ts';
@@ -17,18 +17,18 @@ export interface PromptSecretScope {
  * with none, after cleaning again for each earlier blocked prompt still pending. A failed clean still blocks; a failed
  * sweep is retried at the next prompt.
  */
-export async function promptSecretBlock(runtime: CliRuntime, scope: PromptSecretScope, claudeSession: string, payload: unknown): Promise<string | undefined> {
-  const prompt = isRecord(payload) ? (stringField(payload, 'prompt') ?? '') : '';
+export async function promptSecretBlock(runtime: CliRuntime, scope: PromptSecretScope, hostSession: string, prompt: string | undefined): Promise<HookReply | undefined> {
   const secrets = new PromptSecrets(scope.patterns);
   const pending = new HistoryPending(runtime.files, runtime.clock, secrets, scope.kitHome);
-  const found = secrets.secretsIn(prompt);
+  const found = secrets.secretsIn(prompt ?? '');
   if (found.length === 0) {
     await pending.sweep().catch(() => undefined);
     return undefined;
   }
-  const outcome: HistoryOutcome = await pending.blocked(claudeSession, claudeConfigDir(runtime.env, runtime.userHome), found).then(
+  const outcome: HistoryOutcome = await pending.blocked(hostSession, claudeConfigDir(runtime.env, runtime.userHome), found).then(
     (clean): HistoryOutcome => (clean === undefined ? { kind: 'retry' } : { kind: 'cleaned', lines: clean.lines, pastes: clean.pastes }),
     (): HistoryOutcome => ({ kind: 'failed' }),
   );
-  return promptBlockOutput(promptSecretReason(found, outcome));
+  // The block also keeps the prompt out of the transcript.
+  return { verdict: { kind: 'block', reason: promptSecretReason(found, outcome), hidePrompt: true } };
 }

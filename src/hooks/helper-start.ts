@@ -1,8 +1,8 @@
 import type { ConfigLoad } from '../config/load.ts';
 import { Roster } from '../config/roster.ts';
-import { isRecord, stringField } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
 import type { Rename } from '../names/rename.ts';
+import type { HookHelper } from '../ports/host/index.ts';
 import { renderCorePack, renderSessionContext, type KeptRule, type RulesClock, type TeamRules } from '../rules/pack.ts';
 import { unloadedContext } from './session-start.ts';
 
@@ -16,20 +16,17 @@ export interface Helper {
 const AGENT_TYPE = /^[\w.:-]{1,80}$/;
 
 /**
- * The helper a hook payload comes from. Claude Code puts `agent_id` and `agent_type` on the hooks that
- * run inside a helper (its SubagentStart, its tool calls, a compaction of its context) and on no hook of
- * the session itself, while `session_id` stays the session's. Undefined for a session's own hook.
+ * The helper a hook event comes from. The host names a helper by its id on the hooks that run inside it (its
+ * start, its tool calls, a compaction of its context) and on no hook of the session itself, while the event's
+ * session stays the session's. Undefined for a session's own hook: a session started as an agent has a type and
+ * no id, and is no helper.
  */
-export function helperOf(payload: unknown): Helper | undefined {
-  if (!isRecord(payload)) {
+export function helperOf(helper: HookHelper | undefined): Helper | undefined {
+  if (helper?.id === undefined || helper.id === '') {
     return undefined;
   }
-  const agentId = stringField(payload, 'agent_id');
-  if (agentId === undefined || agentId === '') {
-    return undefined;
-  }
-  const type = stringField(payload, 'agent_type');
-  return { agentId, agentType: type !== undefined && AGENT_TYPE.test(type) ? type : undefined };
+  const { id, type } = helper;
+  return { agentId: id, agentType: type !== undefined && AGENT_TYPE.test(type) ? type : undefined };
 }
 
 export interface HelperStartInput {
@@ -88,9 +85,4 @@ export function helperStartContext(input: HelperStartInput): string {
   const roster = new Roster(load.config, input.team, input.renames);
   const core = renderCorePack(load.config, command, input.platform, input.clock, input.keptRulesAbove);
   return renderSessionContext(`${core}\n\n${helperLine(roster, input)}`, input.teamRules, command);
-}
-
-/** The SubagentStart hook's stdout: Claude Code adds `additionalContext` to the helper's context. */
-export function subagentStartOutput(context: string): string {
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'SubagentStart', additionalContext: context } });
 }

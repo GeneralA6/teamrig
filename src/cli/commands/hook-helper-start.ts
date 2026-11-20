@@ -1,14 +1,14 @@
 import { Roster } from '../../config/roster.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
-import { helperOf, helperStartContext, subagentStartOutput, type HelperStartInput } from '../../hooks/helper-start.ts';
+import { helperOf, helperStartContext, type HelperStartInput } from '../../hooks/helper-start.ts';
 import { JsonlRenameLog } from '../../names/log.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit, rulesClockOf, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { keptRulesAboveOf, readTeamRules } from '../team-rules.ts';
 import { loadTree } from '../tree.ts';
-import { envSession, readHookInput, sessionTeam, startSessionOf } from './hook-input.ts';
+import { envSession, readHookInput, sessionTeam, startSessionOf, writeReply } from './hook-input.ts';
 
 /**
  * A helper's start context, read-only: the rename log, the rules.md of its team and of each team above
@@ -46,20 +46,20 @@ export async function helperContextOf(runtime: CliRuntime, kit: Kit, hostSession
  */
 export async function subagentStart(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
+  const { event } = await readHookInput(runtime);
   const found = await sessionTeam(event?.cwd, runtime);
   switch (found.kind) {
     case 'none':
       return EXIT.ok;
     case 'broken':
-      runtime.out.stdout(subagentStartOutput(`${KIT_NAME}: no team, so no team rules: ${found.from} ${found.problem}`));
+      writeReply(runtime, 'helper-start', { context: `${KIT_NAME}: no team, so no team rules: ${found.from} ${found.problem}` });
       return EXIT.ok;
     case 'team':
       break;
   }
   const context = await openKit(runtime, found.team)
-    .then((kit) => helperContextOf(runtime, kit, event?.session, helperOf(payload)?.agentType))
+    .then((kit) => helperContextOf(runtime, kit, event?.session, helperOf(event?.helper)?.agentType))
     .catch((error: unknown) => `${KIT_NAME} could not load the rules of team ${found.team}: ${errorMessage(error)}`);
-  runtime.out.stdout(subagentStartOutput(context));
+  writeReply(runtime, 'helper-start', { context });
   return EXIT.ok;
 }
