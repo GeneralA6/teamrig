@@ -4,15 +4,24 @@ import { DEFAULT_SECRET_GUARD } from '../config/defaults.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { secretRulesOf } from '../secret-guard/rules.ts';
 import { testConfig } from '../testing/config.ts';
-import { secretFindingsOf, secretGuardOf, secretGuardOutput, secretPatternsOf, secretReason, type SecretGuardEnv } from './secret-guard.ts';
+import { hookEventOf, replyText } from '../testing/host.ts';
+import { secretFindingsOf, secretGuardOf, secretGuardReply, secretPatternsOf, secretReason, type SecretGuardEnv } from './secret-guard.ts';
 
 const RULES = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
 const join = (...parts: string[]): string => parts.join('');
 const TOKEN = join('gh', 'p_', 'a1'.repeat(18));
 const PASSWORD = join('s3', 'cret', 'Value9');
 
-function env(overrides: Partial<SecretGuardEnv> = {}): SecretGuardEnv {
-  return { cwd: 'C:/w', rules: RULES, secretReads: 'deny', writes: 'deny', platform: 'linux', ...overrides };
+/** The guard's env, with the platform the host reads the call on: Linux when a spec names none. */
+type SpecEnv = SecretGuardEnv & { readonly platform?: NodeJS.Platform };
+
+function env(overrides: Partial<SpecEnv> = {}): SpecEnv {
+  return { cwd: 'C:/w', rules: RULES, secretReads: 'deny', writes: 'deny', ...overrides };
+}
+
+/** What the shipped host is handed for the guard's reply to this hook input. */
+function secretGuardOutput(input: JsonRecord, guardEnv: SpecEnv): string {
+  return replyText('tool-start', secretGuardReply(hookEventOf(input, guardEnv.platform), guardEnv));
 }
 
 function call(tool_name: string, tool_input: JsonRecord, extra: JsonRecord = {}): JsonRecord {
@@ -20,7 +29,7 @@ function call(tool_name: string, tool_input: JsonRecord, extra: JsonRecord = {})
 }
 
 function findings(payload: JsonRecord, rules = RULES): string[] {
-  return secretFindingsOf(payload, 'C:/w', rules).map((finding) => {
+  return secretFindingsOf(hookEventOf(payload), 'C:/w', rules).map((finding) => {
     switch (finding.kind) {
       case 'file':
         return finding.path;
@@ -178,7 +187,7 @@ describe('secretFindingsOf on the text a file-writing call writes (T1369 R3)', (
   });
 });
 
-describe('secretGuardOutput', () => {
+describe('secretGuardReply', () => {
   it('refuses a call that prints a secret, naming each one and the ways to use a secret unprinted', () => {
     const verdict = verdictOf(secretGuardOutput(call('Bash', { command: 'cat .env; printenv NPM_TOKEN' }), env()));
     assert.equal(verdict?.decision, 'deny');
@@ -250,11 +259,11 @@ describe('secretGuardOutput', () => {
 
   it('prints nothing for a call that prints no secret, or input that is not a payload', () => {
     assert.equal(secretGuardOutput(call('Bash', { command: 'cat .env | wc -c' }), env()), '');
-    assert.equal(secretGuardOutput('cat .env', env()), '');
+    assert.equal(secretGuardOutput({ tool_name: 'Bash', tool_input: {} }, env()), '');
   });
 });
 
-describe('secretGuardOutput on what a command line holds (T1369 acceptance)', () => {
+describe('secretGuardReply on what a command line holds (T1369 acceptance)', () => {
   const decisionOf = (tool: string, command: string): string | undefined => verdictOf(secretGuardOutput(call(tool, { command }), env()))?.decision;
   const BEARER = join('k9Qz', '7Lm4xR2tVb8nW3');
   const API_KEY = join('a7f3', 'c9e1b5d2');
@@ -297,7 +306,7 @@ describe('secretGuardOutput on what a command line holds (T1369 acceptance)', ()
   });
 });
 
-describe('secretGuardOutput on a read of a saved credential (T2654)', () => {
+describe('secretGuardReply on a read of a saved credential (T2654)', () => {
   const outputOf = (tool: string, command: string, overrides: Partial<SecretGuardEnv> = {}): string => secretGuardOutput(call(tool, { command }), env(overrides));
 
   it("refuses a session's read of the host's credential store, a quiet one too, naming how it reads", () => {
@@ -341,10 +350,10 @@ describe('secretGuardOutput on a read of a saved credential (T2654)', () => {
   });
 });
 
-describe('secretGuardOutput: a Bash line on Windows (T2319)', () => {
+describe('secretGuardReply: a Bash line on Windows (T2319)', () => {
   /** A run of n backslashes; on Windows bash receives each run not before a double quote halved, rounded up. */
   const bs = (n: number): string => '\\'.repeat(n);
-  const windows = (overrides: Partial<SecretGuardEnv> = {}): SecretGuardEnv => env({ platform: 'win32', ...overrides });
+  const windows = (overrides: Partial<SpecEnv> = {}): SpecEnv => env({ platform: 'win32', ...overrides });
   const hiddenSeparator = (command: string): string => `echo a${bs(3)}; ${command}`;
   const hiddenBacktick = (command: string): string => `echo "p${bs(3)}\`${command}; echo ${bs(3)}\`q"`;
 
@@ -371,7 +380,7 @@ describe('secretGuardOutput: a Bash line on Windows (T2319)', () => {
   });
 });
 
-describe("secretGuardOutput on Claude Code's stores and the shells' histories (T1369 acceptance)", () => {
+describe("secretGuardReply on Claude Code's stores and the shells' histories (T1369 acceptance)", () => {
   const decisionOf = (payload: JsonRecord): string | undefined => verdictOf(secretGuardOutput(payload, env()))?.decision;
   const PSREADLINE = 'C:/u/AppData/Roaming/Microsoft/Windows/PowerShell/PSReadLine/ConsoleHost_history.txt';
 
