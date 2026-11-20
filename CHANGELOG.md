@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.496.0](https://github.com/teamrig/teamrig/compare/teamrig-v0.495.1...teamrig-v0.496.0) (2026-11-20)
+
+
+### Features
+
+* **ci:** a change-kind tool names a CI run's change code, docs or design (T4617) ([4642445](https://github.com/teamrig/teamrig/commit/46424452cbb9fbd663cec21b2bf4524673d6428e))
+* **issues:** count the status push's writes over the rolling hour (T4592) ([b89ec7b](https://github.com/teamrig/teamrig/commit/b89ec7beec5ff4f73456ac1ffe1157bf4d8c8311))
+* **issues:** issue label makes a missing label github.areaOwners names (T4053) ([005be3e](https://github.com/teamrig/teamrig/commit/005be3ec3d55c6b7674e9b04519ddcfb3bcfa035))
+* **issues:** the automatic push sends what the hour has left, not an even share (T4592) ([eb0d394](https://github.com/teamrig/teamrig/commit/eb0d394a7eb51f91a539bbe17d8f5710c4fdbaaf))
+* **register:** a snapshot holds each kept task as one line and only two days of events (T4076) ([54a19ba](https://github.com/teamrig/teamrig/commit/54a19ba9c3cc4f4a7e64e01b3d2af8fc8cce5da9))
+* **register:** a task's folded state as one snapshot line, read back exactly (T4076) ([e9d5881](https://github.com/teamrig/teamrig/commit/e9d58811d6ea44674ce0bfad42f49997d95c078c))
+* **register:** the issue migrate role's holder links any team task to its issue ([7916b7a](https://github.com/teamrig/teamrig/commit/7916b7a57ddf8a6085051b9b15c2df5a0f377b34))
+* **roles:** issue migrate is a service command a role may give ([2184b9a](https://github.com/teamrig/teamrig/commit/2184b9aff5448c8131478e75e89839088251b59b))
+* **ship:** a merge on a merge queue repo enqueues the checked head and waits for the queue to land it, with no landing turn (T3386) ([5b90352](https://github.com/teamrig/teamrig/commit/5b90352ee80e9f46e7ef85dfe8a47ae8976a670b))
+* **ship:** a merge queue landing enqueues the approved head and waits for GitHub to land or eject it (T3386) ([91df090](https://github.com/teamrig/teamrig/commit/91df0905a73c8e67e4c31e3d300c551f96487640))
+* **ship:** a merge stops waiting for a conditional check its run left out once the summary passed (T4617) ([ecb9226](https://github.com/teamrig/teamrig/commit/ecb92267126d546b8b46a9c109055feabe8de064))
+* **ship:** release-pull.ts reads whether a release pull request holds only a release (T4645) ([21a0048](https://github.com/teamrig/teamrig/commit/21a0048f88ad7dd6236a9a815cf4b6a8bed0f5d9))
+* **ship:** repos.json names a repo's release pull request branch and changelog (T4645) ([da347c5](https://github.com/teamrig/teamrig/commit/da347c549f60584b6c30f7688f439ab504d9a98e))
+* **ship:** repos.json says whether main merges through GitHub's merge queue (T3386) ([9a1315c](https://github.com/teamrig/teamrig/commit/9a1315cf8a32be90046caea0ec0f22277eb0d013))
+* **ship:** ship.ts merge --release merges the release pull request on its release task's approval (T4645) ([63aeaad](https://github.com/teamrig/teamrig/commit/63aeaaddaa3c7e51dc6f0ee6196e4291bc3da4ed))
+
+
+### Bug Fixes
+
+* **check:** LOG-SIZE names each file's own remedy, not teamrig compact for every one (T4686) ([112a72e](https://github.com/teamrig/teamrig/commit/112a72ed6407107c608b6fd4280e6c0963798a5c))
+* **ci:** change kind runs the base commit's classifier, never the change's own (T4617) ([78f3c1c](https://github.com/teamrig/teamrig/commit/78f3c1c3c55d7100d62eaf899b1096692af179b9))
+* **github:** the issue templates link the outside guide under the org repository (T4326) ([c06f850](https://github.com/teamrig/teamrig/commit/c06f850114da5609f7946bab780968305b09523c))
+* **github:** the issue templates link the security advisory form of the org repository (T4326) ([570745c](https://github.com/teamrig/teamrig/commit/570745c62a61c0d65b5389935b5c502619a16703))
+* **hooks:** resolve . and .. in a path, not across a command's words ([6c7f4cb](https://github.com/teamrig/teamrig/commit/6c7f4cbe0a2259d1c249f0b4569200fb57743b74))
+* **leader-digest:** read a snapshot of task lines, and the history for a cursor before its window (T4076) ([f6d5a37](https://github.com/teamrig/teamrig/commit/f6d5a37ea5a30fb6ae927e706d6c265b46c364bf))
+* **meeting-end:** read the history for a meeting that started before the snapshot's event window (T4076) ([7cd689d](https://github.com/teamrig/teamrig/commit/7cd689d7d6688d77d0e313a92695eada834e690f))
+* **permissions:** a release merge is a ship role call, so the lead-approved release needs no permission prompt (T4672) ([c988e3c](https://github.com/teamrig/teamrig/commit/c988e3cdd1d4846f4214b61b8f62ade35aff3e91))
+* **queue:** a ship holds the slot of the repository its words move, or every slot when in doubt ([#1711](https://github.com/teamrig/teamrig/issues/1711)) ([e91c673](https://github.com/teamrig/teamrig/commit/e91c6735a2d7f18b92e2b2ea91d7d1f5a7446dbf))
+* **queue:** a ship step of one word, a whole shell line, holds every slot ([#1711](https://github.com/teamrig/teamrig/issues/1711)) ([ddc27f3](https://github.com/teamrig/teamrig/commit/ddc27f3bc7f965da274e946b4e029cefd56baef9))
+* **queue:** a ship step whose program is a script of another repository holds every slot ([#1711](https://github.com/teamrig/teamrig/issues/1711)) ([8562fe9](https://github.com/teamrig/teamrig/commit/8562fe9860254307296dd5702bffb6b981742067))
+* **queue:** hold the ship slot per repository, not per host ([#1711](https://github.com/teamrig/teamrig/issues/1711)) ([039ed66](https://github.com/teamrig/teamrig/commit/039ed66a0a3c49063708b8f17aa270096d1223d2))
+* **register:** the issue migrate holder never lifts a task kept local (T4606) ([f296bac](https://github.com/teamrig/teamrig/commit/f296bac985b3f5b4a75ff8f541f8f0babf2be4cf))
+* **roles:** a migrate counts each issue row toward the daily cap (T4606) ([68c7560](https://github.com/teamrig/teamrig/commit/68c7560d95b4f24edfb85c9869aa7161fc168a1a))
+* **ship:** a merge-queue landing waits on or reports merged only the approved head (T4681) ([4bb7ec1](https://github.com/teamrig/teamrig/commit/4bb7ec147077246ba18f84eb8dd5a7dfef4a08e5))
+* **ship:** count the tab check runCli runs before step-away as ship code ([#1686](https://github.com/teamrig/teamrig/issues/1686)) ([08e7934](https://github.com/teamrig/teamrig/commit/08e79346792e4289521998f11fa07c8e1aa51bd9))
+* **ship:** the start check counts only the CLI commands the ship runs ([#1686](https://github.com/teamrig/teamrig/issues/1686)) ([69a212a](https://github.com/teamrig/teamrig/commit/69a212a752cd73a64e3088da678cc1e48582389b))
+* **ship:** the teamrig-pane profile waits for its commit subject gate, not the plugin version gate it dropped (T4678) ([5d740ca](https://github.com/teamrig/teamrig/commit/5d740ca4a02aa427438c977318445dae9023ac19))
+* **show:** judge a task's need for the history with windowOpensAfter (T4076) ([5e3769e](https://github.com/teamrig/teamrig/commit/5e3769efbb7b6fef4a754aa00d0f62ecf185dd76))
+* **show:** read the history for a task created before the snapshot's event window (T4076) ([054dcab](https://github.com/teamrig/teamrig/commit/054dcab9ae50bbab750d59e54228d9459c3150e1))
+* **starter-watch:** list the starters once more when a listing failed or left them out ([#908](https://github.com/teamrig/teamrig/issues/908)) ([797000a](https://github.com/teamrig/teamrig/commit/797000a88466e864bcff08533351065f67b0d4be))
+* **team-split:** move a task created before the snapshot's event window with all its lines (T4076) ([8f9c9d6](https://github.com/teamrig/teamrig/commit/8f9c9d67b02b208b0e602149b7a81ec71241eaeb))
+
 ## [0.495.1](https://github.com/teamrig/teamrig/compare/teamrig-v0.495.0...teamrig-v0.495.1) (2026-11-19)
 
 
