@@ -17,8 +17,23 @@ export interface ConnectorDeclaration extends AdapterDeclaration<'connector'> {
   readonly refPrefix: string;
 }
 
+/**
+ * How long one run of a connector's tool may take before the runner it is handed stops it: a page of a hundred
+ * issues takes seconds. A connector reads it to say, in a failure line, how long its tool got.
+ */
+export const CONNECTOR_RUN_TIMEOUT_MS = 60_000;
+
+/**
+ * The bytes one run of a connector's tool may print, stdout and stderr together, before that runner stops it and
+ * rejects with ProgramOutputCapError. The largest answer teamrig asks for is a page of a hundred issues, each body
+ * at most 65,536 characters (about 20 MB in the worst UTF-8); the cap sits above it, so text people post can never
+ * grow one run's memory without bound.
+ */
+export const CONNECTOR_RUN_MAX_BYTES = 32 * 1024 * 1024;
+
 /** What the loader hands a connector adapter to build its ports from: nothing else of teamrig reaches it. */
 export interface ConnectorDeps {
+  /** Runs the connector's tool, each run held to CONNECTOR_RUN_TIMEOUT_MS and CONNECTOR_RUN_MAX_BYTES. */
   readonly run: ProgramRunner;
   /** The tool's API, for a connector whose tool has no command line to run: https only, no redirect followed. */
   readonly http: HttpClient;
