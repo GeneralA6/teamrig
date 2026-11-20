@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { COMMAND_TABLE } from '../cli/run.ts';
 import { ClientInstalls, type ClientSearch } from '../exec/client-launch.ts';
 import { ownClientOf } from './route-kit.ts';
-import { halvedBackslashRuns } from '../core/bash-tool-readings.ts';
 import { shellCallOf } from '../testing/host.ts';
 import { routeOf, SANCTIONED_ROUTES, shellRouteOf, type RouteContext, type RouteId } from './sanctioned.ts';
 
@@ -22,6 +21,13 @@ const CONTEXT: RouteContext = {
 };
 
 const idOf = async (line: string, context: RouteContext = CONTEXT): Promise<RouteId | undefined> => (await routeOf(line, context))?.id;
+
+/** The text bash on Windows receives for `line`: the reading the shipped host adds to the line as written. */
+function halvedOf(line: string): string {
+  const [, halved] = shellCallOf('Bash', line, 'win32').readings;
+  assert.ok(halved !== undefined, `halving leaves the line as written: ${line}`);
+  return halved;
+}
 
 const assertNoRoute = async (lines: readonly string[]): Promise<void> => {
   for (const line of lines) {
@@ -55,7 +61,7 @@ describe('shellRouteOf', () => {
   });
 
   it('finds no route in a Windows Bash line whose halved text bash runs is not that route', async () => {
-    assert.equal(await idOf(halvedBackslashRuns(SPLIT_BY_HALVING)), undefined);
+    assert.equal(await idOf(halvedOf(SPLIT_BY_HALVING)), undefined);
     assert.equal(await shellRouteOf(shellCallOf('Bash', SPLIT_BY_HALVING, 'win32'), CONTEXT), undefined);
   });
 
@@ -66,8 +72,8 @@ describe('shellRouteOf', () => {
   it('finds the route of a Windows Bash line whose halved text is that same route', async () => {
     /** As written the session word is `tr\-canary`; halved, bash gets `tr-canary`: both run teamrig merge. */
     const STILL_A_ROUTE = 'teamrig merge --session tr\\\\-canary';
-    assert.notEqual(halvedBackslashRuns(STILL_A_ROUTE), STILL_A_ROUTE);
-    assert.equal(await idOf(halvedBackslashRuns(STILL_A_ROUTE)), 'merge');
+    assert.notEqual(halvedOf(STILL_A_ROUTE), STILL_A_ROUTE);
+    assert.equal(await idOf(halvedOf(STILL_A_ROUTE)), 'merge');
     assert.equal((await shellRouteOf(shellCallOf('Bash', STILL_A_ROUTE, 'win32'), CONTEXT))?.id, 'merge');
   });
 });

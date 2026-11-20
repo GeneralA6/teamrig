@@ -8,15 +8,16 @@ import ts from 'typescript';
 /**
  * Every hook that reads a shell tool call's command weighs each text bash may run (T2332). On Windows Claude Code
  * hands a Bash line to Git Bash through a Windows command line that halves backslash runs, so a guard reading only
- * the line as written can pass what bash then runs (core/bash-tool-readings.ts). A guard takes its readings from the
- * shell call the host port hands it (`readings`) or, reading the hook payload itself, from `toolCommandReadings`; a
- * route from `shellRouteOf` or a service role's call from `shellRoleCallOf`, each of which holds only when every
- * reading is that route or call; a reader whose verdict cannot change under the halving sits in EXEMPT with the reason
- * it holds. The spec fails on a new reader with none, and on an exemption whose file no longer reads a command.
+ * the line as written can pass what bash then runs (the host adapter's bash-readings.ts). A guard takes its readings
+ * from the shell call the host port hands it (`readings`); a route from `shellRouteOf` or a service role's call from
+ * `shellRoleCallOf`, each of which holds only when every reading is that route or call; a reader whose verdict cannot
+ * change under the halving sits in EXEMPT with the reason it holds. A source that reads the command off the hook
+ * payload itself has no readings to take, so it is a reader with none. The spec fails on a new reader with none, and
+ * on an exemption whose file no longer reads a command.
  */
 
-/** The functions that hand a reader every text a shell call may run, or judge the call in each of them. */
-const READINGS_IMPORTS: ReadonlySet<string> = new Set(['toolCommandReadings', 'shellRouteOf', 'shellRoleCallOf']);
+/** The functions that judge a shell call in every text it may run. */
+const READINGS_IMPORTS: ReadonlySet<string> = new Set(['shellRouteOf', 'shellRoleCallOf']);
 
 /** Readers whose verdict is the same in every reading, by the path under src/ with `/` separators, with why. */
 const EXEMPT: Readonly<Record<string, string>> = {
@@ -139,9 +140,9 @@ function commandReaders(): Map<string, boolean> {
 }
 
 describe('commandReadingOf', () => {
-  it('finds a read of the payload command and the readings import', () => {
+  it('finds a read of the payload command and the import that judges every reading', () => {
     const source = [
-      "import { toolCommandReadings } from '../core/bash-tool-readings.ts';",
+      "import { shellRouteOf } from '../permissions/sanctioned.ts';",
       "const command = stringField(recordField(payload, 'tool_input') ?? {}, 'command');",
     ].join('\n');
     assert.deepEqual(commandReadingOf('a.ts', source), { readsCommand: true, importsReadings: true });
