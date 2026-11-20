@@ -22,6 +22,7 @@ describe('the plugin API surface', () => {
       'hostAdapterProblems',
       'hostDeclarationProblems',
       'isApiVersion',
+      'isClaim',
       'isConnectorAdapter',
       'isConnectorDeclaration',
       'isConnectorFeatureId',
@@ -32,10 +33,16 @@ describe('the plugin API surface', () => {
       'isManifest',
       'isOs',
       'isProofRef',
+      'isRecord',
+      'isStringArray',
       'isSupport',
       'manifestProblems',
       'provedOn',
+      'recordField',
+      'stampCredit',
+      'stringField',
       'supportProblem',
+      'withoutStampFooter',
     ]);
   });
 });
