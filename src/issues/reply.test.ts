@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { FakeIssueHost } from '../testing/fake-issue-host.ts';
+import { FAKE_VIEWER, FakeIssueHost } from '../testing/fake-issue-host.ts';
 import { testTask } from '../testing/task.ts';
 import { checkReply, closesIssue, sendReply, type ReplyWrite } from './reply.ts';
 import { sessionLogins } from './status-push.ts';
@@ -50,6 +50,15 @@ describe('issue reply (T3169)', () => {
     assert.ok(edit?.kind === 'body' && edit.body === 'Adds the reply.\n\nCloses #922');
     const opened = host.calls.find((call) => call.kind === 'open');
     assert.ok(opened?.kind === 'open' && opened.draft.body === 'What is left.\n\nSplit from #922.');
+  });
+
+  it('assigns the login the sync runs as when the session login may not be assigned, as the repository push does (T4581)', async () => {
+    const host = new FakeIssueHost().hasLabels('status:in review').holdsThread(922, { labels: ['status:open'] }).cannotAssign('octocat');
+    const { lines, ok } = await reply(host, { target: TARGET, body: 'On it.', assign: [] });
+    assert.ok(ok, lines.join('\n'));
+    assert.ok(lines.some((line) => line.startsWith('UNASSIGNED acme/web: octocat may not be assigned there')), lines.join('\n'));
+    assert.ok(lines.includes(`SET acme/web#922 T5 verifying: add status:in review, take off status:open, assign ${FAKE_VIEWER}`), lines.join('\n'));
+    assert.equal(host.viewerReads, 1);
   });
 
   it('posts no comment when a state write fails, saying what was already done', async () => {

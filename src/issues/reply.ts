@@ -3,7 +3,8 @@ import { DESIGN_LABEL } from './design-label.ts';
 import { targetText, type IssueHost, type IssueTarget } from './host.ts';
 import type { IssueThread } from './issue.ts';
 import { applyPush } from './push-apply.ts';
-import { onePushPlan, planIssue, STATUS_LABEL_PREFIX, type SessionLogins } from './status-push.ts';
+import { planAssigned, viewerOf } from './push-assignees.ts';
+import { issuePushPlan, planIssue, pushAssignees, STATUS_LABEL_PREFIX, VIEWER_UNREAD, type SessionLogins } from './status-push.ts';
 
 /**
  * A maintainer's reply on one issue (T3169): the words, and the state they speak of, sent together so the thread
@@ -119,12 +120,16 @@ export async function sendReply(host: IssueHost, write: ReplyWrite, reads: Reply
     return false;
   };
   if (task !== undefined) {
-    const plan = planIssue(target, task, reads.issue, logins);
-    if (plan.kind === 'closed-active') {
+    if (planIssue(target, task, reads.issue).kind === 'closed-active') {
       return failed(`${shown} is closed while ${task.id} is ${task.status}: reopen it, or end the task, before replying`);
     }
-    if (plan.kind === 'change') {
-      const pushed = await applyPush(host, onePushPlan(target.repo, plan.change), say);
+    // Assigned as the repository push assigns (T4581): a login the repository may not take is passed over.
+    const planned = await planAssigned(host, target.repo, (who) => issuePushPlan(target, task, reads.issue, who), pushAssignees(logins, VIEWER_UNREAD), () => viewerOf(host, target.repo, say), say);
+    if (planned.kind === 'failed') {
+      return failed(planned.reason);
+    }
+    if (planned.plan.changes.length > 0) {
+      const pushed = await applyPush(host, planned.plan, say);
       // A held change adds a label the repository lacks; the status labels are made, so only a person's edit gets here.
       if (pushed.failed !== undefined || pushed.held > 0) {
         return failed(pushed.failed ?? `its status label is missing from ${target.repo}`);

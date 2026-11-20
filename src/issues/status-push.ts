@@ -428,9 +428,18 @@ export function planIssue(target: IssueTarget, task: Task, issue: IssueNow, who?
   return change === undefined ? { kind: 'unchanged', wantsViewer } : { kind: 'change', change, wantsViewer };
 }
 
-/** A push plan of `repo` that sends `change` alone, for a write of one issue (issues/reply.ts) through applyPush. */
-export function onePushPlan(repo: string, change: IssueChange): PushPlan {
-  return { repo, changes: [change], deferred: [], heldCloses: [], unchanged: 0, closedActive: [], keptOpen: [], unlisted: [], shared: [], openPulls: [], wantsViewer: false };
+/**
+ * The push of the one issue `task` holds (planIssue) as a plan of its repository, for a write of one issue
+ * (issues/reply.ts): its change alone, or nothing to send, with the issue's `wantsViewer`, so planAssigned picks its
+ * assignee as it does for the repository push and applyPush sends it. A closed issue of an active task sends nothing.
+ */
+export function issuePushPlan(target: IssueTarget, task: Task, issue: IssueNow, who: PushAssignees): PushPlan {
+  const plan = planIssue(target, task, issue, who);
+  const none = { repo: target.repo, changes: [], deferred: [], heldCloses: [], unchanged: 0, closedActive: [], keptOpen: [], unlisted: [], shared: [], openPulls: [] };
+  if (plan.kind === 'closed-active') {
+    return { ...none, wantsViewer: false };
+  }
+  return plan.kind === 'change' ? { ...none, changes: [plan.change], wantsViewer: plan.wantsViewer } : { ...none, unchanged: 1, wantsViewer: plan.wantsViewer };
 }
 
 /** Who holds one issue as the push picks it (holders): the one task speaking for it, or the active tasks sharing it. */
