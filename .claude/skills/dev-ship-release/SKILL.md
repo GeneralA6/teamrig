@@ -12,6 +12,11 @@ teamrig-pane's release pull request (its own release-please, component `teamrig-
 pane's main checkout as `<repo dir>`: it raises the pane's plugin manifest and its release-please manifest, and the
 release check reads any `plugins/<name>/.claude-plugin/plugin.json` as a version file (T4821).
 
+Once the `teamrig-release` App is set up (variable `RELEASE_APP_ID`, its key in environment `release-merge`), the
+`release merge` workflow (`.github/workflows/release-merge.yml`) merges the pull request itself when ci passed on its
+head, and comments the head, paths and checks it passed. The steps below are for a head its gate refused (its run's
+summary says why) or a repository without the App: read that summary first, and fix the cause before approving.
+
 1. Add a release task for the session that ships releases, saying which version it ships, and read the pull
    request's head: `git fetch origin` and `git rev-parse origin/<release head>`, the head `repos.json` names.
 2. Wait until every required check passed on that head, then set the task waiting on the lead's approval, naming the

@@ -262,7 +262,12 @@ matrix.
 - Nothing is pushed to `main` directly, and release tags are set only by the release workflow.
 - The `release` workflow (`.github/workflows/release.yml`, run on each push to `main`) keeps one release pull request open
   through release-please (`release-please-config.json`): it raises the version in the plugin's `plugin.json` and
-  `src/core/version.ts` and writes the notes. It merges like any pull request, through `tools/ship`: the lead approves
+  `src/core/version.ts` and writes the notes. Once the `teamrig-release` GitHub App is set up (its id in the
+  `RELEASE_APP_ID` variable, its key in the `release-merge` environment), the `release merge` workflow
+  (`.github/workflows/release-merge.yml`, `tools/release/release-merge.ts`) merges it on its own when ci passed on its
+  head: its gate passes only one commit holding the version raises and the notes, with every check green, and the
+  merge leaves a comment naming the head, paths and checks. Until then, or when the gate refuses, it merges like any
+  pull request, through `tools/ship`: the lead approves
   a release task at the release pull request's head, and `node tools/ship/ship.ts merge <repo dir> --release T<id>
   --approved <sha>` merges it (skill `dev-ship-release`). That merge refuses a head holding anything but the version
   raises and the changelog's new notes, never opens the pull request, and asks for a new head's approval when main
