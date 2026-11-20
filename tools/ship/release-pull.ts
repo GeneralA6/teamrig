@@ -37,12 +37,15 @@ function changedPaths(git: GitText, from: string, sha: string): ChangedPath[] {
 
 const textAt = (git: GitText, ref: string, path: string): string => git(['cat-file', 'blob', `${ref}:${path}`]);
 
+/** Whether a path is edited in place as the plain file it was: no add, delete, type or mode change (T4712 C4). */
+const plainEdit = (changed: ChangedPath): boolean => changed.status === 'M' && changed.oldMode === PLAIN_FILE && changed.newMode === PLAIN_FILE;
+
 /**
- * The version a version file's change raises it to, or why it is no version raise: the file must keep its mode and
- * change only its version token, to a version above the merge base's.
+ * The version a version file's change raises it to, or why it is no version raise: the file must stay a plain file
+ * and change only its version token, to a version above the merge base's.
  */
 function versionRaise(git: GitText, from: string, sha: string, changed: ChangedPath, file: VersionFile): { readonly reason: string } | { readonly version: Version } {
-  if (changed.status !== 'M' || changed.oldMode !== changed.newMode) {
+  if (!plainEdit(changed)) {
     return { reason: `${changed.path} is a version file the release pull request must only edit, but its change is ${changed.status} ${changed.oldMode} to ${changed.newMode}` };
   }
   const baseText = textAt(git, from, changed.path);
@@ -58,25 +61,54 @@ function versionRaise(git: GitText, from: string, sha: string, changed: ChangedP
   return { version: head };
 }
 
-/** Why the changelog's change adds anything but lines, or null when it only adds lines to a plain file. */
+/** A `git diff -U0` hunk header: the old start and count, the new start and count; a count left out is 1. */
+const HUNK = /^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@/;
+
+/**
+ * Why the changelog's change is more than its version's notes, or null when it is one block of lines added after the
+ * changelog's first line (its title), as release-please writes them: no line deleted or rewritten, nothing added in a
+ * second place or above the title, and the file stays a plain text file (T4712 C4, C5).
+ */
 function changelogRefusal(git: GitText, from: string, sha: string, changed: ChangedPath): string | null {
-  const plain = changed.newMode === PLAIN_FILE && (changed.status === 'A' || (changed.status === 'M' && changed.oldMode === PLAIN_FILE));
-  if (!plain) {
+  if (!plainEdit(changed)) {
     return `${changed.path} is the changelog the release pull request may only add lines to, but its change is ${changed.status} ${changed.oldMode} to ${changed.newMode}`;
   }
-  const [, deleted = '-'] = git(['diff', '--numstat', '--no-renames', '--no-ext-diff', '--no-textconv', from, sha, '--', changed.path]).split('\t');
-  if (deleted === '-') return `${changed.path} is not text`;
-  return deleted === '0' ? null : `${changed.path} deletes or rewrites ${deleted} line(s): the release pull request may only add its version's notes`;
+  const hunks = git(['diff', '-U0', '--no-renames', '--no-ext-diff', '--no-textconv', from, sha, '--', changed.path])
+    .split('\n')
+    .flatMap((line) => {
+      const match = HUNK.exec(line);
+      return match === null ? [] : [{ oldStart: Number(match[1]), oldCount: Number(match[2] ?? '1') }];
+    });
+  const [hunk] = hunks;
+  if (hunk === undefined) return `${changed.path} is not text`;
+  const deleted = hunks.reduce((sum, one) => sum + one.oldCount, 0);
+  if (deleted > 0) return `${changed.path} deletes or rewrites ${deleted} line(s): the release pull request may only add its version's notes`;
+  if (hunks.length > 1) return `${changed.path} changes ${hunks.length} places: the release pull request adds its version's notes in one block`;
+  return hunk.oldStart === 0 ? `${changed.path} adds lines above its title: the release pull request adds its version's notes below it` : null;
+}
+
+/**
+ * Why `sha` is not one commit straight on `from`, its merge base with main, or null when it is: release-please writes
+ * its release as exactly one commit, and a branch of more would hide a commit whose change a later one undoes, as the
+ * diff from the merge base shows only their sum while a rebase merge lands each (T4712 C4).
+ */
+function oneCommitRefusal(git: GitText, mainRef: string, from: string, sha: string): string | null {
+  const [, ...parents] = git(['rev-list', '--parents', '-n', '1', sha]).trim().split(' ');
+  if (parents.length === 1 && parents[0] === from) return null;
+  return `the release pull request's head ${sha} is not one commit on ${mainRef}: release-please writes its release as exactly one`;
 }
 
 /**
  * Why the release pull request's head `sha` may not merge into `mainRef`, or null when it may: each path it changes
  * from their merge base is either a version file (`versionFiles`, the repo profile's regenerated files that are no
  * folder) with only its version token raised, every one of them to one version, or the profile's changelog with lines
- * only added. Any other path, a deleted or mode-changed one, or a head that changes nothing is refused, naming why.
+ * only added. Any other path, a deleted or mode-changed one, a head of more than one commit, or a head that changes
+ * nothing is refused, naming why.
  */
 export function releaseRefusal(git: GitText, mainRef: string, sha: string, release: ReleasePull, versionFiles: readonly VersionFile[]): string | null {
   const from = git(['merge-base', mainRef, sha]).trim();
+  const commits = oneCommitRefusal(git, mainRef, from, sha);
+  if (commits !== null) return commits;
   const changed = changedPaths(git, from, sha);
   if (changed.length === 0) return `the release pull request's head ${sha} changes nothing over ${mainRef}`;
   const versions = new Set<string>();
