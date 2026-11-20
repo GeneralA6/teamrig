@@ -1,14 +1,16 @@
-import { spawn } from 'node:child_process';
 import type { Env } from '../core/home.ts';
-import { endOf, type ShellEnd } from '../core/shell-end.ts';
+import type { ProgramRunner } from '../core/program-runner.ts';
+import type { ShellEnd } from '../core/shell-end.ts';
 import type { CloseReason, IssueDraft, LabelSpec } from '../issues/host.ts';
 import { LABEL_FILE, parseLabelFile } from '../issues/label-file.ts';
 import { isLogin } from '../issues/login.ts';
 import { areaLabelSpec, MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
 import { MENTION_PAGE_SIZE, MENTION_PAGES_MAX } from '../issues/scan-caps.ts';
 import { labelRefusal } from '../issues/write.ts';
-import { GH_PROGRAM } from './gh-program.ts';
 import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
+
+/** The program the GitHub CLI is run as. */
+export const GH_PROGRAM = 'gh';
 
 /**
  * The kinds of `gh` command line teamrig runs: a page of a shipped query (the issue import, the links read and the
@@ -626,25 +628,6 @@ export interface GhRunner {
   run(request: GhRequest): Promise<GhResult>;
 }
 
-/** How long one `gh` run may take before it is stopped: a page of a hundred issues takes seconds. */
-export const GH_TIMEOUT_MS = 60_000;
-
-/**
- * The bytes one `gh` run may print, stdout and stderr together, before it is stopped. The largest answer teamrig
- * asks for is a page of a hundred issues, each body at most 65,536 characters (about 20 MB in the worst UTF-8); the
- * cap sits above it, so text people post can never grow one run's memory without bound.
- */
-export const GH_OUTPUT_MAX_BYTES = 32 * 1024 * 1024;
-
-/** A `gh` run stopped for printing more than its cap; nothing it printed is used. */
-export class GhOutputCapError extends Error {
-  override readonly name = 'GhOutputCapError';
-
-  constructor(maxBytes: number) {
-    super(`gh printed more than ${maxBytes} bytes, so teamrig stopped it and used none of it`);
-  }
-}
-
 /** A host id as a link write sends it: 1 to 15 digits, so it stays an exact JavaScript number. */
 export const HOST_ID = /^[1-9][0-9]{0,14}$/;
 
@@ -843,65 +826,23 @@ export function isReviewRead(args: readonly string[]): boolean {
 }
 
 /**
- * The real runner: `spawn` with no shell, so an issue title or a repository name can never become a
- * command. gh is told never to prompt, as nobody is there to answer. `program` and `leading` let a test
- * stand a Node script in for gh. A run that prints more than `maxBytes` is stopped and rejects with
- * GhOutputCapError. It keeps what each repository's label file named when it read one, so it makes only those
- * labels beside its own.
+ * The gh runner over the program runner a connector adapter is handed (plugin-api/connector.ts), which starts the
+ * program with no shell, so an issue title or a repository name can never become a command, and holds each run to
+ * the connector limits of time and output. This is the one way the GitHub code reaches `gh`: a command line off the
+ * allow list is refused with GhRefusedError before `run` is asked, and gh is told never to prompt, as nobody is
+ * there to answer, or to look for an update. It keeps what each repository's label file named when it read one, so
+ * it makes only those labels beside its own.
  */
-export function nodeGhRunner(program: string = GH_PROGRAM, leading: readonly string[] = [], timeoutMs = GH_TIMEOUT_MS, maxBytes = GH_OUTPUT_MAX_BYTES): GhRunner {
+export function ghRunnerOver(run: ProgramRunner): GhRunner {
   const labelFiles = new LabelFileReads();
   return {
     run: async (request) => {
       if (!isAllowedGh(request.args) && !isFileLabelCreate(request.args, labelFiles.of)) {
         throw new GhRefusedError(request.args);
       }
-      const result = await spawnGh(program, leading, request, timeoutMs, maxBytes);
+      const result = await run({ program: GH_PROGRAM, args: request.args, env: { ...request.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' } });
       labelFiles.note(request.args, result);
       return result;
     },
   };
-}
-
-/** One run of gh to its end, its output capped at `maxBytes`. */
-function spawnGh(program: string, leading: readonly string[], request: GhRequest, timeoutMs: number, maxBytes: number): Promise<GhResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(program, [...leading, ...request.args], {
-      env: { ...request.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: timeoutMs,
-      windowsHide: true,
-    });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    let printed = 0;
-    let over = false;
-    const keep =
-      (into: Buffer[]) =>
-      (chunk: Buffer): void => {
-        if (over) {
-          return;
-        }
-        printed += chunk.length;
-        if (printed > maxBytes) {
-          over = true;
-          stdout.length = 0;
-          stderr.length = 0;
-          child.kill();
-          return;
-        }
-        into.push(chunk);
-      };
-    child.stdout.on('data', keep(stdout));
-    child.stderr.on('data', keep(stderr));
-    child.once('error', reject);
-    child.once('close', (code, signal) => {
-      if (over) {
-        reject(new GhOutputCapError(maxBytes));
-        return;
-      }
-      // Joined before decoding, so a character split across two chunks reads whole.
-      resolve({ end: endOf(code, signal), stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8') });
-    });
-  });
 }
