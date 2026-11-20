@@ -39,7 +39,7 @@ describe('ModelNoticeStore', () => {
   it('reads a damaged file, or one in another format, as nothing told', async () => {
     const files = new MemoryFiles();
     const store = new ModelNoticeStore(files, FOLDER);
-    for (const text of ['not json', '{"v":2,"claude":"claude-session-1","told":["x"]}', '{"v":1,"told":["x"]}', '{"v":1,"claude":"claude-session-1","told":[7]}']) {
+    for (const text of ['not json', '{"v":3,"claude":"claude-session-1","told":["x"]}', '{"v":3,"hostSession":"claude-session-1","told":["x"]}', '{"v":1,"told":["x"]}', '{"v":1,"claude":"claude-session-1","told":[7]}']) {
       await files.write(join(FOLDER, 'alpha.json'), text);
       assert.deepEqual(await store.told('alpha', CLAUDE), [], text);
     }
@@ -51,5 +51,13 @@ describe('the notice file format', () => {
     const notices = { claude: CLAUDE, told: ['effort:low'] };
     assert.equal(formatToldNotices(notices), '{"v":1,"claude":"claude-session-1","told":["effort:low"]}\n');
     assert.deepEqual(parseToldNotices(formatToldNotices(notices)), notices);
+  });
+
+  it('reads a file a later teamrig wrote, naming the tab hostSession, so its notices are not told twice (T4762)', async () => {
+    const later = '{"v":2,"hostSession":"claude-session-1","told":["effort:low"]}\n';
+    assert.deepEqual(parseToldNotices(later), { claude: CLAUDE, told: ['effort:low'] });
+    const files = new MemoryFiles();
+    await files.write(join(FOLDER, 'alpha.json'), later);
+    assert.deepEqual(await new ModelNoticeStore(files, FOLDER).told('alpha', CLAUDE), ['effort:low']);
   });
 });
