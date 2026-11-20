@@ -1,4 +1,3 @@
-import { basename, dirname, join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { isRecord, stringField } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
@@ -62,10 +61,10 @@ export interface Carry extends TranscriptCarry {
 
 /** Where the host keeps a session's files outside its transcript. */
 export interface CarryPlaces {
-  /** The system's temporary folder: a scratchpad the transcript does not name is `<it>/claude/<project>/<session>/scratchpad`. */
-  readonly tempDir: string;
-  /** The host's config folder: plans are `<it>/plans/<slug>.md`. */
-  readonly claudeDir: string;
+  /** The scratchpad folder the host gives the session of the transcript `transcript`: the guess when its tail names none. */
+  scratchpadOf(transcript: string): string;
+  /** The plan file of the session the host named `slug`. */
+  planFile(slug: string): string;
 }
 
 /** Lines that can matter; the rest of a large transcript is never parsed. */
@@ -262,21 +261,17 @@ export function toldScratchpadOf(reader: TranscriptReader, text: string): string
   return undefined;
 }
 
-/** The scratchpad folder a transcript's own name gives, `<temp>/claude/<project>/<session>/scratchpad`: the guess when its tail names none. */
-export function scratchpadOf(transcript: string, tempDir: string): string {
-  return join(tempDir, 'claude', basename(dirname(transcript)), basename(transcript, '.jsonl'), 'scratchpad');
-}
-
 /**
  * What the session whose transcript this is leaves for the fresh one, counting the jobs it `inherited`, and with
- * `handoverPath` what the owner typed in it; undefined when the transcript is gone.
+ * `handoverPath` what the owner typed in it; undefined when the transcript is gone. With no `places`, on a host that
+ * tells none of its folders, the scratchpad is only the one the transcript names, and no plan file is looked for.
  */
 export async function readCarry(
   reader: TranscriptReader,
   files: Files,
   transcript: string,
   now: number,
-  places: CarryPlaces,
+  places: CarryPlaces | undefined,
   inherited: readonly CarriedCron[],
   handoverPath?: string,
 ): Promise<Carry | undefined> {
@@ -285,12 +280,12 @@ export async function readCarry(
     return undefined;
   }
   const found = carryOf(reader, text, now, inherited);
-  const scratchpad = toldScratchpadOf(reader, text) ?? scratchpadOf(transcript, places.tempDir);
-  const entries = (await files.list(scratchpad)).length;
-  const plan = found.planSlug === undefined ? undefined : join(places.claudeDir, 'plans', `${found.planSlug}.md`);
+  const scratchpad = toldScratchpadOf(reader, text) ?? places?.scratchpadOf(transcript);
+  const entries = scratchpad === undefined ? 0 : (await files.list(scratchpad)).length;
+  const plan = found.planSlug === undefined ? undefined : places?.planFile(found.planSlug);
   const planText = plan === undefined ? undefined : await files.read(plan);
   const owner = handoverPath === undefined ? {} : { ownerTurns: ownerTurnsOf(reader, text, handoverPath,[...inherited.map((cron) => cron.prompt)]) };
-  return { ...found, scratchpad: entries > 0 ? { path: scratchpad, entries } : undefined, plan: planText === undefined ? undefined : plan, ...owner };
+  return { ...found, scratchpad: scratchpad !== undefined && entries > 0 ? { path: scratchpad, entries } : undefined, plan: planText === undefined ? undefined : plan, ...owner };
 }
 
 /** A carried-jobs file's content; undefined when it is damaged or from another format. */

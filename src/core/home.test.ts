@@ -6,7 +6,7 @@ import { SESSIONS_WEEK_IN_STATE } from '../budget/session-week-summary.ts';
 import { TASKS_WEEK_IN_STATE } from '../budget/task-week-summary.ts';
 import { TEAM_WEEK_IN_STATE } from '../budget/team-week-summary.ts';
 import { SESSION_LOG_IN_STATE } from '../sessions/log.ts';
-import { claudeConfigDir, claudeTempDir, resolveKitHome, taskFolder, teamConfigFile, teamHome, teamPaths } from './home.ts';
+import { claudeConfigDir, resolveKitHome, taskFolder, teamConfigFile, teamHome, teamPaths } from './home.ts';
 
 const USER_HOME = join('/', 'u');
 const KIT = join('/', 'kit');
@@ -19,14 +19,6 @@ describe('claudeConfigDir', () => {
     assert.equal(claudeConfigDir({ CLAUDE_CONFIG_DIR: join('/', 'cfg') }, USER_HOME), join('/', 'cfg'));
     assert.equal(claudeConfigDir({ CLAUDE_CONFIG_DIR: ' ' }, USER_HOME), join(USER_HOME, '.claude'));
     assert.equal(claudeConfigDir({}, USER_HOME), join(USER_HOME, '.claude'));
-  });
-});
-
-describe('claudeTempDir', () => {
-  it('uses $CLAUDE_CODE_TMPDIR, else the system temporary folder', () => {
-    assert.equal(claudeTempDir({ CLAUDE_CODE_TMPDIR: join('/', 'scratch') }, join('/', 'tmp')), join('/', 'scratch'));
-    assert.equal(claudeTempDir({ CLAUDE_CODE_TMPDIR: ' ' }, join('/', 'tmp')), join('/', 'tmp'));
-    assert.equal(claudeTempDir({}, join('/', 'tmp')), join('/', 'tmp'));
   });
 });
 

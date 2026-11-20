@@ -6,7 +6,7 @@ import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { recordConfigDir } from '../../budget/config-dir.ts';
 import { errorMessage } from '../../core/guards.ts';
-import { claudeConfigDir, claudeTempDir, KIT_NAME, resolveKitHome } from '../../core/home.ts';
+import { claudeConfigDir, KIT_NAME, resolveKitHome } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { routeReminderOf } from '../../inbox/route.ts';
 import { boundPromptNote, boundStartNote, tabTitleFor } from '../../hooks/bind.ts';
@@ -48,7 +48,7 @@ import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
-import { contextSourceIfTold, transcriptsIfKept, transcriptsOf } from '../host.ts';
+import { contextSourceIfTold, pathsIfKnown, transcriptsIfKept, transcriptsOf } from '../host.ts';
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { keptRulesAboveOf, readTeamRules } from '../team-rules.ts';
@@ -504,8 +504,10 @@ function rosterIdOf(roster: Roster, session: string | undefined): string | undef
   return found?.ok === true ? found.id : undefined;
 }
 
-function carryPlaces(runtime: CliRuntime): CarryPlaces {
-  return { tempDir: claudeTempDir(runtime.env, tmpdir()), claudeDir: claudeConfigDir(runtime.env, runtime.userHome) };
+/** Where the run's host keeps a session's scratchpad and plan; none on a host that tells none of its folders. */
+function carryPlaces(runtime: CliRuntime): CarryPlaces | undefined {
+  const paths = pathsIfKnown(runtime);
+  return paths === undefined ? undefined : { scratchpadOf: (transcript) => paths.scratchpadOf(transcript, tmpdir()), planFile: (slug) => paths.planFile(runtime.userHome, slug) };
 }
 
 function carryRecordFailed(error: unknown): string {
