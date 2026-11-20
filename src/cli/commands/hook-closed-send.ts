@@ -1,9 +1,10 @@
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
-import { sendTargetOf, sendTextOf } from '../../hooks/cold-send.ts';
-import { refusalOutput } from '../../hooks/permission.ts';
+import type { SentMessage } from '../../hooks/cold-send.ts';
+import { refusal } from '../../hooks/permission.ts';
 import { indexMarks, RECEIVER_TABS, tabsOf } from '../../inbox/marks.ts';
+import type { HookReply } from '../../ports/host/index.ts';
 import { closedOf, SessionLog } from '../../sessions/log.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';
 import { teamZone, type Kit } from '../kit.ts';
@@ -12,7 +13,7 @@ import { postUrgentLine } from '../urgent-line.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /**
- * The closed-send hold for a SendMessage call (T1100), as the hook's stdout; undefined lets the message go. A message
+ * The closed-send hold for a message a call sends (T1100), as the hook's reply; undefined lets the message go. A message
  * to a session teamrig closed reaches no tab, so while the idle pass reopens sessions (`open.idle.mode` on) the hook
  * posts it as the receiver's urgent line instead, which the pass reopens it for, with the line quoted in its first
  * prompt, and denies the send with that said. It lets go: modes off and dry-run (no pass reopens, so the failed
@@ -21,13 +22,12 @@ import { inboxDepsOf } from './inbox.ts';
  * subscription). With wakes on, the denial also names `inbox add --wake now`, which posts the same ask, so the sender
  * posts such a line itself next time.
  */
-export async function closedSendHold(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, payload: unknown, claudeSession: string): Promise<string | undefined> {
-  const to = sendTargetOf(payload);
-  const text = sendTextOf(payload).trim();
-  if (config.open.idle.mode !== 'on' || to === undefined || text === '') {
+export async function closedSendHold(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, message: SentMessage, claudeSession: string): Promise<HookReply | undefined> {
+  const text = message.text.trim();
+  if (config.open.idle.mode !== 'on' || text === '') {
     return undefined;
   }
-  const receiver = roster.lookup(to);
+  const receiver = roster.lookup(message.to);
   if (!receiver.ok) {
     return undefined;
   }
@@ -50,7 +50,7 @@ export async function closedSendHold(runtime: CliRuntime, kit: Kit, config: KitC
   const why = `${roster.nameOf(receiver.id) ?? receiver.id} is ${state}, so this message cannot reach it`;
   const unposted = await postUrgentLine(runtime, kit, config, { to: receiver.id, from, text });
   const line = `${KIT_NAME} inbox add --to ${receiver.id} --text "..."${config.wake.enabled ? ' --wake now' : ''}`;
-  return refusalOutput(
+  return refusal(
     unposted === undefined
       ? `${why}; ${KIT_NAME} posted it as an urgent line in its inbox, and the idle pass reopens it within about a minute with the line quoted in its first prompt. Do not send it again.` +
           (config.wake.enabled ? ` Next time post it yourself: ${line}.` : '')

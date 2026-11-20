@@ -1,9 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { HookEvent } from '../ports/host/index.ts';
+import { hookEventOf } from '../testing/host.ts';
 import { deliveredSendOf } from './route-reminder.ts';
 
-function result(toolResponse: unknown, to = 'app-bravo', toolName = 'SendMessage'): unknown {
-  return { hook_event_name: 'PostToolUse', tool_name: toolName, tool_input: { to, message: 'take T1' }, tool_response: toolResponse };
+function result(toolResponse: unknown, to = 'app-bravo', toolName = 'SendMessage'): HookEvent {
+  return hookEventOf({ hook_event_name: 'PostToolUse', tool_name: toolName, tool_input: { to, message: 'take T1' }, tool_response: toolResponse });
 }
 
 const SENT = { success: true, message: "Message sent to app-bravo's inbox" };
