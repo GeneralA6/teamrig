@@ -7,6 +7,7 @@ import type { Gh, RequiredChecks } from './github.ts';
 import type { Credential } from './keychain.ts';
 import type { GateDeps } from './local-gate.ts';
 import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, MERGE_ATTEMPTS, ciProof,mainBranchOf, mergeBranch, mergeCommand, mergeRun, mergeThroughPull, parseArgs, pullBody, realMergeDeps, runMerge, missingSections, stepShareOf, waitForChecks } from './merge.ts';
+import type { PullTask } from './pull-task.ts';
 import { parseProfiles } from './repos.ts';
 import type { Supersede } from './superseded.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
@@ -20,6 +21,9 @@ const HEAD = 'dev';
 const BASE = 'base000aaa';
 const MOVED = 'moved00bbb';
 const MINUTE = 60_000;
+/** The branch's task in the register, linked to issue #9 of REPO (whose name GitHub reads lower-cased). */
+const TASK: PullTask = { id: 'T1', priority: 1, type: null, ref: `gh:${REPO}#9` };
+const ISSUE_PATH = `repos/${REPO.toLowerCase()}/issues/9`;
 
 /**
  * main on origin: each tip read takes the next of `tips` (the last repeats), and SHA contains BASE only.
@@ -78,7 +82,7 @@ const RERUN_PATH = `repos/${REPO}/actions/runs/1/rerun-failed-jobs`;
  * makes its next attempt, or throws `rerun` when given. Each merge call answers the next of `merges` (the last
  * repeats) when given, else `merge`.
  */
-function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPullSha?: string | null; openedSha?: string; merge?: string | Error; merges?: readonly (string | Error)[]; rerun?: Error; branch?: string; heads?: readonly PushedHead[] }): FakeGitHub {
+function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPullSha?: string | null; openedSha?: string; merge?: string | Error; merges?: readonly (string | Error)[]; rerun?: Error; branch?: string; heads?: readonly PushedHead[]; repoLabels?: readonly string[] }): FakeGitHub {
   const writes: string[][] = [];
   let round = 0;
   let attempt = 1;
@@ -112,6 +116,9 @@ function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPul
       return JSON.stringify({ jobs: jobs.map(([name, status, conclusion, unstarted]) => ({ name, status, conclusion, steps: unstarted === undefined ? [{ name: 'Set up job' }] : [] })) });
     }
     if (path.endsWith('/status')) return '{"statuses":[]}';
+    if (path === ISSUE_PATH) return JSON.stringify({ title: 'Ship titles', labels: [{ name: 'area:cli' }, { name: 'p3' }] });
+    if (path === `repos/${REPO}/labels?per_page=100`) return JSON.stringify((options.repoLabels ?? []).map(name => ({ name })));
+    if (path === `repos/${REPO}/issues/3/labels`) return '[]';
     throw new Error(`unexpected gh ${args.join(' ')}`);
   });
   return { gh, writes };
@@ -126,6 +133,8 @@ const request = (overrides: Partial<MergeRequest> = {}): MergeRequest => ({
   body: '- a\n- b',
   lacks: null,
   opens: true,
+  labels: [],
+  unlinked: null,
   ...overrides,
 });
 
@@ -217,6 +226,37 @@ test('opens no pull request whose body lacks a section the repo asks for, but me
   const log: string[] = [];
   assert.equal((await mergeOnCi(open.gh, fakeMain(), line => log.push(line), '## Reach')).kind, 'merged');
   assert.equal(log[1], "warning: pull request #3 lacks ## Reach, which this repo's template asks for: add it to its text");
+});
+
+/** mergeThroughPull on the `ci` gate for `overrides` of the request. */
+const mergeRequestOnCi = (gh: Gh, overrides: Partial<MergeRequest>, log: (line: string) => void): Promise<MergeResult> =>
+  mergeThroughPull(request(overrides), gh, fakeMain(), ciProof(gh, REPO, HEAD, CHECKS, fakeWaiter(), POLLING), log, () => undefined);
+
+test('opens no pull request for a task that links no issue, but merges one already open with a warning (T4796)', async () => {
+  const unlinked = 'T1 links no GitHub issue, so its pull request would close none';
+  const fresh = fakeGitHub({ rounds: [green] });
+  const refused = await mergeRequestOnCi(fresh.gh, { unlinked }, () => undefined);
+  assert.deepEqual(refused.kind === 'refused' ? refused.reason : refused, unlinked);
+  assert.equal(fresh.writes.length, 0);
+  const open = fakeGitHub({ rounds: [green], openPullSha: SHA });
+  const log: string[] = [];
+  assert.equal((await mergeRequestOnCi(open.gh, { unlinked }, line => log.push(line))).kind, 'merged');
+  assert.equal(log[1], `warning: pull request #3: ${unlinked}`);
+});
+
+test('labels the pull request it opened or found at the head before its checks run, and none at another head (T4796)', async () => {
+  const labelsPath = `repos/${REPO}/issues/3/labels`;
+  for (const openPullSha of [null, SHA]) {
+    const { gh, writes } = fakeGitHub({ rounds: [green], openPullSha });
+    const log: string[] = [];
+    assert.equal((await mergeRequestOnCi(gh, { labels: ['p1', 'area:cli'] }, line => log.push(line))).kind, 'merged');
+    assert.deepEqual(writes.map(write => write[1]), [...(openPullSha === null ? [`repos/${REPO}/pulls`] : []), labelsPath, `repos/${REPO}/pulls/3/merge`]);
+    assert.deepEqual(writes.find(write => write[1] === labelsPath)?.slice(2), ['-X', 'POST', '-f', 'labels[]=p1', '-f', 'labels[]=area:cli']);
+    assert.deepEqual(log.slice(0, 3), [`${openPullSha === null ? 'opened' : 'found'} pull request #3 https://github.com/${REPO}/pull/3`, 'labelled pull request #3: p1, area:cli', 'check passed: gates (success)']);
+  }
+  const moved = fakeGitHub({ rounds: [green], openPullSha: 'fff0000older' });
+  assert.equal((await mergeRequestOnCi(moved.gh, { labels: ['p1'] }, () => undefined)).kind, 'refused');
+  assert.deepEqual(moved.writes, []);
 });
 
 test('names each ## section a note lacks of those the repo asks for', () => {
@@ -528,6 +568,10 @@ interface RunFixture {
   release?: { open?: boolean; refusal?: string };
   /** Whether main merges through GitHub's merge queue (T3386): its pull request is out of the queue, then merged at QUEUED. */
   queue?: boolean;
+  /** The register's task of the branch (T4796): TASK unless given; null for none. */
+  task?: PullTask | null;
+  /** The labels the repo has (T4796); none unless given, so no label is added. */
+  repoLabels?: readonly string[];
 }
 
 /** The queue's merge commit of the pull request, which main on origin holds once it landed. */
@@ -666,7 +710,7 @@ function runFixture(fixture: RunFixture = {}): {
   const heads: readonly PushedHead[] | undefined = fixture.movesDuringWait === true ? [{ sha: SHA, branch: BRANCH }, { sha: REBASED, branch: NEXT }] : undefined;
   // The release tool opened the release pull request at SHA, and CI ran on its branch.
   const releasePull = fixture.release === undefined ? {} : { openPullSha: fixture.release.open === false ? null : SHA, branch: RELEASE };
-  const { gh, writes } = fakeGitHub({ rounds: fixture.rounds ?? [green], openedSha: caughtUpHead ? REBASED : SHA, branch: caughtUpHead ? NEXT : BRANCH, ...(heads === undefined ? {} : { heads }), ...releasePull });
+  const { gh, writes } = fakeGitHub({ rounds: fixture.rounds ?? [green], openedSha: caughtUpHead ? REBASED : SHA, branch: caughtUpHead ? NEXT : BRANCH, ...(heads === undefined ? {} : { heads }), ...releasePull, ...(fixture.repoLabels === undefined ? {} : { repoLabels: fixture.repoLabels }) });
   let mainReads = 0;
   let mainFetches = 0;
   let raced = fixture.racedFetches ?? 0;
@@ -678,6 +722,7 @@ function runFixture(fixture: RunFixture = {}): {
   const sweep = mock.fn<MergeDeps['sweep']>(() => undefined);
   const clearMerge = mock.fn<MergeDeps['clearMerge']>(() => Promise.resolve(fixture.clearance ?? { kind: 'approved', by: 'lead' }));
   const clearTaskMerge = mock.fn<MergeDeps['clearTaskMerge']>(() => Promise.resolve(fixture.clearance ?? { kind: 'approved', by: 'lead' }));
+  const pullTask = mock.fn<MergeDeps['pullTask']>(() => Promise.resolve(fixture.task === null ? undefined : (fixture.task ?? TASK)));
   const releaseRefusal = mock.fn<MergeDeps['releaseRefusal']>(() => fixture.release?.refusal ?? null);
   const releaseProfile = fixture.release === undefined ? '' : `,"release":{"head":"${RELEASE}","changelog":"CHANGELOG.md"}`;
   const answersOfCatchUp = fixture.catchUp ?? [CAUGHT_UP_REFUSED];
@@ -705,6 +750,7 @@ function runFixture(fixture: RunFixture = {}): {
     sweep,
     clearMerge,
     clearTaskMerge,
+    pullTask,
     releaseRefusal,
     catchUp,
     workOf: (rev) => (fixture.work ?? { [SHA]: APPROVED_WORK, [REBASED]: REBASED_WORK })[rev] ?? [],
@@ -730,7 +776,7 @@ function runFixture(fixture: RunFixture = {}): {
     out: line => out.push(line),
     err: line => err.push(line),
   };
-  return { deps, gitCalls, out, err, ghFor, ghWrites: writes, local, renamedCallers, sweep, clearMerge, clearTaskMerge, releaseRefusal, catchUp, shareCalls, enqueued };
+  return { deps, gitCalls, out, err, ghFor, ghWrites: writes, local, renamedCallers, sweep, clearMerge, clearTaskMerge, pullTask, releaseRefusal, catchUp, shareCalls, enqueued };
 }
 
 const ARGS: MergeArgs = { dir: 'C:/repo', head: BRANCH, timeoutMin: 10, intervalS: 60, noteFile: null, approved: null, release: null };
@@ -1249,11 +1295,35 @@ test('--note-file opens the body of the pull request it opens, and a missing not
   const gate: GateDeps = { ...deps.gate, readText: path => (path === 'C:/notes/gap.md' ? '## Gap\nmacOS unchecked\n' : null) };
   assert.equal(await runMerge({ ...ARGS, noteFile: 'C:/notes/gap.md' }, { ...deps, gate }), 0);
   const opened = ghWrites.find(args => args[1] === `repos/${REPO}/pulls`);
-  assert.ok(opened?.includes('body=## Gap\nmacOS unchecked\n\n## Commits\n- cli: a\n- docs: b\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)'));
+  assert.ok(opened?.includes('body=## Gap\nmacOS unchecked\n\nCloses #9\n\n## Commits\n- cli: a\n- docs: b\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)'));
 
   const missing = runFixture();
   await assert.rejects(runMerge({ ...ARGS, noteFile: 'C:/notes/none.md' }, missing.deps), /--note-file C:\/notes\/none\.md: no such file/);
   assert.equal(missing.ghFor.mock.callCount(), 0);
+});
+
+test("a ship's pull request takes its issue's title, a Closes line and the repo's labels of its task; the release one is never dressed (T4796)", async () => {
+  const { deps, ghWrites, err, pullTask } = runFixture({ repoLabels: ['P1', 'task', 'area:cli', 'bug'] });
+  assert.equal(await runMerge(ARGS, deps), 0, err.join('\n'));
+  assert.deepEqual(pullTask.mock.calls.map(call => call.arguments), [[BRANCH]]);
+  const opened = ghWrites.find(args => args[1] === `repos/${REPO}/pulls`);
+  assert.ok(opened?.includes('title=T1: Ship titles'), opened?.join(' '));
+  assert.ok(opened?.some(arg => arg.startsWith('body=Closes #9\n\n## Commits\n')), opened?.join(' '));
+  // The issue's p3 is the task's p1 now; bug is not this task's type.
+  assert.deepEqual(ghWrites.find(args => args[1] === `repos/${REPO}/issues/3/labels`)?.slice(4), ['-f', 'labels[]=P1', '-f', 'labels[]=task', '-f', 'labels[]=area:cli']);
+
+  const release = runFixture({ release: {}, repoLabels: ['P1'] });
+  assert.equal(await runMerge(RELEASE_ARGS, release.deps), 0, release.err.join('\n'));
+  assert.equal(release.pullTask.mock.callCount(), 0);
+  assert.ok(!release.ghWrites.some(args => (args[1] ?? '').endsWith('/labels')));
+});
+
+test('a branch whose task links no issue opens no pull request and says how to link one (T4796)', async () => {
+  const { deps, err, ghWrites } = runFixture({ task: { ...TASK, ref: null } });
+  assert.equal(await runMerge(ARGS, deps), 1);
+  assert.equal(err.length, 1);
+  assert.match(err[0] ?? '', /^REFUSED T1 links no GitHub issue, so its pull request would close none: open its issue, then teamrig update T1 --ref gh:/);
+  assert.deepEqual(ghWrites, []);
 });
 
 const FLAKY: RequiredChecks = { names: ['gates', 'test'], summary: null, flaky: ['test'], conditional: [] };
