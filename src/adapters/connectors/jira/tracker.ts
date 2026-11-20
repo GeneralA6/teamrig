@@ -311,6 +311,11 @@ export class JiraTracker implements Tracker {
     return { kind: 'read', comments: oldestFirst(comments.flatMap((value: unknown) => readComment(value, since) ?? [])) };
   }
 
+  /** A Jira label holds no space, so each run of white space in a name is held as one hyphen: `status:in progress` as `status:in-progress`. */
+  labelName(label: string): string {
+    return label.replace(/\s+/gu, '-');
+  }
+
   /** A Jira label is not made ahead: it exists once an issue carries it. So any name Jira can hold is found, with no request. */
   labelExists(repo: string, label: string): Promise<HostLabel> {
     const problem = parseProject(repo) === undefined ? projectProblem(repo) : labelProblem(label);

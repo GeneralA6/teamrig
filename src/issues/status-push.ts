@@ -1,7 +1,7 @@
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES, GITHUB_SOURCE, type TaskStatus } from '../register/model.ts';
 import { DESIGN_LABEL } from './design-label.ts';
-import { targetText, type CloseReason, type IssueTarget, type LabelSpec } from './host.ts';
+import { targetText, type CloseReason, type IssueTarget, type LabelNaming, type LabelSpec } from './host.ts';
 import type { HostIssue } from './issue.ts';
 import { parseRef } from './ref.ts';
 
@@ -324,7 +324,9 @@ export const SESSION_PUSH: PushLimits = { writesPerRun: PUSH_WRITES_PER_RUN, clo
  * is assigned (assigneeOf); without, the plan assigns nobody. While `who`'s viewer is unread, the plan says where it
  * would count (wantsViewer), for the caller to read it and plan again. A login `who` refuses is never planned, so it takes none
  * of the run's writes and the changes behind it go out (T4581). A number the list left out that is in `openPulls`, the
- * repository's open pull requests, is named as one, not as an issue gone from the list.
+ * repository's open pull requests, is named as one, not as an issue gone from the list. A status label is planned
+ * under the name the tracker holds it by (`labelName`, the tracker's Labels.labelName), as the list gives it back
+ * under that name: planned by its own name, a label the tracker renames would be added again on every run.
  */
 export function planPush(
   repo: string,
@@ -333,6 +335,7 @@ export function planPush(
   limits: PushLimits = SESSION_PUSH,
   who?: PushAssignees,
   openPulls: ReadonlySet<number> = new Set(),
+  labelName: LabelNaming = (label) => label,
 ): PushPlan {
   const listed = new Map(issues.filter((issue) => issue.repo === repo).map((issue) => [issue.number, issue]));
   const planned: IssueChange[] = [];
@@ -355,7 +358,7 @@ export function planPush(
       }
       continue;
     }
-    const plan = planIssue(target, task, issue, who);
+    const plan = planIssue(target, task, issue, who, labelName);
     if (plan.kind === 'closed-active') {
       closedActive.push({ target, task: task.id, status: task.status, stateReason: issue.stateReason });
     } else if (plan.kind === 'kept-open') {
@@ -374,6 +377,11 @@ export function planPush(
   const { changes, deferred } = withinRun(sendable, limits.writesPerRun);
   const shared = [...held.shared].sort(([a], [b]) => a - b).map(([number, ids]) => ({ target: { repo, number }, tasks: ids }));
   return { repo, changes, deferred, heldCloses, unchanged, closedActive, keptOpen, unlisted, shared, openPulls: pulls, wantsViewer };
+}
+
+/** `goal` with its status label under the name the tracker holds it by. */
+function heldGoal(goal: IssueGoal, labelName: LabelNaming): IssueGoal {
+  return goal.open && goal.label !== undefined ? { ...goal, label: labelName(goal.label) } : goal;
 }
 
 /**
@@ -411,10 +419,11 @@ export type IssuePlan =
  * The push of the one issue `task` holds, planned against `issue` as the host has it now, the same way planPush plans
  * each issue of a repository: with `who` an open issue of a scheduled task with no assignee is assigned (assigneeOf),
  * and without, nobody is. `wantsViewer` says the plan would change once `who`'s unread viewer is known
- * (PushPlan.wantsViewer).
+ * (PushPlan.wantsViewer). Its status label is planned under the name the tracker holds it by (`labelName`), as
+ * `issue` carries it under that name.
  */
-export function planIssue(target: IssueTarget, task: Task, issue: IssueNow, who?: PushAssignees): IssuePlan {
-  const goal = issueGoal(task, { assigned: issue.assignees.length > 0, design: issue.labels.includes(DESIGN_LABEL) });
+export function planIssue(target: IssueTarget, task: Task, issue: IssueNow, who?: PushAssignees, labelName: LabelNaming = (label) => label): IssuePlan {
+  const goal = heldGoal(issueGoal(task, { assigned: issue.assignees.length > 0, design: issue.labels.includes(DESIGN_LABEL) }), labelName);
   if (issue.state === 'closed' && goal.open) {
     return { kind: 'closed-active' };
   }
@@ -434,8 +443,8 @@ export function planIssue(target: IssueTarget, task: Task, issue: IssueNow, who?
  * (issues/reply.ts): its change alone, or nothing to send, with the issue's `wantsViewer`, so planAssigned picks its
  * assignee as it does for the repository push and applyPush sends it. A closed issue of an active task sends nothing.
  */
-export function issuePushPlan(target: IssueTarget, task: Task, issue: IssueNow, who: PushAssignees): PushPlan {
-  const plan = planIssue(target, task, issue, who);
+export function issuePushPlan(target: IssueTarget, task: Task, issue: IssueNow, who: PushAssignees, labelName?: LabelNaming): PushPlan {
+  const plan = planIssue(target, task, issue, who, labelName);
   const none = { repo: target.repo, changes: [], deferred: [], heldCloses: [], unchanged: 0, closedActive: [], keptOpen: [], unlisted: [], shared: [], openPulls: [] };
   if (plan.kind === 'closed-active') {
     return { ...none, wantsViewer: false };

@@ -1,6 +1,6 @@
-import { targetText, type CloseReason, type HostAssignee, type HostComments, type HostEnd, type HostIssueId, type HostIssueLabels, type HostJobLog, type HostLabel, type HostLabelFile, type HostLinks, type HostList, type HostOpen, type HostPulls, type HostReach, type HostThread, type HostUse, type HostViewer, type HostWatch, type IssueDraft, type IssueHost, type IssueTarget, type LabelSpec, type WatchMarks } from '../issues/host.ts';
+import { targetText, type CloseReason, type HostAssignee, type HostComments, type HostEnd, type HostIssueId, type HostIssueLabels, type HostJobLog, type HostLabel, type HostLabelFile, type HostLinks, type HostList, type HostOpen, type HostPulls, type HostReach, type HostThread, type HostUse, type HostViewer, type HostWatch, type IssueDraft, type IssueHost, type IssueTarget, type LabelNaming, type LabelSpec, type WatchMarks } from '../issues/host.ts';
 import type { FieldValue, HostField, HostFieldRead, IssueFields } from '../issues/fields.ts';
-import type { IssueThread, LinkedIssue } from '../issues/issue.ts';
+import type { HostIssue, IssueThread, LinkedIssue } from '../issues/issue.ts';
 import type { HostPost, HostPosts } from '../issues/post.ts';
 import type { HostPull } from '../issues/pull.ts';
 
@@ -30,7 +30,7 @@ export type HostCall =
   | { readonly kind: 'type'; readonly target: IssueTarget; readonly type: string };
 
 /**
- * An issue host that reaches nothing and holds no issue: a list is empty, a pull request read gives what a test set,
+ * An issue host that reaches nothing: a list gives the issues a test gave it, none until then, a pull request read gives what a test set,
  * each write is recorded, and ends done unless a test set it to fail; opened issues are numbered from 1. Its
  * repositories have the labels a test gave it, and every issue a test did not make missing, with the id 1000 + its
  * number; its links read gives the issues a test gave it, by repository. It is reached as `<owner>: writes as the
@@ -49,7 +49,10 @@ export class FakeIssueHost implements IssueHost {
   private labelCreateEnd: HostEnd = { kind: 'done' };
   private readonly removeEnds = new Map<string, HostEnd>();
   private labelReadFailure: string | undefined;
+  private listed: readonly HostIssue[] = [];
   private readonly labels = new Set<string>();
+  /** How it names a label; as it is, until a test says otherwise. */
+  private naming: LabelNaming = (label) => label;
   private readonly labelFiles = new Map<string, HostLabelFile>();
   /** The repositories whose label file was read, in order. */
   readonly labelFileReads: string[] = [];
@@ -151,6 +154,12 @@ export class FakeIssueHost implements IssueHost {
   /** From now on, every repository has these labels. */
   hasLabels(...labels: string[]): this {
     labels.forEach((label) => this.labels.add(label));
+    return this;
+  }
+
+  /** From now on, it holds each label under the name `naming` gives it, as a tracker whose labels take fewer names does. */
+  namesLabels(naming: LabelNaming): this {
+    this.naming = naming;
     return this;
   }
 
@@ -256,8 +265,14 @@ export class FakeIssueHost implements IssueHost {
     );
   }
 
-  list(): Promise<HostList> {
-    return Promise.resolve({ kind: 'listed', issues: [], notes: [] });
+  /** From now on, a list gives those of `issues` that are the asked repository's. */
+  lists(...issues: HostIssue[]): this {
+    this.listed = issues;
+    return this;
+  }
+
+  list(repo: string): Promise<HostList> {
+    return Promise.resolve({ kind: 'listed', issues: this.listed.filter((issue) => issue.repo === repo), notes: [] });
   }
 
   /** From now on, a pull request read of `repo` gives the open ones of `pulls`, and those changed at or after its time. */
@@ -359,6 +374,10 @@ export class FakeIssueHost implements IssueHost {
     return Promise.resolve(this.threadRead ?? { kind: 'read', thread: this.threads.get(target.number) ?? BLANK_THREAD });
   }
 
+  labelName(label: string): string {
+    return this.naming(label);
+  }
+
   labelExists(_repo: string, label: string): Promise<HostLabel> {
     if (this.labelReadFailure !== undefined) {
       return Promise.resolve({ kind: 'failed', reason: this.labelReadFailure });
@@ -443,7 +462,7 @@ export class FakeIssueHost implements IssueHost {
     return Promise.resolve(this.unassignEnd);
   }
 
-  /** Its issues have no comments, as its list holds none. */
+  /** Its issues have no new comments. */
   newComments(_target: IssueTarget, _since: number): Promise<HostComments> {
     return Promise.resolve({ kind: 'read', comments: [] });
   }

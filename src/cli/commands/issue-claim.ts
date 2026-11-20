@@ -103,14 +103,14 @@ export async function recordClaims(runtime: CliRuntime, kit: Kit, config: KitCon
     claims.push(...plan.kept);
     let held = false;
     for (const claim of plan.made) {
-      if (!spend(claim, labelsOf(claim), STATUS_LABELS.open)) {
+      if (!spend(claim, labelsOf(claim), run.host.labelName(STATUS_LABELS.open))) {
         held = true;
       } else if (await makeClaim(run, claim, labelsOf(claim), say)) {
         claims.push(claim);
       }
     }
     for (const claim of plan.expired) {
-      if (!spend(claim, labelsOf(claim), STATUS_LABELS.claimed) || !(await endClaim(run, claim, labelsOf(claim), say))) {
+      if (!spend(claim, labelsOf(claim), run.host.labelName(STATUS_LABELS.claimed)) || !(await endClaim(run, claim, labelsOf(claim), say))) {
         claims.push(claim);
       }
     }
@@ -185,9 +185,13 @@ async function endClaim(via: ClaimVia, claim: Claim, labels: readonly string[], 
   return true;
 }
 
-/** Swaps `from` for `to` only on an issue showing `from`: one with another status, or none, is the status push's. */
+/**
+ * Swaps `from` for `to` only on an issue showing `from`: one with another status, or none, is the status push's. The
+ * issue's labels are as the tracker holds them, so `from` is looked for under the name it has there (labelIssue names
+ * the two it writes itself).
+ */
 async function swapStatus(via: ClaimVia, target: IssueTarget, labels: readonly string[], swap: { readonly from: string; readonly to: string }, say: (line: string) => void): Promise<void> {
-  if (labels.includes(swap.from)) {
+  if (labels.includes(via.host.labelName(swap.from))) {
     await labelIssue(via.host, via.labelFiles, { target, add: [swap.to], remove: [swap.from] }, say);
   }
 }

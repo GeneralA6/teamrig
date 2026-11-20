@@ -123,8 +123,9 @@ export async function sendReply(host: IssueStore & Comments & Labels & Assignees
     if (planIssue(target, task, reads.issue).kind === 'closed-active') {
       return failed(`${shown} is closed while ${task.id} is ${task.status}: reopen it, or end the task, before replying`);
     }
-    // Assigned as the repository push assigns (T4581): a login the repository may not take is passed over.
-    const planned = await planAssigned(host, target.repo, (who) => issuePushPlan(target, task, reads.issue, who), pushAssignees(logins, VIEWER_UNREAD), () => viewerOf(host, target.repo, say), say);
+    // Assigned as the repository push assigns (T4581): a login the repository may not take is passed over. The status
+    // label is planned under the tracker's name for it, as the repository push plans it.
+    const planned = await planAssigned(host, target.repo, (who) => issuePushPlan(target, task, reads.issue, who, (label) => host.labelName(label)), pushAssignees(logins, VIEWER_UNREAD), () => viewerOf(host, target.repo, say), say);
     if (planned.kind === 'failed') {
       return failed(planned.reason);
     }

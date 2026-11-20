@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { HostPull } from '../../issues/pull.ts';
 import { SESSION_PUSH } from '../../issues/status-push.ts';
-import { FakeIssueHost } from '../../testing/fake-issue-host.ts';
+import { FAKE_VIEWER, FakeIssueHost } from '../../testing/fake-issue-host.ts';
+import { testHostIssue } from '../../testing/host-issue.ts';
 import { codeHostOnly, trackerOnly } from '../../testing/split-hosts.ts';
 import { testTask } from '../../testing/task.ts';
 import { pushRepos, type PushRun } from './issue-push.ts';
@@ -78,5 +79,33 @@ describe('pushRepos (T4619)', () => {
       lines.join('\n'),
     );
     assert.deepEqual(tracker.pullReads, []);
+  });
+});
+
+describe('pushRepos on a tracker that holds a label under another name (T4754)', () => {
+  const hyphens = (label: string): string => label.replace(/\s+/gu, '-');
+
+  /** The lines of a preview push against a tracker listing #9 with `labels`, assigned so that no assign is planned. */
+  async function previewOf(labels: string[]): Promise<string[]> {
+    const tracker = new FakeIssueHost().namesLabels(hyphens).lists(testHostIssue(9, { labels, assignees: [FAKE_VIEWER] }));
+    const lines: string[] = [];
+    await pushRepos(runOn(tracker, new FakeIssueHost()), (line) => lines.push(line));
+    return lines;
+  }
+
+  it('counts an issue showing its status label under that name as unchanged', async () => {
+    const lines = await previewOf(['status:in-progress']);
+    assert.ok(
+      lines.some((line) => line.startsWith('PUSH acme/web: 0 to change, 1 unchanged')),
+      lines.join('\n'),
+    );
+  });
+
+  it('plans the label under that name for an issue without it', async () => {
+    const lines = await previewOf([]);
+    assert.ok(
+      lines.some((line) => line.includes('add status:in-progress')),
+      lines.join('\n'),
+    );
   });
 });

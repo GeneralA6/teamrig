@@ -11,7 +11,7 @@ export function trackerOnly(fake: FakeIssueHost): Tracker {
   return {
     name: fake.name,
     reach: (repo, use) => fake.reach(repo, use),
-    list: () => fake.list(),
+    list: (repo) => fake.list(repo),
     open: (draft) => fake.open(draft),
     editBody: (target, body) => fake.editBody(target, body),
     close: (target, reason, duplicateId) => fake.close(target, reason, duplicateId),
@@ -19,6 +19,7 @@ export function trackerOnly(fake: FakeIssueHost): Tracker {
     thread: (target) => fake.thread(target),
     comment: (target, body) => fake.comment(target, body),
     newComments: (target, since) => fake.newComments(target, since),
+    labelName: (label) => fake.labelName(label),
     labelExists: (repo, label) => fake.labelExists(repo, label),
     createLabel: (repo, label) => fake.createLabel(repo, label),
     addLabels: (target, labels) => fake.addLabels(target, labels),
