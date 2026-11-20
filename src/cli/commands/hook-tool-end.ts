@@ -2,7 +2,7 @@ import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { askedLinesOf } from './hook-asked-lines.ts';
-import { parseJson } from './hook-input.ts';
+import { readHookInput } from './hook-input.ts';
 import { trackRestore } from './hook-restore-track.ts';
 import { recordTabNeed } from './hook-tab-need.ts';
 import { tabSequenceOf } from './hook-tab-status.ts';
@@ -24,15 +24,15 @@ function toolEndOutput(event: string, sequence: string | undefined, lines: strin
  */
 export async function toolEnd(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  if (!isRecord(payload)) {
+  const { payload, event } = await readHookInput(runtime);
+  if (!isRecord(payload) || event === undefined) {
     return EXIT.ok;
   }
   const [sequence, lines] = await Promise.all([
-    tabSequenceOf(runtime, payload).catch(() => undefined),
-    askedLinesOf(runtime, payload).catch(() => undefined),
+    tabSequenceOf(runtime, payload, event).catch(() => undefined),
+    askedLinesOf(runtime, event).catch(() => undefined),
     trackRestore(payload, runtime).catch(() => undefined),
-    recordTabNeed(runtime, payload).catch(() => undefined),
+    recordTabNeed(runtime, payload, event).catch(() => undefined),
   ]);
   const output = toolEndOutput(stringField(payload, 'hook_event_name') ?? 'PostToolUse', sequence, lines);
   if (Object.keys(output).length > 0) {

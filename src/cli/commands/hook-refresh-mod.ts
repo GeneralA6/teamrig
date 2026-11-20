@@ -1,8 +1,7 @@
 import { claudeProjectsDir, findTranscript } from '../../budget/discover.ts';
 import { sessionRefreshOf } from '../../config/refresh.ts';
-import { isNonNegativeInteger, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
+import { isNonNegativeInteger, isRecord, type JsonRecord } from '../../core/guards.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
-import { sessionIdOf } from '../../inbox/inbox.ts';
 import { inBookedMeeting, MeetingSchedule } from '../../meeting/schedule.ts';
 import { inMeeting, MeetingStore } from '../../meeting/state.ts';
 import { decideCompact, decideMidTurn, handoverHashOf, type AskContext, type CompactDecision, type DueFacts } from '../../refresh/decide.ts';
@@ -12,7 +11,7 @@ import { readContextEstimate } from '../../refresh/usage.ts';
 import { contextSourceIfTold, transcriptsIfKept } from '../host.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { hookScopeOf, parseJson, type SessionScope } from './hook-input.ts';
+import { hookScopeOf, readHookInput, writeReply, type HookOrigin, type SessionScope } from './hook-input.ts';
 
 /**
  * What `hook refresh-mid` answers the plugin's mod, one JSON line: the ask to add after the tool's result, or
@@ -66,13 +65,12 @@ export async function inMeetingNow(runtime: CliRuntime, scope: Pick<SessionScope
 }
 
 /** The tab's own transcript: the mod knows its Claude Code session and project, not where Claude Code keeps it. */
-async function transcriptOf(runtime: CliRuntime, payload: JsonRecord): Promise<string | undefined> {
-  const claudeSession = sessionIdOf(payload);
-  if (claudeSession === null) {
+async function transcriptOf(runtime: CliRuntime, origin: HookOrigin): Promise<string | undefined> {
+  if (origin.session === undefined) {
     return undefined;
   }
-  const project = runtime.env[ENV.claudeProjectDir] ?? stringField(payload, 'cwd');
-  return findTranscript(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), project, claudeSession);
+  const project = runtime.env[ENV.claudeProjectDir] ?? origin.cwd;
+  return findTranscript(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), project, origin.session);
 }
 
 function askContextOf(runtime: CliRuntime, scope: SessionScope, store: RefreshStore): AskContext {
@@ -97,12 +95,12 @@ function askContextOf(runtime: CliRuntime, scope: SessionScope, store: RefreshSt
  */
 export async function refreshMid(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  if (!isRecord(payload)) {
+  const { payload, event } = await readHookInput(runtime);
+  if (!isRecord(payload) || event === undefined) {
     return answer(runtime, OFF);
   }
   const tokens = countOf(payload, 'tokens');
-  const scope = tokens === undefined ? undefined : await hookScopeOf(runtime, payload);
+  const scope = tokens === undefined ? undefined : await hookScopeOf(runtime, event);
   if (tokens === undefined || scope === undefined || !scope.config.refresh.enabled) {
     return answer(runtime, OFF);
   }
@@ -115,7 +113,7 @@ export async function refreshMid(args: ParsedArgs, runtime: CliRuntime): Promise
   const first = decideMidTurn(state, context, { tokens, window, meeting, due: undefined });
   const decision =
     first.kind === 'measure'
-      ? decideMidTurn(state, context, { tokens, window, meeting, due: await dueFactsAt(runtime, store, scope.id, await transcriptOf(runtime, payload)) })
+      ? decideMidTurn(state, context, { tokens, window, meeting, due: await dueFactsAt(runtime, store, scope.id, await transcriptOf(runtime, event)) })
       : first;
   switch (decision.kind) {
     case 'ask':
@@ -142,13 +140,13 @@ export async function refreshMid(args: ParsedArgs, runtime: CliRuntime): Promise
  */
 export async function compactCheck(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  if (!isRecord(payload)) {
+  const { payload, event } = await readHookInput(runtime);
+  if (!isRecord(payload) || event === undefined) {
     return answer(runtime, GO);
   }
   const tokens = countOf(payload, 'tokens');
   const window = countOf(payload, 'window');
-  const scope = tokens === undefined || window === undefined ? undefined : await hookScopeOf(runtime, payload);
+  const scope = tokens === undefined || window === undefined ? undefined : await hookScopeOf(runtime, event);
   if (tokens === undefined || window === undefined || scope === undefined) {
     return answer(runtime, GO);
   }
@@ -166,12 +164,12 @@ export async function compactCheck(args: ParsedArgs, runtime: CliRuntime): Promi
  */
 export async function preCompact(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  if (!isRecord(payload) || stringField(payload, 'trigger') !== 'auto') {
+  const { event } = await readHookInput(runtime);
+  if (event === undefined || event.trigger !== 'auto') {
     return EXIT.ok;
   }
-  const transcript = stringField(payload, 'transcript_path');
-  const scope = transcript === undefined ? undefined : await hookScopeOf(runtime, payload);
+  const { transcript } = event;
+  const scope = transcript === undefined ? undefined : await hookScopeOf(runtime, event);
   if (transcript === undefined || scope === undefined) {
     return EXIT.ok;
   }
@@ -181,7 +179,7 @@ export async function preCompact(args: ParsedArgs, runtime: CliRuntime): Promise
   const state = await new RefreshStore(runtime.files, scope.kit.paths).state(scope.id);
   const decision = tokens === undefined ? GO : decideCompact(state, { settings: scope.config.refresh, command: KIT_NAME }, { tokens, window: undefined });
   if (decision.kind === 'skip') {
-    runtime.out.stdout(JSON.stringify({ decision: 'block', reason: decision.reason }));
+    writeReply(runtime, 'compact-start', { verdict: { kind: 'block', reason: decision.reason } });
   }
   return EXIT.ok;
 }

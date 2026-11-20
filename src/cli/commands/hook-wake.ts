@@ -13,7 +13,7 @@ import { LockBusyError } from '../../core/lock.ts';
 import { MeetingStore, phaseOf } from '../../meeting/state.ts';
 import { restartMayAct } from '../../refresh/restart.ts';
 import { RefreshStore } from '../../refresh/store.ts';
-import { seenLinesOf, sessionIdOf, unseenLinesOf } from '../../inbox/inbox.ts';
+import { seenLinesOf, unseenLinesOf } from '../../inbox/inbox.ts';
 import { dayProbeClaimLine, dayProbePath } from '../../restore/day-probe.ts';
 import { DayProbeStore } from '../../restore/day-probe-store.ts';
 import { claudeCredentialsPath, LOGIN_LOCK, loginHoldsDayStart, loginMarkerPath, loginRetryLine, type LoginRetryWhy } from '../../restore/login.ts';
@@ -51,7 +51,7 @@ import { inboxDepsOf } from './inbox.ts';
 import { runIdlePass } from './hook-idle-pass.ts';
 import { runTreeIdlePasses } from './hook-tree-idle-pass.ts';
 import { sessionFoldersOf } from './setup.ts';
-import { parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
+import { readHookInput, sessionTeam, teamSessionOf, type HookOrigin } from './hook-input.ts';
 import { armParkedRestart, parkedHere, rearmDeadRestart, type RearmScope } from './hook-restart.ts';
 import { fileLockOf } from '../file-locks.ts';
 import { dayStartFor } from '../day-schedule.ts';
@@ -122,12 +122,13 @@ export type WakeScope =
   | { readonly kind: 'found'; readonly kit: Kit; readonly config: KitConfig; readonly roster: Roster; readonly id: string; readonly tab: string; readonly from: string }
   | { readonly kind: 'off'; readonly why: string };
 
-export async function wakeScopeOf(runtime: CliRuntime, payload: unknown, needsWake: boolean): Promise<WakeScope> {
-  const tab = sessionIdOf(payload);
-  if (tab === null) {
+/** The scope of the call `origin` names: the hook event's, or the mod's own request; undefined when the input was no JSON record. */
+export async function wakeScopeOf(runtime: CliRuntime, origin: HookOrigin | undefined, needsWake: boolean): Promise<WakeScope> {
+  const tab = origin?.session;
+  if (origin === undefined || tab === undefined) {
     return { kind: 'off', why: 'no session id' };
   }
-  const found = await sessionTeam(payload, runtime);
+  const found = await sessionTeam(origin.cwd, runtime);
   if (found.kind !== 'team') {
     return { kind: 'off', why: 'not in a team' };
   }
@@ -485,8 +486,8 @@ async function decide(
  */
 export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  const scope = await wakeScopeOf(runtime, payload, true);
+  const { event } = await readHookInput(runtime);
+  const scope = await wakeScopeOf(runtime, event, true);
   if (scope.kind === 'off') {
     return answer(runtime, scope);
   }
@@ -500,7 +501,7 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
     return answer(runtime, waitAnswer(scope, null));
   }
   const restarts = new RefreshStore(runtime.files, kit.paths);
-  const rearm: RearmScope = { team: kit.paths.team, id, tab, refresh: { enabled: config.refresh.enabled, autoRestart: autoRestartOf(config, id) }, cwd: isRecord(payload) ? stringField(payload, 'cwd') : undefined };
+  const rearm: RearmScope = { team: kit.paths.team, id, tab, refresh: { enabled: config.refresh.enabled, autoRestart: autoRestartOf(config, id) }, cwd: event?.cwd };
   if (await restartHoldsWake(runtime, restarts, rearm)) {
     return answer(runtime, waitAnswer(scope, runtime.clock.now() + RESTART_RECHECK_MS));
   }
@@ -573,8 +574,8 @@ async function wake(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'foun
  */
 export async function wakeDropped(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  const scope = await wakeScopeOf(runtime, payload, false);
+  const { payload, event } = await readHookInput(runtime);
+  const scope = await wakeScopeOf(runtime, event, false);
   if (scope.kind === 'off') {
     return EXIT.ok;
   }

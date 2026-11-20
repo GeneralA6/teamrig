@@ -1,4 +1,3 @@
-import { isRecord, type JsonRecord } from '../../core/guards.ts';
 import { toJsonlLine } from '../../core/jsonl.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { hookAsksOf } from '../../hooks/permission.ts';
@@ -26,8 +25,8 @@ export interface PromptRefuseDeps {
  * The hook's reply to this event: the answer for its case (an allow for a sanctioned route or a read-only line, else a
  * refusal with its reason), or none when the prompt opens. Each answer is logged to the team's prompt answers.
  */
-async function promptRefuseReplyOf(runtime: CliRuntime, payload: JsonRecord, event: HookEvent, deps: PromptRefuseDeps): Promise<HookReply | undefined> {
-  const found = await sessionTeam(payload, runtime);
+async function promptRefuseReplyOf(runtime: CliRuntime, event: HookEvent, deps: PromptRefuseDeps): Promise<HookReply | undefined> {
+  const found = await sessionTeam(event.cwd, runtime);
   if (found.kind !== 'team') {
     return undefined;
   }
@@ -60,8 +59,8 @@ async function promptRefuseReplyOf(runtime: CliRuntime, payload: JsonRecord, eve
 export function promptRefuse(deps: PromptRefuseDeps): (args: ParsedArgs, runtime: CliRuntime) => Promise<ExitCode> {
   return async (args, runtime) => {
     noPositionals(args);
-    const { payload, event } = await readHookInput(runtime);
-    const reply = isRecord(payload) && event !== undefined ? await promptRefuseReplyOf(runtime, payload, event, deps).catch(() => undefined) : undefined;
+    const { event } = await readHookInput(runtime);
+    const reply = event === undefined ? undefined : await promptRefuseReplyOf(runtime, event, deps).catch(() => undefined);
     writeReply(runtime, 'permission-prompt', reply);
     return EXIT.ok;
   };

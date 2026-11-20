@@ -8,7 +8,7 @@ import { MeetingSchedule, type ScheduledMeeting } from '../../meeting/schedule.t
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import type { Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { parseJson } from './hook-input.ts';
+import { readHookInput } from './hook-input.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { wakeScopeOf } from './hook-wake.ts';
 import { fileLockOf } from '../file-locks.ts';
@@ -79,7 +79,7 @@ async function tellLead(runtime: CliRuntime, kit: Kit, config: KitConfig, from: 
  */
 export async function meetingDue(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const scope = await wakeScopeOf(runtime, parseJson(await runtime.readStdin()), false);
+  const scope = await wakeScopeOf(runtime, (await readHookInput(runtime)).event, false);
   if (scope.kind === 'off') {
     return answer(runtime, scope);
   }
