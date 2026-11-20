@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import { APP, CliHarness, SKILLS_DIR, TEAM, TEAM_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { holdFileLock } from '../testing/held-file-lock.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import { SUB_TEAMS, teamConfigOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 import { UNOWNED_FORGET_AFTER_MS } from './unowned-notices.ts';
@@ -49,6 +50,21 @@ describe('the warnings no session owns go to the lead (T951)', () => {
       false,
       alpha.stdout.join('\n'),
     );
+  });
+
+  it('weighs no instruction file on a host whose folders it does not know, and goes on', async () => {
+    const kit = new CliHarness({ ...TEAM, contextFiles: { maxClaudeMdChars: BUDGET } });
+    await kit.holdSecretDeny();
+    await kit.files.write(join(APP, 'CLAUDE.md'), 'x'.repeat(BUDGET + 1));
+    for (const argv of [['check', '--all'], ['doctor']]) {
+      const result = await kit.run(argv, { ...AS_ALPHA, host: NO_PATHS_HOST });
+      assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+      assert.equal(
+        result.stdout.some((line) => line.includes('context-size')),
+        false,
+        `${argv.join(' ')}:\n${result.stdout.join('\n')}`,
+      );
+    }
   });
 
   it("moves a skill's flags out of SKILLS into the lead's UNOWNED when its owner is no session on the team", async () => {

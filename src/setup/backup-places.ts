@@ -2,8 +2,9 @@ import { basename, dirname, join, relative, sep } from 'node:path';
 import type { Files } from '../core/files.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import { pathKey } from '../core/paths.ts';
-import { CLAUDE_MD_FILES, claudeMemoryDir, foldersUp } from '../doctor/context-files.ts';
-import { NESTED_FOLDERS_MAX, nestedClaudeMd } from '../rules/places.ts';
+import { claudeProjectSlug } from '../budget/discover.ts';
+import { foldersUp } from '../doctor/context-files.ts';
+import { NESTED_FOLDERS_MAX, nestedInstructions } from '../rules/places.ts';
 
 /** The parts of a Claude Code setup, each kept under `files/<kind>/` in a setup backup. */
 export const SETUP_KINDS = ['user', 'project', 'parents', 'memory', 'team-skills'] as const;
@@ -18,6 +19,21 @@ export interface SetupLocations {
    * setup scan reads and a slimming parks skills from. Undefined without a team or with the default folder.
    */
   readonly teamSkills: string | undefined;
+}
+
+/**
+ * The instruction files of a folder, as path parts below it. A backup names the host's files itself and not through the
+ * run's host: a restore writes back to the folders its manifest recorded, whichever host the restoring run has.
+ */
+const INSTRUCTION_FILES: readonly (readonly string[])[] = [['CLAUDE.md'], ['CLAUDE.local.md'], ['.claude', 'CLAUDE.md']];
+
+function instructionsIn(folder: string): string[] {
+  return INSTRUCTION_FILES.map((parts) => join(folder, ...parts));
+}
+
+/** The memory folder of the project in `project`, in the host's own folder `claudeDir`. */
+export function setupMemoryFolder(claudeDir: string, project: string): string {
+  return join(claudeDir, 'projects', claudeProjectSlug(project), 'memory');
 }
 
 /** The folder beside a skills folder that a slimming parks its unused skills in. */
@@ -63,7 +79,7 @@ export interface PlacePorts {
 const USER_FILES: readonly (readonly string[])[] = [['CLAUDE.md'], ['settings.json'], ['settings.local.json']];
 const USER_FOLDERS: readonly (readonly string[])[] = ['rules', 'skills', PARKED_SKILLS, 'agents', 'commands', 'output-styles'].map((name) => [name]);
 /** In the project folder. */
-const PROJECT_FILES: readonly (readonly string[])[] = [...CLAUDE_MD_FILES, ['.claude', 'settings.json'], ['.claude', 'settings.local.json']];
+const PROJECT_FILES: readonly (readonly string[])[] = [...INSTRUCTION_FILES, ['.claude', 'settings.json'], ['.claude', 'settings.local.json']];
 const PROJECT_FOLDERS: readonly (readonly string[])[] = ['rules', 'skills', PARKED_SKILLS, 'agents', 'commands'].map((name) => ['.claude', name]);
 
 /** Folders a walk never enters: what they hold is not setup, and can be large. */
@@ -148,21 +164,20 @@ export async function findSetupPlaces(ports: PlacePorts, at: SetupLocations): Pr
 
   await named('user', at.claudeDir, USER_FILES, USER_FOLDERS);
   await named('project', at.project, PROJECT_FILES, PROJECT_FOLDERS);
-  const nested = await nestedClaudeMd(ports.files, ports.probe, at.project);
+  const nested = await nestedInstructions(ports.files, ports.probe, at.project, instructionsIn);
   nested.paths.forEach((path) => add('project', at.project, 'files/project', path));
   if (nested.capped) {
     skipped.push({ path: at.project, why: `CLAUDE.md looked for in the first ${NESTED_FOLDERS_MAX} folders below it only` });
   }
   const parents = foldersUp(at.project).slice(1);
   for (const [index, folder] of parents.entries()) {
-    for (const parts of CLAUDE_MD_FILES) {
-      const path = join(folder, ...parts);
+    for (const path of instructionsIn(folder)) {
       if ((await ports.probe.kind(path)) === 'file') {
         add('parents', folder, `files/parents/${index + 1}`, path);
       }
     }
   }
-  await named('memory', claudeMemoryDir(at.claudeDir, at.project), [], [[]]);
+  await named('memory', setupMemoryFolder(at.claudeDir, at.project), [], [[]]);
   if (at.teamSkills !== undefined) {
     await named('team-skills', dirname(at.teamSkills), [], teamSkillsFolders(at.teamSkills).map((name) => [name]));
   }
@@ -195,6 +210,6 @@ export function sourceOfStored(at: SetupLocations, stored: string): string | und
     const kept = teamSkills !== undefined && folder !== undefined && teamSkillsFolders(teamSkills).includes(folder);
     return kept && safeParts(rest) ? join(dirname(teamSkills), ...rest) : undefined;
   }
-  const root = kind === 'user' ? at.claudeDir : kind === 'project' ? at.project : kind === 'memory' ? claudeMemoryDir(at.claudeDir, at.project) : undefined;
+  const root = kind === 'user' ? at.claudeDir : kind === 'project' ? at.project : kind === 'memory' ? setupMemoryFolder(at.claudeDir, at.project) : undefined;
   return root !== undefined && safeParts(rest) ? join(root, ...rest) : undefined;
 }
