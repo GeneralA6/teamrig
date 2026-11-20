@@ -96,6 +96,7 @@ export {
   type HookNoteEntry,
   type HookReply,
   type HookVerdict,
+  type HostPaths,
   type HostPorts,
   type InputEntry,
   type InputOrigin,

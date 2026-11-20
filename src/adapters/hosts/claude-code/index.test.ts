@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { API_VERSION, apiVersionNotice, featuresOf, hostAdapterProblems, hostDeclarationProblems, isUnsupported } from '../../../plugin-api/index.ts';
 import { hostDeps } from '../../../testing/adapter-deps.ts';
 import { declaration } from './declaration.ts';
@@ -34,12 +35,18 @@ describe('the Claude Code adapter', () => {
     assert.equal(adapter.declaration, declaration);
     assert.deepEqual(hostAdapterProblems(adapter), []);
     const ports = adapter.create(hostDeps());
-    assert.deepEqual(Object.keys(ports), ['hooks', 'toolCall', 'transcripts', 'usage', 'statusLine']);
+    assert.deepEqual(Object.keys(ports), ['hooks', 'toolCall', 'transcripts', 'usage', 'statusLine', 'paths']);
     assert.equal(isUnsupported(ports.hooks), false);
     assert.equal(isUnsupported(ports.toolCall), false);
     assert.equal(ports.transcripts, transcriptReader);
     assert.equal(ports.usage, usageMeter);
     assert.equal(ports.statusLine, statusLine);
+    assert.equal(isUnsupported(ports.paths), false);
+  });
+
+  it('finds its own folder in the environment it was built with', () => {
+    const moved = adapter.create(hostDeps({ env: { CLAUDE_CONFIG_DIR: join('/', 'cfg') } })).paths;
+    assert.equal(!isUnsupported(moved) && moved.home(join('/', 'people', 'sam')), join('/', 'cfg'));
   });
 
   it('reads a hook call for the platform it was built on', () => {

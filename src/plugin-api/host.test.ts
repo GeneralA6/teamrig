@@ -32,6 +32,7 @@ describe('defineHost', () => {
         transcripts: unsupported('no session log'),
         usage: unsupported('no call is priced'),
         statusLine: unsupported('no status line is drawn'),
+        paths: unsupported('no folder is known'),
       }),
     });
     assert.equal(adapter.declaration, data);
@@ -41,6 +42,7 @@ describe('defineHost', () => {
       transcripts: { kind: 'unsupported', notice: 'no session log' },
       usage: { kind: 'unsupported', notice: 'no call is priced' },
       statusLine: { kind: 'unsupported', notice: 'no status line is drawn' },
+      paths: { kind: 'unsupported', notice: 'no folder is known' },
     });
     assert.equal(isHostAdapter(adapter), true);
   });
