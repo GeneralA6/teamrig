@@ -520,7 +520,7 @@ function withMergeQueue(rest: Gh, enqueued: string[][]): Gh {
     }
     const merged = reads++ > 0;
     return JSON.stringify({
-      data: { repository: { pullRequest: { id: 'PR_node3', merged, mergeCommit: merged ? { oid: QUEUED } : null, mergeQueueEntry: null, timelineItems: { nodes: [] } } } },
+      data: { repository: { pullRequest: { id: 'PR_node3', headRefOid: SHA, merged, mergeCommit: merged ? { oid: QUEUED } : null, mergeQueueEntry: null, timelineItems: { nodes: [] } } } },
     });
   };
 }

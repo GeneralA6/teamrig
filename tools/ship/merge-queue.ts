@@ -8,8 +8,10 @@ import type { PullRequest } from './pulls.ts';
  * tests each group on main's newest tip and lands it itself, so a head main moved past is no stop here (`behind` is
  * null) and nothing lands from this side: the checked head is enqueued, pinned to the approved sha
  * (`expectedHeadOid`, as the direct merge's `sha=`), then the pull request is polled until it merged or left the
- * queue. A pull request already queued (a merge run again after a timeout) is waited on, not enqueued twice. There is
- * no fallback to the direct merge call: the ruleset's queue is the only route onto main.
+ * queue. A pull request already queued (a merge run again after a timeout) is waited on, not enqueued twice. Each read
+ * checks the pull request's head: one queued or merged at a head other than the approved sha is refused, never waited
+ * on or reported merged (security C1, T4681). There is no fallback to the direct merge call: the ruleset's queue is
+ * the only route onto main.
  */
 
 /** The removal of a pull request from the queue GitHub's timeline last shows, and why. */
@@ -22,6 +24,8 @@ interface Removal {
 export interface QueueRead {
   /** The pull request's GraphQL node id, which the enqueue call takes. */
   id: string;
+  /** The head commit the pull request is at: the one queued, or merged. */
+  headRefOid: string;
   merged: boolean;
   /** The commit main got for it once merged; null before. */
   mergeCommit: string | null;
@@ -33,7 +37,7 @@ export interface QueueRead {
 
 const READ_QUERY = [
   'query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){',
-  'id merged mergeCommit{oid} mergeQueueEntry{state position}',
+  'id headRefOid merged mergeCommit{oid} mergeQueueEntry{state position}',
   'timelineItems(last:1,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{... on RemovedFromMergeQueueEvent{id reason}}}',
   '}}}',
 ].join(' ');
@@ -53,6 +57,7 @@ export function parseQueueRead(json: string): QueueRead {
   const last = Array.isArray(nodes) ? nodes.filter(isRecord).at(-1) : undefined;
   return {
     id: stringAt(pull, 'id', WHAT),
+    headRefOid: stringAt(pull, 'headRefOid', WHAT),
     merged: booleanAt(pull, 'merged', WHAT),
     mergeCommit: isRecord(commit) ? stringAt(commit, 'oid', 'merge commit') : null,
     entry: isRecord(entry) ? { state: stringAt(entry, 'state', 'queue entry'), position: numberAt(entry, 'position', 'queue entry') } : null,
@@ -93,6 +98,16 @@ export function queueLanding(gh: Gh, main: MainBranch, waiter: Waiter, polling: 
       const read = (): QueueRead =>
         parseQueueRead(gh(['api', 'graphql', '-f', `query=${READ_QUERY}`, '-f', `owner=${owner}`, '-f', `name=${name}`, '-F', `number=${pull.number}`]));
       const refused = (reason: string): MergeResult => ({ kind: 'refused', pull, reason });
+      // Someone else may push and enqueue a newer head while this run waits: only the approved one is waited on or merged.
+      const otherHead = (now: QueueRead): MergeResult | null => {
+        if (now.headRefOid === request.sha || (!now.merged && now.entry === null)) return null;
+        const at = `at ${now.headRefOid.slice(0, 7)}, not the approved ${request.sha.slice(0, 7)}`;
+        return refused(
+          now.merged
+            ? `#${pull.number} merged ${at}: nobody approved that head through this merge, so check ${pull.url} and ${request.base}`
+            : `#${pull.number} is in the merge queue ${at}: take it out of the queue, or ask approval of ${now.headRefOid.slice(0, 7)} naming it and run merge again`,
+        );
+      };
 
       let first: QueueRead;
       try {
@@ -100,6 +115,8 @@ export function queueLanding(gh: Gh, main: MainBranch, waiter: Waiter, polling: 
       } catch (error) {
         return refused(`could not read #${pull.number} in the merge queue: ${messageOf(error)}`);
       }
+      const firstOther = otherHead(first);
+      if (firstOther !== null) return firstOther;
       if (first.merged) return landedOn(main, pull, request, first);
       // A removal from an earlier time in the queue is not why this one left it.
       const before = first.removed?.id ?? null;
@@ -114,6 +131,8 @@ export function queueLanding(gh: Gh, main: MainBranch, waiter: Waiter, polling: 
             log(`reading #${pull.number} after the enqueue call failed: ${messageOf(error)}`);
           }
           if (again === null || (again.entry === null && !again.merged)) return refused(`GitHub did not enqueue #${pull.number}: ${failure}`);
+          const againOther = otherHead(again);
+          if (againOther !== null) return againOther;
           log(`the enqueue call failed (${failure}), but #${pull.number} is in the merge queue: waiting on it`);
         } else log(`enqueued #${pull.number} at ${request.sha.slice(0, 7)} in the merge queue`);
       } else log(`#${pull.number} is already in the merge queue (${placeOf(first.entry)}): waiting on it`);
@@ -133,6 +152,8 @@ export function queueLanding(gh: Gh, main: MainBranch, waiter: Waiter, polling: 
           log(`reading the merge queue got no answer from GitHub (${messageOf(error)}): reading it once more at the next poll`);
           continue;
         }
+        const nowOther = otherHead(now);
+        if (nowOther !== null) return nowOther;
         if (now.merged) return landedOn(main, pull, request, now);
         if (now.entry === null) return ejected(gh, pull, request, now.removed?.id === before ? null : now.removed);
         const place = placeOf(now.entry);

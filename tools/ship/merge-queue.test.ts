@@ -14,10 +14,13 @@ const PULL: PullRequest = { number: 7, url: 'https://github.com/Owner/repo/pull/
 const REQUEST: MergeRequest = { repo: REPO, head: 'dev', base: 'main', sha: SHA, title: 'Merge dev', body: '', lacks: null, opens: true };
 const POLLING = { intervalMs: 30_000, timeoutMs: 10 * MINUTE };
 
-/** One read of the pull request: in the queue at a state and place, merged, or neither. */
+/** A head pushed to the pull request after SHA was approved. */
+const OTHER = 'other99eeee';
+
+/** One read of the pull request: in the queue at a state and place, merged, or neither; at `head`, else SHA. */
 type Round =
-  | { kind: 'queued'; state: string; position: number }
-  | { kind: 'merged'; commit?: string | null }
+  | { kind: 'queued'; state: string; position: number; head?: string }
+  | { kind: 'merged'; commit?: string | null; head?: string }
   | { kind: 'out' }
   | { kind: 'error'; message: string };
 
@@ -62,6 +65,7 @@ function fakeQueue(options: Options): FakeQueue {
           repository: {
             pullRequest: {
               id: 'PR_node7',
+              headRefOid: round.kind === 'out' ? SHA : (round.head ?? SHA),
               merged: round.kind === 'merged',
               mergeCommit: commit === null ? null : { oid: commit },
               mergeQueueEntry: round.kind === 'queued' ? { state: round.state, position: round.position } : null,
@@ -129,6 +133,47 @@ test('queueLanding: waits on a pull request already in the queue, enqueueing it 
   assert.equal(result.kind, 'merged');
   assert.equal(queue.enqueued.length, 0);
   assert.ok(lines.includes('#7 is already in the merge queue (queued at position 2): waiting on it'));
+});
+
+test('queueLanding: a pull request already queued at a head other than the approved one is refused, not waited on (T4681)', async () => {
+  const queue = fakeQueue({ rounds: [{ kind: 'queued', state: 'QUEUED', position: 2, head: OTHER }, { kind: 'merged', head: OTHER }] });
+  const waiter = fakeWaiter();
+  const { result } = await land(queue, fakeMain(), waiter);
+  assert.deepEqual(result, {
+    kind: 'refused',
+    pull: PULL,
+    reason: `#7 is in the merge queue at ${OTHER.slice(0, 7)}, not the approved ${SHA.slice(0, 7)}: take it out of the queue, or ask approval of ${OTHER.slice(0, 7)} naming it and run merge again`,
+  });
+  assert.equal(queue.enqueued.length, 0);
+  assert.deepEqual(waiter.slept, []);
+});
+
+test('queueLanding: an enqueue call with no answer, read again at a head other than the approved one, is refused (T4681)', async () => {
+  const queue = fakeQueue({ rounds: [{ kind: 'out' }, { kind: 'queued', state: 'QUEUED', position: 1, head: OTHER }], enqueue: new Error('gh api graphql: HTTP 502') });
+  const waiter = fakeWaiter();
+  const { result } = await land(queue, fakeMain(), waiter);
+  assert.equal(result.kind === 'refused' ? result.reason : result.kind, `#7 is in the merge queue at ${OTHER.slice(0, 7)}, not the approved ${SHA.slice(0, 7)}: take it out of the queue, or ask approval of ${OTHER.slice(0, 7)} naming it and run merge again`);
+  assert.deepEqual(waiter.slept, []);
+});
+
+test('queueLanding: a head pushed and queued while the run waits is refused at the next poll (T4681)', async () => {
+  const queue = fakeQueue({ rounds: [{ kind: 'out' }, { kind: 'queued', state: 'QUEUED', position: 1 }, { kind: 'queued', state: 'QUEUED', position: 1, head: OTHER }] });
+  const { result } = await land(queue);
+  assert.equal(result.kind === 'refused' ? result.reason : result.kind, `#7 is in the merge queue at ${OTHER.slice(0, 7)}, not the approved ${SHA.slice(0, 7)}: take it out of the queue, or ask approval of ${OTHER.slice(0, 7)} naming it and run merge again`);
+});
+
+test('queueLanding: a merge of a head other than the approved one is refused, never reported merged (T4681)', async () => {
+  const before = await land(fakeQueue({ rounds: [{ kind: 'merged', head: OTHER }] }));
+  const reason = `#7 merged at ${OTHER.slice(0, 7)}, not the approved ${SHA.slice(0, 7)}: nobody approved that head through this merge, so check ${PULL.url} and main`;
+  assert.deepEqual(before.result, { kind: 'refused', pull: PULL, reason });
+  const waited = await land(fakeQueue({ rounds: [{ kind: 'out' }, { kind: 'queued', state: 'QUEUED', position: 1 }, { kind: 'merged', head: OTHER }] }));
+  assert.deepEqual(waited.result, { kind: 'refused', pull: PULL, reason });
+});
+
+test('parseQueueRead: reads the head the pull request is at', () => {
+  const read = parseQueueRead(JSON.stringify({ data: { repository: { pullRequest: { id: 'PR_1', headRefOid: SHA, merged: false, mergeCommit: null, mergeQueueEntry: null, timelineItems: { nodes: [] } } } } }));
+  assert.equal(read.headRefOid, SHA);
+  assert.throws(() => parseQueueRead(JSON.stringify({ data: { repository: { pullRequest: { id: 'PR_1', merged: false, timelineItems: { nodes: [] } } } } })), /headRefOid/);
 });
 
 test('queueLanding: a pull request merged before the run is merged at once', async () => {
