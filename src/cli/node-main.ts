@@ -20,7 +20,7 @@ import { nodeHttpClient } from '../core/http.ts';
 import { nodeProgramRunner } from '../core/program-runner.ts';
 import { GIT_CHECKOUT } from '../exec/binding.ts';
 import { nodeExecSpawner } from '../exec/runner.ts';
-import { nodeGhRunner } from '../github/gh.ts';
+import { CONNECTOR_RUN_MAX_BYTES, CONNECTOR_RUN_TIMEOUT_MS } from '../plugin-api/index.ts';
 import { GIT_PULLS } from '../sync/pull-conflicts.ts';
 import { GIT_MERGE } from '../merge/git.ts';
 import { nodeProcesses } from '../open/processes.ts';
@@ -109,7 +109,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     steps: nodeStepRunner(process.platform),
     memory: nodeHostMemory(process.platform),
     cpu: nodeHostCpu(),
-    gh: nodeGhRunner(),
+    run: nodeProgramRunner(CONNECTOR_RUN_TIMEOUT_MS, CONNECTOR_RUN_MAX_BYTES),
     credentials: systemCredentials(process.platform, nodeProgramRunner(CREDENTIAL_TIMEOUT_MS)),
     http: nodeHttpClient(),
     probe: NODE_PATH_PROBE,

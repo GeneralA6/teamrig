@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
 import { commentNode, FakeGh, ghIssue, labeledEvent, renamedEvent } from '../testing/fake-gh.ts';
-import { GhOutputCapError, isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
+import { ProgramOutputCapError } from '../plugin-api/index.ts';
+import { GH_PROGRAM, isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
 import type { HostIssue } from '../issues/issue.ts';
 import { createdNumber, issuePageArgs, latestIssues, listIssues, parseIssuePage, readCommentsIn, startFailureText, type IssueListRequest } from './issues.ts';
 import { closedPageArgs, openPageArgs } from './queries.ts';
@@ -389,7 +390,7 @@ describe('createdNumber', () => {
 
 describe('startFailureText', () => {
   it('says gh was stopped for its output, not that it could not start', () => {
-    assert.equal(startFailureText(new GhOutputCapError(4096)), 'gh printed more than 4096 bytes, so teamrig stopped it and used none of it');
+    assert.equal(startFailureText(new ProgramOutputCapError(GH_PROGRAM, 4096)), 'gh printed more than 4096 bytes, so teamrig stopped it and used none of it');
     assert.equal(startFailureText(new Error('spawn EPERM')), 'gh could not start: spawn EPERM');
   });
 });
