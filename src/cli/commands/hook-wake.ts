@@ -8,7 +8,7 @@ import { claudeProjectsDir, lastWriteOf } from '../../budget/discover.ts';
 import { autoRestartOf } from '../../config/refresh.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
-import { isRecord, stringField } from '../../core/guards.ts';
+import { stringField } from '../../core/guards.ts';
 import { LockBusyError } from '../../core/lock.ts';
 import { MeetingStore, phaseOf } from '../../meeting/state.ts';
 import { restartMayAct } from '../../refresh/restart.ts';
@@ -51,7 +51,7 @@ import { inboxDepsOf } from './inbox.ts';
 import { runIdlePass } from './hook-idle-pass.ts';
 import { runTreeIdlePasses } from './hook-tree-idle-pass.ts';
 import { sessionFoldersOf } from './setup.ts';
-import { readHookInput, sessionTeam, teamSessionOf, type HookOrigin } from './hook-input.ts';
+import { readHookInput, readModRequest, sessionTeam, teamSessionOf, type HookOrigin } from './hook-input.ts';
 import { armParkedRestart, parkedHere, rearmDeadRestart, type RearmScope } from './hook-restart.ts';
 import { fileLockOf } from '../file-locks.ts';
 import { dayStartFor } from '../day-schedule.ts';
@@ -574,12 +574,13 @@ async function wake(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'foun
  */
 export async function wakeDropped(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  const scope = await wakeScopeOf(runtime, event, false);
+  const request = await readModRequest(runtime);
+  const scope = await wakeScopeOf(runtime, request?.event, false);
   if (scope.kind === 'off') {
     return EXIT.ok;
   }
-  const reason = (isRecord(payload) ? stringField(payload, 'reason') : undefined) ?? 'no reason given';
+  // The request's own reason, the mod's word for why the wake was dropped: never the event's, which is a session end's.
+  const reason = (request === undefined ? undefined : stringField(request.fields, 'reason')) ?? 'no reason given';
   await logWake(runtime.files, scope.kit.paths.wakeLog, { kind: 'dropped', at: runtime.clock.now(), session: scope.id, tab: scope.tab, reason });
   await new WakePrompts(runtime.files, scope.kit.paths.wake).forget(scope.id, scope.tab);
   return EXIT.ok;

@@ -1,4 +1,4 @@
-import { isRecord, stringField } from '../../core/guards.ts';
+import { stringField } from '../../core/guards.ts';
 import { sessionDisplay } from '../../core/ids.ts';
 import { LockBusyError } from '../../core/lock.ts';
 import { showNotice } from '../../meeting/notify.ts';
@@ -12,7 +12,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { fileLockOf } from '../file-locks.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
-import { readHookInput, type HookOrigin } from './hook-input.ts';
+import { readHookInput, readModRequest, type HookOrigin } from './hook-input.ts';
 import { wakeScopeOf, type WakeScope } from './hook-wake.ts';
 
 /** A team tab found for this hook's caller. */
@@ -154,12 +154,12 @@ function focusText(outcome: FocusOutcome, title: string): string {
  */
 export async function needsYouFocus(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  const scope = await scopeOf(runtime, event);
+  const request = await readModRequest(runtime);
+  const scope = await scopeOf(runtime, request?.event);
   if (scope.kind === 'off') {
     return answer(runtime, scope);
   }
-  const target = isRecord(payload) ? stringField(payload, 'session') : undefined;
+  const target = request === undefined ? undefined : stringField(request.fields, 'session');
   if (target === undefined) {
     return answer(runtime, { kind: 'refused', why: 'stdin names no session' });
   }

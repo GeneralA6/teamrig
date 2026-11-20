@@ -4,6 +4,7 @@ import type { ToolUse } from '../../budget/line.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress } from '../../core/address.ts';
+import { isRecord, type JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir, claudeTempDir, ENV } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import { OwnPaths, tasksSearched, TeamFolders, type LeadPaths, type SubTeamPlace } from '../../hooks/lead-boundary.ts';
@@ -25,18 +26,31 @@ export function parseJson(text: string): unknown {
   }
 }
 
-/**
- * One hook call off standard input: the event the host's bridge reads out of it, undefined when it is no hook input
- * at all, beside the parsed input for the readers not yet moved onto the event.
- */
+/** One hook call off standard input: the event the host's bridge reads out of it, undefined when it is no hook input at all. */
 export interface HookInput {
-  readonly payload: unknown;
   readonly event: HookEvent | undefined;
 }
 
 export async function readHookInput(runtime: Pick<CliRuntime, 'readStdin' | 'host' | 'env' | 'platform'>): Promise<HookInput> {
+  return { event: hooksOf(runtime).parse(await runtime.readStdin()) };
+}
+
+/**
+ * One request of the plugin's mod off standard input. The mod writes it as a hook input with fields of its own beside
+ * the host's: `event` is what the host's bridge reads out of it, which says the tab and the folder that ask, and
+ * `fields` the whole record, for the fields the command names itself and no host does.
+ */
+export interface ModRequest {
+  readonly event: HookEvent;
+  readonly fields: JsonRecord;
+}
+
+/** The mod's request on standard input; undefined when it is no JSON record, which every command treats as nothing asked. */
+export async function readModRequest(runtime: Pick<CliRuntime, 'readStdin' | 'host' | 'env' | 'platform'>): Promise<ModRequest | undefined> {
   const raw = await runtime.readStdin();
-  return { payload: parseJson(raw), event: hooksOf(runtime).parse(raw) };
+  const fields = parseJson(raw);
+  const event = hooksOf(runtime).parse(raw);
+  return isRecord(fields) && event !== undefined ? { event, fields } : undefined;
 }
 
 /** Prints what the host reads for a hook's `reply` to the event `on`; nothing when the hook has nothing to say. */

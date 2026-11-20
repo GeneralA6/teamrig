@@ -1,6 +1,6 @@
 import { claudeProjectsDir, findTranscript } from '../../budget/discover.ts';
 import { sessionRefreshOf } from '../../config/refresh.ts';
-import { isNonNegativeInteger, isRecord, type JsonRecord } from '../../core/guards.ts';
+import { isNonNegativeInteger, type JsonRecord } from '../../core/guards.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { inBookedMeeting, MeetingSchedule } from '../../meeting/schedule.ts';
 import { inMeeting, MeetingStore } from '../../meeting/state.ts';
@@ -11,7 +11,7 @@ import { readContextEstimate } from '../../refresh/usage.ts';
 import { contextSourceIfTold, transcriptsIfKept } from '../host.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { hookScopeOf, readHookInput, writeReply, type HookOrigin, type SessionScope } from './hook-input.ts';
+import { hookScopeOf, readHookInput, readModRequest, writeReply, type HookOrigin, type SessionScope } from './hook-input.ts';
 
 /**
  * What `hook refresh-mid` answers the plugin's mod, one JSON line: the ask to add after the tool's result, or
@@ -30,8 +30,8 @@ function answer(runtime: CliRuntime, value: MidTurnAnswer | CompactDecision): Ex
   return EXIT.ok;
 }
 
-function countOf(payload: JsonRecord, key: string): number | undefined {
-  const value = payload[key];
+function countOf(fields: JsonRecord, key: string): number | undefined {
+  const value = fields[key];
   return isNonNegativeInteger(value) ? value : undefined;
 }
 
@@ -95,17 +95,18 @@ function askContextOf(runtime: CliRuntime, scope: SessionScope, store: RefreshSt
  */
 export async function refreshMid(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  if (!isRecord(payload) || event === undefined) {
+  const request = await readModRequest(runtime);
+  if (request === undefined) {
     return answer(runtime, OFF);
   }
-  const tokens = countOf(payload, 'tokens');
+  const { event, fields } = request;
+  const tokens = countOf(fields, 'tokens');
   const scope = tokens === undefined ? undefined : await hookScopeOf(runtime, event);
   if (tokens === undefined || scope === undefined || !scope.config.refresh.enabled) {
     return answer(runtime, OFF);
   }
   // The window Claude Code reports, which tells a large one apart; a mod from before it sends none.
-  const window = countOf(payload, 'window');
+  const window = countOf(fields, 'window');
   const store = new RefreshStore(runtime.files, scope.kit.paths);
   const state = await store.state(scope.id);
   const context = askContextOf(runtime, scope, store);
@@ -140,12 +141,13 @@ export async function refreshMid(args: ParsedArgs, runtime: CliRuntime): Promise
  */
 export async function compactCheck(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  if (!isRecord(payload) || event === undefined) {
+  const request = await readModRequest(runtime);
+  if (request === undefined) {
     return answer(runtime, GO);
   }
-  const tokens = countOf(payload, 'tokens');
-  const window = countOf(payload, 'window');
+  const { event, fields } = request;
+  const tokens = countOf(fields, 'tokens');
+  const window = countOf(fields, 'window');
   const scope = tokens === undefined || window === undefined ? undefined : await hookScopeOf(runtime, event);
   if (tokens === undefined || window === undefined || scope === undefined) {
     return answer(runtime, GO);
