@@ -1,14 +1,47 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync } from 'node:fs';
+import { isRecord } from '../core/guards.ts';
 import { CONNECTOR_FEATURES, HOST_FEATURES, featuresOf, isConnectorFeatureId, isConnectorKind, isHostFeatureId, type FeatureSide } from './registry.ts';
 
 const SIDES: readonly FeatureSide[] = ['host', 'connector'];
 
+interface GroupFile {
+  readonly group: string;
+  /** The ids of the rows the file exports, in the file's order. */
+  readonly ids: readonly string[];
+}
+
+/** What each group's file under `<side>/` exports, read from the folder itself, so a file the registry forgot shows. */
+async function groupFilesOf(side: FeatureSide): Promise<readonly GroupFile[]> {
+  const folder = new URL(`./${side}/`, import.meta.url);
+  const names = readdirSync(folder).filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'));
+  return Promise.all(
+    names.map(async (name) => {
+      const exported: unknown = await import(new URL(name, folder).href);
+      assert.ok(isRecord(exported), name);
+      const tables = Object.values(exported);
+      assert.equal(tables.length, 1, `${side}/${name} exports its group's rows and nothing else`);
+      const [rows] = tables;
+      assert.ok(isRecord(rows), name);
+      return { group: name.slice(0, -'.ts'.length), ids: Object.keys(rows) };
+    }),
+  );
+}
+
 describe('the feature registry', () => {
-  it('holds the rows the host and connector studies seeded', () => {
-    assert.equal(featuresOf('host').length, 49);
-    assert.equal(featuresOf('connector').length, 25);
-  });
+  for (const side of SIDES) {
+    it(`takes every ${side} row from the file named after its group`, async () => {
+      const files = await groupFilesOf(side);
+      const groups = [...new Set(featuresOf(side).map((row) => row.group))];
+      assert.deepEqual(files.map((file) => file.group).sort(), [...groups].sort());
+      for (const file of files) {
+        const registered = featuresOf(side).filter((row) => row.group === file.group).map((row) => row.id);
+        assert.ok(file.ids.length > 0, file.group);
+        assert.deepEqual(file.ids, registered, file.group);
+      }
+    });
+  }
 
   it('names every feature by a dotted lower-case id that no other row has', () => {
     const ids = SIDES.flatMap((side) => featuresOf(side).map((row) => row.id));
