@@ -1,7 +1,7 @@
 import { ENV } from '../../core/home.ts';
 import type { SecretScanner } from '../../core/secrets.ts';
-import { issueRef } from '../../github/map.ts';
-import type { AddIssueAsk } from '../../github/issue-at-add.ts';
+import { issueRef } from '../../sync/map.ts';
+import type { AddIssueAsk } from '../../sync/issue-at-add.ts';
 import { GITHUB_REPOS_HOST, type HostAccess, type IssueDraft, type IssueStore, type Tracker } from '../../issues/host.ts';
 import type { TaskFields } from '../../register/events.ts';
 import type { AddInput, Verdict } from '../../register/policy.ts';
@@ -11,7 +11,7 @@ import { hostsOf } from '../issue-hosts.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { GITHUB_OFF, githubOff } from './issue-sync-auto.ts';
 
-/** The flags of `add` that ask about the new task's issue (github/issue-at-add.ts). */
+/** The flags of `add` that ask about the new task's issue (sync/issue-at-add.ts). */
 export const ADD_ISSUE_FLAGS = ['issue', 'issue-body', 'issue-repo', 'local'] as const;
 
 /** What an add asked about its issue: its issue flags, with the task's own ref, type and priority. */
