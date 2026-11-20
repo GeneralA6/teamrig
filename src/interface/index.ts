@@ -4,6 +4,16 @@
  * built-ins, and `interface/index.test.ts` fails if anything reachable from here imports one. The command
  * (src/cli/commands/read.ts) gathers through the ports and calls these.
  */
+export {
+  configBody,
+  KEPT_NOTE,
+  SETTING_PROBLEM,
+  type ConfigBody,
+  type ConfigInput,
+  type ServedSetting,
+  type ServedValue,
+  type SettingInput,
+} from './config.ts';
 export { type Connector, type ConnectorItem, type ConnectorName } from './connector.ts';
 export { answerOf, DOCUMENTS, isDocumentName, unchangedAnswer, type Answer, type DocumentName, type EnvelopeHead, type UnchangedAnswer } from './envelope.ts';
 export { inboxBody, type InboxBody, type InboxInput, type ServedLine } from './inbox.ts';
