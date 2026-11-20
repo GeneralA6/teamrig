@@ -757,8 +757,9 @@ window has reached 80% [budget.fiveHourWarnPct] or rises fast enough to fill bef
 session stalls until that reset; it is raised once a window, and a plan with no such window never shows it,
 RESET-EXPIRING: a reset grant in [budget.resets] with uses left expires within 14 days, and one not spent by then is
 lost; it is raised once a grant and again after each use, LOG-SIZE: a file of the team's `state` or `inbox` folder
-has reached 3 MiB, near the 4 MiB the task pane reads of a file at once, past which the pane stops reading it; it is
-raised once a file, GH-LATE: a GitHub issue or pull request has waited past its answer target
+has reached 3 MiB, near the 4 MiB the task pane reads of a file at once, past which the pane stops reading it, with
+that file's remedy (compact for the register and the hooks' aged logs, none yet for an inbox); it is raised once a
+file, GH-LATE: a GitHub issue or pull request has waited past its answer target
 (security 4 h, bug, pull request or a comment on an issue a task tracks 24 h, else 72 h) for an answer of ours, by the clocks the
 last writing `teamrig issue sync` kept; one GH-LATE names every late thread, with their count and the oldest three,
 and is raised once, and again only when a newer wait goes late, and from
