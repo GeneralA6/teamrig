@@ -1,7 +1,5 @@
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 
-/** What every PostToolUse hook reads from its payload and writes back: the tool's result and a line for the model. */
-
 /** The tool's result as a record: Claude Code may hand it over as the object or as its JSON text. */
 export function toolResponseOf(value: unknown): JsonRecord | undefined {
   if (typeof value !== 'string') {
@@ -13,12 +11,4 @@ export function toolResponseOf(value: unknown): JsonRecord | undefined {
   } catch {
     return undefined;
   }
-}
-
-/**
- * A PostToolUse hook's stdout that replaces the tool's result, for the model and the transcript alike, with `response`
- * (every key the tool's result has, or Claude Code keeps the original), and the line as context after it.
- */
-export function postToolUseReplace(response: JsonRecord, line: string): string {
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput: response, additionalContext: line } });
 }

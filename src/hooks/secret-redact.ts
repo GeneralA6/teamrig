@@ -1,6 +1,7 @@
 import type { ConfigLoad } from '../config/load.ts';
-import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
+import type { JsonRecord } from '../core/guards.ts';
 import { KIT_NAME } from '../core/home.ts';
+import type { HookEvent } from '../ports/host/index.ts';
 import type { Redaction } from '../secret-guard/redactor.ts';
 
 /**
@@ -9,27 +10,19 @@ import type { Redaction } from '../secret-guard/redactor.ts';
  * register task).
  */
 
-/** The tools whose result shapes the probe saw replaced (T1369); any other tool's result stays as it is until probed. */
-const REDACTED_TOOLS: ReadonlySet<string> = new Set(['Bash', 'PowerShell', 'Read', 'Grep']);
-
-/** A result the redactor scans: the hook payload it came in, the tool that gave it, and the result object. */
+/** A result the redactor scans: the tool that gave it, as its host names it for the incident log, and the result object. */
 export interface RedactableResult {
-  readonly payload: JsonRecord;
   readonly tool: string;
   readonly response: JsonRecord;
 }
 
 /**
- * The result to redact: a probed tool's, and of a Read only a text file's, as an image's or a notebook's is not probed.
- * Only a result object: the replacement must keep its shape, and the probe saw no tool hand its result as text.
+ * The result to redact: the answer of the event's call where its host takes a replacement for it (T1369), since the
+ * replacement must keep the answer's shape; undefined for any other call's, which stays as it is.
  */
-export function redactableResultOf(payload: unknown): RedactableResult | undefined {
-  const tool = isRecord(payload) ? stringField(payload, 'tool_name') : undefined;
-  if (!isRecord(payload) || tool === undefined || !REDACTED_TOOLS.has(tool)) {
-    return undefined;
-  }
-  const response = payload['tool_response'];
-  return !isRecord(response) || (tool === 'Read' && stringField(response, 'type') !== 'text') ? undefined : { payload, tool, response };
+export function redactableResultOf(event: HookEvent): RedactableResult | undefined {
+  const { call } = event;
+  return call?.replaceable === undefined ? undefined : { tool: call.name, response: call.replaceable };
 }
 
 /** What became of one kind's rotation (T1369 R8): the task that has it rotated, or why none was filed. */
