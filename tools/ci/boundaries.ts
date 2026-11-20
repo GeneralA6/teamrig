@@ -35,6 +35,7 @@ const ADAPTERS = 'src/adapters/';
 const COMPOSITION = 'src/composition/';
 const TESTING = 'src/testing/';
 const PLUGIN_API = 'src/plugin-api/index.ts';
+const CONFORMANCE_KIT = 'src/conformance/index.ts';
 const SPEC = /\.test\.ts$/;
 /** A relative specifier after `from`, `import(` or a bare `import`. */
 const RELATIVE_IMPORT = /(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)['"](\.{1,2}\/[^'"]+)['"]/g;
@@ -63,9 +64,12 @@ function coreAllows(file: SourceFile, target: string): boolean {
   return !target.startsWith('src/') || target.startsWith(CORE) || (SPEC.test(file.path) && target.startsWith(TESTING));
 }
 
-/** An adapter sees its own folder and the plugin API's one file; its specs may use the fakes. */
+/**
+ * An adapter sees its own folder and the plugin API's one file; its specs may use the fakes and the conformance kit's
+ * one file, which an adapter's `contracts.test.ts` binds its contracts from.
+ */
 function adapterAllows(file: SourceFile, target: string): boolean {
-  return target.startsWith(adapterFolder(file.path)) || target === PLUGIN_API || (SPEC.test(file.path) && target.startsWith(TESTING));
+  return target.startsWith(adapterFolder(file.path)) || target === PLUGIN_API || (SPEC.test(file.path) && (target.startsWith(TESTING) || target === CONFORMANCE_KIT));
 }
 
 function importFindings(file: SourceFile): readonly BoundaryFinding[] {

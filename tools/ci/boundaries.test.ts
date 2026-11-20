@@ -60,6 +60,12 @@ describe('boundaryFindings: what an adapter imports', () => {
     assert.deepEqual(found(file('src/adapters/hosts/first/index.ts', "import { hostDeps } from '../../../testing/adapter-deps.ts';")), ['1 adapter-imports src/testing/adapter-deps.ts']);
   });
 
+  it("lets an adapter spec bind its contracts from the conformance kit's one file, and no other adapter file", () => {
+    const kit = "import { bind } from '../../../conformance/index.ts';";
+    assert.deepEqual(found(file('src/adapters/hosts/first/contracts.test.ts', kit, "import { defineContract } from '../../../conformance/contract.ts';")), ['2 adapter-imports src/conformance/contract.ts']);
+    assert.deepEqual(found(file('src/adapters/hosts/first/index.ts', kit)), ['1 adapter-imports src/conformance/index.ts']);
+  });
+
   it('holds a file above the adapter folders to its own folder', () => {
     const shared = file('src/adapters/hosts/shared.ts', "import first from './first/index.ts';", "import second from '../connectors/second/index.ts';");
     assert.deepEqual(found(shared), ['2 adapter-imports src/adapters/connectors/second/index.ts']);
