@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { APP, CliHarness, TEAM, TEAM_HOME, USER_HOME } from '../testing/cli-harness.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import { EXIT } from './runtime.ts';
 
 const SOURCE = 'from the secret guard check [secretGuard]: SECRET-GUARD-OFF';
@@ -24,6 +25,17 @@ describe('check SECRET-GUARD-OFF (T1369)', () => {
       `${SOURCE} secretGuard.writes is allow: a command line or a written file that holds a secret as text runs unasked. ${OWNER_CALL}`,
       `${SOURCE} secretGuard.redact is false: a secret a call prints reaches the session unredacted. ${OWNER_CALL}`,
     ]);
+  });
+
+  it("reads no settings file on a host whose folders teamrig does not know, and still flags the team's own keys", async () => {
+    const kit = new CliHarness({ ...TEAM, secretGuard: { redact: false } });
+    await kit.files.write(USER_SETTINGS, JSON.stringify({ disableAllHooks: true }));
+    const result = await kit.run(['check', '--all'], { env: { TEAMRIG_SESSION: 'lead' }, host: NO_PATHS_HOST });
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    assert.deepEqual(
+      result.stdout.filter((line) => line.includes('the secret guard check')),
+      [`${SOURCE} secretGuard.redact is false: a secret a call prints reaches the session unredacted. ${OWNER_CALL}`],
+    );
   });
 
   it('flags nothing for the defaults, nor for a key that asks the human', async () => {
