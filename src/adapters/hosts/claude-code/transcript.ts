@@ -35,6 +35,7 @@ const KIND_WORDS = {
   reply: '"type":"assistant"',
   compact: '"compact_boundary"',
   'turn-end': '"type":"system"',
+  continued: '"type":"continued-in"',
   'hook-note': '"hook_additional_context"',
   other: undefined,
 } as const satisfies Readonly<Record<EntryKind, string | undefined>>;
@@ -63,7 +64,7 @@ const ORIGIN_NAMES: ReadonlyMap<string, InputOrigin> = new Map<string, InputOrig
 const DAMAGED: UnreadLine = { kind: 'unread', reason: 'damaged' };
 const NOT_AN_OBJECT: UnreadLine = { kind: 'unread', reason: 'not-an-object' };
 
-type Base = Pick<TranscriptEntry, 'at' | 'id' | 'parent' | 'session' | 'thread' | 'meta'>;
+type Base = Pick<TranscriptEntry, 'at' | 'id' | 'parent' | 'session' | 'thread' | 'meta' | 'job'>;
 
 function threadOf(entry: JsonRecord): Base['thread'] {
   const sidechain = entry['isSidechain'];
@@ -71,6 +72,14 @@ function threadOf(entry: JsonRecord): Base['thread'] {
     return 'helper';
   }
   return sidechain === false ? 'main' : undefined;
+}
+
+/**
+ * Claude Code stamps each line of a turn with its `entrypoint`, and a background job's (a daemon job, a session sent
+ * to the background) with `sessionKind: "bg"` too; a line with no `entrypoint` says nothing of where it ran.
+ */
+function jobOf(entry: JsonRecord): Base['job'] {
+  return stringField(entry, 'entrypoint') === undefined ? undefined : stringField(entry, 'sessionKind') === 'bg';
 }
 
 function baseOf(entry: JsonRecord): Base {
@@ -81,6 +90,7 @@ function baseOf(entry: JsonRecord): Base {
     session: stringField(entry, 'sessionId'),
     thread: threadOf(entry),
     meta: entry['isMeta'] === true,
+    job: jobOf(entry),
   };
 }
 
@@ -262,6 +272,9 @@ function systemOf(base: Base, entry: JsonRecord): TranscriptEntry | undefined {
 function markedOf(base: Base, entry: JsonRecord, type: string | undefined): TranscriptEntry | undefined {
   if (type === 'system') {
     return systemOf(base, entry);
+  }
+  if (type === 'continued-in') {
+    return { ...base, kind: 'continued', into: stringField(entry, 'continuedInSessionId') };
   }
   return type === 'attachment' ? hookNoteOf(base, entry) : undefined;
 }

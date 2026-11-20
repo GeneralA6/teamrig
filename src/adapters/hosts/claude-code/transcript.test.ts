@@ -9,8 +9,8 @@ import { transcriptReader } from './transcript.ts';
 const AT = '2026-01-05T10:00:00.000Z';
 const AT_MS = Date.parse(AT);
 
-/** What an entry holds when its line names no id, time, session or thread. */
-const BARE = { at: undefined, id: undefined, parent: undefined, session: undefined, thread: undefined, meta: false } as const;
+/** What an entry holds when its line names no id, time, session or thread, nor where it ran. */
+const BARE = { at: undefined, id: undefined, parent: undefined, session: undefined, thread: undefined, meta: false, job: undefined } as const;
 /** What an input holds beyond its content. */
 const PLAIN_INPUT = { kind: 'input', text: undefined, parts: [], results: [], origin: undefined, turnOrigin: undefined, continuation: false, fromTool: false, background: undefined } as const;
 /** What a reply holds beyond its content. */
@@ -24,6 +24,15 @@ function assistantLine(message: Readonly<Record<string, unknown>>, extra: Readon
   return JSON.stringify({ type: 'assistant', message: { role: 'assistant', ...message }, ...extra });
 }
 
+/** Where a line ran, as its entry says; a line that reads as no entry fails the spec. */
+function jobOf(line: string): boolean | undefined {
+  const entry = transcriptReader.entry(line);
+  if (entry === undefined || entry.kind === 'unread') {
+    return assert.fail(`no entry for ${line}`);
+  }
+  return entry.job;
+}
+
 describe("Claude Code's transcript lines as entries", () => {
   it('reads a typed prompt with its ids, its time, its session and its thread', () => {
     const line = userLine({ parentUuid: 'p-1', isSidechain: false, uuid: 'u-1', timestamp: AT, sessionId: 's-1', origin: { kind: 'human' }, turnOrigin: 'human' });
@@ -35,6 +44,7 @@ describe("Claude Code's transcript lines as entries", () => {
       session: 's-1',
       thread: 'main',
       meta: false,
+      job: undefined,
       text: 'go',
       origin: 'person',
       turnOrigin: 'person',
@@ -236,6 +246,7 @@ describe("Claude Code's transcript lines as entries", () => {
       session: 's-1',
       thread: 'main',
       meta: false,
+      job: false,
       key: '00000000-0000-4000-8000-0000000000e3|',
       model: '<synthetic>',
       usage: { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheWriteUnsplit: 0, cacheRead: 0, output: 0 },
@@ -258,6 +269,24 @@ describe("Claude Code's transcript lines as entries", () => {
     assert.deepEqual(transcriptReader.entry(systemLine(AT)), { ...BARE, at: AT_MS, kind: 'turn-end' });
     assert.equal(transcriptReader.entry(JSON.stringify({ type: 'attachment', subtype: 'turn_duration' }))?.kind, 'other');
     assert.equal(transcriptReader.entry(JSON.stringify({ subtype: 'turn_duration' }))?.kind, 'other');
+  });
+
+  it('says where a line ran by its entrypoint: a background job, a tab, or nothing for a line with none', () => {
+    assert.equal(jobOf(userLine({ entrypoint: 'cli', sessionKind: 'bg' })), true);
+    assert.equal(jobOf(userLine({ entrypoint: 'cli' })), false);
+    assert.equal(jobOf(assistantLine({ model: 'model-x' }, { entrypoint: 'sdk-cli', sessionKind: 'interactive' })), false);
+    // The kind alone names no turn: only a line stamped with where it ran says it.
+    assert.equal(jobOf(userLine({ sessionKind: 'bg' })), undefined);
+    assert.equal(jobOf(JSON.stringify({ type: 'system', subtype: 'turn_duration', entrypoint: 'cli', sessionKind: 'bg' })), true);
+  });
+
+  it('reads the mark that a session carries on in another, with the session it names', () => {
+    const line = JSON.stringify({ type: 'continued-in', timestamp: AT, sessionId: 's-1', continuedInSessionId: 's-2' });
+    assert.deepEqual(transcriptReader.entry(line), { ...BARE, at: AT_MS, session: 's-1', kind: 'continued', into: 's-2' });
+    assert.deepEqual(transcriptReader.entry(JSON.stringify({ type: 'continued-in' })), { ...BARE, kind: 'continued', into: undefined });
+    assert.deepEqual(transcriptReader.entry(JSON.stringify({ type: 'continued-in', continuedInSessionId: 7 })), { ...BARE, kind: 'continued', into: undefined });
+    // A prompt that only mentions the mark stays an input.
+    assert.equal(transcriptReader.entry(userLine({}, 'the "type":"continued-in" record'))?.kind, 'input');
   });
 
   it("reads a hook's note with its texts, and whether it was written at the session's start", () => {
@@ -310,10 +339,11 @@ describe('reading only some kinds of entry', () => {
     reply: replyLine({ id: 'm-1', at: AT, usage: { input: 1 } }),
     compact: compactLine(AT),
     'turn-end': systemLine(AT),
+    continued: JSON.stringify({ type: 'continued-in', timestamp: AT, continuedInSessionId: 's-2' }),
     'hook-note': sessionStartNoteLine(AT, ['note']),
     other: JSON.stringify({ type: 'system', subtype: 'api_error', timestamp: AT }),
   } as const;
-  const kinds = ['input', 'reply', 'compact', 'turn-end', 'hook-note', 'other'] as const;
+  const kinds = ['input', 'reply', 'compact', 'turn-end', 'continued', 'hook-note', 'other'] as const;
 
   it('gives a line of a named kind as it reads without the filter', () => {
     for (const kind of kinds) {
@@ -357,7 +387,7 @@ describe('the recorded session read as entries', () => {
       .filter((line) => line.trim() !== '')
       .map((line, index) => ({ where: `${transcript.file} line ${index + 1}`, line })),
   );
-  const kinds = ['input', 'reply', 'compact', 'turn-end', 'hook-note', 'other'] as const;
+  const kinds = ['input', 'reply', 'compact', 'turn-end', 'continued', 'hook-note', 'other'] as const;
 
   it('reads every line the host wrote: none is damaged, and the session has inputs and replies in both threads', () => {
     assert.equal(recording.transcripts.length >= 2, true, 'the session and a helper were recorded');

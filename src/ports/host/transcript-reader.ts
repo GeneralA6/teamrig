@@ -36,6 +36,11 @@ interface EntryBase {
   readonly thread: EntryThread | undefined;
   /** True for text the host wrote itself, not a person, a peer or a tool. */
   readonly meta: boolean;
+  /**
+   * True when the host wrote the line while the session ran as a background job, false while a person's tab ran it;
+   * undefined when the line does not say.
+   */
+  readonly job: boolean | undefined;
 }
 
 /** Who or what an input came from, as the host marks it; `unknown` for a mark the adapter has no name for. */
@@ -126,6 +131,13 @@ export interface TurnEndEntry extends EntryBase {
   readonly kind: 'turn-end';
 }
 
+/** The host's mark that the session carries on in another one, as a tab's does once it is sent to the background. */
+export interface ContinuedEntry extends EntryBase {
+  readonly kind: 'continued';
+  /** The session it carries on in; undefined when the mark names none. */
+  readonly into: string | undefined;
+}
+
 /** Text a hook added to the session. */
 export interface HookNoteEntry extends EntryBase {
   readonly kind: 'hook-note';
@@ -140,7 +152,7 @@ export interface OtherEntry extends EntryBase {
   readonly type: string | undefined;
 }
 
-export type TranscriptEntry = InputEntry | ReplyEntry | CompactEntry | TurnEndEntry | HookNoteEntry | OtherEntry;
+export type TranscriptEntry = InputEntry | ReplyEntry | CompactEntry | TurnEndEntry | ContinuedEntry | HookNoteEntry | OtherEntry;
 export type EntryKind = TranscriptEntry['kind'];
 
 /** A line that is no entry: damaged or torn text, or JSON that is not an object. It is said, never skipped. */

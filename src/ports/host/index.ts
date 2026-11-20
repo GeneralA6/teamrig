@@ -18,6 +18,7 @@ export {
   type BackgroundMark,
   type CallUsage,
   type CompactEntry,
+  type ContinuedEntry,
   type EntryKind,
   type EntryThread,
   type HookNoteEntry,
