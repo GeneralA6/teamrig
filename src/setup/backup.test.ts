@@ -3,13 +3,12 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { FileBytes } from '../core/file-bytes.ts';
 import { pathKey } from '../core/paths.ts';
-import { claudeMemoryDir } from '../doctor/context-files.ts';
 import { MANIFEST } from '../permissions/trim.ts';
 import { fieldPaths } from '../testing/field-paths.ts';
 import { MemoryFiles, MemoryPathProbe } from '../testing/memory-files.ts';
 import { textFileBytes } from '../testing/text-file-bytes.ts';
 import { BACKUP_FORMAT, manifestText, parseManifest, readManifest, type BackupManifest } from './backup-manifest.ts';
-import { findSetupPlaces, sourceOfStored, teamSkillsOf, WALK_DEPTH, type SetupLocations } from './backup-places.ts';
+import { findSetupPlaces, setupMemoryFolder, sourceOfStored, teamSkillsOf, WALK_DEPTH, type SetupLocations } from './backup-places.ts';
 import { backupSetup, latestBackupOf, listBackups, sha256Of, storedPath, type SetupPorts } from './backup.ts';
 
 const CLAUDE = join('/', 'u', '.claude');
@@ -19,7 +18,7 @@ const AT: SetupLocations = { claudeDir: CLAUDE, project: PROJECT, teamSkills: un
 const TEAM_HOME = join('/', 'kit', 'teams', 'app');
 const TEAM_SKILLS = join(TEAM_HOME, 'skills');
 const TEAM_AT: SetupLocations = { ...AT, teamSkills: TEAM_SKILLS };
-const MEMORY = claudeMemoryDir(CLAUDE, PROJECT);
+const MEMORY = setupMemoryFolder(CLAUDE, PROJECT);
 const ROOT = join('/', 'state', 'teamrig', 'setup-backups');
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 
