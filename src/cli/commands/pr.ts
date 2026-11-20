@@ -1,6 +1,6 @@
 import { parseIssueTarget, targetText } from '../../issues/host.ts';
 import { printable } from '../../core/printable.ts';
-import { pullConflicts } from '../../github/pull-conflicts.ts';
+import { pullConflicts } from '../../sync/pull-conflicts.ts';
 import { onePositional } from '../args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import type { ParsedArgs } from '../args.ts';

@@ -763,7 +763,7 @@ export interface GithubConfig {
   /**
    * The session that hears the pull request news no task owner takes: a pull request from a fork or by an author
    * outside the repository, or from a branch that names no task. Unset, the first holder of a service role holding
-   * `issue close` (github/watcher.ts), else the lead.
+   * `issue close` (sync/watcher.ts), else the lead.
    */
   readonly watcher?: string;
   /**
