@@ -1,12 +1,12 @@
 import { KIT_NAME } from '../../core/home.ts';
 import { droppedEditReason, droppedEditsOf, type TranscriptThread } from '../../hooks/dropped-edit.ts';
-import { blockOutput } from '../../hooks/stop.ts';
+import { blockReply } from '../../hooks/stop.ts';
 import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import type { HookEvent } from '../../ports/host/index.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { transcriptsOf } from '../host.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { readHookInput, sessionTeam } from './hook-input.ts';
+import { readHookInput, sessionTeam, writeReply } from './hook-input.ts';
 
 /**
  * How much of a helper's own transcript a SubagentStop reads: past the largest seen (15 MB), so a
@@ -45,8 +45,6 @@ export async function subagentStop(args: ParsedArgs, runtime: CliRuntime): Promi
   noPositionals(args);
   const { event } = await readHookInput(runtime);
   const reason = event === undefined ? undefined : await helperReasonOf(runtime, event).catch((): string | undefined => undefined);
-  if (reason !== undefined) {
-    runtime.out.stdout(blockOutput(reason));
-  }
+  writeReply(runtime, 'helper-stop', reason === undefined ? undefined : blockReply(reason));
   return EXIT.ok;
 }
