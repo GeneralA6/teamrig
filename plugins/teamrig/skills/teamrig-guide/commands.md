@@ -2081,7 +2081,7 @@ Checks a request file and logs it as the next `R<n>`; nothing runs yet. The file
 - `kind`: `db-write`, `route`, `pod-exec`, `cluster-write` or `external-write`.
 - `task`: the register task it serves (`T12`); `target`: what it changes, in words (`local app.items`).
 - `argv`: the command as a list, started with no shell; `argv[0]` is a program name on the exec PATH (`exec.path`)
-  or an absolute path. No inline code (`node -e`, `python -c`): a write runs a committed script.
+  or an absolute path. A bare `node` starts the runtime the client runs under, the pinned one, never a PATH lookup. No inline code (`node -e`, `python -c`): a write runs a committed script.
 - `cwd`: an absolute path. `binding`: `{repo, commit, lockSha256}`, the repository's absolute path, the full commit
   sha and the lockfile's SHA-256; a `pod-exec` binds `{image}`, an image pinned by digest.
 - `envNames`: the variables the run gets, by name; `readEnvNames`: the read-only ones the dry run gets. A
@@ -2116,6 +2116,7 @@ The reviewer gets an inbox line. A file with problems is refused with every prob
 
 Runs the request's read-only dry run with its read variables only, and logs its exit, output file and output
 SHA-256 for the reviewer. A request with no dry run (a preview instead) has none to run; a reviewed one is refused.
+Like `exec run`, it starts only under the approved runtime ([exec node-pin](#teamrig-exec-node-pin)).
 
 Flags: none.
 
@@ -2134,9 +2135,10 @@ DRY RUN R4: exit 0; output /home/you/.teamrig/teams/shop/exec/out/R4-dry.log (SH
 
 ### teamrig exec status
 
-Without an id, each request and its stage (waits for its dry run, waits for review, approved until when, ran, refused).
-With `R<n>`, the whole request as the reviewer reads it: the command, its binding, variables, case, dry run and
-reviews.
+Without an id, each request and its stage (waits for its dry run, waits for review, approved until when, ran, refused),
+then each runtime pin's (see [exec node-pin](#teamrig-exec-node-pin)). With `R<n>`, the whole request as the reviewer
+reads it: the command, its binding, variables, case, dry run and reviews. With `P<n>`, the runtime pin: its path,
+SHA-256 and version, and the check to make before approving it.
 
 Flags:
 
@@ -2158,7 +2160,8 @@ R4 db-write for T12 by api on local app.orders: dry run exit 0: waits for review
 
 The reviewer approves one run. The security reviewer settles another session's request that is not owner-gated; the
 owner settles any, and alone settles an owner-gated or escalated one, or the security reviewer's own. An approval
-lasts 30 minutes, or with a window until it closes, at most 4 h. Run it in a tab as that tab's own session: the
+lasts 30 minutes, or with a window until it closes, at most 4 h. `exec approve P<n>` approves a runtime pin
+([exec node-pin](#teamrig-exec-node-pin)) for good, until a later pin is approved. Run it in a tab as that tab's own session: the
 [exec guard](#teamrig-hook-exec-guard) refuses a tool call that names another, and the owner approves in their own
 terminal or by typing `/teamrig exec approve R<n> --session owner`.
 
@@ -2246,6 +2249,33 @@ Output:
 ```text
 RAN R4: exit 0; output /home/you/.teamrig/teams/shop/exec/out/R4-run.log (SHA-256 9c1d…)
   inserted 0, unchanged 812, changed 3
+```
+
+### teamrig exec node-pin
+
+Files the Node.js runtime this client runs under as the next `P<n>`: its real path, the SHA-256 of its binary and its
+version, and posts the security reviewer a line to review it. A dry run or a run starts only under the runtime of the
+pin approved last, its path and hash read anew on each call; with none approved, or under another runtime, it is
+refused, naming the path, hash prefix and version found and expected. Before approving, the reviewer checks the hash
+against the release's `SHASUMS256.txt` on nodejs.org (`exec status P<n>` names the link), or a distro build's
+package manager verifies the file. The security reviewer settles another session's pin and the owner any; a pin is
+never escalated. After a Node.js upgrade, the owner runs it again from their own terminal and the reviewer approves
+the new pin.
+
+Flags:
+
+- `--session <id|name>`: the caller, who files the pin.
+
+Example:
+
+```sh
+teamrig exec node-pin --session owner
+```
+
+Output:
+
+```text
+PIN REQUESTED P1: Node.js v22.11.0 at /usr/local/bin/node, SHA-256 5c2e…; next: a reviewer checks it (teamrig exec status P1), then approves or refuses it
 ```
 
 ## Team

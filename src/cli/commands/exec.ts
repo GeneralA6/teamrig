@@ -6,14 +6,18 @@ import { errorMessage } from '../../core/guards.ts';
 import type { PathSearchDeps } from '../../core/path-search.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import {
+  activePin,
   AuditChainError,
   AuditLog,
+  nextPinId,
   nextRequestId,
   REQUEST_ID,
   type AuditDecision,
   type AuditEvent,
   type AuditLine,
   type AuditState,
+  type PinRecord,
+  type PinReview,
   type RequestRecord,
   type Review,
   type ReviewDecision,
@@ -23,8 +27,9 @@ import {
 import { resolveProgram } from '../../exec/binding.ts';
 import { nodeLaunchRefusal } from '../../exec/node-launch.ts';
 import { parseDraft, type CodeBinding, type ExecRequest } from '../../exec/request.ts';
-import { decideReview, RANDOM_NONCES, UnsignedReviews, type ReviewKit } from '../../exec/review.ts';
+import { decidePinReview, decideReview, pinSignatureValid, RANDOM_NONCES, UnsignedReviews, type ReviewAsk, type ReviewKit } from '../../exec/review.ts';
 import { baseEnvironment, environmentCredentials, Executor, type ExecResult } from '../../exec/runner.ts';
+import { HASH_PREFIX, PIN_ID, runtimeRefusal, shasumsUrl, type RuntimeImage, type RuntimePin } from '../../exec/runtime-pin.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { postToHolder, sessionNameOn, type OpenTeam } from '../holder-team.ts';
 import { callerOf } from '../inputs.ts';
@@ -41,6 +46,8 @@ interface ExecTeam {
   /** The folders reviewed programs come from (exec.path), joined as a PATH value. */
   readonly execPath: string;
   readonly search: PathSearchDeps;
+  /** The Node.js program this client runs under, which a request's bare `node` starts (#870). */
+  readonly node: string;
   readonly scanner: SecretScanner;
 }
 
@@ -68,6 +75,7 @@ function execTeamOf(runtime: CliRuntime, kit: Kit, config: KitConfig): ExecTeam 
     audit: new AuditLog(kit.paths.execAudit, files, lock, clock),
     execPath,
     search: { env: { PATH: execPath }, platform, probe: runtime.probe },
+    node: runtime.self.node,
     scanner: new SecretScanner(config.register.secretPatterns),
   };
 }
@@ -178,6 +186,38 @@ function requestIdOf(text: string): string {
   return text;
 }
 
+/** A request's id, or a runtime pin's (#870): what a review or `status` names. */
+function reviewIdOf(text: string): string {
+  if (!REQUEST_ID.test(text) && !PIN_ID.test(text)) {
+    throw new UsageError(`"${text}" is not a request id (R1, R2, ...) or a runtime pin id (P1, P2, ...)`);
+  }
+  return text;
+}
+
+/** The runtime this client runs under; one it cannot read refuses, as nothing can be checked. */
+async function currentRuntime(runtime: CliRuntime): Promise<RuntimeImage> {
+  try {
+    return await runtime.exec.runtime.current();
+  } catch (error) {
+    throw new RefusedError(`teamrig exec cannot read the Node.js runtime it runs under: ${errorMessage(error)}`);
+  }
+}
+
+/**
+ * Refuses a dry run or a run unless this client runs under the runtime of the latest approved pin (#870): its real
+ * path and the SHA-256 of its binary, read anew on each call.
+ */
+async function refuseUnpinnedRuntime(runtime: CliRuntime, team: ExecTeam): Promise<void> {
+  const pinned = activePin(await stateOf(team));
+  if (pinned?.review !== undefined && !pinSignatureValid(pinned.review, new UnsignedReviews())) {
+    throw new RefusedError(`${pinned.pin.id}'s approval signature is not valid for what it binds`);
+  }
+  const refusal = runtimeRefusal(await currentRuntime(runtime), pinned?.pin, runtime.platform);
+  if (refusal !== undefined) {
+    throw new RefusedError(refusal);
+  }
+}
+
 async function requestFileJson(runtime: CliRuntime, path: string): Promise<unknown> {
   const text = await runtime.files.read(path);
   if (text === undefined) {
@@ -194,7 +234,7 @@ async function requestFileJson(runtime: CliRuntime, path: string): Promise<unkno
 /** The file `argv[0]` starts, found on the exec PATH; a refusal names the folders searched. */
 async function programOf(field: string, argv: readonly string[], team: ExecTeam): Promise<string> {
   const [argv0 = ''] = argv;
-  const program = await resolveProgram(argv0, team.search);
+  const program = await resolveProgram(argv0, team.search, team.node);
   if (program === undefined) {
     const folders = team.config.exec.path.length === 0 ? 'exec.path names no folder' : `exec.path: ${team.config.exec.path.join(', ')}`;
     throw new RefusedError(`${field}[0] "${argv0}" is not a file on the exec PATH (${folders})`);
@@ -244,19 +284,42 @@ function firstReviewerOf(config: KitConfig, team: string, requester: string): Se
  * where the line names the requester and the team to review on; a line that cannot be posted warns, as the request stands.
  */
 async function tellReviewer(runtime: CliRuntime, team: ExecTeam, stored: ExecRequest): Promise<void> {
+  await tellFirstReviewer(runtime, team, stored.id, stored.requester, `${stored.id} asks to run a ${stored.kind} on ${stored.target} for ${stored.task}`);
+}
+
+/** Posts the first reviewer of `id` (a request or a runtime pin) `ask`, with the command that shows it for review. */
+async function tellFirstReviewer(runtime: CliRuntime, team: ExecTeam, id: string, requester: string, ask: string): Promise<void> {
   const own = team.kit.paths.team;
-  const reviewer = firstReviewerOf(team.config, own, stored.requester);
+  const reviewer = firstReviewerOf(team.config, own, requester);
   const crossing = reviewer.team !== own;
   const label = sessionNameOn(own, reviewer.team, reviewer.id);
-  const text = `${stored.id} asks to run a ${stored.kind} on ${stored.target} for ${stored.task}: review it (teamrig exec status ${stored.id}${crossing ? ` --team ${own}` : ''})`;
-  const problem = await postToHolder(runtime, team, reviewer, { from: stored.requester, text });
-  runtime.out.stderr(problem === undefined ? `NOTE ${label} has an inbox line: ${text}` : `WARN ${stored.id} is logged, but ${label} was not told: ${problem}`);
+  const text = `${ask}: review it (teamrig exec status ${id}${crossing ? ` --team ${own}` : ''})`;
+  const problem = await postToHolder(runtime, team, reviewer, { from: requester, text });
+  runtime.out.stderr(problem === undefined ? `NOTE ${label} has an inbox line: ${text}` : `WARN ${id} is logged, but ${label} was not told: ${problem}`);
+}
+
+/**
+ * `exec node-pin`: files the Node.js runtime this client runs under (its real path, the SHA-256 of its binary and its
+ * version) as the next P<n> for review (#870). Once approved, dry runs and runs start only under it; after a Node.js
+ * upgrade the owner files the new one from their own terminal.
+ */
+export async function nodePin(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  const team = await openExec(runtime, 'write');
+  const requester = await actorOf(args, runtime, team);
+  const image = await currentRuntime(runtime);
+  const createdAt = new Date(runtime.clock.now()).toISOString();
+  const line = await appendOrRefuse(team.audit, (state) => ({ type: 'pin-request', pin: { id: nextPinId(state), ...image, requester, createdAt } }));
+  const { pin } = appendedEvent(line, 'pin-request');
+  runtime.out.stdout(`PIN REQUESTED ${pin.id}: Node.js ${pin.version} at ${pin.path}, SHA-256 ${pin.sha256}; next: a reviewer checks it (teamrig exec status ${pin.id}), then approves or refuses it`);
+  await tellFirstReviewer(runtime, team, pin.id, pin.requester, `${pin.id} asks to pin the Node.js runtime ${pin.version} at ${pin.path}`);
+  return EXIT.ok;
 }
 
 function executorOf(team: ExecTeam, runtime: CliRuntime): Executor {
   return new Executor({
     audit: team.audit,
-    binding: { checkout: runtime.exec.checkout, search: team.search },
+    binding: { checkout: runtime.exec.checkout, search: team.search, node: team.node },
     spawner: runtime.exec.spawner,
     credentials: environmentCredentials(runtime.env, runtime.platform),
     verifier: new UnsignedReviews(),
@@ -300,6 +363,7 @@ function printOutcome(runtime: CliRuntime, head: string, outcome: RunOutcome, ne
 export async function dryRun(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = requestIdOf(onePositional(args, 'id'));
   const team = await openExec(runtime, 'write');
+  await refuseUnpinnedRuntime(runtime, team);
   const outcome = startedOutcome(await onSoundLog(() => executorOf(team, runtime).dryRun(id)));
   return printOutcome(runtime, `DRY RUN ${id}`, outcome, `the reviewer reads it (teamrig exec status ${id}), then approves, refuses or escalates it`);
 }
@@ -308,6 +372,7 @@ export async function dryRun(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
 export async function run(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = requestIdOf(onePositional(args, 'id'));
   const team = await openExec(runtime, 'write');
+  await refuseUnpinnedRuntime(runtime, team);
   const outcome = startedOutcome(await onSoundLog(() => executorOf(team, runtime).run(id)));
   const code = printOutcome(runtime, `RAN ${id}`, outcome, undefined);
   await announce(runtime, team, id, `RAN ${id}: ${endOf(outcome)}; output SHA-256 ${outcome.outputSha256}`);
@@ -341,12 +406,14 @@ async function announce(runtime: CliRuntime, team: ExecTeam, id: string, head: s
 
 /** Posts `head` with its request's summary to `url`; undefined once posted, else why not. */
 async function postProblem(runtime: CliRuntime, team: ExecTeam, url: string, id: string, head: string): Promise<string | undefined> {
-  const record = (await stateOf(team)).records.get(id);
-  if (record === undefined) {
+  const state = await stateOf(team);
+  const pinned = state.pins.get(id);
+  const record = state.records.get(id);
+  if (pinned === undefined && record === undefined) {
     return `no request ${id} in the exec audit log`;
   }
-  const { kind, target, task, requester } = record.request;
-  const content = `teamrig exec ${team.kit.paths.team}: ${head} [${kind} on ${target} for ${task}, asked by ${requester}]`;
+  const summary = record === undefined ? `runtime pin, asked by ${pinned?.pin.requester ?? ''}` : `${record.request.kind} on ${record.request.target} for ${record.request.task}, asked by ${record.request.requester}`;
+  const content = `teamrig exec ${team.kit.paths.team}: ${head} [${summary}]`;
   return team.scanner.refusal('the post', content) ?? (await runtime.webhook.post(url, content));
 }
 
@@ -364,12 +431,15 @@ function reviewHead(review: Review, owner: string): string {
 
 /** A reviewer's decision (spec §7, §9), bound to the request and dry run the log holds when it is appended. */
 async function review(args: ParsedArgs, runtime: CliRuntime, decision: ReviewDecision): Promise<ExitCode> {
-  const id = requestIdOf(onePositional(args, 'id'));
+  const id = reviewIdOf(onePositional(args, 'id'));
   const { team, reviewer } = await reviewerTeamOf(args, runtime);
   const ask = { id, decision, reviewer, note: args.flags.get('note') ?? '' };
   const leak = team.scanner.refusal('the note', ask.note);
   if (leak !== undefined) {
     throw new RefusedError(leak);
+  }
+  if (PIN_ID.test(id)) {
+    return reviewPin(runtime, team, ask);
   }
   const owner = team.config.register.ownerSource;
   const kit: ReviewKit = { reviewers: { owner, security: team.config.roles.securityReviewer }, signer: new UnsignedReviews(), nonces: RANDOM_NONCES };
@@ -378,6 +448,25 @@ async function review(args: ParsedArgs, runtime: CliRuntime, decision: ReviewDec
   const head = reviewHead(settled, owner);
   runtime.out.stdout(settled.decision === 'approved' ? `${head}; next: teamrig exec run ${id}` : head);
   await announce(runtime, team, id, head);
+  return EXIT.ok;
+}
+
+/** A runtime pin's review in words: the line the security channel gets. */
+function pinReviewHead(review: PinReview, pin: RuntimePin): string {
+  return review.decision === 'approved'
+    ? `APPROVED ${review.id} by ${review.reviewer}: dry runs and runs start only under Node.js ${pin.version} at ${pin.path} (SHA-256 ${pin.sha256.slice(0, HASH_PREFIX)})`
+    : `DECLINED ${review.id} by ${review.reviewer}: ${review.note}`;
+}
+
+/** A reviewer's decision on a runtime pin (#870), bound to the pin the log holds when it is appended. */
+async function reviewPin(runtime: CliRuntime, team: ExecTeam, ask: ReviewAsk): Promise<ExitCode> {
+  const reviewers = { owner: team.config.register.ownerSource, security: team.config.roles.securityReviewer };
+  const line = await appendOrRefuse(team.audit, (state) => decidePinReview(state, ask, { reviewers, signer: new UnsignedReviews() }));
+  const settled = appendedEvent(line, 'pin-review').review;
+  const pinned = (await stateOf(team)).pins.get(settled.id);
+  const head = pinned === undefined ? `${settled.decision.toUpperCase()} ${settled.id}` : pinReviewHead(settled, pinned.pin);
+  runtime.out.stdout(head);
+  await announce(runtime, team, ask.id, head);
   return EXIT.ok;
 }
 
@@ -468,21 +557,55 @@ function detailLines(record: RequestRecord, now: number): string[] {
   ];
 }
 
-/** `exec status [R<n>]`: each request's stage, or one request in full for its review. */
+/** Where a runtime pin stands: waiting, refused, the active one, or replaced by a later approval. */
+function pinStageOf(record: PinRecord, state: AuditState): string {
+  const { review: settled } = record;
+  if (settled === undefined) {
+    return 'waits for review';
+  }
+  if (settled.decision === 'refused') {
+    return `refused by ${settled.reviewer}`;
+  }
+  return state.activePin === record.pin.id ? `approved by ${settled.reviewer}: dry runs and runs start under it` : `approved by ${settled.reviewer}, replaced by ${state.activePin ?? 'none'}`;
+}
+
+/** Everything a reviewer reads before settling a runtime pin, with the check they make first. */
+function pinDetailLines(record: PinRecord, state: AuditState): string[] {
+  const { pin, review: settled } = record;
+  return [
+    `${pin.id} runtime pin, asked by ${pin.requester} at ${pin.createdAt}: ${pinStageOf(record, state)}`,
+    `  path: ${pin.path}`,
+    `  SHA-256: ${pin.sha256}`,
+    `  version: ${pin.version}`,
+    `  check before approving: the SHA-256 is this platform's binary in ${shasumsUrl(pin.version)}, or a distro build's package manager verifies the file`,
+    ...(settled === undefined ? [] : [`  ${settled.decision} by ${settled.reviewer} at ${settled.at}: ${settled.note}`]),
+  ];
+}
+
+/** `exec status [R<n>|P<n>]`: each request's and runtime pin's stage, or one in full for its review. */
 export async function status(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const [text, extra] = args.positionals;
   if (extra !== undefined) {
     throw new UsageError(`unexpected "${extra}"`);
   }
-  const id = text === undefined ? undefined : requestIdOf(text);
+  const id = text === undefined ? undefined : reviewIdOf(text);
   const team = await readTeamOf(args, runtime);
   const state = await stateOf(team);
   const now = runtime.clock.now();
   if (id === undefined) {
-    if (state.records.size === 0) {
+    if (state.records.size === 0 && state.pins.size === 0) {
       runtime.out.stdout(`EXEC no requests in ${team.kit.paths.execAudit}`);
     }
     state.records.forEach((record) => runtime.out.stdout(`${record.request.id} ${record.request.kind} for ${record.request.task} by ${record.request.requester} on ${record.request.target}: ${stageOf(record, now)}`));
+    state.pins.forEach((record) => runtime.out.stdout(`${record.pin.id} runtime pin by ${record.pin.requester}: Node.js ${record.pin.version} at ${record.pin.path}: ${pinStageOf(record, state)}`));
+    return EXIT.ok;
+  }
+  if (PIN_ID.test(id)) {
+    const pinned = state.pins.get(id);
+    if (pinned === undefined) {
+      throw new RefusedError(`no runtime pin ${id} in the exec audit log`);
+    }
+    pinDetailLines(pinned, state).forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
   }
   const record = state.records.get(id);

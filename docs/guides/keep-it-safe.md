@@ -290,6 +290,20 @@ a version manager, a renamed copy)
 field of a request: [exec request](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-exec-request)).
 The `exec` commands also refuse to run on a node told to load code beside teamrig (a `--require` or `--import`
 preload, or one in `NODE_OPTIONS`); the reason names the option, and unsetting it lets the command run.
+
+The runtime is pinned too. The plugin's launchers start the first `node` the PATH finds, so `teamrig exec node-pin`
+files the Node.js runtime the client runs under (its real path, the SHA-256 of its binary and its version) in the exec
+audit log, and the security reviewer approves it like a request, after checking the hash against the release's
+`SHASUMS256.txt` on nodejs.org or a distro package manager's own verify. `exec dry-run` and `exec run` then start
+only under the pin approved last: the binary is hashed on each call (on Linux the image actually running), and a
+runtime at another path, or another binary at the pinned path, is refused with the path, hash prefix and version
+found and expected. A bare `node` in a request starts that same runtime, never a PATH lookup. After a Node.js
+upgrade, run `teamrig exec node-pin` again in your own terminal and have the new pin approved. A check a runtime
+runs on itself cannot hold against a hostile runtime, which can answer any check it runs: like the client pin and
+the option list, the runtime pin catches a wrong `node` (a PATH order, a version-manager switch, an unofficial
+build), and phase 2's read-only install is what holds against a deliberate swap. The pin lives in the hash-chained
+exec log, never in the plugin folder or a repository, and the service-role guard refuses a session's own write of
+that log.
 The same hook refuses the owner's own actions on a task (`teamrig owner note`, `owner next`) from any session's tool
 call, as they write as the owner: the owner runs them in their own terminal, or types them after `/teamrig` in a tab.
 It also refuses a shell fed its commands from a pipe (`echo ... | bash`), as the pipe can carry a review the line

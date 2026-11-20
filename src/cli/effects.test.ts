@@ -61,6 +61,7 @@ const EXPECTED = {
   'exec approve': 'write',
   'exec refuse': 'write',
   'exec escalate': 'write',
+  'exec node-pin': 'write',
   'exec dry-run': 'write',
   'exec run': 'write',
   'exec status': 'read',

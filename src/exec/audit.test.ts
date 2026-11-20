@@ -7,20 +7,24 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import {
+  activePin,
   AuditChainError,
   AuditLog,
   EMPTY_AUDIT,
   GENESIS_HASH,
+  nextPinId,
   nextRequestId,
   readAudit,
   type AuditAppend,
   type AuditEvent,
   type AuditState,
+  type PinReview,
   type Review,
   type RunOutcome,
 } from './audit.ts';
 import { canonicalJson, sha256Hex } from './digest.ts';
 import { requestSha256, type ExecRequest } from './request.ts';
+import { pinSha256, type RuntimePin } from './runtime-pin.ts';
 
 const PATH = 'C:/team/exec/audit.jsonl';
 const START = '2030-01-07T10:00:00.000Z';
@@ -215,7 +219,7 @@ describe('readAudit chain checks (T755)', () => {
       [[one, two.replace('"tail":"dry"', '"tail":"dry!"'), three].join('\n'), 2, /edited after it was written/u],
       [[one, three].join('\n'), 2, /seq 3 follows seq 1: a line is missing or repeated/u],
       [[one, two, three, '{"v":1,"seq":4'].join('\n'), 4, /torn or edited line/u],
-      [[one, two, three, '{"v":2,"seq":4}'].join('\n'), 4, /format v2; this teamrig reads v1: update teamrig/u],
+      [[one, two, three, '{"v":3,"seq":4}'].join('\n'), 4, /format v3; this teamrig reads v2: update teamrig/u],
       [[one, '{"v":1,"seq":2,"event":{"type":"dry-run"}}'].join('\n'), 2, /not an audit line/u],
     ];
     for (const [text, line, reason] of cases) {
@@ -245,5 +249,69 @@ describe('readAudit chain checks (T755)', () => {
       (error: unknown) => error instanceof AuditChainError && error.line === 2 && /edited after it was written/u.test(error.message),
     );
     assert.equal(files.get(PATH), broken);
+  });
+});
+
+describe('AuditLog runtime pins (#870)', () => {
+  function pin(id: string, overrides: Partial<RuntimePin> = {}): RuntimePin {
+    return { id, path: '/usr/local/bin/node', sha256: 'a'.repeat(64), version: 'v22.11.0', requester: 'owner', createdAt: START, ...overrides };
+  }
+
+  function pinReview(filed: RuntimePin, overrides: Partial<PinReview> = {}): PinReview {
+    return { id: filed.id, decision: 'approved', reviewer: 'security', note: 'hash matches SHASUMS256.txt', pinSha256: pinSha256(filed), scheme: 'unsigned', signature: '', ...overrides };
+  }
+
+  it('files pins as P1, P2 on v2 lines, beside requests on v1 lines, and approves none until a review does', async () => {
+    const { files, log } = setup();
+    assert.equal(nextPinId(EMPTY_AUDIT), 'P1');
+    await appended(log, { type: 'request', request: execRequest() });
+    const state = await appended(log, { type: 'pin-request', pin: pin('P1') });
+    assert.equal(nextPinId(state), 'P2');
+    assert.deepEqual(state.pins.get('P1'), { pin: pin('P1'), review: undefined });
+    assert.equal(activePin(state), undefined);
+    assert.deepEqual(linesOf(files).map((line) => parseObject(line)?.['v']), [1, 2]);
+    assert.equal(stateOf(files.get(PATH) ?? '').pins.size, 1, 'the log reads back');
+  });
+
+  it('makes the pin approved last the active one, whatever order the pins were filed in, and never a refused one', async () => {
+    const { log } = setup();
+    await appended(log, { type: 'pin-request', pin: pin('P1') });
+    await appended(log, { type: 'pin-request', pin: pin('P2', { version: 'v22.12.0', sha256: 'b'.repeat(64) }) });
+    const refused = await appended(log, { type: 'pin-review', review: pinReview(pin('P1'), { decision: 'refused', note: 'not the release hash' }) });
+    assert.equal(activePin(refused), undefined);
+    const approved = await appended(log, { type: 'pin-review', review: pinReview(pin('P2', { version: 'v22.12.0', sha256: 'b'.repeat(64) })) });
+    assert.equal(activePin(approved)?.pin.id, 'P2');
+    assert.equal(activePin(approved)?.review?.at, START);
+    await appended(log, { type: 'pin-request', pin: pin('P3') });
+    const third = await appended(log, { type: 'pin-review', review: pinReview(pin('P3')) });
+    assert.equal(activePin(third)?.pin.id, 'P3');
+  });
+
+  it('refuses a pin out of order, a review of no pin, a second review, and a review of a pin as it was not filed', async () => {
+    const { log } = setup();
+    assert.match(refusalOf(await log.append(() => ({ type: 'pin-request', pin: pin('P2') }))), /the next runtime pin is P1, not P2/u);
+    assert.match(refusalOf(await log.append(() => ({ type: 'pin-review', review: pinReview(pin('P1')) }))), /a pin-review for P1, which no runtime pin created/u);
+    await appended(log, { type: 'pin-request', pin: pin('P1') });
+    assert.match(refusalOf(await log.append(() => ({ type: 'pin-review', review: pinReview(pin('P1', { sha256: 'c'.repeat(64) })) }))), /P1's review is of a different runtime pin \(its SHA-256 differs\)/u);
+    await appended(log, { type: 'pin-review', review: pinReview(pin('P1')) });
+    assert.match(refusalOf(await log.append(() => ({ type: 'pin-review', review: pinReview(pin('P1'), { decision: 'refused', note: 'no' }) }))), /P1 is already approved/u);
+  });
+
+  it('breaks the chain at a pin line edited after it was written, and reads a pin event only on a v2 line', async () => {
+    const { files, log } = setup();
+    await appended(log, { type: 'pin-request', pin: pin('P1') });
+    await appended(log, { type: 'pin-review', review: pinReview(pin('P1')) });
+    const [filed = '', reviewed = ''] = linesOf(files);
+    const swapped = readAudit([filed.replace('/usr/local/bin/node', '/tmp/node'), reviewed].join('\n'));
+    assert.deepEqual(swapped.ok ? [] : [swapped.line], [1]);
+    assert.match(swapped.ok ? '' : swapped.reason, /edited after it was written/u);
+    const v1 = readAudit(filed.replace('"v":2', '"v":1'));
+    assert.match(v1.ok ? '' : v1.reason, /not an audit line/u);
+    const badReview = readAudit([filed, reviewed.replace('"decision":"approved"', '"decision":"escalated"')].join('\n'));
+    assert.match(badReview.ok ? '' : badReview.reason, /not an audit line/u);
+    const { files: requestFiles, log: requestLog } = setup();
+    await appended(requestLog, { type: 'request', request: execRequest() });
+    const v2 = readAudit((linesOf(requestFiles)[0] ?? '').replace('"v":1', '"v":2'));
+    assert.match(v2.ok ? '' : v2.reason, /not an audit line/u);
   });
 });

@@ -174,6 +174,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'exec escalate': { effect: 'write', flags: ['session', 'note', 'team'], load: async () => (await execCommands()).escalate },
   'exec run': { effect: 'write', flags: [], load: async () => (await execCommands()).run },
   'exec status': { effect: 'read', flags: ['team'], load: async () => (await execCommands()).status },
+  'exec node-pin': { effect: 'write', flags: ['session'], load: async () => (await execCommands()).nodePin },
   'team create': { effect: 'write', flags: ['sessions', 'lead', 'parent', 'project'], switches: ['dry-run'], load: async () => (await setupCommands()).teamCreate },
   'team split': { effect: 'write', flags: ['session', 'lead', 'sessions'], switches: ['dry-run'], load: async () => (await teamSplitCommand()).teamSplit },
   'team tree': { effect: 'read', flags: [], load: async () => (await teamCommands()).teamTree },
@@ -679,13 +680,17 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   exec request --file <request.json>   asks to run a privileged command: the JSON names the command, its
       code binding, variables, dry run or preview, purpose, expected effect and rollback; logged as R<n>
   exec dry-run R<n>    runs the request's read-only dry run, logged for the reviewer
-  exec status [R<n>] [--team <child>]   each request's stage; with R<n>, the whole request as the reviewer reads it
+  exec status [R<n>|P<n>] [--team <child>]   each request's and runtime pin's stage; with an id, the whole of
+      it as the reviewer reads it
   exec approve R<n> [--note "<why>"] [--team <child>]   the security reviewer (roles.securityReviewer) or the
-      owner approves one run; an owner-gated request only the owner
+      owner approves one run; an owner-gated request only the owner. approve|refuse P<n> settles a runtime pin
   exec refuse R<n> --note "<why>" [--team <child>]     refuses the request; the note names the safe alternative
   exec escalate R<n> --note "<why>" [--team <child>]   the security reviewer hands an owner-gated request to the owner
       --team <child>: a request of a team below yours, whose roles.securityReviewer names you as <team>/<id>
   exec run R<n>        runs an approved request once, before its approval expires
+  exec node-pin        files the Node.js runtime this client runs under (real path, SHA-256 of its binary,
+      version) as P<n>; once approved, dry runs and runs start only under it. After a Node.js upgrade the owner
+      runs it again from their own terminal
   who [<id|name|role|team/id>] the name to message a session by (no argument: every session of yours)
   sessions [--pass] [--project <dir>]   each session: running (and the MB its Claude Code's processes
       hold), closed or never recorded; then the host's free memory and commit charge. --pass: what an

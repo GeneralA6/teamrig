@@ -6,14 +6,14 @@ import { TempRepo } from '../../tools/lib/temp-repo.ts';
 import type { PathSearchDeps } from '../core/path-search.ts';
 import { execRequest } from '../testing/exec-request.ts';
 import { FakeCheckout, searchOf } from '../testing/fake-checkout.ts';
-import { bindingProblems, GIT_CHECKOUT, resolveProgram, type BindingDeps, type CheckoutProbe } from './binding.ts';
+import { bindingProblems, GIT_CHECKOUT, isNodeName, resolveProgram, type BindingDeps, type CheckoutProbe } from './binding.ts';
 
 const REPO = 'C:/work/app';
 const LOCK_SHA = 'b'.repeat(64);
 const NODE = 'C:/nodejs/node.exe';
 
-function deps(checkout: CheckoutProbe = new FakeCheckout(), search: PathSearchDeps = searchOf('C:/nodejs', NODE)): BindingDeps {
-  return { checkout, search };
+function deps(checkout: CheckoutProbe = new FakeCheckout(), search: PathSearchDeps = searchOf('C:/nodejs', NODE), node: string = NODE): BindingDeps {
+  return { checkout, search, node };
 }
 
 describe('bindingProblems', () => {
@@ -72,22 +72,40 @@ describe('bindingProblems', () => {
   });
 
   it('refuses a program that now resolves to another file, or to none', async () => {
-    const shadowed = searchOf('C:/evil;C:/nodejs', 'C:/evil/node.exe', NODE);
-    assert.deepEqual(await bindingProblems(execRequest(), 'run', deps(new FakeCheckout(), shadowed)), [
-      'node now resolves to C:\\evil\\node.exe, not the reviewed C:/nodejs/node.exe',
-    ]);
+    const tsx = execRequest({ argv: ['tsx', 'tools/fix-models.ts', '--apply'], program: 'C:/nodejs/tsx.exe', dryRunArgv: ['tsx', 'tools/fix-models.ts'], dryRunProgram: 'C:/nodejs/tsx.exe' });
+    const shadowed = searchOf('C:/evil;C:/nodejs', 'C:/evil/tsx.exe', 'C:/nodejs/tsx.exe');
+    assert.deepEqual(await bindingProblems(tsx, 'run', deps(new FakeCheckout(), shadowed)), ['tsx now resolves to C:\\evil\\tsx.exe, not the reviewed C:/nodejs/tsx.exe']);
     const gone = searchOf('C:/nodejs');
-    assert.deepEqual(await bindingProblems(execRequest(), 'dry-run', deps(new FakeCheckout(), gone)), ['node now resolves to nothing, not the reviewed C:/nodejs/node.exe']);
+    assert.deepEqual(await bindingProblems(tsx, 'dry-run', deps(new FakeCheckout(), gone)), ['tsx now resolves to nothing, not the reviewed C:/nodejs/tsx.exe']);
+  });
+
+  it("starts a bare node as the client's own runtime, never a PATH lookup, and refuses a request reviewed under another (#870)", async () => {
+    const shadowed = searchOf('C:/evil;C:/nodejs', 'C:/evil/node.exe', NODE);
+    assert.deepEqual(await bindingProblems(execRequest(), 'run', deps(new FakeCheckout(), shadowed)), [], 'a node earlier on the exec PATH is not the one started');
+    assert.deepEqual(await bindingProblems(execRequest(), 'run', deps(new FakeCheckout(), searchOf('C:/nodejs', NODE), 'C:/nvm/v22/node.exe')), [
+      'node now resolves to C:/nvm/v22/node.exe, not the reviewed C:/nodejs/node.exe',
+    ]);
   });
 });
 
 describe('resolveProgram', () => {
   it('finds a name on the exec PATH, and an absolute path only when it is a file', async () => {
+    const search = searchOf('C:/nodejs', NODE, 'C:/nodejs/tsx.exe');
+    assert.equal(await resolveProgram('tsx', search, NODE), win32.join('C:/nodejs', 'tsx.exe'));
+    assert.equal(await resolveProgram(NODE, search, NODE), NODE);
+    assert.equal(await resolveProgram('C:/nodejs/missing.exe', search, NODE), undefined);
+    assert.equal(await resolveProgram('tools/node', search, NODE), undefined);
+  });
+
+  it('starts a bare node, node.exe or NODE as the given runtime on Windows, and only node elsewhere (#870)', async () => {
     const search = searchOf('C:/nodejs', NODE);
-    assert.equal(await resolveProgram('node', search), win32.join('C:/nodejs', 'node.exe'));
-    assert.equal(await resolveProgram(NODE, search), NODE);
-    assert.equal(await resolveProgram('C:/nodejs/missing.exe', search), undefined);
-    assert.equal(await resolveProgram('tools/node', search), undefined);
+    for (const name of ['node', 'node.exe', 'NODE', 'Node.EXE']) {
+      assert.equal(await resolveProgram(name, search, 'C:/pinned/node.exe'), 'C:/pinned/node.exe', name);
+    }
+    assert.equal(isNodeName('node', 'linux'), true);
+    assert.equal(isNodeName('Node', 'linux'), false);
+    assert.equal(isNodeName('node.exe', 'linux'), false);
+    assert.equal(isNodeName('nodejs', 'win32'), false);
   });
 });
 

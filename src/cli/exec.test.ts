@@ -7,10 +7,15 @@ import { APP, CliHarness, TEAM, TEAM_HOME, type CliResult, type RunOptions } fro
 import { execDraft } from '../testing/exec-request.ts';
 import { FakeCheckout, probeOf } from '../testing/fake-checkout.ts';
 import { FakeExecSpawner } from '../testing/fake-exec-spawner.ts';
+import { FakeRuntimeProbe } from '../testing/fake-runtime-probe.ts';
+import { InlineMutex } from '../testing/inline-mutex.ts';
+import { AuditLog } from '../exec/audit.ts';
+import { pinSha256, type RuntimeImage } from '../exec/runtime-pin.ts';
 import { FakeWebhook } from '../testing/fake-webhook.ts';
 import { quietWorld } from '../testing/quiet-world.ts';
 import { teamConfigOf } from '../testing/team-tree.ts';
-import type { JsonRecord } from '../core/guards.ts';
+import { recordField, type JsonRecord } from '../core/guards.ts';
+import { parseObject } from '../core/jsonl.ts';
 import type { Env } from '../core/home.ts';
 import { EXIT } from './runtime.ts';
 
@@ -21,6 +26,8 @@ const WEBHOOK_URL = 'https://chat.example/hook';
 const WEBHOOK_ENV: Env = { EXEC_WEBHOOK_URL: WEBHOOK_URL };
 const REQUEST_FILE = join(APP, 'r1.json');
 const AUDIT = join(TEAM_HOME, 'exec', 'audit.jsonl');
+/** The runtime the exec team's client runs under: node from the exec PATH's folder. */
+const NODE_RUNTIME: RuntimeImage = { path: 'C:\\nodejs\\node.exe', sha256: 'a'.repeat(64), version: 'v22.11.0' };
 
 interface ExecTeamOptions {
   /** Variables on top of both database ones. */
@@ -28,29 +35,41 @@ interface ExecTeamOptions {
   readonly webhook?: FakeWebhook;
   /** The options node took on its command line (`process.execArgv`); default none. */
   readonly execArgv?: readonly string[];
+  /** Whether the owner files and approves the running runtime as P1 before the first dry run or run (#870); default yes. */
+  readonly pinned?: boolean;
 }
 
 /** A team whose exec PATH holds node, run on Windows with both database variables set, over one fake spawner and webhook. */
 class ExecTeam {
   readonly kit: CliHarness;
   readonly spawner = new FakeExecSpawner();
+  readonly runtime = new FakeRuntimeProbe(NODE_RUNTIME);
   readonly webhook: FakeWebhook;
   private readonly options: RunOptions;
+  private pinned: boolean;
 
-  constructor(config: JsonRecord = EXEC_TEAM, { env = {}, webhook = new FakeWebhook(), execArgv = [] }: ExecTeamOptions = {}) {
+  constructor(config: JsonRecord = EXEC_TEAM, { env = {}, webhook = new FakeWebhook(), execArgv = [], pinned = true }: ExecTeamOptions = {}) {
     this.kit = new CliHarness(config);
     this.webhook = webhook;
+    this.pinned = !pinned;
     this.options = {
-      self: { ...quietWorld().self, execArgv },
+      self: { ...quietWorld().self, node: NODE_RUNTIME.path, execArgv },
       platform: 'win32',
       probe: probeOf('C:/nodejs/node.exe'),
-      exec: { spawner: this.spawner, checkout: new FakeCheckout() },
+      exec: { spawner: this.spawner, checkout: new FakeCheckout(), runtime: this.runtime },
       webhook,
       env: { DB_READ_URI: 'db://read', DB_WRITE_URI: 'db://write', ...env },
     };
   }
 
   async run(...argv: string[]): Promise<CliResult> {
+    if (!this.pinned && (argv[0] === 'dry-run' || argv[0] === 'run')) {
+      this.pinned = true;
+      // Posted to a webhook of its own, so a test of the security channel sees only its request's posts.
+      const quiet = { ...this.options, webhook: new FakeWebhook() };
+      await this.kit.run(['exec', 'node-pin', '--session', 'owner'], quiet);
+      await this.kit.run(['exec', 'approve', 'P1', '--session', 'owner'], quiet);
+    }
     return this.kit.run(['exec', ...argv], this.options);
   }
 
@@ -133,7 +152,16 @@ describe('runCli: exec request, a privileged command asked for review (T755)', (
     const team = new ExecTeam();
     assertRefused(await team.request(execDraft({ argv: ['python', 'fix.py'] })), /argv\[0\] "python" is not a file on the exec PATH \(exec\.path: C:\/nodejs\)/);
     const bare = new ExecTeam(TEAM);
-    assertRefused(await bare.request(), /argv\[0\] "node" is not a file on the exec PATH \(exec\.path names no folder\)/);
+    assertRefused(await bare.request(execDraft({ argv: ['python', 'fix.py'] })), /argv\[0\] "python" is not a file on the exec PATH \(exec\.path names no folder\)/);
+  });
+
+  it("starts a bare node as the client's own runtime, never one on the exec PATH (#870)", async () => {
+    const team = new ExecTeam({ ...EXEC_TEAM, exec: { path: ['C:/other'] } });
+    assertOk(await team.request());
+    assert.match(outputOf(await team.run('status', 'R1')), /run: \["node","tools\/fix-models.ts","--apply"\] \(starts C:\\nodejs\\node\.exe\)/);
+    assert.match(outputOf(await team.run('status', 'R1')), /dry run: \["node","tools\/fix-models.ts"\] \(starts C:\\nodejs\\node\.exe\)/);
+    assertOk(await team.run('dry-run', 'R1'));
+    assert.equal(team.spawner.asks[0]?.program, 'C:\\nodejs\\node.exe');
   });
 });
 
@@ -150,6 +178,7 @@ describe('runCli: exec refuses a node started with an option that can run code b
     ['status', 'R1'],
     ['status', '--team', 'child'],
     ['approve', 'R1', '--session', 'bravo', '--team', 'child'],
+    ['node-pin', '--session', 'owner'],
   ];
 
   async function assertEveryCommandRefused(team: ExecTeam, named: RegExp): Promise<void> {
@@ -419,7 +448,10 @@ describe('runCli: exec on a child team whose security reviewer sits on a team ab
     const team = await dryRun(execDraft(), await childTeam());
     const listed = await team.runOn('root', 'status', '--team', 'app');
     assertOk(listed);
-    assert.deepEqual(listed.stdout, ['R1 db-write for T755 by alpha on local app.items: dry run exit 0: waits for review']);
+    assert.deepEqual(listed.stdout, [
+      'R1 db-write for T755 by alpha on local app.items: dry run exit 0: waits for review',
+      'P1 runtime pin by owner: Node.js v22.11.0 at C:\\nodejs\\node.exe: approved by owner: dry runs and runs start under it',
+    ]);
     const approved = await team.runOn('root', 'approve', 'R1', '--team', 'app', '--session', 'sec');
     assertOk(approved);
     assert.match(approved.stdout[0] ?? '', /^APPROVED R1 by root\/sec until .+; next: teamrig exec run R1$/);
@@ -441,5 +473,142 @@ describe('runCli: exec on a child team whose security reviewer sits on a team ab
     );
     assertRefused(await team.run('approve', 'R1', '--team', 'root', '--session', 'bravo'), /team root is not below team app: --team names a team below yours/);
     assertRefused(await team.runOn('root', 'status', '--team', 'ops'), /no team ops with a config in this kit home/);
+  });
+});
+
+describe('runCli: exec node-pin, the runtime a privileged command starts under (#870)', () => {
+  /** alpha's request R1, filed with no runtime pinned. */
+  async function unpinned(config: JsonRecord = EXEC_TEAM, options: ExecTeamOptions = {}): Promise<ExecTeam> {
+    const team = new ExecTeam(config, { ...options, pinned: false });
+    assertOk(await team.request());
+    return team;
+  }
+
+  it('files the running runtime as P1, binding its real path, hash and version, and tells the security reviewer', async () => {
+    const team = await unpinned();
+    const pinned = await team.run('node-pin', '--session', 'alpha');
+    assertOk(pinned);
+    assert.deepEqual(pinned.stdout, [`PIN REQUESTED P1: Node.js v22.11.0 at C:\\nodejs\\node.exe, SHA-256 ${'a'.repeat(64)}; next: a reviewer checks it (teamrig exec status P1), then approves or refuses it`]);
+    const line = 'P1 asks to pin the Node.js runtime v22.11.0 at C:\\nodejs\\node.exe: review it (teamrig exec status P1)';
+    assert.deepEqual(pinned.stderr, [`NOTE bravo has an inbox line: ${line}`]);
+    const filed = { id: 'P1', ...NODE_RUNTIME, requester: 'alpha', createdAt: '2030-01-08T10:00:00.000Z' };
+    const pinLine = parseObject(((await team.kit.files.read(AUDIT)) ?? '').split('\n').find((text) => text.includes('"pin-request"')) ?? '');
+    const event = pinLine === undefined ? undefined : recordField(pinLine, 'event');
+    assert.deepEqual(event === undefined ? undefined : recordField(event, 'pin'), filed);
+    const listed = await team.run('status');
+    assert.deepEqual(listed.stdout.slice(1), ['P1 runtime pin by alpha: Node.js v22.11.0 at C:\\nodejs\\node.exe: waits for review']);
+    const shown = (await team.run('status', 'P1')).stdout;
+    assert.deepEqual(shown, [
+      'P1 runtime pin, asked by alpha at 2030-01-08T10:00:00.000Z: waits for review',
+      '  path: C:\\nodejs\\node.exe',
+      `  SHA-256: ${'a'.repeat(64)}`,
+      '  version: v22.11.0',
+      "  check before approving: the SHA-256 is this platform's binary in https://nodejs.org/dist/v22.11.0/SHASUMS256.txt, or a distro build's package manager verifies the file",
+    ]);
+  });
+
+  it('starts no dry run or run until a pin is approved: none filed, one waiting, one refused', async () => {
+    const team = await unpinned();
+    const none = /starts a privileged command only under a Node\.js runtime the security reviewer approved, and none is approved: file the runtime to use with teamrig exec node-pin \(in your own terminal\)/;
+    assertRefused(await team.run('dry-run', 'R1'), none);
+    assertOk(await team.run('node-pin', '--session', 'alpha'));
+    assertRefused(await team.run('dry-run', 'R1'), none);
+    assertRefused(await team.run('refuse', 'P1', '--session', 'bravo'), /a refusal needs a note: the reason, and which runtime to pin instead/);
+    const refused = await team.run('refuse', 'P1', '--session', 'bravo', '--note', 'not the release binary');
+    assertOk(refused);
+    assert.deepEqual(refused.stdout, ['DECLINED P1 by bravo: not the release binary']);
+    assertRefused(await team.run('dry-run', 'R1'), none);
+    assert.match(outputOf(await team.run('status', 'P1')), /^P1 runtime pin, asked by alpha at .+: refused by bravo$/m);
+    assert.deepEqual(team.spawner.asks, []);
+    assertOk(await team.run('node-pin', '--session', 'alpha'));
+    const approved = await team.run('approve', 'P2', '--session', 'bravo', '--note', 'matches SHASUMS256.txt');
+    assertOk(approved);
+    assert.deepEqual(approved.stdout, ['APPROVED P2 by bravo: dry runs and runs start only under Node.js v22.11.0 at C:\\nodejs\\node.exe (SHA-256 aaaaaaaaaaaa)']);
+    assertOk(await team.run('dry-run', 'R1'));
+    assert.equal(team.spawner.asks.length, 1);
+  });
+
+  it('refuses another binary at the pinned path and the pinned binary at another path, reading the runtime anew each call', async () => {
+    const team = await dryRun();
+    assertOk(await team.run('approve', 'R1', '--session', 'bravo'));
+    const reads = team.runtime.reads;
+    team.runtime.image = { ...NODE_RUNTIME, sha256: 'b'.repeat(64), version: 'v22.12.0' };
+    assertRefused(
+      await team.run('run', 'R1'),
+      /the client runs under C:\\nodejs\\node\.exe \(bbbbbbbbbbbb, v22\.12\.0\), not the approved C:\\nodejs\\node\.exe \(aaaaaaaaaaaa, v22\.11\.0\) of P1\. After a Node\.js upgrade, file the runtime to use with teamrig exec node-pin/,
+    );
+    team.runtime.image = { ...NODE_RUNTIME, path: 'C:\\tools\\node.exe' };
+    assertRefused(await team.run('run', 'R1'), /the client runs under C:\\tools\\node\.exe \(aaaaaaaaaaaa, v22\.11\.0\), not the approved/);
+    assert.equal(team.runtime.reads, reads + 2);
+    assert.equal(team.spawner.asks.length, 1, 'only the dry run ran');
+    team.runtime.image = { ...NODE_RUNTIME, path: 'c:/NODEJS/node.exe' };
+    assertOk(await team.run('run', 'R1'));
+  });
+
+  it('refuses when the runtime cannot be read, and files nothing', async () => {
+    const team = await unpinned();
+    team.runtime.error = new Error('EACCES: permission denied');
+    assertRefused(await team.run('node-pin', '--session', 'alpha'), /teamrig exec cannot read the Node\.js runtime it runs under: EACCES: permission denied/);
+    assertRefused(await team.run('dry-run', 'R1'), /cannot read the Node\.js runtime/);
+    assert.doesNotMatch((await team.kit.files.read(AUDIT)) ?? '', /pin-request/);
+  });
+
+  it("lets only the security reviewer or the owner settle a pin, never escalated, the security reviewer's own by the owner", async () => {
+    const team = await unpinned();
+    assertOk(await team.run('node-pin', '--session', 'bravo'));
+    assertRefused(await team.run('approve', 'P1', '--session', 'alpha'), /alpha reviews nothing: the security reviewer \(bravo\) or the owner \(owner\) reviews P1/);
+    assertRefused(await team.run('escalate', 'P1', '--session', 'bravo', '--note', 'big'), /a runtime pin is not escalated: approve or refuse P1/);
+    assertRefused(await team.run('approve', 'P1', '--session', 'bravo'), /P1 is bravo's own runtime pin: the owner \(owner\) reviews it/);
+    assertRefused(await team.run('approve', 'P2', '--session', 'owner'), /no runtime pin P2 in the audit log/);
+    assertOk(await team.run('approve', 'P1', '--session', 'owner'));
+    assertRefused(await team.run('approve', 'P1', '--session', 'owner'), /P1 is already approved/);
+    assertRefused(await team.run('status', 'P9'), /no runtime pin P9 in the exec audit log/);
+    const wrong = await team.run('status', 'X1');
+    assert.equal(wrong.code, EXIT.usage, outputOf(wrong));
+    assert.match(outputOf(wrong), /"X1" is not a request id \(R1, R2, \.\.\.\) or a runtime pin id \(P1, P2, \.\.\.\)/);
+  });
+
+  it('marks a pin replaced once a later one is approved', async () => {
+    const team = await unpinned();
+    assertOk(await team.run('node-pin', '--session', 'alpha'));
+    assertOk(await team.run('approve', 'P1', '--session', 'bravo'));
+    team.runtime.image = { ...NODE_RUNTIME, sha256: 'b'.repeat(64), version: 'v22.12.0' };
+    assertOk(await team.run('node-pin', '--session', 'alpha'));
+    assertOk(await team.run('approve', 'P2', '--session', 'bravo'));
+    const listed = (await team.run('status')).stdout;
+    assert.match(listed.join('\n'), /^P1 runtime pin by alpha: .+: approved by bravo, replaced by P2$/m);
+    assert.match(listed.join('\n'), /^P2 runtime pin by alpha: .+: approved by bravo: dry runs and runs start under it$/m);
+    assertOk(await team.run('dry-run', 'R1'));
+  });
+
+  it('refuses an edited pin line: the chain breaks, and nothing runs', async () => {
+    const team = await unpinned();
+    assertOk(await team.run('node-pin', '--session', 'alpha'));
+    assertOk(await team.run('approve', 'P1', '--session', 'bravo'));
+    const text = (await team.kit.files.read(AUDIT)) ?? '';
+    await team.kit.files.write(AUDIT, text.replace('"sha256":"' + 'a'.repeat(64), '"sha256":"' + 'b'.repeat(64)));
+    team.runtime.image = { ...NODE_RUNTIME, sha256: 'b'.repeat(64) };
+    assertRefused(await team.run('dry-run', 'R1'), /the exec audit log is broken at .*audit\.jsonl line 2: its hash does not match its content/);
+    assert.deepEqual(team.spawner.asks, []);
+  });
+
+  it('refuses a pin approval whose signature is not valid for what it binds', async () => {
+    const team = await unpinned();
+    assertOk(await team.run('node-pin', '--session', 'alpha'));
+    const log = new AuditLog(AUDIT, team.kit.files, new InlineMutex(), team.kit.clock);
+    const filed = { id: 'P1', ...NODE_RUNTIME, requester: 'alpha', createdAt: '2030-01-08T10:00:00.000Z' };
+    const appended = await log.append(() => ({ type: 'pin-review', review: { id: 'P1', decision: 'approved', reviewer: 'bravo', note: '', pinSha256: pinSha256(filed), scheme: 'unsigned', signature: 'forged' } }));
+    assert.ok(appended.ok);
+    assertRefused(await team.run('dry-run', 'R1'), /P1's approval signature is not valid for what it binds/);
+  });
+
+  it("posts a pin's review to the security channel with who asked for it", async () => {
+    const team = await unpinned(POSTING_TEAM, { env: WEBHOOK_ENV });
+    assertOk(await team.run('node-pin', '--session', 'alpha'));
+    assertOk(await team.run('approve', 'P1', '--session', 'bravo'));
+    assert.deepEqual(
+      team.webhook.posts.map(({ content }) => content),
+      ['teamrig exec app: APPROVED P1 by bravo: dry runs and runs start only under Node.js v22.11.0 at C:\\nodejs\\node.exe (SHA-256 aaaaaaaaaaaa) [runtime pin, asked by alpha]'],
+    );
   });
 });

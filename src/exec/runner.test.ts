@@ -68,7 +68,7 @@ async function world({ request = execRequest(), credentials = CREDENTIALS, verif
   const checkout = new FakeCheckout();
   const executor = new Executor({
     audit,
-    binding: { checkout, search: searchOf('C:/nodejs', NODE) },
+    binding: { checkout, search: searchOf('C:/nodejs', NODE), node: NODE },
     spawner,
     credentials: credentialsOf(credentials),
     verifier,

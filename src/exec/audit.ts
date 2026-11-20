@@ -4,9 +4,18 @@ import { parseObject, recordVersion, toJsonlLine } from '../core/jsonl.ts';
 import type { Clock, Mutex } from '../core/lock.ts';
 import { canonicalJson, sha256Hex } from './digest.ts';
 import { readStoredRequest, requestSha256, type ExecRequest } from './request.ts';
+import { PIN_ID, pinSha256, readStoredPin, type RuntimePin } from './runtime-pin.ts';
 
-/** The audit line format this code writes and reads. */
-export const AUDIT_VERSION = 1;
+/** The newest audit line format this code reads: v2 lines hold the runtime pin's events (#870). */
+export const AUDIT_VERSION = 2;
+
+/**
+ * The format each line is written in: a request's events stay v1, which every release reads, and a runtime pin's are
+ * v2, so a release from before the pin stops at the first one with "update teamrig" rather than misreading it.
+ */
+function lineVersionOf(event: AuditEvent): number {
+  return event.type === 'pin-request' || event.type === 'pin-review' ? 2 : 1;
+}
 
 /** The `prev` of a log's first line: no line came before it. */
 export const GENESIS_HASH = '0'.repeat(64);
@@ -53,14 +62,33 @@ export interface Review {
   readonly signature: string;
 }
 
+/** The decisions a runtime pin takes: it is approved or refused, never escalated. */
+export const PIN_DECISIONS = ['approved', 'refused'] as const;
+export type PinDecision = (typeof PIN_DECISIONS)[number];
+
+/** A reviewer's decision on a runtime pin (#870): an approval names the pin's path, hash and version through its SHA-256. */
+export interface PinReview {
+  readonly id: string;
+  readonly decision: PinDecision;
+  readonly reviewer: string;
+  /** The reason; a refusal's says what to pin instead. */
+  readonly note: string;
+  /** The SHA-256 of the pin as reviewed (pinSha256). */
+  readonly pinSha256: string;
+  readonly scheme: string;
+  readonly signature: string;
+}
+
 export type AuditEvent =
   | { readonly type: 'request'; readonly request: ExecRequest }
+  | { readonly type: 'pin-request'; readonly pin: RuntimePin }
+  | { readonly type: 'pin-review'; readonly review: PinReview }
   | { readonly type: 'dry-run'; readonly id: string; readonly outcome: RunOutcome }
   | { readonly type: 'review'; readonly review: Review }
   | { readonly type: 'run-start'; readonly id: string; readonly nonce: string }
   | { readonly type: 'run-end'; readonly id: string; readonly outcome: RunOutcome };
 
-type RecordEvent = Exclude<AuditEvent, { readonly type: 'request' }>;
+type RecordEvent = Exclude<AuditEvent, { readonly type: 'request' | 'pin-request' | 'pin-review' }>;
 
 /** One line of the log: an event, numbered, timed by the executor's clock, and chained to the line before it. */
 export interface AuditLine {
@@ -88,14 +116,23 @@ export interface RequestRecord {
   readonly runEnd: Stamped<RunOutcome> | undefined;
 }
 
-/** What a whole, unbroken log says: every request's record, and where the chain ends. */
+/** A runtime pin and its review, if any. */
+export interface PinRecord {
+  readonly pin: RuntimePin;
+  readonly review: Stamped<PinReview> | undefined;
+}
+
+/** What a whole, unbroken log says: every request's and runtime pin's record, the pin approved last, and where the chain ends. */
 export interface AuditState {
   readonly records: ReadonlyMap<string, RequestRecord>;
+  readonly pins: ReadonlyMap<string, PinRecord>;
+  /** The id of the pin whose approval the log holds last: the runtime a dry run or a run starts under; undefined before any. */
+  readonly activePin: string | undefined;
   readonly seq: number;
   readonly lastHash: string;
 }
 
-export const EMPTY_AUDIT: AuditState = { records: new Map(), seq: 0, lastHash: GENESIS_HASH };
+export const EMPTY_AUDIT: AuditState = { records: new Map(), pins: new Map(), activePin: undefined, seq: 0, lastHash: GENESIS_HASH };
 
 /** The log read and its chain checked: the state, or the first line that breaks it and why. */
 export type AuditRead = { readonly ok: true; readonly state: AuditState } | { readonly ok: false; readonly line: number; readonly reason: string };
@@ -129,6 +166,16 @@ function requestIdAfter(count: number): string {
 /** The id the next request gets: R1, R2, … in the order the log holds them. */
 export function nextRequestId(state: AuditState): string {
   return requestIdAfter(state.records.size);
+}
+
+/** The id the next runtime pin gets: P1, P2, … in the order the log holds them. */
+export function nextPinId(state: AuditState): string {
+  return `P${state.pins.size + 1}`;
+}
+
+/** The runtime pin approved last, which a dry run or a run starts under; undefined before any approval. */
+export function activePin(state: AuditState): PinRecord | undefined {
+  return state.activePin === undefined ? undefined : state.pins.get(state.activePin);
 }
 
 function isSha256(value: unknown): value is string {
@@ -195,9 +242,39 @@ function parseReview(value: unknown): Review | undefined {
   return { id, decision, reviewer, ownerGated, note, requestSha256: reviewed, dryRunSha256, ...grant, scheme, signature };
 }
 
-function parseEvent(value: unknown): AuditEvent | undefined {
+function parsePinReview(value: unknown): PinReview | undefined {
   if (!isRecord(value)) {
     return undefined;
+  }
+  const { id, reviewer, note, scheme, signature } = value;
+  const decision = PIN_DECISIONS.find((candidate) => candidate === value['decision']);
+  const reviewed = value['pinSha256'];
+  if (decision === undefined || typeof id !== 'string' || !PIN_ID.test(id) || !isText(reviewer) || typeof note !== 'string' || !isSha256(reviewed) || !isText(scheme) || typeof signature !== 'string') {
+    return undefined;
+  }
+  return { id, decision, reviewer, note, pinSha256: reviewed, scheme, signature };
+}
+
+/** A runtime pin's event, which only a v2 line holds; undefined for any other. */
+function parsePinEvent(value: JsonRecord): AuditEvent | undefined {
+  const { type } = value;
+  if (type === 'pin-request') {
+    const pin = readStoredPin(value['pin']);
+    return pin === undefined ? undefined : { type, pin };
+  }
+  if (type === 'pin-review') {
+    const review = parsePinReview(value['review']);
+    return review === undefined ? undefined : { type, review };
+  }
+  return undefined;
+}
+
+function parseEvent(value: unknown, version: number): AuditEvent | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  if (version === 2) {
+    return parsePinEvent(value);
   }
   const { type, id } = value;
   if (type === 'request') {
@@ -227,8 +304,8 @@ function parseEvent(value: unknown): AuditEvent | undefined {
 
 function parseLine(record: JsonRecord): AuditLine | undefined {
   const { v, seq, at, prev, hash } = record;
-  const event = parseEvent(record['event']);
-  if (v === AUDIT_VERSION && isNonNegativeInteger(seq) && seq > 0 && isInstant(at) && isSha256(prev) && isSha256(hash) && event !== undefined) {
+  const event = v === 1 || v === 2 ? parseEvent(record['event'], v) : undefined;
+  if ((v === 1 || v === 2) && isNonNegativeInteger(seq) && seq > 0 && isInstant(at) && isSha256(prev) && isSha256(hash) && event !== undefined) {
     return { v, seq, at, event, prev, hash };
   }
   return undefined;
@@ -310,11 +387,15 @@ function nextRecord(record: RequestRecord, event: RecordEvent, at: string): Requ
  */
 class AuditFold {
   private readonly records: Map<string, RequestRecord>;
+  private readonly pins: Map<string, PinRecord>;
+  private activePin: string | undefined;
   private seq: number;
   private lastHash: string;
 
   constructor(from: AuditState) {
     this.records = new Map(from.records);
+    this.pins = new Map(from.pins);
+    this.activePin = from.activePin;
     this.seq = from.seq;
     this.lastHash = from.lastHash;
   }
@@ -353,11 +434,14 @@ class AuditFold {
   }
 
   state(): AuditState {
-    return { records: new Map(this.records), seq: this.seq, lastHash: this.lastHash };
+    return { records: new Map(this.records), pins: new Map(this.pins), activePin: this.activePin, seq: this.seq, lastHash: this.lastHash };
   }
 
   /** Applies an event, or gives why it cannot follow what the log holds. */
   private apply(event: AuditEvent, at: string): string | undefined {
+    if (event.type === 'pin-request' || event.type === 'pin-review') {
+      return this.applyPin(event, at);
+    }
     if (event.type === 'request') {
       const expected = requestIdAfter(this.records.size);
       if (event.request.id !== expected) {
@@ -376,6 +460,34 @@ class AuditFold {
       return next;
     }
     this.records.set(id, next);
+    return undefined;
+  }
+
+  /** Applies a runtime pin's event: a pin takes the next P<n>, and one review settles it against the pin as filed. */
+  private applyPin(event: Extract<AuditEvent, { readonly type: 'pin-request' | 'pin-review' }>, at: string): string | undefined {
+    if (event.type === 'pin-request') {
+      const expected = `P${this.pins.size + 1}`;
+      if (event.pin.id !== expected) {
+        return `the next runtime pin is ${expected}, not ${event.pin.id}`;
+      }
+      this.pins.set(expected, { pin: event.pin, review: undefined });
+      return undefined;
+    }
+    const { review } = event;
+    const record = this.pins.get(review.id);
+    if (record === undefined) {
+      return `a pin-review for ${review.id}, which no runtime pin created`;
+    }
+    if (record.review !== undefined) {
+      return `${review.id} is already ${record.review.decision}`;
+    }
+    if (review.pinSha256 !== pinSha256(record.pin)) {
+      return `${review.id}'s review is of a different runtime pin (its SHA-256 differs)`;
+    }
+    this.pins.set(review.id, { ...record, review: { ...review, at } });
+    if (review.decision === 'approved') {
+      this.activePin = review.id;
+    }
     return undefined;
   }
 }
@@ -432,7 +544,7 @@ export class AuditLog {
       if ('refusal' in decision) {
         return { ok: false, refusal: decision.refusal };
       }
-      const body = { v: AUDIT_VERSION, seq: read.state.seq + 1, at: new Date(this.clock.now()).toISOString(), event: decision, prev: read.state.lastHash };
+      const body = { v: lineVersionOf(decision), seq: read.state.seq + 1, at: new Date(this.clock.now()).toISOString(), event: decision, prev: read.state.lastHash };
       const text = toJsonlLine({ ...body, hash: sha256Hex(canonicalJson(body)) });
       const fold = new AuditFold(read.state);
       const line = fold.take(text.trimEnd());

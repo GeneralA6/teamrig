@@ -42,7 +42,7 @@ import { changesVariable } from './variable-change.ts';
 export const REVIEW_ACTIONS: ReadonlySet<string> = new Set(['approve', 'refuse', 'escalate']);
 
 /** Every `teamrig exec` command, by which a call through an unknown program reads as a teamrig call, not as `docker exec`. */
-export const EXEC_COMMANDS: ReadonlySet<string> = new Set(['request', 'dry-run', ...REVIEW_ACTIONS, 'run', 'status']);
+export const EXEC_COMMANDS: ReadonlySet<string> = new Set(['request', 'dry-run', ...REVIEW_ACTIONS, 'run', 'status', 'node-pin']);
 
 /** Every `teamrig owner` command, by which a call through an unknown program reads as a teamrig call. */
 export const OWNER_COMMANDS: ReadonlySet<string> = new Set(['note', 'next', 'wake']);

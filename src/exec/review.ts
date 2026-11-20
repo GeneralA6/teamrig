@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { MS_PER_HOUR, MS_PER_MINUTE } from '../core/time.ts';
-import type { AuditDecision, AuditState, RequestRecord, Review, ReviewDecision } from './audit.ts';
+import type { AuditDecision, AuditState, PinReview, RequestRecord, Review, ReviewDecision } from './audit.ts';
 import { canonicalJson } from './digest.ts';
 import { requestSha256, type RunWindow } from './request.ts';
+import { pinSha256 } from './runtime-pin.ts';
 
 /** How long an approval lasts when the request names no window (spec §8). */
 export const DEFAULT_APPROVAL_MS = 30 * MS_PER_MINUTE;
@@ -191,4 +192,62 @@ export function decideReview(state: AuditState, ask: ReviewAsk, now: number, kit
     scheme: kit.signer.scheme,
   };
   return { type: 'review', review: { ...review, signature: kit.signer.sign(reviewPayload(review)) } };
+}
+
+/** A pin review as signed: every field but the signature. */
+export type UnsignedPinReview = Omit<PinReview, 'signature'>;
+
+/** What a pin review's signature covers: every field but the signature, as canonical JSON, named one by one. */
+export function pinReviewPayload(review: UnsignedPinReview): string {
+  return canonicalJson({
+    id: review.id,
+    decision: review.decision,
+    reviewer: review.reviewer,
+    note: review.note,
+    pinSha256: review.pinSha256,
+    scheme: review.scheme,
+  });
+}
+
+/** Whether a pin review's signature is valid for what it binds. */
+export function pinSignatureValid(review: PinReview, verifier: ReviewVerifier): boolean {
+  return verifier.verify({ scheme: review.scheme, payload: pinReviewPayload(review), signature: review.signature });
+}
+
+/**
+ * Why `ask.reviewer` may not settle runtime pin `requester` filed (#870), or undefined when they may: the owner settles
+ * any; the security reviewer settles every other session's, approving it like a grant; a pin is never escalated.
+ */
+function pinReviewerProblem(id: string, requester: string, ask: ReviewAsk, { owner, security }: Reviewers): string | undefined {
+  if (ask.decision === 'escalated') {
+    return `a runtime pin is not escalated: approve or refuse ${id}`;
+  }
+  if (ask.reviewer === owner) {
+    return undefined;
+  }
+  if (security === undefined) {
+    return `no security reviewer is set (roles.securityReviewer), so only the owner (${owner}) reviews ${id}`;
+  }
+  if (ask.reviewer !== security) {
+    return `${ask.reviewer} reviews nothing: the security reviewer (${security}) or the owner (${owner}) reviews ${id}`;
+  }
+  return requester === security ? `${id} is ${security}'s own runtime pin: the owner (${owner}) reviews it` : undefined;
+}
+
+/**
+ * The pin-review line to append for `ask`, or why none may be: called under the audit lock, so the approval binds the
+ * pin's path, hash and version as the log holds them. The log's own fold refuses a second review.
+ */
+export function decidePinReview(state: AuditState, ask: ReviewAsk, kit: Pick<ReviewKit, 'reviewers' | 'signer'>): AuditDecision {
+  const record = state.pins.get(ask.id);
+  if (record === undefined) {
+    return { refusal: `no runtime pin ${ask.id} in the audit log` };
+  }
+  const problem = pinReviewerProblem(ask.id, record.pin.requester, ask, kit.reviewers) ?? (ask.decision === 'refused' && ask.note.trim() === '' ? 'a refusal needs a note: the reason, and which runtime to pin instead' : undefined);
+  if (problem !== undefined) {
+    return { refusal: problem };
+  }
+  const decision = ask.decision === 'approved' ? 'approved' : 'refused';
+  const review: UnsignedPinReview = { id: ask.id, decision, reviewer: ask.reviewer, note: ask.note, pinSha256: pinSha256(record.pin), scheme: kit.signer.scheme };
+  return { type: 'pin-review', review: { ...review, signature: kit.signer.sign(pinReviewPayload(review)) } };
 }

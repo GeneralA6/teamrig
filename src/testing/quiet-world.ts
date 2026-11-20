@@ -4,6 +4,7 @@ import { hostDeps } from './adapter-deps.ts';
 import { FakeCheckout } from './fake-checkout.ts';
 import { FakeCredentials, TEST_OWNERS } from './fake-credentials.ts';
 import { FakeExecSpawner } from './fake-exec-spawner.ts';
+import { FakeRuntimeProbe } from './fake-runtime-probe.ts';
 import { FakeWebhook } from './fake-webhook.ts';
 import { FakeGh } from './fake-gh.ts';
 import { FakeHttp } from './fake-http.ts';
@@ -44,7 +45,7 @@ const SHIPPED_HOST = await loadHostPorts(hostDeps().run);
  * nothing missing, and there are no transcripts and no worktrees; merge finds only the fake repository at /w/feat
  * (testing/fake-merge-git.ts) and a pre-push check no repository, a queued step and each program a deploy runs exit 0 at once while the shell that started it
  * runs on, the host has room in memory for any queued step (`ROOMY_FREE_MB` free) and an idle CPU, the package registry holds no package, a privileged command `teamrig exec` runs exits 0 in a clean checkout of the
- * fixture request's repository (testing/fake-checkout.ts), and new ids count up: `id-1`, `id-2`.
+ * fixture request's repository (testing/fake-checkout.ts) under the runtime FakeRuntimeProbe names, and new ids count up: `id-1`, `id-2`.
  */
 export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideWorld {
   let ids = 0;
@@ -74,7 +75,7 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
     trees: { checked: () => ({ kind: 'none' }) },
     hooks: new FakeHooks(),
     packageRegistry: new FakePackageRegistry(),
-    exec: { spawner: new FakeExecSpawner(), checkout: new FakeCheckout() },
+    exec: { spawner: new FakeExecSpawner(), checkout: new FakeCheckout(), runtime: new FakeRuntimeProbe() },
     webhook: new FakeWebhook(),
     steps: new FakeSteps(),
     memory: new FakeHostMemory(ROOMY_FREE_MB),

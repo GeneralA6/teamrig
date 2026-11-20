@@ -46,10 +46,12 @@ export const GIT_CHECKOUT: CheckoutProbe = {
   },
 };
 
-/** What the binding check reads: the checkout, and the exec PATH a program name is looked up on. */
+/** What the binding check reads: the checkout, the exec PATH a program name is looked up on, and the runtime a bare `node` starts. */
 export interface BindingDeps {
   readonly checkout: CheckoutProbe;
   readonly search: PathSearchDeps;
+  /** The Node.js program the client runs under (`process.execPath`), the one the runtime pin names (#870). */
+  readonly node: string;
 }
 
 /** Which of a request's commands is about to start: the read-only dry run, or the approved run. */
@@ -61,14 +63,24 @@ export function stageCommand(request: ExecRequest, stage: ExecStage): { readonly
   return request.dryRunArgv === null || request.dryRunProgram === null ? undefined : { program: request.dryRunProgram, argv: request.dryRunArgv };
 }
 
-/** The file `argv0` starts: an absolute path that is a file, or a name found on the exec PATH; undefined when neither. */
-export async function resolveProgram(argv0: string, search: PathSearchDeps): Promise<string | undefined> {
+/** Whether a program name names Node.js: `node`, and on Windows any case of it or `node.exe`. */
+export function isNodeName(name: string, platform: NodeJS.Platform): boolean {
+  const key = platform === 'win32' ? name.toLowerCase() : name;
+  return key === 'node' || (platform === 'win32' && key === 'node.exe');
+}
+
+/**
+ * The file `argv0` starts: an absolute path that is a file, or a name found on the exec PATH; undefined when neither.
+ * A bare `node` starts `node`, the runtime the client runs under, never the first one a PATH lookup finds, so a
+ * privileged step runs under the pinned runtime (#870).
+ */
+export async function resolveProgram(argv0: string, search: PathSearchDeps, node: string): Promise<string | undefined> {
   const lookup = programLookup(argv0);
   switch (lookup.kind) {
     case 'absolute':
       return (await search.probe.kind(lookup.path)) === 'file' ? lookup.path : undefined;
     case 'name':
-      return findProgram(lookup.name, search);
+      return isNodeName(lookup.name, search.platform) ? node : findProgram(lookup.name, search);
     case 'refused':
       return undefined;
   }
@@ -110,7 +122,7 @@ export async function bindingProblems(request: ExecRequest, stage: ExecStage, de
   }
   const { program: stored, argv } = command;
   const { checkout, search } = deps;
-  const [topLevel, head, changes, program] = await Promise.all([checkout.topLevel(request.cwd), checkout.head(binding.repo), checkout.changes(binding.repo), resolveProgram(argv[0] ?? '', search)]);
+  const [topLevel, head, changes, program] = await Promise.all([checkout.topLevel(request.cwd), checkout.head(binding.repo), checkout.changes(binding.repo), resolveProgram(argv[0] ?? '', search, deps.node)]);
   const problems: string[] = [];
   if (topLevel === undefined) {
     problems.push(`cwd ${request.cwd} is in no git checkout`);

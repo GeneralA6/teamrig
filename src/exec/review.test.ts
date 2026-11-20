@@ -8,9 +8,13 @@ import { MS_PER_HOUR, MS_PER_MINUTE } from '../core/time.ts';
 import { AuditLog, type AuditAppend, type AuditEvent, type Review, type RunOutcome } from './audit.ts';
 import { sha256Hex } from './digest.ts';
 import { requestSha256, type ExecRequest } from './request.ts';
+import { pinSha256, type RuntimePin } from './runtime-pin.ts';
 import {
   approvalExpiry,
+  decidePinReview,
   decideReview,
+  pinReviewPayload,
+  pinSignatureValid,
   RANDOM_NONCES,
   signatureValid,
   UnsignedReviews,
@@ -227,5 +231,67 @@ describe('review signatures (T755)', () => {
     const [first, second] = [RANDOM_NONCES.next(), RANDOM_NONCES.next()];
     assert.match(first, /^[0-9a-f]{32}$/u);
     assert.notEqual(first, second);
+  });
+});
+
+describe('decidePinReview (#870)', () => {
+  const PIN: RuntimePin = { id: 'P1', path: '/usr/local/bin/node', sha256: 'a'.repeat(64), version: 'v22.11.0', requester: 'alpha', createdAt: START };
+
+  /** A log holding `pin`, and a review asked of it under the lock, with KIT's reviewers unless `kit` says otherwise. */
+  async function pinWorld(pin: RuntimePin = PIN, kit: Omit<ReviewKit, 'nonces'> = KIT): Promise<{ readonly log: AuditLog; readonly review: (ask: Partial<ReviewAsk>) => Promise<AuditAppend> }> {
+    const clock = new FakeClock(START);
+    const log = new AuditLog(PATH, new MemoryFiles({}, clock), new InlineMutex(), clock);
+    await mustAppend(log, { type: 'pin-request', pin });
+    return { log, review: async (ask) => log.append((state) => decidePinReview(state, { id: 'P1', decision: 'approved', reviewer: 'security', note: '', ...ask }, kit)) };
+  }
+
+  function refusal(result: AuditAppend): string {
+    assert.equal(result.ok, false);
+    return result.ok ? '' : result.refusal;
+  }
+
+  it("lets the security reviewer approve another session's pin, binding the pin's path, hash and version", async () => {
+    const { review } = await pinWorld();
+    const result = await review({ note: 'matches SHASUMS256.txt' });
+    assert.ok(result.ok);
+    const record = result.state.pins.get('P1');
+    assert.deepEqual(record?.review, { id: 'P1', decision: 'approved', reviewer: 'security', note: 'matches SHASUMS256.txt', pinSha256: pinSha256(PIN), scheme: 'unsigned', signature: '', at: START });
+    assert.equal(result.state.activePin, 'P1');
+  });
+
+  it("lets the owner settle any pin, and sends the security reviewer's own pin to the owner", async () => {
+    const own = await pinWorld({ ...PIN, requester: 'security' });
+    assert.match(refusal(await own.review({})), /P1 is security's own runtime pin: the owner \(owner\) reviews it/u);
+    assert.ok((await own.review({ reviewer: 'owner' })).ok);
+  });
+
+  it('refuses another session, an escalation, a refusal with no note, and a pin no log holds', async () => {
+    const { review } = await pinWorld();
+    assert.match(refusal(await review({ reviewer: 'alpha' })), /alpha reviews nothing: the security reviewer \(security\) or the owner \(owner\) reviews P1/u);
+    assert.match(refusal(await review({ decision: 'escalated', note: 'big' })), /a runtime pin is not escalated: approve or refuse P1/u);
+    assert.match(refusal(await review({ decision: 'escalated', reviewer: 'owner', note: 'big' })), /not escalated/u);
+    assert.match(refusal(await review({ decision: 'refused' })), /a refusal needs a note: the reason, and which runtime to pin instead/u);
+    assert.match(refusal(await review({ id: 'P2' })), /no runtime pin P2 in the audit log/u);
+    const refused = await review({ decision: 'refused', note: 'not the release binary' });
+    assert.ok(refused.ok);
+    assert.equal(refused.state.activePin, undefined);
+  });
+
+  it('leaves the owner alone to review when no security reviewer is set', async () => {
+    const { review } = await pinWorld(PIN, { ...KIT, reviewers: { owner: 'owner', security: undefined } });
+    assert.match(refusal(await review({})), /no security reviewer is set \(roles\.securityReviewer\), so only the owner \(owner\) reviews P1/u);
+    assert.ok((await review({ reviewer: 'owner' })).ok);
+  });
+
+  it('signs what the pin review binds, so a field changed after signing makes it invalid', async () => {
+    const signer = new KeyedSigner();
+    const { review } = await pinWorld(PIN, { ...KIT, signer });
+    const result = await review({});
+    assert.ok(result.ok);
+    const signed = result.state.pins.get('P1')?.review;
+    assert.ok(signed !== undefined);
+    assert.equal(signed.signature, signer.sign(pinReviewPayload(signed)));
+    assert.equal(pinSignatureValid(signed, signer), true);
+    assert.equal(pinSignatureValid({ ...signed, pinSha256: 'f'.repeat(64) }, signer), false);
   });
 });

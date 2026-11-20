@@ -32,6 +32,7 @@ const REAL: Readonly<Record<string, string>> = {
   [fileKey('C:/u/.teamrig/teams/other/CONFIG~1.JSO')]: 'C:/u/.teamrig/teams/other/CONFIG~1.JSO',
   [fileKey('C:/u/TEAMRI~1/teams/shop/config.json')]: 'C:/u/TEAMRI~1/teams/shop/config.json',
   [fileKey('C:/u/TEAMRI~1/teams/SHOP~1/CONFIG~2.JSO')]: 'C:/u/TEAMRI~1/teams/SHOP~1/CONFIG~2.JSO',
+  [fileKey('C:/w/log-link.jsonl')]: 'C:/u/.teamrig/teams/shop/exec/audit.jsonl',
 };
 
 interface GuardOptions {
@@ -315,5 +316,45 @@ describe('config guard: every owner-gated key (T3083)', () => {
     assert.deepEqual(changedGatedKeys(text, JSON.stringify({ ...base, exec: undefined })), ['exec']);
     assert.deepEqual(changedGatedKeys(undefined, 'not json'), []);
     assert.ok(OWNER_GATED_KEYS.some((keyPath) => keyPath.join('.') === 'serviceRoles'));
+  });
+});
+
+describe('exec log guard: the exec audit log a runtime pin and every approval live in (#870)', () => {
+  const LOG = 'C:/u/.teamrig/teams/shop/exec/audit.jsonl';
+
+  async function reasonOf(payload: JsonRecord, guardEnv: ServiceRoleGuardEnv = env()): Promise<string> {
+    const decided = decisionOf(await serviceRoleGuardOutput(payload, guardEnv));
+    assert.equal(decided?.decision, 'deny', JSON.stringify(payload));
+    return decided.reason;
+  }
+
+  it("refuses a session's Write, Edit or MultiEdit of any team's exec log, by any spelling of its path", async () => {
+    for (const path of [LOG, 'C:\\u\\.teamrig\\teams\\other\\exec\\audit.jsonl', '/c/u/.teamrig/teams/shop/exec/audit.jsonl', 'C:/u/.teamrig/teams/shop/exec/AUDIT~1.JSO', 'C:/u/.teamrig/teams/shop/exec/audit.jsonl.', 'C:/w/log-link.jsonl']) {
+      for (const [tool, input] of [
+        ['Write', { file_path: path, content: '{}\n' }],
+        ['Edit', { file_path: path, old_string: 'a', new_string: 'b' }],
+        ['MultiEdit', { file_path: path, edits: [] }],
+      ] as const) {
+        assert.match(await reasonOf(call(tool, input)), /^teamrig exec log guard: this \w+ writes .+, a team's exec audit log\. The exec audit log is hash-chained/, `${tool} ${path}`);
+      }
+    }
+    assert.match(await reasonOf(call('Write', { file_path: '\\\\?\\C:\\u\\.teamrig\\teams\\shop\\exec\\audit.jsonl', content: '' })), /exec log guard/);
+    const posixEnv = env({ platform: 'linux' });
+    assert.match(await reasonOf(call('Write', { file_path: '/srv/u/.teamrig/teams/shop/exec/audit.jsonl', content: '' }), posixEnv), /exec log guard/);
+  });
+
+  it("refuses a shell line naming the exec log, from anywhere or bare from a team's exec folder", async () => {
+    for (const command of ['cat C:/u/.teamrig/teams/shop/exec/audit.jsonl', 'echo {} >> exec/audit.jsonl', 'Add-Content exec\\AUDIT~1.JSO x']) {
+      assert.match(await reasonOf(call('Bash', { command })), /^teamrig exec log guard: this Bash line names a team's exec audit log/, command);
+    }
+    assert.match(await reasonOf(call('PowerShell', { command: 'Add-Content audit.jsonl x' }, 'C:/u/.teamrig/teams/shop/exec')), /this PowerShell line names/);
+  });
+
+  it('passes other files and lines: an audit.jsonl elsewhere, the exec output folder, teamrig exec status', async () => {
+    assert.equal(await decide(call('Write', { file_path: 'C:/w/audit.jsonl', content: '' })), undefined);
+    assert.equal(await decide(call('Write', { file_path: 'C:/u/.teamrig/teams/shop/exec/out/R1-dry.log', content: '' })), undefined);
+    assert.equal(await decide(call('Bash', { command: 'teamrig exec status P1' })), undefined);
+    assert.equal(await decide(call('Bash', { command: 'cat audit.jsonl' })), undefined, 'outside an exec folder a bare name is another file');
+    assert.equal(await decide(call('Bash', { command: 'cat my-exec/audit.jsonl.bak' })), undefined);
   });
 });
