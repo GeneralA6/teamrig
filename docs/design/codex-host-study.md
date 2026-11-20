@@ -1,5 +1,8 @@
 # Codex as a second agent host: the study
 
+> **Status: proposed** (written 2026-11-19), the study [#634](https://github.com/teamrig/teamrig/issues/634) asks
+> for. This is a design record, not a description of how teamrig works today: nothing here is built yet.
+
 teamrig runs inside Claude Code today. This page is the probe [issue #634](https://github.com/teamrig/teamrig/issues/634)
 asks for before any code: every Claude Code touch point teamrig relies on, set against what OpenAI's Codex offers, the
 feature each one feeds, and what it would take to carry teamrig on Codex.

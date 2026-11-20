@@ -1,10 +1,11 @@
 # Build on teamrig: the public interface (design)
 
-> **Proposal under discussion on [#1048](https://github.com/GeneralA6/teamrig/issues/1048), not agreed: do not build on
-> it.**
+> **Status: proposed** (written 2026-11-15) on [#1048](https://github.com/teamrig/teamrig/issues/1048), under
+> discussion and not agreed. This is a design record, not a description of how teamrig works today: do not build on
+> it.
 
-**Status: design, nothing on this page is built yet.** It answers
-[#1048](https://github.com/GeneralA6/teamrig/issues/1048), which asks how a terminal app can work with teamrig without
+Nothing on this page is built yet. It answers
+[#1048](https://github.com/teamrig/teamrig/issues/1048), which asks how a terminal app can work with teamrig without
 following teamrig's insides. It is open for comments on that issue; what ships will be marked in
 [Everything teamrig does](../features.md) as each part lands.
 
@@ -30,7 +31,7 @@ small interface, versioned on its own, lets a terminal app, a task pane, an edit
 release whose interface version it supports.
 
 Today the public part is small: the pure reader `src/read/index.ts`, which the
-[teamrig-pane](https://github.com/GeneralA6/teamrig-pane) task pane uses ([Room for other
+[teamrig-pane](https://github.com/teamrig/teamrig-pane) task pane uses ([Room for other
 tools](../how-it-works.md#room-for-other-tools)), and the `--json` output of `teamrig config` and `teamrig meetings`.
 Everything else (file layouts, other commands' text, hook fields, environment variables) is internal and may change in
 any release.
