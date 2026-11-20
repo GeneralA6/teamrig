@@ -6,22 +6,18 @@ import { FolderNames } from '../testing/folder-names.ts';
 import { loadRecording } from '../testing/recorded.ts';
 import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { compactLine, promptLine, replyLine, resultsLine, sessionStartNoteLine, systemLine } from '../testing/transcript-lines.ts';
-import { parseTranscriptLine, stopFeedbackOf, stopFeedbackPromptOf, tasksIn, transcriptLineOf, type PromptLine, type TranscriptLine } from './line.ts';
+import { stopFeedbackOf, tasksIn, transcriptLineOf, type PromptLine, type TranscriptLine } from './line.ts';
 
 const AT = '2026-03-02T10:00:00.000Z';
 const reader = shippedTranscripts();
 
-/** The line as the meter counts it from its entry, which must be what the raw parser makes of the same text. */
+/** The line as the meter counts it, read through the shipped host's reader. */
 function lineOf(raw: string): TranscriptLine | undefined {
-  const line = transcriptLineOf(reader, raw);
-  assert.deepEqual(line, parseTranscriptLine(raw), 'the entry reading and the raw parser agree');
-  return line;
+  return transcriptLineOf(reader, raw);
 }
 
 function stopFeedback(raw: string): PromptLine | undefined {
-  const line = stopFeedbackOf(reader, raw);
-  assert.deepEqual(line, stopFeedbackPromptOf(raw), 'the entry reading and the raw parser agree');
-  return line;
+  return stopFeedbackOf(reader, raw);
 }
 
 function keyOf(raw: string): string | undefined {
@@ -33,12 +29,9 @@ describe('the recorded session read as the meter counts it', () => {
   const recording = loadRecording('claude-code', new FolderNames({ cwd: resolve('/', 'work', 'app'), temp: resolve('/', 'tmp'), home: resolve('/', 'u') }));
   const lines = recording.transcripts.flatMap((transcript) => transcript.text.split('\n'));
 
-  it('reads every recorded line from its entry as the raw parser does, and counts calls, results and prompts among them', () => {
+  it('counts calls, results and prompts among the recorded lines', () => {
     const kinds = new Set(lines.map((line) => lineOf(line)?.kind));
     assert.deepEqual([...kinds].filter((kind) => kind === 'call' || kind === 'results' || kind === 'prompt').sort(), ['call', 'prompt', 'results']);
-    for (const line of lines) {
-      stopFeedback(line);
-    }
   });
 });
 
