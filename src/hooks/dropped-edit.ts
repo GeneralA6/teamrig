@@ -1,4 +1,5 @@
-import { parseTranscriptLine, type ToolUse } from '../budget/line.ts';
+import { transcriptLineOf, type ToolUse } from '../budget/line.ts';
+import type { TranscriptReader } from '../ports/host/index.ts';
 
 /**
  * A skill edit Claude Code refused and the turn never redid. Skills are plain files that every session
@@ -49,7 +50,7 @@ function errorLine(text: string): string {
  * counts as redone; a prompt starts a new turn, but a compaction's summary does not: the turn goes on, with
  * the refusal now out of the agent's context. A tail without any error result is not parsed at all.
  */
-export function droppedEditsOf(text: string, cut: boolean, thread: TranscriptThread): DroppedEdit[] {
+export function droppedEditsOf(reader: TranscriptReader, text: string, cut: boolean, thread: TranscriptThread): DroppedEdit[] {
   if (!text.includes('"is_error":true')) {
     return [];
   }
@@ -57,7 +58,7 @@ export function droppedEditsOf(text: string, cut: boolean, thread: TranscriptThr
   const dropped = new Map<string, DroppedEdit>();
   const lines = text.split('\n');
   for (const raw of cut ? lines.slice(1) : lines) {
-    const line = parseTranscriptLine(raw);
+    const line = transcriptLineOf(reader, raw);
     if (line?.kind === 'prompt' && line.trigger !== 'continuation') {
       edits.clear();
       dropped.clear();
