@@ -165,10 +165,12 @@ test('the shipped repos.json still lists every job a teamrig pull request runs, 
   assert.equal(teamrig.checks.length, jobs.length + tests.length);
 });
 
-test('teamrig-pane waits for its plugin version gate; teamrig has none, as its release pull request raises the version', () => {
+test('neither repo waits for a plugin version gate, as each release pull request raises the version; the pane waits for its commit subject gate (T4678)', () => {
   const profiles = readProfiles();
-  assert.ok(profileFor(profiles, 'GeneralA6/teamrig-pane').checks.includes('plugin version gate'));
-  assert.ok(!profileFor(profiles, 'GeneralA6/teamrig').checks.includes('plugin version gate'));
+  for (const slug of ['GeneralA6/teamrig', 'GeneralA6/teamrig-pane']) {
+    assert.ok(!profileFor(profiles, slug).checks.includes('plugin version gate'), slug);
+  }
+  assert.ok(profileFor(profiles, 'GeneralA6/teamrig-pane').checks.includes('commit subject gate'));
 });
 
 test('both repos keep their own local CI runner, which a ship runs before it pushes', () => {
