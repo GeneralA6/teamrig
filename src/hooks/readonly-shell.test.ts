@@ -2,14 +2,22 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_SECRET_GUARD } from '../config/defaults.ts';
 import { NO_SNAPSHOT } from '../readonly-shell/snapshot.ts';
+import type { JsonRecord } from '../core/guards.ts';
 import { secretRulesOf } from '../secret-guard/rules.ts';
-import { READONLY_REASON, readonlyRulesOf, readonlyShellOutput, type PrintsSecret } from './readonly-shell.ts';
+import { hookEventOf, replyText } from '../testing/host.ts';
+import type { ReadonlyRules } from '../readonly-shell/rules.ts';
+import { READONLY_REASON, readonlyRulesOf, readonlyShellReply, type PrintsSecret } from './readonly-shell.ts';
 import { secretFindingsOf } from './secret-guard.ts';
 
 const CONFIG = { enabled: true, allowPrefixes: ['npx tsc --noEmit'] };
 const RULES = readonlyRulesOf(CONFIG, { PATH: '/bin', npm_config_prefix: '/u/npm' }, NO_SNAPSHOT);
 
-const call = (tool_name: string, command: unknown) => ({ tool_name, tool_input: { command } });
+const call = (tool_name: string, command: unknown): JsonRecord => ({ tool_name, tool_input: { command } });
+
+/** What the shipped host is handed for the reply to this hook input, read on `platform`. */
+function readonlyShellOutput(input: JsonRecord, rules: ReadonlyRules, printsSecret: PrintsSecret, platform: NodeJS.Platform): string {
+  return replyText('tool-start', readonlyShellReply(hookEventOf(input, platform), rules, printsSecret));
+}
 
 const NO_SECRET: PrintsSecret = () => false;
 
@@ -31,7 +39,7 @@ describe('readonlyRulesOf', () => {
   });
 });
 
-describe('readonlyShellOutput', () => {
+describe('readonlyShellReply', () => {
   it('allows a line that only reads, in the dialect of the tool that runs it', () => {
     assert.equal(readonlyShellOutput(call('Bash', 'grep -n x src/a.ts | head -5'), RULES, NO_SECRET, 'linux'), ALLOW);
     assert.equal(readonlyShellOutput(call('PowerShell', 'Get-Content f | Select-Object -First 5'), RULES, NO_SECRET, 'linux'), ALLOW);
@@ -49,23 +57,23 @@ describe('readonlyShellOutput', () => {
     assert.equal(readonlyShellOutput(call('Bash', 'prefix=/tmp/x'), RULES, NO_SECRET, 'linux'), ALLOW);
   });
 
-  it('prints nothing for another tool, a missing command or input that is not a payload', () => {
+  it('prints nothing for another tool, a missing command or an input that names no tool', () => {
     assert.equal(readonlyShellOutput(call('Read', 'grep x f'), RULES, NO_SECRET, 'linux'), '');
     assert.equal(readonlyShellOutput(call('Bash', 7), RULES, NO_SECRET, 'linux'), '');
     assert.equal(readonlyShellOutput({ tool_name: 'Bash' }, RULES, NO_SECRET, 'linux'), '');
-    assert.equal(readonlyShellOutput('grep x f', RULES, NO_SECRET, 'linux'), '');
+    assert.equal(readonlyShellOutput({}, RULES, NO_SECRET, 'linux'), '');
   });
 
   it('never allows a line that prints a secret, whatever the secret guard decides', () => {
     const secrets = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
-    const printsSecret: PrintsSecret = (payload) => secretFindingsOf(payload, 'C:/w', secrets).length > 0;
+    const printsSecret: PrintsSecret = (event) => secretFindingsOf(event, 'C:/w', secrets).length > 0;
     assert.equal(readonlyShellOutput(call('Bash', 'cat .env'), RULES, printsSecret, 'linux'), '');
     assert.equal(readonlyShellOutput(call('PowerShell', 'Get-Content ~/.npmrc'), RULES, printsSecret, 'linux'), '');
     assert.equal(readonlyShellOutput(call('Bash', 'cat .env | wc -c'), RULES, printsSecret, 'linux'), ALLOW);
   });
 });
 
-describe('readonlyShellOutput on Windows, where the Bash tool halves backslash runs', () => {
+describe('readonlyShellReply on Windows, where the Bash tool halves backslash runs', () => {
   const bs = (n: number): string => '\\'.repeat(n);
 
   it('prints nothing when the halved text bash receives runs a command the text as written only escapes', () => {
@@ -82,7 +90,7 @@ describe('readonlyShellOutput on Windows, where the Bash tool halves backslash r
 
   it('checks the halved text for a secret too', () => {
     const secrets = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
-    const printsSecret: PrintsSecret = (payload) => secretFindingsOf(payload, 'C:/w', secrets).length > 0;
+    const printsSecret: PrintsSecret = (event) => secretFindingsOf(event, 'C:/w', secrets).length > 0;
     assert.equal(readonlyShellOutput(call('Bash', `cat .e${bs(2)}nv`), RULES, printsSecret, 'win32'), '');
     assert.equal(readonlyShellOutput(call('Bash', `cat .e${bs(2)}nv`), RULES, printsSecret, 'linux'), ALLOW);
   });

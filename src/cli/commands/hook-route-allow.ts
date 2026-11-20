@@ -9,7 +9,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { guardLoadOf, type GuardLoad } from './hook-guard-load.ts';
-import { dbWriteGuardReplyOf, execGuardReplyOf, packageGuardReplyOf, pushGuardReplyOf, secretGuardOutputOf, serviceRoleGuardOutputOf } from './hook-guard-outputs.ts';
+import { dbWriteGuardReplyOf, execGuardReplyOf, packageGuardReplyOf, pushGuardReplyOf, secretGuardReplyOf, serviceRoleGuardOutputOf } from './hook-guard-outputs.ts';
 import { envSession, readHookInput } from './hook-input.ts';
 import { roleAllowOutputOf } from './hook-role-allow.ts';
 import { callRouteOf } from './hook-route-context.ts';
@@ -31,7 +31,7 @@ async function everyGuardPassed(runtime: CliRuntime, guard: GuardLoad, payload: 
     dbWriteGuardReplyOf(runtime, guard, event),
     serviceRoleGuardOutputOf(runtime, guard, payload),
   ]);
-  return guardsPassed([...answers, secretGuardOutputOf(runtime, guard, payload), passRecordGuardOutput(payload)]);
+  return guardsPassed([...answers, secretGuardReplyOf(runtime, guard, event), passRecordGuardOutput(payload)]);
 }
 
 /**

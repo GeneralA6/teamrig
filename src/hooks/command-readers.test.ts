@@ -110,7 +110,8 @@ function commandReadingOf(fileName: string, source: string): CommandReading {
   };
   visit(file);
   const offPayload = strings.has('tool_input') && strings.has('command');
-  const offCall = narrowsShell && members.has('command');
+  // A guard that reads only the readings, never the line as written, reads the command as much as one that reads both.
+  const offCall = narrowsShell && (members.has('command') || members.has('readings'));
   return { readsCommand: offPayload || offCall, importsReadings: importsReadings || members.has('readings') };
 }
 
@@ -171,6 +172,12 @@ describe('commandReadingOf', () => {
   it('finds the shell call narrowed in a switch', () => {
     const source = "switch (call.kind) { case 'shell': return call.command; default: return undefined; }";
     assert.deepEqual(commandReadingOf('a.ts', source), { readsCommand: true, importsReadings: false });
+  });
+
+  it('finds the shell call read only by its readings, so a scan of the known guards never goes blind on one', () => {
+    const source = "switch (call?.kind) { case 'shell': return call.readings.flatMap(found); default: return []; }";
+    assert.deepEqual(commandReadingOf('a.ts', source), { readsCommand: true, importsReadings: true });
+    assert.equal(commandReadingOf('a.ts', 'const texts = step.readings;').readsCommand, false);
   });
 
   it('leaves a command read off anything but a call narrowed to the shell kind', () => {

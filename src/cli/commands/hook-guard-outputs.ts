@@ -11,7 +11,7 @@ import { githubReposOf } from '../../hooks/gh-write-refusals.ts';
 import { remoteReposOf } from '../../hooks/gh-writes.ts';
 import { packageGuardOf, packageGuardReply } from '../../hooks/package-guard.ts';
 import { commitsOf, protectedBranchesOf, pushGuardReply, pushToProtectedOf, skipHooksOf, type PushClearance } from '../../hooks/push-guard.ts';
-import { secretGuardOf, secretGuardOutput, secretPatternsOf } from '../../hooks/secret-guard.ts';
+import { secretGuardOf, secretGuardReply, secretPatternsOf } from '../../hooks/secret-guard.ts';
 import { serviceRoleGuardOutput } from '../../hooks/service-role-guard.ts';
 import type { HookEvent, HookReply } from '../../ports/host/index.ts';
 import { approvedTaskOf } from '../../register/approval.ts';
@@ -132,15 +132,14 @@ export function dbWriteGuardReplyOf(runtime: CliRuntime, guard: GuardLoad, event
   });
 }
 
-/** The secret guard's answer: it refuses, or asks about, a call that would print a secret or whose text holds one. */
-export function secretGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload: unknown): string {
+/** The secret guard's reply: it refuses, or asks about, a call that would print a secret or whose text holds one; none when it lets the call go. */
+export function secretGuardReplyOf(runtime: CliRuntime, guard: GuardLoad, event: HookEvent): HookReply | undefined {
   const config = secretGuardOf(guard.load);
-  return secretGuardOutput(payload, {
+  return secretGuardReply(event, {
     cwd: runtime.cwd,
     rules: secretRulesOf(config, runtime.userHome, runtime.platform, secretPatternsOf(guard.load)),
     secretReads: config.secretReads,
     writes: config.writes,
-    platform: runtime.platform,
   });
 }
 
