@@ -1,4 +1,3 @@
-import { isRecord, type JsonRecord } from '../../core/guards.ts';
 import { toJsonlLine } from '../../core/jsonl.ts';
 import { passRecordGuardReply } from '../../hooks/pass-record-guard.ts';
 import { guardsPassed, preToolUseRouteOf, routeAllowOn, routeAllowRecord, routeAllowReply } from '../../hooks/route-allow.ts';
@@ -38,8 +37,8 @@ async function everyGuardPassed(runtime: CliRuntime, guard: GuardLoad, event: Ho
  * a service role's call (hook-role-allow.ts), once every teamrig guard passed the same call; else none. Each allow is
  * logged by its route or its role.
  */
-async function routeAllowReplyOf(runtime: CliRuntime, payload: JsonRecord, event: HookEvent, deps: RouteAllowDeps): Promise<HookReply | undefined> {
-  const guard = await guardLoadOf(payload, runtime);
+async function routeAllowReplyOf(runtime: CliRuntime, event: HookEvent, deps: RouteAllowDeps): Promise<HookReply | undefined> {
+  const guard = await guardLoadOf(event.cwd, runtime);
   const kit = guard?.kit;
   if (guard === undefined || kit === undefined || kit.load.status !== 'loaded') {
     return undefined;
@@ -74,8 +73,8 @@ async function routeAllowReplyOf(runtime: CliRuntime, payload: JsonRecord, event
 export function routeAllow(deps: RouteAllowDeps): (args: ParsedArgs, runtime: CliRuntime) => Promise<ExitCode> {
   return async (args, runtime) => {
     noPositionals(args);
-    const { payload, event } = await readHookInput(runtime);
-    const reply = isRecord(payload) && event !== undefined ? await routeAllowReplyOf(runtime, payload, event, deps).catch(() => undefined) : undefined;
+    const { event } = await readHookInput(runtime);
+    const reply = event === undefined ? undefined : await routeAllowReplyOf(runtime, event, deps).catch(() => undefined);
     writeReply(runtime, 'tool-start', reply);
     return EXIT.ok;
   };
