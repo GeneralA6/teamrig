@@ -1,0 +1,64 @@
+[
+  {
+    "event": "UserPromptSubmit",
+    "index": 0,
+    "hook": "hook inbox-reminder",
+    "code": 0,
+    "stdout": [
+      {
+        "hookSpecificOutput": {
+          "hookEventName": "UserPromptSubmit",
+          "sessionTitle": "app-alpha"
+        }
+      }
+    ],
+    "stderr": []
+  },
+  {
+    "event": "UserPromptSubmit",
+    "index": 0,
+    "hook": "hook restore-track",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "UserPromptSubmit",
+    "index": 0,
+    "hook": "hook tab-status",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "UserPromptSubmit",
+    "index": 1,
+    "hook": "hook inbox-reminder",
+    "code": 0,
+    "stdout": [
+      {
+        "hookSpecificOutput": {
+          "hookEventName": "UserPromptSubmit",
+          "sessionTitle": "app-alpha"
+        }
+      }
+    ],
+    "stderr": []
+  },
+  {
+    "event": "UserPromptSubmit",
+    "index": 1,
+    "hook": "hook restore-track",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "UserPromptSubmit",
+    "index": 1,
+    "hook": "hook tab-status",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  }
+]

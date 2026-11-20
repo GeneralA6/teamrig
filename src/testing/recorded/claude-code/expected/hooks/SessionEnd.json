@@ -1,0 +1,74 @@
+[
+  {
+    "event": "SessionEnd",
+    "index": 0,
+    "hook": "hook restore-track",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "SessionEnd",
+    "index": 0,
+    "hook": "hook effort-writeback",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "SessionEnd",
+    "index": 0,
+    "hook": "hook tab-status",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "SessionEnd",
+    "index": 1,
+    "hook": "hook restore-track",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "SessionEnd",
+    "index": 1,
+    "hook": "hook effort-writeback",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "SessionEnd",
+    "index": 1,
+    "hook": "hook tab-status",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "SessionEnd",
+    "index": 2,
+    "hook": "hook restore-track",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "SessionEnd",
+    "index": 2,
+    "hook": "hook effort-writeback",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "SessionEnd",
+    "index": 2,
+    "hook": "hook tab-status",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  }
+]
