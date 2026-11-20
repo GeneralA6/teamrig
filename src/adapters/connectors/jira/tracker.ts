@@ -30,6 +30,7 @@ import {
 import { adfText, textAdf, type AdfDoc } from './adf.ts';
 import type { JiraAnswer, JiraClient } from './client.ts';
 import { NOT_BUILT } from './declaration.ts';
+import { stateReasonOf } from './resolution.ts';
 import { browseUrl, credentialName, issueKey, issueNumber, parseProject, projectProblem, type JiraProject } from './site.ts';
 
 /**
@@ -163,7 +164,7 @@ function hostIssue(repo: string, project: JiraProject, value: unknown): HostIssu
     title: stringField(fields, 'summary') ?? '',
     body: adfText(fields['description']),
     state: closed ? 'closed' : 'open',
-    stateReason: closed && resolution !== undefined ? (stringField(resolution, 'name') ?? '') : '',
+    stateReason: closed && resolution !== undefined ? stateReasonOf(stringField(resolution, 'name') ?? '') : '',
     labels: isStringArray(labels) ? labels : [],
     assignees: assignee === '' ? [] : [assignee],
     url: browseUrl(project, number),
