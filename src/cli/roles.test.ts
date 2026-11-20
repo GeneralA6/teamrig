@@ -90,7 +90,7 @@ describe('roles grant, revoke and list', () => {
     assert.match(unknown.stderr.join('\n'), /"pr merge" is no command a service role may hold; one of: issue close/);
     const comment = await kit.run(['roles', 'grant', 'github', '--holder', 'alpha', '--commands', 'issue comment']);
     assert.equal(comment.code, EXIT.usage, 'a bare comment is no command a role holds (T3169)');
-    assert.match(comment.stderr.join('\n'), /"issue comment" is no command a service role may hold; one of: issue close, queue ship, queue merge$/m);
+    assert.match(comment.stderr.join('\n'), /"issue comment" is no command a service role may hold; one of: issue close, issue migrate, queue ship, queue merge$/m);
     assert.equal((await kit.run(['roles', 'grant', 'github', '--commands', 'issue close'])).code, EXIT.usage);
   });
 });
