@@ -1,6 +1,6 @@
 import { isRecord, type JsonRecord } from '../../core/guards.ts';
 import { toJsonlLine } from '../../core/jsonl.ts';
-import { passRecordGuardOutput } from '../../hooks/pass-record-guard.ts';
+import { passRecordGuardReply } from '../../hooks/pass-record-guard.ts';
 import { guardsPassed, preToolUseRouteOf, routeAllowOn, routeAllowRecord, routeAllowReply } from '../../hooks/route-allow.ts';
 import type { HookEvent, HookReply } from '../../ports/host/index.ts';
 import type { CommandTable } from '../../slash/plan.ts';
@@ -30,7 +30,7 @@ async function everyGuardPassed(runtime: CliRuntime, guard: GuardLoad, payload: 
     dbWriteGuardReplyOf(runtime, guard, event),
     serviceRoleGuardOutputOf(runtime, guard, payload),
   ]);
-  return guardsPassed([...answers, secretGuardReplyOf(runtime, guard, event), passRecordGuardOutput(payload)]);
+  return guardsPassed([...answers, secretGuardReplyOf(runtime, guard, event), passRecordGuardReply(event)]);
 }
 
 /**
