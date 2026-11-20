@@ -182,7 +182,7 @@ export async function bindByProcess(deps: ProcessBindDeps, claudeSession: string
 
 /** The SessionStart note for a tab bound by its Claude Code process after a /clear. */
 export function processBoundNote(id: string): string {
-  return `This tab was bound to the \`${id}\` session: /clear kept the Claude Code process that session refreshed in; nothing was marked read.`;
+  return `This tab was bound to the \`${id}\` session: /clear kept the Claude Code process that session refreshed in; binding it marked nothing read.`;
 }
 
 /**
@@ -200,17 +200,17 @@ export async function bindByEnv(marks: MarkLog, id: string, claudeSession: strin
   return mark;
 }
 
-/** The prompt hook's line for a tab just bound: which session it is now, and that nothing was marked read. */
+/** The prompt hook's line for a tab just bound: which session it is now, and that binding it marked nothing read. */
 export function boundPromptNote(outcome: BindOutcome, own: TeamRoster, command: string): string | undefined {
   return outcome.kind === 'bound'
-    ? `${command}: this tab is now the \`${outcome.id}\` session of team ${own.team} (name \`${own.roster.nameOf(outcome.id) ?? outcome.id}\`), from its Claude Code title; nothing was marked read.`
+    ? `${command}: this tab is now the \`${outcome.id}\` session of team ${own.team} (name \`${own.roster.nameOf(outcome.id) ?? outcome.id}\`), from its Claude Code title; binding it marked nothing read.`
     : undefined;
 }
 
 /** The SessionStart note for a tab bound as it started. */
 export function boundStartNote(outcome: BindOutcome): string | undefined {
   return outcome.kind === 'bound'
-    ? `This tab was bound to the \`${outcome.id}\` session from its Claude Code title; nothing was marked read.`
+    ? `This tab was bound to the \`${outcome.id}\` session from its Claude Code title; binding it marked nothing read.`
     : undefined;
 }
 

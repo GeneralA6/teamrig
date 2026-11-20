@@ -6989,7 +6989,7 @@ teamrig hook inbox-reminder < prompt.json
 Output, when lines are new:
 
 ```text
-INBOX web, new in /home/you/.teamrig/teams/shop/state/inbox/web.md (each line is shown once; reading marks them read):
+INBOX web, new in /home/you/.teamrig/teams/shop/state/inbox/web.md (each line is shown once, and marked read when shown whole):
 - 2026-10-15 08:58 lead: api error codes are in docs/errors.md
 ```
 

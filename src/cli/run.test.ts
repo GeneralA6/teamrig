@@ -650,9 +650,9 @@ describe('runCli: inboxes', () => {
     await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'please rebase', '--session', 'alpha']);
     const reminded = await kit.run(['hook', 'inbox-reminder'], { stdin });
     assert.equal(reminded.code, EXIT.ok);
-    assert.match(reminded.stdout[0] ?? '', /^INBOX bravo, new in .*bravo\.md \(each line is shown once; reading marks them read\):\n- 2030-01-08 10:00 UTC alpha: please rebase$/);
+    assert.match(reminded.stdout[0] ?? '', /^INBOX bravo, new in .*bravo\.md \(each line is shown once, and marked read when shown whole\):\n- 2030-01-08 10:00 UTC alpha: please rebase$/);
     assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin })).stdout, [], 'shown once');
-    assert.match((await kit.run(['inbox', 'status', '--session', 'bravo'])).stdout[0] ?? '', /^bravo 1 unread/, 'shown is not read');
+    assert.match((await kit.run(['inbox', 'status', '--session', 'bravo'])).stdout[0] ?? '', /^bravo 0 unread \(read to line 1 of 1/, 'a line shown whole is read (#1401)');
   });
 
   it('shows a session named by $TEAMRIG_SESSION its lines before it has ever read its inbox', async () => {

@@ -118,6 +118,6 @@ export async function bindHintOnce(runtime: CliRuntime, kit: Kit, binding: TabBi
 }
 
 /** The session's new inbox lines for this prompt (inbox/inject.ts) on the team's clock, recorded as shown; undefined when none wait. */
-export function inboxLinesFor(runtime: CliRuntime, kit: Kit, session: string, claudeSession: string, zone: TimeZone): Promise<string | undefined> {
-  return injectFor(inboxDepsOf(runtime, kit.paths), { area: session, claudeSession, now: new Date(runtime.clock.now()), zone, command: KIT_NAME });
+export function inboxLinesFor(runtime: CliRuntime, kit: Kit, roster: Roster, session: string, claudeSession: string, zone: TimeZone): Promise<string | undefined> {
+  return injectFor(inboxDepsOf(runtime, kit.paths), { area: session, claudeSession, now: new Date(runtime.clock.now()), zone, command: KIT_NAME, rosterIds: roster.ids });
 }

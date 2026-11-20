@@ -134,8 +134,8 @@ sequenceDiagram
   Note over W: web is idle, and a note without --wake now does not wake it
   Y->>W: your next prompt to web
   W->>F: the UserPromptSubmit hook reads the lines it has not shown this session
-  F-->>W: INBOX web, new in ... (each line is shown once; reading marks them read)
-  W->>F: teamrig inbox read marks it read, without printing it again
+  F-->>W: INBOX web, new in ... (each line is shown once, and marked read when shown whole)
+  W->>F: the hook marks read the lines it showed whole
 ```
 
 - The inbox file is never edited: `inbox read` adds a mark to `state/inbox-marks.jsonl`.

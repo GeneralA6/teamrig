@@ -30,7 +30,7 @@ export async function askedLinesOf(runtime: CliRuntime, payload: JsonRecord): Pr
   if (scope.kind === 'off') {
     return undefined;
   }
-  const { kit, config, id, tab } = scope;
+  const { kit, config, roster, id, tab } = scope;
   const { files, clock } = runtime;
   const asks = new WakeAsks(files, kit.paths.wakeAsks);
   const unseen = (): Promise<ReadonlySet<string>> => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id);
@@ -48,7 +48,7 @@ export async function askedLinesOf(runtime: CliRuntime, payload: JsonRecord): Pr
         await asks.remove(id, found.spent);
         return undefined;
       }
-      const lines = await injectFor(inboxDepsOf(runtime, kit.paths), { area: id, claudeSession: tab, now: new Date(clock.now()), zone: teamZone(config, runtime), command: KIT_NAME });
+      const lines = await injectFor(inboxDepsOf(runtime, kit.paths), { area: id, claudeSession: tab, now: new Date(clock.now()), zone: teamZone(config, runtime), command: KIT_NAME, rosterIds: roster.ids });
       await asks.remove(id, found.taken);
       return lines;
     });

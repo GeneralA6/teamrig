@@ -8,7 +8,7 @@ import { JERUSALEM } from '../testing/zone.ts';
 import type { InboxDeps } from './inbox.ts';
 import { fitLines, injectFor, injectionOf, type InjectionInput } from './inject.ts';
 import { lineHash } from './line-hash.ts';
-import type { InboxMark } from './marks.ts';
+import { indexMarks, type InboxMark } from './marks.ts';
 import { cutWhenShown, INJECT_CAPS, newestShownOf, unshownOf } from './shown.ts';
 import { InboxDir, JsonlMarkLog } from './store.ts';
 
@@ -72,10 +72,25 @@ describe('injectionOf', () => {
   it('shows every new line with a header, and marks them shown through the last', () => {
     const injection = injectionOf(input());
     assert.deepEqual(injection?.text.split('\n'), [
-      `INBOX alpha, new in ${DIR}/alpha.md (each line is shown once; reading marks them read):`,
+      `INBOX alpha, new in ${DIR}/alpha.md (each line is shown once, and marked read when shown whole):`,
       ...SHOWN_LINES.slice(0, 3),
     ]);
     assert.deepEqual(injection?.shown, markAt(LINES, 3, TAB));
+    assert.deepEqual(injection?.read, markAt(LINES, 3, TAB), 'every line was shown whole, so all are read (#1401)');
+  });
+
+  it('marks read only through the last line shown whole before a cut one: the cut line and every line after it stay unread (#1401)', () => {
+    const long = `- 2030-01-07 09:00 lead: ${'x'.repeat(INJECT_CAPS.maxChars)}`;
+    const lines = [LINES[0] ?? '', long, LINES[1] ?? ''];
+    const first = injectionOf(input({ lines }));
+    assert.deepEqual(first?.text.split('\n').slice(1, 2), SHOWN_LINES.slice(0, 1), 'the long line waits for a prompt of its own');
+    assert.deepEqual(first?.read, markAt(lines, 1, TAB));
+    const cut = injectionOf(input({ lines, read: first?.read ?? null, shown: first?.shown ?? null }));
+    assert.match(cut?.text ?? '', /was cut at/);
+    assert.equal(cut?.read, undefined, 'a cut line is not read');
+    const after = injectionOf(input({ lines, read: first?.read ?? null, shown: cut?.shown ?? null }));
+    assert.deepEqual(after?.text.split('\n').slice(1), SHOWN_LINES.slice(1, 2));
+    assert.equal(after?.read, undefined, 'a line after the cut one stays unread, so `inbox read` still prints the cut one');
   });
 
   it('shows five lines at most and says how many wait', () => {
@@ -85,6 +100,7 @@ describe('injectionOf', () => {
       '+2 more at your next prompt, or all now with: teamrig inbox read --session alpha',
     ]);
     assert.deepEqual(injection?.shown, markAt(LINES, 6, TAB));
+    assert.deepEqual(injection?.read, markAt(LINES, 6, TAB), 'the two past the line cap stay unread until a prompt shows them');
     const next = injectionOf(input({ lines: LINES, read: markAt(LINES, 1, null), shown: injection?.shown ?? null }));
     assert.deepEqual(next?.text.split('\n').slice(1), SHOWN_LINES.slice(6));
     assert.equal(injectionOf(input({ lines: LINES, read: markAt(LINES, 1, null), shown: next?.shown ?? null })), undefined);
@@ -118,17 +134,48 @@ describe('injectFor', () => {
   function deps(files: MemoryFiles | FaultyFiles): InboxDeps {
     return { inboxes: new InboxDir(files, DIR), marks: new JsonlMarkLog(new PlainLogFile(files, MARKS)), shown: new JsonlMarkLog(new PlainLogFile(files, SHOWN)) };
   }
-  const request = { area: 'alpha', claudeSession: TAB, now: NOW, zone: TimeZone.UTC, command: 'teamrig' };
+  const request = { area: 'alpha', claudeSession: TAB, now: NOW, zone: TimeZone.UTC, command: 'teamrig', rosterIds: ['alpha', 'bravo'] };
 
-  it('shows each line once per Claude Code session, and never marks it read', async () => {
+  it('shows each line once, and marks read the lines it showed whole, so no tab of the area counts them unread (#1401)', async () => {
     const files = new MemoryFiles({ [`${DIR}/alpha.md`]: LINES.slice(0, 2).join('\n') });
     assert.match((await injectFor(deps(files), request)) ?? '', /item 1\n.*item 2$/);
     assert.equal(await injectFor(deps(files), request), undefined);
-    assert.match((await injectFor(deps(files), { ...request, claudeSession: OTHER_TAB })) ?? '', /item 1/);
-    assert.equal(files.get(MARKS), undefined);
-    assert.equal(files.get(SHOWN)?.trim().split('\n').length, 2);
+    assert.equal(await injectFor(deps(files), { ...request, claudeSession: OTHER_TAB }), undefined, 'read for the area, so another tab of it is not shown them again');
+    assert.deepEqual(files.get(MARKS)?.trim().split('\n').map((line) => JSON.parse(line).line), [2]);
+    assert.equal(files.get(SHOWN)?.trim().split('\n').length, 1);
     await deps(files).inboxes.append('alpha', LINES[2] ?? '');
     assert.equal((await injectFor(deps(files), request))?.split('\n').slice(1).join('\n'), SHOWN_LINES[2]);
+    assert.deepEqual(files.get(MARKS)?.trim().split('\n').map((line) => JSON.parse(line).line), [2, 3]);
+  });
+
+  it('still shows the lines when their read mark cannot be written, saying they stay unread and what reads them (#1401)', async () => {
+    const memory = new MemoryFiles({ [`${DIR}/alpha.md`]: LINES[0] ?? '' });
+    const files = new FaultyFiles(memory).fail('append', MARKS, systemError('EACCES'));
+    assert.deepEqual((await injectFor(deps(files), request))?.split('\n').slice(1), [
+      SHOWN_LINES[0],
+      'These lines stay unread: their read mark could not be written; `teamrig inbox read --session alpha` reads them.',
+    ]);
+    assert.equal(memory.get(MARKS), undefined);
+    assert.equal(await injectFor(deps(files), request), undefined, 'shown once all the same');
+  });
+
+  it('marks nothing read, and so never moves the tab, when the tab is bound to another session of the roster (T3081)', async () => {
+    const bravoLines = LINES.slice(0, 1);
+    const files = new MemoryFiles({ [`${DIR}/bravo.md`]: bravoLines.join('\n'), [MARKS]: `${JSON.stringify(markAt(LINES, 0, TAB, 'alpha'))}\n` });
+    assert.deepEqual((await injectFor(deps(files), { ...request, area: 'bravo' }))?.split('\n').slice(1), [
+      SHOWN_LINES[0],
+      'These lines stay unread: this tab is the `alpha` session, so it marks nothing read for `bravo`.',
+    ]);
+    const marks = (await deps(files).marks.read()).marks;
+    assert.equal(indexMarks(marks).areaBySession.get(TAB), 'alpha', 'the tab stays alpha');
+    assert.equal(indexMarks(marks).byArea.get('bravo'), undefined, "bravo's line stays unread");
+    assert.equal(await injectFor(deps(files), { ...request, area: 'bravo' }), undefined, 'shown once all the same');
+  });
+
+  it('marks read for a tab bound to a session that left the roster, as `inbox read` would', async () => {
+    const files = new MemoryFiles({ [`${DIR}/bravo.md`]: LINES[0] ?? '', [MARKS]: `${JSON.stringify(markAt(LINES, 0, TAB, 'gone'))}\n` });
+    assert.equal((await injectFor(deps(files), { ...request, area: 'bravo' }))?.split('\n').slice(1).join('\n'), SHOWN_LINES[0]);
+    assert.equal(indexMarks((await deps(files).marks.read()).marks).byArea.get('bravo')?.line, 1);
   });
 
   it('shows nothing for an area with no inbox', async () => {

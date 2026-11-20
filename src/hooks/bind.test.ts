@@ -271,9 +271,9 @@ describe('the notes and the hint', () => {
   it('names the session a tab was bound to', () => {
     assert.equal(
       boundPromptNote(bound, OWN, 'teamrig'),
-      'teamrig: this tab is now the `alpha` session of team app (name `app-alpha`), from its Claude Code title; nothing was marked read.',
+      'teamrig: this tab is now the `alpha` session of team app (name `app-alpha`), from its Claude Code title; binding it marked nothing read.',
     );
-    assert.equal(boundStartNote(bound), 'This tab was bound to the `alpha` session from its Claude Code title; nothing was marked read.');
+    assert.equal(boundStartNote(bound), 'This tab was bound to the `alpha` session from its Claude Code title; binding it marked nothing read.');
     assert.equal(boundPromptNote({ kind: 'kept' }, OWN, 'teamrig'), undefined);
     assert.equal(boundStartNote({ kind: 'untitled' }), undefined);
   });

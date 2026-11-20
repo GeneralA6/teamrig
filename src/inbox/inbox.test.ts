@@ -115,7 +115,7 @@ describe('inboxStatus', () => {
     ]);
   });
 
-  it('counts the unread lines the prompt hook showed any session of the area, which stay unread', async () => {
+  it('counts the unread lines the prompt hook showed any session of the area but did not mark read', async () => {
     const shownTwo = shownLine('alpha', LINES[1] ?? '', 2, OTHER_SESSION);
     const { deps } = setup({ [`${DIR}/alpha.md`]: LINES.join('\n'), [SHOWN]: `${shownLine('alpha', LINES[0] ?? '', 1, SESSION)}${shownTwo}` });
     const [alpha] = await inboxStatus(deps, 'alpha');

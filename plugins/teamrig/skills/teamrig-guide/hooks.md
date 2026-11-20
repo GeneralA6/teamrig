@@ -81,9 +81,9 @@ The injected context holds:
 3. **The tree of teams**, when the team has a parent or children: whom to escalate to, and for a lead with
    sub-teams, how to read and hand them tasks.
 4. **Notes**: a config with problems or from a newer teamrig; a recorded rename; a tab bound by its title:
-   ``This tab was bound to the `web` session from its Claude Code title; nothing was marked read.``, or, after a
+   ``This tab was bound to the `web` session from its Claude Code title; binding it marked nothing read.``, or, after a
    `/clear` in a tab whose title names no session, by the Claude Code process the session refreshed in (for 24 hours):
-   ``This tab was bound to the `web` session: /clear kept the Claude Code process that session refreshed in; nothing was marked read.``
+   ``This tab was bound to the `web` session: /clear kept the Claude Code process that session refreshed in; binding it marked nothing read.``
    A tab `$TEAMRIG_SESSION` names is bound the same way at every start, a `/clear` too, with no note, so the task pane
    keeps showing its session; only a failure gives a note, and the tab's first `inbox read` then binds it.
 5. **The team's own `rules.md`**, when it exists. In a sub-team, the `rules.md` of each team above comes first, the
@@ -216,14 +216,17 @@ When your inbox has lines this Claude Code session has not been shown, they are 
 lines and 1,500 characters at a time:
 
 ```text
-INBOX web, new in /home/you/.teamrig/teams/shop/state/inbox/web.md (each line is shown once; reading marks them read):
+INBOX web, new in /home/you/.teamrig/teams/shop/state/inbox/web.md (each line is shown once, and marked read when shown whole):
 - 2026-10-15 08:58 lead: api error codes are in docs/errors.md
 +2 more at your next prompt, or all now with: teamrig inbox read --session web
 ```
 
-Read them there: each line is shown once per Claude Code session (recorded in `state/inbox-shown.jsonl`), and being
-shown does not mark it read. `teamrig inbox read --session web` then marks them read without printing them again. A
-first line over 1,500 characters is cut, and a note names the command that prints it whole.
+Read them there: each line is shown once per Claude Code session (recorded in `state/inbox-shown.jsonl`), and a line
+shown whole is marked read with it, so no unread count keeps counting it. A first line over 1,500 characters is cut,
+a note names the command that prints it whole, and it stays unread, as does every line after it, until
+`teamrig inbox read --session web`. If the read mark cannot be written, the lines are still shown, with a line saying
+they stay unread. A tab bound to another session of the roster (its `$TEAMRIG_SESSION` names `web`, its marks another
+session) is shown `web`'s lines but marks none read, since a read mark would move the tab to `web`.
 
 ### Each prompt: the leader digest
 
@@ -258,7 +261,7 @@ a title bracketing another team binds none of this team's sessions).
 The hook then knows it as `inbox read` would, marks nothing read, and says so once:
 
 ```text
-teamrig: this tab is now the `web` session of team shop (name `shop-web`), from its Claude Code title; nothing was marked read.
+teamrig: this tab is now the `web` session of team shop (name `shop-web`), from its Claude Code title; binding it marked nothing read.
 ```
 
 A tab it cannot bind gets one line per Claude Code session saying how:

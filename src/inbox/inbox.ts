@@ -56,8 +56,8 @@ function since(unread: Unread, zone: TimeZone): string {
 export interface InboxStatus {
   readonly unread: Unread;
   /**
-   * Unread lines the prompt hook showed a Claude Code session of the area: the session saw them, but showing marks
-   * nothing read, so only `inbox read` takes them off the unread count.
+   * Unread lines the prompt hook showed a Claude Code session of the area: a line it cut (and those after it), or
+   * lines whose read mark it could not write, since it marks read the lines it shows whole (#1401).
    */
   readonly shown: number;
 }

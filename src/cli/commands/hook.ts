@@ -312,7 +312,7 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   // Like the inbox lines below, reading the digest moves its cursor, so it is read late; only a leader gets one.
   const digest = session === undefined ? undefined : await leaderDigestText(runtime, kit.paths, config, session).catch(() => undefined);
   // Read last, as reading marks the lines shown: a hook killed at its timeout before printing must leave them unshown.
-  const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession, teamZone(config, runtime));
+  const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, own.roster, session, claudeSession, teamZone(config, runtime));
   // An unreadable title may be one the user set, so only a title read as absent is given.
   const tabTitle = title.kind === 'read' ? tabTitleFor(own.roster, session, title.title) : undefined;
   const texts = [bound, renamed, hint, cancelled, lines, digest, budgetLine].filter((text): text is string => text !== undefined);

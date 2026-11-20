@@ -4,7 +4,8 @@ import { unreadOf, type LineHash } from './unread.ts';
 /**
  * What the prompt hook already showed a Claude Code session of its inbox. The hook keeps one mark per
  * prompt that showed lines, in the read marks' own format, in `inbox-shown.jsonl`: apart from the
- * read marks, so showing a line never marks it read, and binding never follows a shown mark.
+ * read marks, so binding never follows a shown mark. The hook marks read on its own, in the read marks,
+ * the lines it showed whole (inject.ts); a cut line, and every line after it, stays only shown.
  */
 
 /** How much of an inbox one prompt shows: a longer backlog is spread over the next prompts. */

@@ -47,7 +47,8 @@ async function everyOutput(): Promise<string[]> {
     [['inbox', 'add', '--to', 'bravo', '--text', 'T2 has its disk', '--session', 'lead']],
     [['inbox', 'status', '--session', 'bravo']],
     [['hook', 'inbox-reminder'], { ...AS_BRAVO, stdin: hookInput() }],
-    [['hook', 'inbox-reminder'], { stdin: hookInput({ session_title: 'Fix it' }) }],
+    // Another tab: the one above read bravo's line when the hook showed it whole (#1401), which binds it.
+    [['hook', 'inbox-reminder'], { stdin: hookInput({ session_id: '9f8e7d6c-1111-2222-3333-444455556666', session_title: 'Fix it' }) }],
     [['inbox', 'read', '--session', 'bravo'], AS_BRAVO],
     [['list', '--status', 'all', '--session', 'lead']],
     [['list', '--priority', 'p1,p2', '--session', 'lead']],
