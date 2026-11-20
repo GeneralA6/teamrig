@@ -4,7 +4,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import { commentNode, FakeGh, ghIssue, labeledEvent, renamedEvent } from '../testing/fake-gh.ts';
 import { GhOutputCapError, isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
 import type { HostIssue } from '../issues/issue.ts';
-import { issuePageArgs, listIssues, parseIssuePage, readCommentsIn, startFailureText, type IssueListRequest } from './issues.ts';
+import { createdNumber, issuePageArgs, latestIssues, listIssues, parseIssuePage, readCommentsIn, startFailureText, type IssueListRequest } from './issues.ts';
 import { closedPageArgs, openPageArgs } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
@@ -364,6 +364,25 @@ describe('readCommentsIn', () => {
   it('reads no list from text that is not a JSON list', () => {
     for (const stdout of ['', 'not json', '{"message":"Not Found"}']) {
       assert.equal(readCommentsIn(stdout), undefined, stdout);
+    }
+  });
+});
+
+describe('latestIssues', () => {
+  it('keeps each issue once, the closed read winning over the earlier open one', () => {
+    const closed = readIssue(2, { state: 'closed', stateReason: 'COMPLETED' });
+    assert.deepEqual(latestIssues([readIssue(1), readIssue(2)], [closed]), [readIssue(1), closed]);
+  });
+});
+
+describe('createdNumber', () => {
+  it("reads the new issue's number from gh's JSON", () => {
+    assert.equal(createdNumber('{"number": 42, "url": "x"}'), 42);
+  });
+
+  it('is undefined for text, a missing or bad number', () => {
+    for (const stdout of ['', 'created', '{"url":"x"}', '{"number":"4"}', '{"number":0}', '{"number":1.5}', '[42]']) {
+      assert.equal(createdNumber(stdout), undefined, stdout);
     }
   });
 });
