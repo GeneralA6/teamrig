@@ -1,7 +1,8 @@
 import type { Files } from '../core/files.ts';
-import { isRecord, stringField } from '../core/guards.ts';
+import { stringField } from '../core/guards.ts';
 import { hostSessionOf } from '../core/host-session.ts';
 import { parseJsonl, toJsonlLine } from '../core/jsonl.ts';
+import type { HookEvent } from '../ports/host/index.ts';
 
 /**
  * The cold-send hook, PreToolUse on SendMessage. A message wakes its receiver, and a receiver idle
@@ -14,30 +15,21 @@ import { parseJsonl, toJsonlLine } from '../core/jsonl.ts';
  */
 
 export const COLD_SEND_VERSION = 1;
-export const SEND_TOOL = 'SendMessage';
 /** How long after a hold the same tab's send to the same session goes through. */
 export const RESEND_WINDOW_MS = 15 * 60 * 1000;
 /** How much of the hold log is read: far more than one resend window's holds, never the whole log. */
 export const COLD_SEND_TAIL_BYTES = 64 * 1024;
 
-/** The receiver a SendMessage call names, without a ` [ref]`; undefined for any other tool or a call naming none. */
-export function sendTargetOf(payload: unknown): string | undefined {
-  if (!isRecord(payload) || stringField(payload, 'tool_name') !== SEND_TOOL) {
-    return undefined;
-  }
-  const input = payload['tool_input'];
-  // A name may carry a ` [ref]` that picks one of two sessions sharing it.
-  const to = isRecord(input) ? stringField(input, 'to')?.replace(/\s*\[[^\]]*\]$/, '').trim() : undefined;
-  return to === '' ? undefined : to;
+/** A message a call sends to another agent: the receiver it names and its text, empty for a call with none (a pure idle subscription). */
+export interface SentMessage {
+  readonly to: string;
+  readonly text: string;
 }
 
-/** The text a SendMessage call sends; empty for a call with none (a pure idle subscription) or another tool. */
-export function sendTextOf(payload: unknown): string {
-  if (!isRecord(payload) || stringField(payload, 'tool_name') !== SEND_TOOL) {
-    return '';
-  }
-  const input = payload['tool_input'];
-  return (isRecord(input) ? stringField(input, 'message') : undefined) ?? '';
+/** The message this event's call sends; undefined for a call of any other kind or one naming no receiver. */
+export function sentMessageOf(event: HookEvent): SentMessage | undefined {
+  const { call } = event;
+  return call?.kind !== 'message' || call.to === undefined ? undefined : { to: call.to, text: call.text ?? '' };
 }
 
 /** Whether a session idle `idleMs` wakes cold; `coldAfterMinutes` 0 never does. */

@@ -13,10 +13,9 @@ import { routeReminderOf } from '../../inbox/route.ts';
 import { boundPromptNote, boundStartNote, tabTitleFor } from '../../hooks/bind.ts';
 import { modelCheckLine, payloadEffortOf } from '../../hooks/model-check.ts';
 import { ModelNoticeStore } from '../../hooks/model-notices.ts';
-import { sendTargetOf } from '../../hooks/cold-send.ts';
+import { sentMessageOf } from '../../hooks/cold-send.ts';
 import { failedSendLine, failedSendOf } from '../../hooks/failed-send.ts';
 import { deliveredSendOf } from '../../hooks/route-reminder.ts';
-import { postToolUseContext } from '../../hooks/post-tool-use.ts';
 import { passRecordGuardReply } from '../../hooks/pass-record-guard.ts';
 import { JsonlHintLog } from '../../hooks/hint-log.ts';
 import { promptOutput } from '../../hooks/prompt-output.ts';
@@ -314,9 +313,10 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
  */
 export async function coldSend(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  const claudeSession = sessionIdOf(payload);
-  if (claudeSession === null || sendTargetOf(payload) === undefined) {
+  const { payload, event } = await readHookInput(runtime);
+  const claudeSession = event?.session;
+  const message = event === undefined ? undefined : sentMessageOf(event);
+  if (claudeSession === undefined || message === undefined) {
     return EXIT.ok;
   }
   const found = await sessionTeam(payload, runtime);
@@ -330,12 +330,10 @@ export async function coldSend(args: ParsedArgs, runtime: CliRuntime): Promise<E
   const { config } = kit.load;
   const roster = await rosterOf(runtime, kit, config);
   const hold =
-    (await meetingHold(runtime, kit, config, roster, payload, claudeSession)) ??
-    (await closedSendHold(runtime, kit, config, roster, payload, claudeSession)) ??
-    (await coldSendHold(runtime, kit, config, roster, payload, claudeSession));
-  if (hold !== undefined) {
-    runtime.out.stdout(hold);
-  }
+    (await meetingHold(runtime, kit, config, roster, message, claudeSession)) ??
+    (await closedSendHold(runtime, kit, config, roster, message, claudeSession)) ??
+    (await coldSendHold(runtime, kit, config, roster, message, claudeSession));
+  writeReply(runtime, 'tool-start', hold);
   return EXIT.ok;
 }
 
@@ -346,8 +344,8 @@ export async function coldSend(args: ParsedArgs, runtime: CliRuntime): Promise<E
  */
 export async function failedSend(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  const failed = failedSendOf(payload);
+  const { payload, event } = await readHookInput(runtime);
+  const failed = event === undefined ? undefined : failedSendOf(event);
   if (failed === undefined) {
     return EXIT.ok;
   }
@@ -360,7 +358,7 @@ export async function failedSend(args: ParsedArgs, runtime: CliRuntime): Promise
     return EXIT.ok;
   }
   const receiver = (await rosterOf(runtime, kit, kit.load.config)).lookup(failed.to);
-  runtime.out.stdout(postToolUseContext(failedSendLine(failed, receiver.ok ? receiver.id : undefined, KIT_NAME, kit.load.config.wake.enabled)));
+  writeReply(runtime, 'tool-end', { context: failedSendLine(failed, receiver.ok ? receiver.id : undefined, KIT_NAME, kit.load.config.wake.enabled) });
   return EXIT.ok;
 }
 
@@ -371,9 +369,9 @@ export async function failedSend(args: ParsedArgs, runtime: CliRuntime): Promise
  */
 export async function routeReminder(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  const sent = deliveredSendOf(payload);
-  if (sent === undefined || !isRecord(payload)) {
+  const { payload, event } = await readHookInput(runtime);
+  const sent = event === undefined ? undefined : deliveredSendOf(event);
+  if (event === undefined || sent === undefined) {
     return EXIT.ok;
   }
   const found = await sessionTeam(payload, runtime);
@@ -387,15 +385,13 @@ export async function routeReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   const { config } = kit.load;
   const roster = await rosterOf(runtime, kit, config);
   const receiver = roster.lookup(sent.to);
-  const sender = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
+  const sender = await teamSessionOf(runtime, kit, roster, event.session ?? null);
   if (!receiver.ok || sender === undefined) {
     return EXIT.ok;
   }
   const message = { from: sender, to: receiver.id, text: sent.text };
   const line = routeReminderOf(new LeadTree(config), message, (id) => roster.nameOf(id) ?? id, KIT_NAME);
-  if (line !== undefined) {
-    runtime.out.stdout(postToolUseContext(line));
-  }
+  writeReply(runtime, 'tool-end', line === undefined ? undefined : { context: line });
   return EXIT.ok;
 }
 
