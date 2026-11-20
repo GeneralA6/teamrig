@@ -158,7 +158,7 @@ The outside tools holding a team's issues (the `tracker` rows) or its code and p
 | `tracker.accept-label` | an outsider's issue is taken once one of the team's people labels it accepted | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
 | `tracker.watch` | a look for changes every few seconds, a sync only after one (`issue watch`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
 | `tracker.issue-open` | opening a task's issue with its labels (`add --issue`, `issue migrate`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.comment` | a comment on an issue (`issue comment`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.comment` | a comment on an issue (`issue reply`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
 | `tracker.edit-body` | rewriting an issue's body (`issue edit-body`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
 | `tracker.close` | closing an issue as completed, not planned or duplicate (`issue close`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
 | `tracker.labels` | adding, removing and making labels (`issue label`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |

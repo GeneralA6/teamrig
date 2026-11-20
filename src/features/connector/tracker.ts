@@ -6,7 +6,7 @@ export const TRACKER_FEATURES = {
   'tracker.accept-label': { kind: 'tracker', doc: "an outsider's issue is taken once one of the team's people labels it accepted", byDefault: 'on' },
   'tracker.watch': { kind: 'tracker', doc: 'a look for changes every few seconds, a sync only after one (`issue watch`)', byDefault: 'on' },
   'tracker.issue-open': { kind: 'tracker', doc: "opening a task's issue with its labels (`add --issue`, `issue migrate`)", byDefault: 'on' },
-  'tracker.comment': { kind: 'tracker', doc: 'a comment on an issue (`issue comment`)', byDefault: 'on' },
+  'tracker.comment': { kind: 'tracker', doc: 'a comment on an issue (`issue reply`)', byDefault: 'on' },
   'tracker.edit-body': { kind: 'tracker', doc: "rewriting an issue's body (`issue edit-body`)", byDefault: 'on' },
   'tracker.close': { kind: 'tracker', doc: 'closing an issue as completed, not planned or duplicate (`issue close`)', byDefault: 'on' },
   'tracker.labels': { kind: 'tracker', doc: 'adding, removing and making labels (`issue label`)', byDefault: 'on' },
