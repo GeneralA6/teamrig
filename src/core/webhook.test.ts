@@ -1,7 +1,7 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
-import { chatWebhook, httpsOnly, httpWebhook, isHttpsUrl, WEBHOOK_MAX_CONTENT, type ChatWebhook } from './webhook.ts';
+import { chatWebhook, httpsOnly, httpWebhook, WEBHOOK_MAX_CONTENT, type ChatWebhook } from './webhook.ts';
 
 /** What the local webhook heard: each request's method, path, content type and parsed body. */
 interface Heard {
@@ -122,14 +122,5 @@ describe('httpsOnly', () => {
       assert.equal(await httpsOnly(inner.webhook).post(url, 'RAN R1'), 'the webhook address is not an https URL', url);
     }
     assert.deepEqual(inner.posts, []);
-  });
-});
-
-describe('isHttpsUrl', () => {
-  it('is true only for an absolute https URL', () => {
-    assert.deepEqual(
-      ['https://chat.example/hook', 'HTTPS://chat.example/hook', 'http://chat.example/hook', 'https:/', '//chat.example/hook', ''].map(isHttpsUrl),
-      [true, true, false, false, false, false],
-    );
   });
 });

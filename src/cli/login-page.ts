@@ -1,7 +1,7 @@
 import type { AlertsConfig } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
 import { secretValueOf } from '../core/secret-key.ts';
-import { isHttpsUrl } from '../core/webhook.ts';
+import { isHttpsUrl } from '../core/http.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { loginPageText } from '../restore/login.ts';
 import { openKit, teamZone } from './kit.ts';
