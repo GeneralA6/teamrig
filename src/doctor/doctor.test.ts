@@ -400,6 +400,10 @@ describe('doctorFindings of the secret deny lines', () => {
     ]);
   });
 
+  it("is quiet where the host's settings files are not known: no file was read, and none can be named for the paste", () => {
+    assert.deepEqual(lines(input({ settingsDeny: undefined })), []);
+  });
+
   it('is quiet once the files hold every line between them', () => {
     const files = [
       { kind: 'deny', path: USER, deny: SECRET_DENY_LINES.slice(0, 3) },

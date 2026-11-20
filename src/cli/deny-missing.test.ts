@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import { secretDenyLines } from '../doctor/deny-lines.ts';
 import { CliHarness, APP, USER_SETTINGS as USER, type RunOptions } from '../testing/cli-harness.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
+import { EXIT } from './runtime.ts';
 
 const LOCAL = join(APP, '.claude', 'settings.local.json');
 const OPTIONS: RunOptions = { platform: 'linux' };
@@ -38,6 +40,15 @@ describe('the deny-missing flag', () => {
     assert.ok(lead.stdout.includes(row), lead.stdout.join('\n'));
     const alpha = await kit.run(['start', '--session', 'alpha', '--all'], OPTIONS);
     assert.ok(!alpha.stdout.some((line) => line.includes('deny-missing')), alpha.stdout.join('\n'));
+  });
+
+  it('is quiet on a host whose folders teamrig does not know: doctor and check go on with no settings file read or named', async () => {
+    const kit = await withMostLines();
+    const options: RunOptions = { ...OPTIONS, host: NO_PATHS_HOST };
+    const doctor = await kit.run(['doctor'], options);
+    const check = await kit.run(['check', '--all', '--session', 'lead'], options);
+    assert.deepEqual([doctor.code, check.code], [EXIT.ok, EXIT.ok], [...doctor.stderr, ...check.stderr].join('\n'));
+    assert.ok(![...doctor.stdout, ...check.stdout].some((line) => line.includes('deny-missing')), [...doctor.stdout, ...check.stdout].join('\n'));
   });
 
   it('is quiet once the settings hold every line', async () => {

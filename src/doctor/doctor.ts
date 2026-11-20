@@ -186,8 +186,8 @@ export interface DoctorInput {
   readonly wideAllow: WideAllow;
   /** The `env` blocks of the Claude Code settings files the team's sessions read (`readSettingsEnv`). */
   readonly settingsEnv: readonly SettingsEnv[];
-  /** The deny lines of the same settings files (`readSettingsDeny`). */
-  readonly settingsDeny: SecretDeny;
+  /** The deny lines of the same settings files (`readSettingsDeny`); undefined on a host whose settings files are not known. */
+  readonly settingsDeny: SecretDeny | undefined;
   /** Each session on the team and the model and effort it starts on. */
   readonly launches: readonly SessionLaunch[];
   /** The project folders the config names, `team.project` first, then each `launch.<id>.project`. */
@@ -519,9 +519,14 @@ export function allowFindings(wide: WideAllow): AllowFinding[] {
 
 /**
  * One finding while a secret deny line is in no settings file a session reads, with the missing lines as a JSON list to
- * paste; `check` shows it the lead too. A file that is not a JSON object counts as holding none, and is named.
+ * paste; `check` shows it the lead too. A file that is not a JSON object counts as holding none, and is named. None
+ * where the host's settings files are not known (`deny` undefined): there is no file to read, or to name for the paste.
  */
-export function denyFindings({ files, lines, pasteInto }: SecretDeny): DenyFinding[] {
+export function denyFindings(deny: SecretDeny | undefined): DenyFinding[] {
+  if (deny === undefined) {
+    return [];
+  }
+  const { files, lines, pasteInto } = deny;
   const missing = missingDenyLines(files, lines);
   if (missing.length === 0) {
     return [];

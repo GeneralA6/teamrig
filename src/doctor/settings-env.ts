@@ -1,7 +1,7 @@
-import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { isRecord, recordField } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
+import type { HostPaths } from '../ports/host/index.ts';
 
 /**
  * A Claude Code settings file, as `readSettingsEnv` finds it: `env` holds its `env` block (empty when it has
@@ -11,13 +11,18 @@ export type SettingsEnv =
   | { readonly kind: 'env'; readonly path: string; readonly env: Env }
   | { readonly kind: 'unreadable'; readonly path: string };
 
+/** Where the host keeps the settings one person's session reads: its paths, and the home folder of that person. */
+export interface SessionSettingsHost {
+  readonly paths: Pick<HostPaths, 'userSettings' | 'folderSettings'>;
+  readonly userHome: string;
+}
+
 /**
- * The settings files whose `env` block reaches a session started in `project`: the user's
- * (`<claudeDir>/settings.json`), then the project's shared and local ones (`.claude/settings.json`,
- * `.claude/settings.local.json`). A project that is the user's home folder lists the user's file once.
+ * The settings files a session started in `project` reads, in the order the host reads them: the person's own, then
+ * the project folder's. A project folder whose file is the person's own lists that file once.
  */
-export function claudeSettingsFiles(claudeDir: string, project: string): string[] {
-  return [...new Set([join(claudeDir, 'settings.json'), join(project, '.claude', 'settings.json'), join(project, '.claude', 'settings.local.json')])];
+export function sessionSettingsFiles({ paths, userHome }: SessionSettingsHost, project: string): string[] {
+  return [...new Set([paths.userSettings(userHome), ...paths.folderSettings(project).map((file) => file.path)])];
 }
 
 /** The text as a JSON object, or undefined when it is not one; a leading byte order mark is skipped. */

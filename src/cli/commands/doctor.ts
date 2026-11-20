@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import { claudeProjectsDir } from '../../budget/discover.ts';
 import { launchOf } from '../../config/launch.ts';
 import { Roster } from '../../config/roster.ts';
@@ -9,7 +8,7 @@ import { readContextFiles } from '../../doctor/context-files.ts';
 import { readSettingsDeny, secretDenyLines } from '../../doctor/deny-lines.ts';
 import { doctorFindings, formatFinding, type ConfiguredProject, type ContextInput, type PageProblem, type SecretDeny } from '../../doctor/doctor.ts';
 import { readSessionLists } from '../../doctor/session-lists.ts';
-import { claudeSettingsFiles, readSettingsEnv } from '../../doctor/settings-env.ts';
+import { readSettingsEnv, sessionSettingsFiles } from '../../doctor/settings-env.ts';
 import { readShellHistory } from '../../doctor/shell-history.ts';
 import { HiringLog } from '../../hiring/log.ts';
 import { retiredSessions } from '../../hiring/record.ts';
@@ -17,6 +16,7 @@ import { inboxStatus } from '../../inbox/inbox.ts';
 import { JsonlRenameLog } from '../../names/log.ts';
 import { readWideAllow } from '../allow-scope.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
+import { pathsIfKnown } from '../host.ts';
 import { openTeamKit, projectFolder, requireConfig, teamZone } from '../kit.ts';
 import { readLeadStart } from '../lead-start.ts';
 import { pageCheckOf, type PageCheck } from '../login-page.ts';
@@ -51,14 +51,24 @@ async function configuredProjects(probe: PathProbe, config: KitConfig, ids: read
   return Promise.all(named.map(async (entry) => ({ ...entry, kind: await probe.kind(entry.path) })));
 }
 
+/** The settings files a session started in `project` reads; none on a host whose folders teamrig does not know. */
+function sessionSettingsOf(runtime: CliRuntime, project: string): string[] {
+  const host = pathsIfKnown(runtime);
+  return host === undefined ? [] : sessionSettingsFiles({ paths: host, userHome: runtime.userHome }, project);
+}
+
 /**
- * The `permissions.deny` lines of the Claude Code settings a session in `project` reads (the user's, then the
- * project's shared and local ones), and the user's file, where the missing secret deny lines go. `doctor` and `check` read it.
+ * The `permissions.deny` lines of the settings files a session in `project` reads (`sessionSettingsFiles`), and the
+ * person's own file, where the missing secret deny lines go. `doctor` and `check` read it, and both go on where the
+ * host's folders are not known: it is undefined there, with no file to read or to name.
  */
-export async function readSecretDeny(runtime: CliRuntime, project: string): Promise<SecretDeny> {
-  const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
-  const paths = claudeSettingsFiles(claudeDir, project);
-  return { files: await readSettingsDeny(runtime.files, paths), lines: secretDenyLines(runtime.platform), pasteInto: join(claudeDir, 'settings.json') };
+export async function readSecretDeny(runtime: CliRuntime, project: string): Promise<SecretDeny | undefined> {
+  const host = pathsIfKnown(runtime);
+  if (host === undefined) {
+    return undefined;
+  }
+  const paths = sessionSettingsFiles({ paths: host, userHome: runtime.userHome }, project);
+  return { files: await readSettingsDeny(runtime.files, paths), lines: secretDenyLines(runtime.platform), pasteInto: host.userSettings(runtime.userHome) };
 }
 
 /** The doctor's view of a page check: only a page webhook that gives no URL is a finding. */
@@ -90,7 +100,6 @@ export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const renameLog = await new JsonlRenameLog(runtime.files, paths.renames).read();
   const kitTree = await loadTree(runtime);
   const { tree } = kitTree;
-  const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
   const project = await projectFolder(runtime, config);
   const roster = new Roster(config, paths.team, renameLog.renames);
   const { records } = await new HiringLog(runtime.files, paths.hires).read();
@@ -106,7 +115,7 @@ export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     ...(await readContextInput(runtime, project, paths.skills, config.contextFiles)),
     tree: { problems: tree.problemsOf(paths.team), clashes: tree.nameClashesOf(paths.team) },
     env: runtime.env,
-    settingsEnv: await readSettingsEnv(runtime.files, claudeSettingsFiles(claudeDir, project)),
+    settingsEnv: await readSettingsEnv(runtime.files, sessionSettingsOf(runtime, project)),
     settingsDeny: await readSecretDeny(runtime, project),
     wideAllow: await readWideAllow(runtime, { paths, config, project }),
     launches: roster.ids.map((id) => ({ id, launch: launchOf(config, id) })),

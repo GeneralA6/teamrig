@@ -4,7 +4,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import { expandHome, pathKey } from '../core/paths.ts';
 import { CLAUDE_MD_FILES, claudeMdPaths, claudeMemoryDir, skillFolders } from '../doctor/context-files.ts';
-import { claudeSettingsFiles, jsonObjectOf } from '../doctor/settings-env.ts';
+import { jsonObjectOf } from '../doctor/settings-env.ts';
 import { hookCommandsOf } from '../doctor/settings-hooks.ts';
 import { SkillDir } from '../skills/store.ts';
 
@@ -33,6 +33,8 @@ export interface RulePlaceLocations {
   readonly userHome: string;
   /** The project folder sessions start in. */
   readonly project: string;
+  /** The settings files a session started there reads (`sessionSettingsFiles`). */
+  readonly sessionSettings: readonly string[];
   /** The team's skills folder. */
   readonly skills: string;
   /**
@@ -161,7 +163,7 @@ async function existing(probe: PathProbe, paths: readonly string[]): Promise<str
  */
 export async function findRulePlaces(files: Files, probe: PathProbe, at: RulePlaceLocations): Promise<FoundPlaces> {
   const nested = await nestedClaudeMd(files, probe, at.project);
-  const settings = await existing(probe, claudeSettingsFiles(at.claudeDir, at.project));
+  const settings = await existing(probe, at.sessionSettings);
   const skillPaths = (
     await Promise.all(
       skillFolders(at.skills, at.project).map(async (folder) => {
