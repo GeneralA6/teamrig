@@ -92,8 +92,8 @@ import { verifyByLinesOf, verifyStartNoteOf } from './verify-queue.ts';
 /** PreToolUse on Bash and PowerShell: asks before a push to a protected branch, refuses a force-push of one. */
 export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  const guard = await guardLoadOf(payload, runtime);
+  const { event } = await readHookInput(runtime);
+  const guard = await guardLoadOf(event?.cwd, runtime);
   if (guard === undefined || event === undefined) {
     return EXIT.ok;
   }
@@ -108,8 +108,8 @@ export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
  */
 export async function packageGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  const guard = await guardLoadOf(payload, runtime);
+  const { event } = await readHookInput(runtime);
+  const guard = await guardLoadOf(event?.cwd, runtime);
   if (guard === undefined || event === undefined) {
     return EXIT.ok;
   }
@@ -123,8 +123,8 @@ export async function packageGuard(args: ParsedArgs, runtime: CliRuntime): Promi
  */
 export async function dbWriteGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  const guard = await guardLoadOf(payload, runtime);
+  const { event } = await readHookInput(runtime);
+  const guard = await guardLoadOf(event?.cwd, runtime);
   if (guard === undefined || event === undefined) {
     return EXIT.ok;
   }
@@ -138,8 +138,8 @@ export async function dbWriteGuard(args: ParsedArgs, runtime: CliRuntime): Promi
  */
 export async function secretGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  const guard = await guardLoadOf(payload, runtime);
+  const { event } = await readHookInput(runtime);
+  const guard = await guardLoadOf(event?.cwd, runtime);
   if (guard === undefined || event === undefined) {
     return EXIT.ok;
   }
@@ -150,8 +150,8 @@ export async function secretGuard(args: ParsedArgs, runtime: CliRuntime): Promis
 /** PreToolUse on Bash, PowerShell and the file-writing tools: asks the owner before a session's `roles grant` or `revoke`, and refuses its own write of `serviceRoles`. */
 export async function serviceRoleGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  const guard = await guardLoadOf(payload, runtime);
+  const { event } = await readHookInput(runtime);
+  const guard = await guardLoadOf(event?.cwd, runtime);
   if (guard === undefined || event === undefined) {
     return EXIT.ok;
   }
@@ -162,8 +162,8 @@ export async function serviceRoleGuard(args: ParsedArgs, runtime: CliRuntime): P
 /** PreToolUse on Bash, PowerShell and the file-writing tools: refuses a session's own write of a tree's pass record. */
 export async function passRecordGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  if (event === undefined || (await hookTeam(payload, runtime)).kind === 'none') {
+  const { event } = await readHookInput(runtime);
+  if (event === undefined || (await hookTeam(event.cwd, runtime)).kind === 'none') {
     return EXIT.ok;
   }
   writeReply(runtime, 'tool-start', passRecordGuardReply(event));
@@ -177,8 +177,8 @@ export async function passRecordGuard(args: ParsedArgs, runtime: CliRuntime): Pr
  */
 export async function execGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  const guard = await guardLoadOf(payload, runtime);
+  const { event } = await readHookInput(runtime);
+  const guard = await guardLoadOf(event?.cwd, runtime);
   if (guard === undefined || event === undefined) {
     return EXIT.ok;
   }
