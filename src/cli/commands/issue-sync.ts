@@ -23,14 +23,14 @@ import { securityIssues, type SecurityIssue } from '../../github/security-alert.
 import { eventsByRecipient, pullEvents, pullListeners, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from '../../github/pull-news.ts';
 import { ourLogins } from '../../github/trust.ts';
 import { applySteps, closedSince, type StepOutcome } from '../../github/sync.ts';
-import type { IssueHost } from '../../issues/host.ts';
+import { GITHUB_REPOS_HOST, type PullRequests, type ReviewPosts } from '../../issues/host.ts';
 import type { HostPull } from '../../issues/pull.ts';
 import { sessionLogins } from '../../issues/status-push.ts';
 import type { Task } from '../../register/fold.ts';
 import { priorityText } from '../../register/model.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { hostOf, reposOf } from '../issue-hosts.ts';
+import { hostsOf, reposOf } from '../issue-hosts.ts';
 import { openTeamKit, requireConfig } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
@@ -98,8 +98,9 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   const pushing = auto && config.github.statusPush;
   /** The issues of each repository read, for the claim pass, which writes to GitHub only when the run pushes. */
   const claimRead = new Map<string, readonly HostIssue[]>();
-  // github.repos is GitHub's list, so every repository it names is GitHub's.
-  const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp);
+  // github.repos is GitHub's list, so every repository it names is GitHub's: its issues on the tracker (host), its
+  // pull requests, checks, posts and label file on the code host.
+  const { tracker: host, codeHost } = await hostsOf(GITHUB_REPOS_HOST, runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp);
   const told = new Set<string>();
   const ends: RepoEnd[] = [];
   const added: AddedTask[] = [];
@@ -184,7 +185,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     } else {
       [...previewLines(repo, plan), ...leftOutText].forEach(say);
     }
-    const watch = await readPulls(host, repo, watched.get(repo));
+    const watch = await readPulls(codeHost, repo, watched.get(repo));
     watch.lines.forEach(say);
     if (watch.kind === 'failed') {
       if (end === 'ok') {
@@ -204,7 +205,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     if (auto) {
       const items = mentionItems(repo, { issues: read.issues, pulls: watch.pulls }, { ofRef: (ref) => holders.get(ref)?.owner, ofTask: (id) => tasks.find((held) => held.id === id)?.owner }, ours);
       const audienceOf = config.github.activity ? (number: number): ActivityAudience => ({ owner: items(number).taskOwner, followers: followers.get(issueRef(repo, number)) ?? [] }) : undefined;
-      const scan = await readMentions(host, repo, scanned.get(repo), { readAt: mentionTime(runtime.clock.now()), cutoffMs: Date.parse(since), itemOf: items, routing, audienceOf });
+      const scan = await readMentions(codeHost, repo, scanned.get(repo), { readAt: mentionTime(runtime.clock.now()), cutoffMs: Date.parse(since), itemOf: items, routing, audienceOf });
       scan.lines.forEach(say);
       if (scan.kind === 'failed') {
         if (end === 'ok') {
@@ -226,7 +227,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   const owners = new Map(finalTasks.map((task) => [task.id, task.owner]));
   const holders = refHolders(finalTasks);
   // Only --auto tells the news, so only it reads the failed jobs' logs for it and writes their excerpts.
-  const ci = auto ? await withCiExcerpts({ host, files: runtime.files, dir: kit.paths.githubCi, now: new Date(runtime.clock.now()).toISOString(), ours }, pullNews) : { events: pullNews, lines: [] };
+  const ci = auto ? await withCiExcerpts({ host: codeHost, files: runtime.files, dir: kit.paths.githubCi, now: new Date(runtime.clock.now()).toISOString(), ours }, pullNews) : { events: pullNews, lines: [] };
   ci.lines.forEach(say);
   // Checks turning green, and the copies for a linked task's owner and the followers, are activity (github.activity).
   const heard = config.github.activity ? ci.events : ci.events.filter((event) => event.kind !== 'checks-passing');
@@ -249,13 +250,14 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     hour.lines.forEach(say);
     const writesPerRun = hour.writesPerRun;
     // Before the push, so it plans against the assignees the claims set; the claims' writes share the run's budget.
-    const claimed = await recordClaims(runtime, kit, config, { host, read: claimRead, started, writes: claimBudget(writesPerRun) });
+    const claimed = await recordClaims(runtime, kit, config, { host, labelFiles: codeHost, read: claimRead, started, writes: claimBudget(writesPerRun) });
     claimed.lines.forEach(say);
     // The import's tasks are in the register now, so the push plans against them. A repository the import could
     // not read is not pushed: it would fail the same way, and its failure is already told.
     const pushed = await pushRepos(
       {
         host,
+        pulls: codeHost,
         repos: config.github.repos.filter((repo) => !unread.has(repo)),
         since,
         tasks: async () => (await register.snapshot()).state.tasks.values(),
@@ -300,7 +302,7 @@ type PullRead =
  * Reads `repo`'s pull requests and compares them with `before`, the watch the last `--auto` run kept (pull-news.ts).
  * The first read of a repository only marks, so the news starts with the next one.
  */
-async function readPulls(host: IssueHost, repo: string, before: PullWatch | undefined): Promise<PullRead> {
+async function readPulls(host: PullRequests, repo: string, before: PullWatch | undefined): Promise<PullRead> {
   const read = await host.pulls(repo, before?.cursor);
   if (read.kind === 'failed') {
     const reason = `pull requests: ${read.reason}`;
@@ -333,7 +335,7 @@ type MentionRead =
  * the routed session's inbox gets.
  */
 async function readMentions(
-  host: IssueHost,
+  host: ReviewPosts,
   repo: string,
   before: MentionWatch | undefined,
   at: {

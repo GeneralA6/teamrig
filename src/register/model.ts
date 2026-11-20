@@ -50,6 +50,17 @@ export const GITHUB_SOURCE = 'github';
 /** What every issue ref starts with; here, beside GITHUB_SOURCE, so the write policy can tell an issue ref apart. */
 export const ISSUE_REF_PREFIX = 'gh:';
 
+/** An issue ref as its type: the prefix, then what issues/ref.ts reads (`parseRef`). */
+export type IssueRefText = `${typeof ISSUE_REF_PREFIX}${string}`;
+
+/**
+ * Whether a ref points at an issue or pull request, by its prefix alone. The one test of the prefix: here, since the
+ * write policy asks it and this folder cannot import src/issues, which imports it.
+ */
+export function isIssueRef(ref: string | null | undefined): ref is IssueRefText {
+  return typeof ref === 'string' && ref.startsWith(ISSUE_REF_PREFIX);
+}
+
 /**
  * The ref of a task kept off GitHub: this, then the reason (`add --local`), so the reason is on the task and never
  * posted. Here, beside ISSUE_REF_PREFIX, so the check can tell a task with its reason from one with neither.
@@ -58,7 +69,7 @@ export const LOCAL_REF_PREFIX = 'local: ';
 
 /** Whether a task's ref points at its issue or says why it has none: the two refs `github.issueAtAdd` accepts. */
 export function hasIssueOrReason(ref: string | null): boolean {
-  return ref !== null && (ref.startsWith(ISSUE_REF_PREFIX) || ref.startsWith(LOCAL_REF_PREFIX));
+  return isIssueRef(ref) || (ref !== null && ref.startsWith(LOCAL_REF_PREFIX));
 }
 
 /** A priority as the CLI prints and takes it: `p1`, the most urgent, `p2` and so on. */

@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
 import type { Env } from '../core/home.ts';
-import { endOf, type ShellEnd } from '../test-run/shell.ts';
+import { endOf, type ShellEnd } from '../core/shell-end.ts';
 import type { CloseReason, IssueDraft, LabelSpec } from '../issues/host.ts';
 import { LABEL_FILE, parseLabelFile } from '../issues/label-file.ts';
 import { MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
+import { GH_PROGRAM } from './gh-program.ts';
 import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
 
 /**
@@ -846,7 +847,7 @@ export function isReviewRead(args: readonly string[]): boolean {
  * GhOutputCapError. It keeps what each repository's label file named when it read one, so it makes only those
  * labels beside its own.
  */
-export function nodeGhRunner(program = 'gh', leading: readonly string[] = [], timeoutMs = GH_TIMEOUT_MS, maxBytes = GH_OUTPUT_MAX_BYTES): GhRunner {
+export function nodeGhRunner(program: string = GH_PROGRAM, leading: readonly string[] = [], timeoutMs = GH_TIMEOUT_MS, maxBytes = GH_OUTPUT_MAX_BYTES): GhRunner {
   const labelFiles = new LabelFileReads();
   return {
     run: async (request) => {

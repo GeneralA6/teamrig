@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { errorMessage } from '../core/guards.ts';
-import type { HostJobLog, IssueHost } from '../issues/host.ts';
+import type { Checks, HostJobLog } from '../issues/host.ts';
 import type { FailedJob, HostPull } from '../issues/pull.ts';
 import { issueRef } from './map.ts';
 import { ownBranchTask, type PullEvent } from './pull-news.ts';
@@ -31,7 +31,7 @@ export interface CiRead {
 
 /** What the CI read needs: the host that reads a job's log, the files and folder its excerpts go to, and the time. */
 export interface CiDeps {
-  readonly host: IssueHost;
+  readonly host: Checks;
   readonly files: Files;
   readonly dir: string;
   readonly now: string;

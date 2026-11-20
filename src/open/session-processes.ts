@@ -5,7 +5,7 @@ import type { Env } from '../core/home.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { UTF8_OUTPUT } from '../core/powershell.ts';
 import { sweepTree, windowsSweepHost, type SweepHost } from '../delivery/tree-kill.ts';
-import { nodeProgramRunner, type ProgramRunner } from '../github/credentials.ts';
+import { nodeProgramRunner, type ProgramRunner } from '../core/program-runner.ts';
 import { exitText, outcomeOfError } from './processes.ts';
 
 /** One running process as the system describes it. */

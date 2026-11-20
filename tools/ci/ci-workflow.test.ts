@@ -188,6 +188,8 @@ describe('ci.yml', () => {
       { does: 'node tools/ci/fresh-install-cli.ts', when: CODE },
       { does: 'node tools/docs/images-cli.ts --check', when: NOT_DESIGN },
       { does: 'node tools/docs/configuration-cli.ts --check', when: NOT_DESIGN },
+      { does: 'node tools/docs/parity-cli.ts --check', when: NOT_DESIGN },
+      { does: 'node tools/ci/boundaries-cli.ts', when: CODE },
       { does: 'node tools/docs/doc-check-cli.ts', when: undefined },
     ]);
   });

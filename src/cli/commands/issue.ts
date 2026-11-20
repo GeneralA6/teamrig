@@ -4,15 +4,15 @@ import { SecretScanner } from '../../core/secrets.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { issueRef } from '../../github/map.ts';
 import { assignIssue, loginRefusal, MAX_ASSIGN_LOGINS } from '../../issues/assign.ts';
-import { CLOSE_REASONS, hostKindOf, parseIssueTarget, targetText, type CloseReason, type HostKind, type IssueHost, type IssueTarget } from '../../issues/host.ts';
+import { CLOSE_REASONS, hostKindOf, parseIssueTarget, targetText, type CloseReason, type HostKind, type IssueTarget } from '../../issues/host.ts';
+import { bareRef } from '../../issues/ref.ts';
 import { issueDoc, mirroredIssues, similarIssues } from '../../issues/similar.ts';
 import { editIssueBody, labelIssue, labelRefusal, postRefusal, writeIssue, type IssueWrite } from '../../issues/write.ts';
-import { ISSUE_REF_PREFIX } from '../../register/model.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { onePositional, requiredFlag, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { hostOf } from '../issue-hosts.ts';
+import { hostsOf, type Hosts } from '../issue-hosts.ts';
 import { sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { GITHUB_OFF, githubOff } from './issue-sync-auto.ts';
@@ -39,11 +39,11 @@ export async function issueEdit(args: ParsedArgs, runtime: CliRuntime): Promise<
   const target = targetOf(args);
   const checked = await checkedRepo(args, runtime, target.repo);
   const body = await bodyFileOf(requiredFlag(args.flags, 'body-file'), runtime, checked.config);
-  const host = hostAfter(checked, runtime, { flag: '--body-file', text: body });
-  if (host === undefined) {
+  const hosts = await hostsAfter(checked, runtime, { flag: '--body-file', text: body });
+  if (hosts === undefined) {
     return EXIT.ok;
   }
-  return (await editIssueBody(host, { target, body }, (line) => runtime.out.stdout(line))) ? EXIT.ok : EXIT.failed;
+  return (await editIssueBody(hosts.tracker, { target, body }, (line) => runtime.out.stdout(line))) ? EXIT.ok : EXIT.failed;
 }
 
 /**
@@ -107,11 +107,12 @@ export async function issueLabel(args: ParsedArgs, runtime: CliRuntime): Promise
   if (both !== undefined) {
     throw new RefusedError(`the label ${JSON.stringify(both)} is in both --add and --remove: give it in one`);
   }
-  const host = await hostFor(args, runtime, target.repo, undefined);
-  if (host === undefined) {
+  const hosts = await hostsFor(args, runtime, target.repo, undefined);
+  if (hosts === undefined) {
     return EXIT.ok;
   }
-  return (await labelIssue(host, { target, add, remove }, (line) => runtime.out.stdout(line))) ? EXIT.ok : EXIT.failed;
+  // The tracker holds the labels, the code host the repository's label file.
+  return (await labelIssue(hosts.tracker, hosts.codeHost, { target, add, remove }, (line) => runtime.out.stdout(line))) ? EXIT.ok : EXIT.failed;
 }
 
 /**
@@ -135,11 +136,11 @@ export async function issueAssign(args: ParsedArgs, runtime: CliRuntime): Promis
   if (add.length + remove.length > MAX_ASSIGN_LOGINS) {
     throw new RefusedError(`issue assign takes at most ${MAX_ASSIGN_LOGINS} logins in all, not ${add.length + remove.length}: an item goes to its takers`);
   }
-  const host = await hostFor(args, runtime, target.repo, undefined);
-  if (host === undefined) {
+  const hosts = await hostsFor(args, runtime, target.repo, undefined);
+  if (hosts === undefined) {
     return EXIT.ok;
   }
-  const end = await assignIssue(host, { target, add, remove }, (line) => runtime.out.stdout(line));
+  const end = await assignIssue(hosts.tracker, { target, add, remove }, (line) => runtime.out.stdout(line));
   return end === 'done' ? EXIT.ok : end === 'refused' ? EXIT.refused : EXIT.failed;
 }
 
@@ -235,7 +236,7 @@ export async function issueSimilar(args: ParsedArgs, runtime: CliRuntime): Promi
   const found = matches.length === 0 ? 'none' : String(matches.length);
   runtime.out.stdout(`SIMILAR ${targetText(target)} (${own.id}): ${found} of ${corpus.length} mirrored issues at or above ${threshold} (github.similarThreshold)`);
   for (const match of matches) {
-    runtime.out.stdout(`${match.score.toFixed(2)} ${match.ref.slice(ISSUE_REF_PREFIX.length)} ${ids.get(match.ref) ?? '-'} ${match.title}`);
+    runtime.out.stdout(`${match.score.toFixed(2)} ${bareRef(match.ref)} ${ids.get(match.ref) ?? '-'} ${match.title}`);
   }
   return EXIT.ok;
 }
@@ -252,19 +253,19 @@ function targetOf(args: ParsedArgs): IssueTarget {
 
 /** Checks the caller, the repository and the text, then writes through the repository's host. */
 async function writeOn(args: ParsedArgs, runtime: CliRuntime, write: IssueWrite, textFlag: string): Promise<ExitCode> {
-  const host = await hostFor(args, runtime, write.target.repo, write.comment === undefined ? undefined : { flag: textFlag, text: write.comment });
-  if (host === undefined) {
+  const hosts = await hostsFor(args, runtime, write.target.repo, write.comment === undefined ? undefined : { flag: textFlag, text: write.comment });
+  if (hosts === undefined) {
     return EXIT.ok;
   }
-  return (await writeIssue(host, write, (line) => runtime.out.stdout(line))) ? EXIT.ok : EXIT.failed;
+  return (await writeIssue(hosts.tracker, write, (line) => runtime.out.stdout(line))) ? EXIT.ok : EXIT.failed;
 }
 
 /**
- * The host of `repo` once the caller is on the team, the repository is one of the team's and the text to post (if
+ * The hosts of `repo` once the caller is on the team, the repository is one of the team's and the text to post (if
  * any) may be posted; undefined, after an OFF line, while GitHub is off on the machine.
  */
-async function hostFor(args: ParsedArgs, runtime: CliRuntime, repo: string, posted: Posted | undefined): Promise<IssueHost | undefined> {
-  return hostAfter(await checkedRepo(args, runtime, repo), runtime, posted);
+async function hostsFor(args: ParsedArgs, runtime: CliRuntime, repo: string, posted: Posted | undefined): Promise<Hosts | undefined> {
+  return hostsAfter(await checkedRepo(args, runtime, repo), runtime, posted);
 }
 
 /** A text to post and the flag that gave it, which a refusal names. */
@@ -294,8 +295,8 @@ async function checkedRepo(args: ParsedArgs, runtime: CliRuntime, repo: string):
   return { config: team.config, kind };
 }
 
-/** The host of a checked repository once the text to post (if any) may be posted; undefined, after an OFF line, while GitHub is off. */
-function hostAfter(checked: CheckedRepo, runtime: CliRuntime, posted: Posted | undefined): IssueHost | undefined {
+/** The hosts of a checked repository once the text to post (if any) may be posted; undefined, after an OFF line, while GitHub is off. */
+async function hostsAfter(checked: CheckedRepo, runtime: CliRuntime, posted: Posted | undefined): Promise<Hosts | undefined> {
   const { config, kind } = checked;
   const scanner = new SecretScanner(config.register.secretPatterns);
   const refused = posted === undefined ? undefined : postRefusal(posted.flag, posted.text, scanner);
@@ -306,5 +307,5 @@ function hostAfter(checked: CheckedRepo, runtime: CliRuntime, posted: Posted | u
     runtime.out.stdout(`OFF ${ENV.github}=${GITHUB_OFF} turns GitHub off on this machine; nothing was written`);
     return undefined;
   }
-  return hostOf(kind, runtime, scanner, config.github.stamp);
+  return hostsOf(kind, runtime, scanner, config.github.stamp);
 }

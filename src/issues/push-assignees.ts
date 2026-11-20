@@ -1,4 +1,4 @@
-import type { IssueHost } from './host.ts';
+import type { Assignees } from './host.ts';
 import { viewerRead, type PushAssignees, type PushPlan } from './status-push.ts';
 
 /** A repository's push planned with every login it assigns known to be assignable, or the read that failed. */
@@ -16,7 +16,7 @@ export type AssignedPlan = { readonly kind: 'planned'; readonly plan: PushPlan; 
  * UNASSIGNED is said once for each refused login; a failed login read plans nothing and writes nothing.
  */
 export async function planAssigned(
-  host: IssueHost,
+  host: Assignees,
   repo: string,
   planOf: (who: PushAssignees) => PushPlan,
   start: PushAssignees,
@@ -61,7 +61,7 @@ export async function planAssigned(
  * The login the sync's access for `repo` belongs to, the one the push assigns when a session maps to none; undefined
  * when it cannot be read, as for an app's token, said as a NOTE, and the push then assigns mapped sessions only.
  */
-export async function viewerOf(host: IssueHost, repo: string, say: (line: string) => void): Promise<string | undefined> {
+export async function viewerOf(host: Assignees, repo: string, say: (line: string) => void): Promise<string | undefined> {
   const read = await host.viewer(repo);
   if (read.kind === 'failed') {
     say(`NOTE ${repo}: the login the sync runs as could not be read (${read.reason}), so an issue whose session maps to no login under github.owners stays unassigned`);

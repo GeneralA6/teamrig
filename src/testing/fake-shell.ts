@@ -1,4 +1,5 @@
-import type { ShellEnd, ShellRequest, ShellResult, ShellRunner } from '../test-run/shell.ts';
+import type { ShellEnd } from '../core/shell-end.ts';
+import type { ShellRequest, ShellResult, ShellRunner } from '../test-run/shell.ts';
 
 /** A clock a fake run moves forward, such as the harness's `FakeClock`. */
 interface Advancing {

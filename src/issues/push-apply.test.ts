@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeIssueHost } from '../testing/fake-issue-host.ts';
+import { trackerOnly } from '../testing/split-hosts.ts';
 import { applyPush } from './push-apply.ts';
 import { STATUS_LABEL_SPECS, type IssueChange, type PushPlan } from './status-push.ts';
 
@@ -101,5 +102,17 @@ describe('applyPush', () => {
     const host = new FakeIssueHost().failsClose('HTTP 410');
     const closed = await push(host, plan(change(9, { status: 'dropped', close: 'not-planned' })));
     assert.deepEqual(closed.outcome, { sent: 0, writes: 0, held: 0, failed: 'HTTP 410' });
+  });
+
+  it('sends labels, an assign and a close with a tracker that is no code host (T4619)', async () => {
+    const host = new FakeIssueHost().hasLabels('status:in progress');
+    const lines: string[] = [];
+    const pushed = plan(change(7, { add: ['status:in progress'], assign: 'octocat' }), change(9, { status: 'dropped', close: 'not-planned' }));
+    const outcome = await applyPush(trackerOnly(host), pushed, (line) => lines.push(line));
+    assert.deepEqual(outcome, { sent: 2, writes: 3, held: 0, failed: undefined });
+    assert.deepEqual(
+      host.calls.map((call) => call.kind),
+      ['label-add', 'assign', 'close'],
+    );
   });
 });

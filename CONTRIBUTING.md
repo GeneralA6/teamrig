@@ -5,18 +5,23 @@
 ```sh
 npm ci                # also points git at .githooks (scrub + DCO sign-off checks, the local gate before each push, no push to main)
 npm run setup         # the same hook setup, for a clone installed with --ignore-scripts (npm run check fails until it runs)
-npm run check         # that git runs the repo hooks, then CI's gates on your tree: typecheck, build, tests with the coverage gate, dist smoke, fresh install, pictures, config reference, doc links, scrub
+npm run check         # that git runs the repo hooks, then CI's gates on your tree: typecheck, build, tests with the coverage gate, dist smoke, fresh install, pictures, config reference, parity page, layer boundaries, doc links, scrub
 npm run docs:images   # redraws the pictures in docs/images
 npm run docs:config   # redraws docs/configuration.md from the config schema
+npm run docs:parity   # redraws docs/parity.md from what each adapter declares and the feature registry
 npm run docs:check    # checks relative links, anchors and Mermaid diagram types in the top-level and docs/ Markdown
 node tools/ci/local.ts # the local gate: every CI check on the committed tree, once per tree (--light: the pre-push hook's checks)
 ```
 
 The pictures in the docs are drawn in code (`tools/docs/`), the commands screen by running the real CLI for a made-up
-team, and [the configuration reference](docs/configuration.md) from each key's `description` in
-`plugins/teamrig/config.schema.json`, so none can drift from the code or from what the CLI prints: the checks fail until
-they are redrawn. To change a key's text, edit its `description` and run `npm run docs:config`. The sections below give
-the test and sign-off rules.
+team, [the configuration reference](docs/configuration.md) from each key's `description` in
+`plugins/teamrig/config.schema.json`, and [the parity page](docs/parity.md) from each adapter's `declaration.ts` under
+`src/adapters` and the feature registry (`src/features/registry.ts`), so none can drift from the code or from what the
+CLI prints: the checks fail until they are redrawn. To change a key's text, edit its `description` and run
+`npm run docs:config`; to change what a tool supports, edit its adapter's declaration and run `npm run docs:parity`.
+The layer boundaries of `src` (what the core and an adapter may import, who may import an adapter, where a tool is
+named) are counted by `node tools/ci/boundaries-cli.ts`, in warn mode: it prints the counts and fails nothing yet. The
+sections below give the test and sign-off rules.
 
 ## How we work
 Every contributor, and every Claude Code session opened in this repo, works the same way. [CLAUDE.md](CLAUDE.md) holds
@@ -160,7 +165,7 @@ kind` (`tools/ci/change-kind.ts`), names what the change touches: `docs` when ev
 Markdown file or under `docs/`, `design` when every one is in the design notes folder, docs/design, else `code` (and `code` when there
 is no base to compare with). It runs the base commit's copy of that tool, never the change's own, so a pull request
 that edits `tools/ci` cannot name itself docs; a base from before the tool is `code`. A `docs` change runs the commit checks (scrub, DCO, size rule, subjects, dependency
-review) and, on ubuntu alone, the build, the docs' specs, the pictures, the config reference and the doc links; a
+review) and, on ubuntu alone, the build, the docs' specs, the pictures, the config reference, the parity page and the doc links; a
 `design` change runs the commit checks and the doc links; a `code` change runs everything on every OS (the test
 matrix's systems come from `change kind`, `TEST_SYSTEMS` in that file). Each job still runs and skips only its steps,
 so `every check passed` reads a pass from each. Before that, the

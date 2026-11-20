@@ -1,7 +1,7 @@
 import { isRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { parseIssueTarget, type IssueTarget } from '../issues/host.ts';
-import { ISSUE_REF_PREFIX } from '../register/model.ts';
+import { bareRef } from '../issues/ref.ts';
 import { issueRef } from './map.ts';
 
 /**
@@ -18,8 +18,7 @@ export type Follows = ReadonlyMap<string, readonly string[]>;
 
 /** The item `text` names as `owner/name#n` or as its ref `gh:owner/name#n`, or undefined when it names none. */
 export function followTarget(text: string): IssueTarget | undefined {
-  const trimmed = text.trim();
-  return parseIssueTarget(trimmed.startsWith(ISSUE_REF_PREFIX) ? trimmed.slice(ISSUE_REF_PREFIX.length) : trimmed);
+  return parseIssueTarget(bareRef(text.trim()));
 }
 
 /** The follows a file holds; a ref that names no item is left out, and a missing or damaged file follows nothing. */

@@ -1,7 +1,7 @@
 import { KIT_NAME } from '../core/home.ts';
 import { privateShapeIn } from '../core/private-shapes.ts';
 import type { SecretScanner } from '../core/secrets.ts';
-import { targetText, type CloseReason, type IssueHost, type IssueTarget } from './host.ts';
+import { targetText, type CloseReason, type Comments, type HostAccess, type IssueStore, type IssueTarget, type LabelFiles, type Labels } from './host.ts';
 import type { HostLabelFile, LabelSpec } from './host.ts';
 import { LABEL_FILE } from './label-file.ts';
 import { managedLabel } from './managed-labels.ts';
@@ -36,7 +36,7 @@ export interface BodyWrite {
  * or FAILED with the host's reason. The host is reached before the write, so a key that cannot be read changes
  * nothing. True when the body was replaced.
  */
-export async function editIssueBody(host: IssueHost, write: BodyWrite, say: (line: string) => void): Promise<boolean> {
+export async function editIssueBody(host: HostAccess & IssueStore, write: BodyWrite, say: (line: string) => void): Promise<boolean> {
   const shown = targetText(write.target);
   const reach = await host.reach(write.target.repo, 'write');
   if (reach.kind === 'unreachable') {
@@ -111,9 +111,10 @@ async function missingLabel(repo: string, label: string, labelFile: () => Promis
  * Adds and takes off labels through `host`, one line said for each step: ACCESS, then MADE, LABELED and UNLABELED, or
  * FAILED with the reason. Every label to add must already be one of the repository's, read before any write, or one
  * teamrig makes, or one the repository's label file names (made first), so a typo never makes a new label; the first
- * failure stops it, and a failure after a write says what was done. True when every step was done.
+ * failure stops it, and a failure after a write says what was done. True when every step was done. The label file is
+ * a file of the repository, so it is read through `files`, the code host, which may be another host than the tracker.
  */
-export async function labelIssue(host: IssueHost, write: LabelWrite, say: (line: string) => void): Promise<boolean> {
+export async function labelIssue(host: HostAccess & Labels, files: LabelFiles, write: LabelWrite, say: (line: string) => void): Promise<boolean> {
   const shown = targetText(write.target);
   const reach = await host.reach(write.target.repo, 'write');
   if (reach.kind === 'unreachable') {
@@ -123,7 +124,7 @@ export async function labelIssue(host: IssueHost, write: LabelWrite, say: (line:
   say(`ACCESS ${reach.access}`);
   const toMake: LabelToMake[] = [];
   let fileRead: Promise<HostLabelFile> | undefined;
-  const labelFile = (): Promise<HostLabelFile> => (fileRead ??= host.labelFile(write.target.repo));
+  const labelFile = (): Promise<HostLabelFile> => (fileRead ??= files.labelFile(write.target.repo));
   for (const label of write.add) {
     const found = await host.labelExists(write.target.repo, label);
     if (found.kind === 'found') {
@@ -201,7 +202,7 @@ export function postRefusal(subject: string, text: string, scanner: SecretScanne
  * A failed comment closes nothing, and a close that fails after its comment says so, so a rerun does not post the
  * comment twice. True when every step was done.
  */
-export async function writeIssue(host: IssueHost, write: IssueWrite, say: (line: string) => void): Promise<boolean> {
+export async function writeIssue(host: HostAccess & IssueStore & Comments, write: IssueWrite, say: (line: string) => void): Promise<boolean> {
   const shown = targetText(write.target);
   const reach = await host.reach(write.target.repo, 'write');
   if (reach.kind === 'unreachable') {
@@ -237,7 +238,7 @@ export async function writeIssue(host: IssueHost, write: IssueWrite, say: (line:
 }
 
 /** The host's id of the issue a duplicate close names, or why it cannot be named: the host has no such issue, or the read failed. */
-async function duplicateIdOf(host: IssueHost, original: IssueTarget): Promise<{ readonly kind: 'found'; readonly id: number } | { readonly kind: 'refused'; readonly reason: string }> {
+async function duplicateIdOf(host: IssueStore, original: IssueTarget): Promise<{ readonly kind: 'found'; readonly id: number } | { readonly kind: 'refused'; readonly reason: string }> {
   const read = await host.issueId(original);
   if (read.kind === 'found') {
     return read;

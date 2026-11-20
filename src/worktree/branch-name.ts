@@ -1,4 +1,5 @@
 import type { BranchesConfig } from '../config/types.ts';
+import { branchHint } from '../issues/ref.ts';
 import type { ItemType } from '../register/events.ts';
 
 /**
@@ -100,7 +101,7 @@ export function taskBranchName(task: BranchTask, branches: BranchesConfig, type:
   return branchNameFor(pattern, {
     type: branchType,
     id: task.id.toLowerCase(),
-    issue: issueNumberOf(task.ref),
+    issue: branchHint(task.ref),
     slug: slugOf(task.title, branches.slugMax),
     session: task.owner,
   });
@@ -125,11 +126,6 @@ export function slugOf(title: string, max: number): string {
     slug = next;
   }
   return slug === '' ? (words[0]?.slice(0, max) ?? 'work') : slug;
-}
-
-/** The issue number of a task's `gh:<owner>/<repo>#<n>` ref; undefined for none. */
-export function issueNumberOf(ref: string | null): string | undefined {
-  return ref === null ? undefined : /^gh:[^#\s]+#(\d+)$/.exec(ref)?.[1];
 }
 
 function fill(pattern: string, words: BranchWords): string {
