@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { FakeGh } from '../testing/fake-gh.ts';
+import { FakeGh } from '../../../testing/fake-gh.ts';
 import { parseFieldsPage, readFields } from './fields.ts';
 import { isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
 import { ISSUE_FIELDS_QUERY } from './queries.ts';

@@ -170,8 +170,13 @@ export { plainLine } from '../core/printable.ts';
 export { stampCredit, withStampFooter, withoutStampFooter, type StampCredit } from '../core/stamp.ts';
 // Whether a comment's text is a claim line: a tracker matches it as it reads the comment, and drops the text.
 export { isClaim } from '../issues/claim.ts';
+// A tracker as the public interface's documents name it, and the issue a task's ref names: a tracker's adapter builds
+// the first from the second.
+export type { Connector, ConnectorItem, ConnectorName } from '../interface/connector.ts';
+export { parseRef } from '../issues/ref.ts';
 export type { FieldKind, FieldValue, FieldedIssue, HostField, HostFieldRead, IssueFields } from '../issues/fields.ts';
 export {
+  issuePage,
   targetText,
   type CloseReason,
   type CodeHost,

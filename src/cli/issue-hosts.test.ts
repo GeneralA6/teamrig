@@ -196,7 +196,7 @@ describe('hostNamings', () => {
     const source = [
       'const hosts = await hostsOf(GITHUB_REPOS_HOST, runtime, scanner, stamp);',
       'const other = await hostsOf(kind, runtime, scanner, stamp);',
-      "import type { GitHubIssueHost } from '../github/host.ts';",
+      "import type { GitHubIssueHost } from '../adapters/connectors/github/host.ts';",
       'function named(host: GitHubIssueHost): string { return host.name; }',
       'const fake = new FakeIssueHost();',
       "const text = 'new GitHubIssueHost(gh)';",

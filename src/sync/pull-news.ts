@@ -56,7 +56,7 @@ const FRESH = { mergeable: 'mergeable', checks: 'none', review: 'none' } as cons
 
 /**
  * What happened between the last read (`before`) and this one: `open`, every open pull request, and `changed`, those
- * in any state changed since the last read's cursor, each newest change first (host.ts).
+ * in any state changed since the last read's cursor, each newest change first (the code host's HostPulls reads).
  *
  * With no `before` (the first read of a repository) nothing is news: it only marks, so the history is never replayed.
  * An open one with no mark opened since the cursor, unless it was opened before it (reopened, or past an open read

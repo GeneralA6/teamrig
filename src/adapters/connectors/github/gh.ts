@@ -1,12 +1,19 @@
-import type { Env } from '../core/home.ts';
-import type { ProgramRunner } from '../core/program-runner.ts';
-import type { ShellEnd } from '../core/shell-end.ts';
-import type { CloseReason, IssueDraft, LabelSpec } from '../issues/host.ts';
-import { LABEL_FILE, parseLabelFile } from '../issues/label-file.ts';
-import { isLogin } from '../issues/login.ts';
-import { areaLabelSpec, MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
-import { MENTION_PAGE_SIZE, MENTION_PAGES_MAX } from '../issues/scan-caps.ts';
-import { labelRefusal } from '../issues/write.ts';
+import {
+  areaLabelSpec,
+  isLogin,
+  LABEL_FILE,
+  labelRefusal,
+  MANAGED_LABEL_SPECS,
+  MENTION_PAGE_SIZE,
+  MENTION_PAGES_MAX,
+  parseLabelFile,
+  type CloseReason,
+  type Env,
+  type IssueDraft,
+  type LabelSpec,
+  type ProgramRunner,
+  type ShellEnd,
+} from '../../../plugin-api/index.ts';
 import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
 
 /** The program the GitHub CLI is run as. */
@@ -135,7 +142,7 @@ export const COMMENTS_PAGE = 30;
 
 /**
  * The command line that reads the comments of one issue updated at or after `since` (an ISO time), oldest first, at
- * most COMMENTS_PAGE: the only read of comment text, which the claim pass matches and drops (src/github/host.ts).
+ * most COMMENTS_PAGE: the only read of comment text, which the claim pass matches and drops (host.ts).
  */
 export function commentsReadArgs(target: IssueNumber, since: string): string[] {
   return ['api', `repos/${target.repo}/issues/${target.number}/comments`, '-X', 'GET', RAW_FIELD, `since=${since}`, RAW_FIELD, `per_page=${COMMENTS_PAGE}`];

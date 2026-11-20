@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
-import { isIssueQuery, isViewerRead } from '../github/gh.ts';
+import { isIssueQuery, isViewerRead } from '../adapters/connectors/github/gh.ts';
 import { PUSH_WRITES_PER_RUN } from '../issues/status-push.ts';
 import { CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FakeGh, ghIssue, ghPull } from '../testing/fake-gh.ts';
