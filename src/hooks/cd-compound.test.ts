@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import * as nodePath from 'node:path';
-import { cdCompoundForm, cdCompoundOf, cdCompoundOfPayload, cdCompoundReason, guardsCdCompound, type SessionPlace } from './cd-compound.ts';
+import { hookEventOf } from '../testing/host.ts';
+import { cdCompoundForm, cdCompoundOf, cdCompoundOfEvent, cdCompoundReason, guardsCdCompound, type SessionPlace } from './cd-compound.ts';
 
 const WINDOWS: SessionPlace = { cwd: 'C:\\Work\\app', home: 'C:\\Users\\me', host: nodePath.win32 };
 const POSIX: SessionPlace = { cwd: '/work/app', home: '/home/me', host: nodePath.posix };
@@ -115,22 +116,26 @@ describe('cdCompoundOf', () => {
   });
 });
 
-describe('cdCompoundOfPayload', () => {
-  it('reads the command of a hook payload, and gives none without one', () => {
-    assert.deepEqual(cdCompoundOfPayload({ tool_input: { command: 'cd sub && git status' } }, POSIX), { kind: 'rerun', form: 'git -C sub status' });
-    assert.deepEqual(cdCompoundOfPayload({ tool_input: { command: 'cd "$S" && npm test' } }, POSIX), { kind: 'drop-cd' });
-    assert.equal(cdCompoundOfPayload({ tool_input: {} }, POSIX), undefined);
-    assert.equal(cdCompoundOfPayload({}, POSIX), undefined);
+describe('cdCompoundOfEvent', () => {
+  const lineOf = (command: string) => hookEventOf({ tool_name: 'Bash', tool_input: { command } });
+
+  it("reads the line of a hook event's shell call, and gives none without one", () => {
+    assert.deepEqual(cdCompoundOfEvent(lineOf('cd sub && git status'), POSIX), { kind: 'rerun', form: 'git -C sub status' });
+    assert.deepEqual(cdCompoundOfEvent(lineOf('cd "$S" && npm test'), POSIX), { kind: 'drop-cd' });
+    assert.equal(cdCompoundOfEvent(hookEventOf({ tool_name: 'Bash', tool_input: {} }), POSIX), undefined);
+    assert.equal(cdCompoundOfEvent(hookEventOf({ tool_name: 'Read', tool_input: { command: 'cd sub && git status' } }), POSIX), undefined);
+    assert.equal(cdCompoundOfEvent(hookEventOf({}), POSIX), undefined);
   });
 });
 
 describe('guardsCdCompound', () => {
-  it('looks only at a PreToolUse Bash call with the switch on', () => {
+  it('looks only at a bash call about to run, with the switch on', () => {
     const bash = { hook_event_name: 'PreToolUse', tool_name: 'Bash' };
-    assert.equal(guardsCdCompound(true, bash), true);
-    assert.equal(guardsCdCompound(false, bash), false);
-    assert.equal(guardsCdCompound(true, { ...bash, tool_name: 'PowerShell' }), false);
-    assert.equal(guardsCdCompound(true, { ...bash, hook_event_name: 'PostToolUse' }), false);
+    assert.equal(guardsCdCompound(true, hookEventOf(bash)), true);
+    assert.equal(guardsCdCompound(false, hookEventOf(bash)), false);
+    assert.equal(guardsCdCompound(true, hookEventOf({ ...bash, tool_name: 'PowerShell' })), false);
+    assert.equal(guardsCdCompound(true, hookEventOf({ ...bash, hook_event_name: 'PostToolUse' })), false);
+    assert.equal(guardsCdCompound(true, hookEventOf({ hook_event_name: 'PreToolUse' })), false);
   });
 });
 
