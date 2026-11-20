@@ -410,8 +410,13 @@ export class JiraTracker implements Tracker {
     return isStringArray(labels) ? { kind: 'read', labels } : failed(`Jira's answer for the labels of ${place.key} did not read as a list of labels`);
   }
 
-  assigneeExists(): Promise<HostAssignee> {
-    return Promise.resolve(failed(NOT_BUILT.assign));
+  /** Whether the account `login` names may be assigned in the project. */
+  async assigneeExists(repo: string, login: string): Promise<HostAssignee> {
+    const project = parseProject(repo);
+    if (project === undefined) {
+      return failed(projectProblem(repo));
+    }
+    return await this.assignable(project.site, `project=${project.key}`, login, `Jira has no project ${project.key} on ${project.site}, or the sign-in may not see it`);
   }
 
   /** The account the site's sign-in belongs to, by its account id: Jira's users have no login, and the id is what an assign names. */
@@ -428,16 +433,51 @@ export class JiraTracker implements Tracker {
     return id === '' ? failed(`Jira's answer on ${project.site} names no account for the sign-in`) : { kind: 'found', login: id };
   }
 
-  assignableOn(): Promise<HostAssignee> {
-    return Promise.resolve(failed(NOT_BUILT.assign));
+  /** Whether the account `login` names may be assigned to the issue. */
+  async assignableOn(target: IssueTarget, login: string): Promise<HostAssignee> {
+    const place = this.place(target);
+    if (place.kind === 'failed') {
+      return place;
+    }
+    return await this.assignable(place.project.site, `issueKey=${place.key}`, login, this.noIssue(target, place));
   }
 
-  assign(): Promise<HostEnd> {
-    return Promise.resolve(failed(NOT_BUILT.assign));
+  /**
+   * Gives the issue to the one account `logins` names. A Jira issue holds one assignee, so this replaces who held it,
+   * and more than one account is refused with nothing written.
+   */
+  async assign(target: IssueTarget, logins: readonly string[]): Promise<HostEnd> {
+    const accounts = [...new Set(logins)];
+    const [account] = accounts;
+    if (account === undefined) {
+      return this.nothingToWrite(target);
+    }
+    if (accounts.length > 1) {
+      return failed(`a Jira issue holds one assignee, so it cannot take ${accounts.length} at once: name one account`);
+    }
+    if (account === '') {
+      return failed('an empty account id names no one to assign');
+    }
+    return await this.write(target, (place) => this.client.put(place.project.site, `/issue/${place.key}/assignee`, { accountId: account }));
   }
 
-  unassign(): Promise<HostEnd> {
-    return Promise.resolve(failed(NOT_BUILT.assign));
+  /** Takes the account `login` names off when it holds the issue; another holder stays, with nothing written. */
+  async unassign(target: IssueTarget, login: string): Promise<HostEnd> {
+    const place = this.place(target);
+    if (place.kind === 'failed') {
+      return place;
+    }
+    if (login === '') {
+      return { kind: 'done' };
+    }
+    const issue = await this.read(target, place, '?fields=assignee');
+    if (issue.kind === 'failed') {
+      return issue;
+    }
+    if (accountId(issueField(issue.body, 'assignee')) !== login) {
+      return { kind: 'done' };
+    }
+    return await this.write(target, (at) => this.client.put(at.project.site, `/issue/${at.key}/assignee`, { accountId: null }));
   }
 
   links(): Promise<HostLinks> {
@@ -494,6 +534,25 @@ export class JiraTracker implements Tracker {
     }
     const next = stringField(body, 'nextPageToken');
     return { kind: 'page', issues, next: next === '' ? undefined : next };
+  }
+
+  /**
+   * Whether the account `login` names may be assigned where `scope` says, a project or one issue: Jira's users have no
+   * login, so the port's login is an account id. One read of who may be assigned there, narrowed to that account; an
+   * empty id names no one, with no request. `nowhere` is the failure when Jira does not show the project or the issue.
+   */
+  private async assignable(site: string, scope: string, login: string, nowhere: string): Promise<HostAssignee> {
+    if (login === '') {
+      return { kind: 'missing' };
+    }
+    const answer = await this.client.get(site, `/user/assignable/search?${scope}&accountId=${encodeURIComponent(login)}`);
+    if (answer.kind !== 'ok') {
+      return answer.kind === 'missing' ? failed(nowhere) : answer;
+    }
+    if (!Array.isArray(answer.body)) {
+      return failed(`Jira's answer on who may be assigned on ${site} did not read as a list of accounts`);
+    }
+    return answer.body.some((user: unknown) => isRecord(user) && accountId(user) === login) ? { kind: 'found', login } : { kind: 'missing' };
   }
 
   /** The issue `target` names, or the failure of a `repo` that names no project. */

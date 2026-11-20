@@ -9,7 +9,6 @@ import type { ConnectorDeclaration, Support } from '../../../plugin-api/index.ts
 /** What a tracker method that is not built yet answers; its row says the same. */
 export const NOT_BUILT = {
   open: 'the Jira connector does not open issues yet',
-  assign: 'the Jira connector does not assign issues yet',
   links: 'the Jira connector does not read or write issue links yet',
 } as const;
 
@@ -26,6 +25,9 @@ function partial(missing: string, notice: string): Support {
 function unsupported(notice: string): Support {
   return { kind: 'unsupported', notice };
 }
+
+/** An assign names an account by its id, and Jira keeps one per issue. */
+const ONE_ASSIGNEE: Support = partial('a second assignee', 'a Jira issue holds one assignee, named by its account id, so an assign replaces who held it');
 
 export const declaration: ConnectorDeclaration = {
   apiVersion: '0.1.0',
@@ -51,9 +53,9 @@ export const declaration: ConnectorDeclaration = {
       'a label made with a colour and a description, and a name holding a space',
       'a Jira label has no colour and no description and exists once an issue carries it; it holds no space, so a name with one is held with a hyphen in its place',
     ),
-    'tracker.status-push': partial('the assignee', 'the Jira connector sets no assignee yet'),
-    'tracker.assign': unsupported(NOT_BUILT.assign),
-    'tracker.claims': unsupported('the Jira connector does not assign issues yet, so a claim line takes no issue'),
+    'tracker.status-push': ONE_ASSIGNEE,
+    'tracker.assign': ONE_ASSIGNEE,
+    'tracker.claims': unsupported('a claim line takes only an issue that carries the accept label, and the Jira connector does not read who put a label on an issue yet'),
     'tracker.clocks': partial("a commenter's tie to the project", 'Jira names no tie between a commenter and the project: every comment is read as an outsider\'s'),
     'tracker.mentions': unsupported('the Jira connector does not read comments for a mention yet'),
     'tracker.follow': UNPROVED,
