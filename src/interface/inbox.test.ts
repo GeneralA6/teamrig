@@ -106,6 +106,12 @@ describe('inboxBody', () => {
     assert.equal(JSON.stringify(body).includes(lineHash(secret)), false);
   });
 
+  it('cuts the session\'s name when it holds a secret shape, under the session\'s id', () => {
+    const shape = new SecretScanner().find(SECRET)?.description ?? '';
+    const body = bodyOf([], { session: { id: 'alpha', name: SECRET } });
+    assert.deepEqual([body.session, body.cuts], [{ id: 'alpha', name: cutText(shape) }, [{ id: 'alpha', field: 'session.name', shape }]]);
+  });
+
   it('never scans a line it leaves out', () => {
     assert.deepEqual(bodyOf([posted(80, 'lead', `use ${SECRET}`)]).cuts, []);
   });

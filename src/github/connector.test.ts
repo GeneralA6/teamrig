@@ -19,7 +19,7 @@ describe('the GitHub connector', () => {
 
   it('gives an imported task one connector for its source and its ref', () => {
     const served = new ServedText(new SecretScanner());
-    const source = sourceOf(GITHUB_SOURCE, { owner: 'owner', connectors: [GITHUB_CONNECTOR], nameOf: () => undefined });
+    const source = sourceOf(served, 'T1', GITHUB_SOURCE, { owner: 'owner', connectors: [GITHUB_CONNECTOR], nameOf: () => undefined });
     const ref = refOf(served, 'T1', 'gh:acme/app#12', [GITHUB_CONNECTOR]);
     assert.deepEqual(source, { kind: 'connector', id: 'github', name: 'GitHub' });
     assert.deepEqual(ref, {
