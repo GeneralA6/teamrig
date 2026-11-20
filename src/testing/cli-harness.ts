@@ -43,6 +43,7 @@ import type { PointerGit } from '../setup/pointer-ignore.ts';
 import { FakeClock } from './fake-clock.ts';
 import { FakeSessionProcesses } from './fake-session-processes.ts';
 import { MemoryFiles } from './memory-files.ts';
+import { programOverGh } from './program-over-gh.ts';
 import { quietWorld } from './quiet-world.ts';
 import { textFileBytes } from './text-file-bytes.ts';
 
@@ -245,7 +246,7 @@ export class CliHarness {
       ...(options.processes === undefined ? {} : { processes: options.processes }),
       sessionProcesses: options.sessionProcesses ?? this.sessionProcesses,
       ...(options.shell === undefined ? {} : { shell: options.shell }),
-      ...(options.gh === undefined ? {} : { gh: options.gh }),
+      ...(options.gh === undefined ? {} : { run: programOverGh(options.gh) }),
       ...(options.credentials === undefined ? {} : { credentials: options.credentials }),
       ...(options.http === undefined ? {} : { http: options.http }),
       ...(options.probe === undefined ? {} : { probe: options.probe }),

@@ -42,7 +42,7 @@ describe('the GitHub adapter', () => {
     assert.equal(credentials.reads.length, 1);
   });
 
-  it('reaches GitHub only through the program runner it is handed, as gh with the key of the repository owner', async () => {
+  it('reaches GitHub only through the program runner it is handed, as gh with the key of the repository owner, told not to prompt', async () => {
     const asked: ProgramRequest[] = [];
     const run: ProgramRunner = (request) => {
       asked.push(request);
@@ -52,7 +52,7 @@ describe('the GitHub adapter', () => {
     assert.deepEqual(await ports.tracker.viewer('acme/web'), { kind: 'found', login: 'octo' });
     assert.deepEqual(
       asked.map((request) => [request.program, request.env]),
-      [['gh', { HOME: '/own', GH_TOKEN: ownerToken('acme') }]],
+      [['gh', { HOME: '/own', GH_TOKEN: ownerToken('acme'), GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' }]],
     );
   });
 
