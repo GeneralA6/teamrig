@@ -95,5 +95,6 @@ export function inboxBody(input: InboxInput): InboxBody {
       lines.push({ key, at: parsed.at, from: parsed.from, text: served.marked(key, 'text', parsed.text, wrote), unread });
     }
   });
-  return { session: input.session, unread: input.unread, lines, cuts: served.cuts };
+  const session = { id: input.session.id, name: served.plain(input.session.id, 'session.name', input.session.name) };
+  return { session, unread: input.unread, lines, cuts: served.cuts };
 }
