@@ -1,4 +1,3 @@
-import { ENV } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { RepoFailure } from '../../sync/auto.ts';
 import { closedSince } from '../../sync/sync.ts';
@@ -13,7 +12,8 @@ import { callerOf } from '../inputs.ts';
 import { hostsOf, reposOf } from '../issue-hosts.ts';
 import { sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { GITHUB_OFF, githubOff } from './issue-sync-auto.ts';
+import { CONNECTOR_OFF } from '../connector-off.ts';
+import { githubOffBy } from './issue-sync-auto.ts';
 import { fieldRunOf, pushFields, type FieldRun } from './issue-field-push.ts';
 import { openTeam } from './register-team.ts';
 
@@ -43,8 +43,9 @@ export async function issuePush(args: ParsedArgs, runtime: CliRuntime): Promise<
     }
   }
   const say = (line: string): void => runtime.out.stdout(line);
-  if (githubOff(runtime.env)) {
-    say(`OFF ${ENV.github}=${GITHUB_OFF} turns GitHub off on this machine; nothing was read or written`);
+  const offBy = githubOffBy(runtime.env);
+  if (offBy !== undefined) {
+    say(`OFF ${offBy}=${CONNECTOR_OFF} turns GitHub off on this machine; nothing was read or written`);
     return EXIT.ok;
   }
   if (config.github.repos.length === 0) {

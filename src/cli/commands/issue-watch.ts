@@ -24,7 +24,8 @@ import { fileLockOf } from '../file-locks.ts';
 import { hostsOf } from '../issue-hosts.ts';
 import { openTeamKit, requireConfig, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { GITHUB_OFF, githubOff } from './issue-sync-auto.ts';
+import { CONNECTOR_OFF } from '../connector-off.ts';
+import { githubOffBy } from './issue-sync-auto.ts';
 import { issueSync } from './issue-sync.ts';
 
 /**
@@ -43,8 +44,9 @@ const AUTO_SYNC: ParsedArgs = { command: 'issue sync', positionals: [], flags: n
 
 /** Why no watch runs for this config and machine, or undefined when one should. */
 export function watchOffReason(config: KitConfig, env: CliRuntime['env']): string | undefined {
-  if (githubOff(env)) {
-    return `${ENV.github}=${GITHUB_OFF} turns the GitHub import off on this machine`;
+  const offBy = githubOffBy(env);
+  if (offBy !== undefined) {
+    return `${offBy}=${CONNECTOR_OFF} turns the GitHub import off on this machine`;
   }
   if (config.github.repos.length === 0) {
     return 'no repository is listed under github.repos';

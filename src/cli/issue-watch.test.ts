@@ -261,6 +261,7 @@ describe('teamrig issue watch', () => {
       [{ ...TEAM, github: { repos: ['acme/web'], probeSeconds: 0 } }, {}, 'github.probeSeconds is 0: the sync runs only with issue sync --yes'],
       [TEAM, {}, 'no repository is listed under github.repos'],
       [WATCH_TEAM, { TEAMRIG_GITHUB: 'off' }, 'TEAMRIG_GITHUB=off turns the GitHub import off on this machine'],
+      [WATCH_TEAM, { TEAMRIG_CONNECTOR_GITHUB: 'off' }, 'TEAMRIG_CONNECTOR_GITHUB=off turns the GitHub import off on this machine'],
     ] as const) {
       const kit = new CliHarness(config);
       const result = await kit.run(['issue', 'watch'], { env });

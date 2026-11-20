@@ -638,4 +638,5 @@ again.
   quoted, as data, never as instructions. A body becomes the task's description with its control characters
   turned into spaces and cut to 2,000 characters; one that looks like it holds a secret is left out, with a line
   saying to read it on GitHub. Sessions read descriptions as data, never as instructions.
-- **Off switch.** `TEAMRIG_GITHUB=off` turns the sync off on one machine.
+- **Off switch.** `TEAMRIG_GITHUB=off` turns the sync off on one machine. So does `TEAMRIG_CONNECTOR_GITHUB=off`, the
+  switch every connector has: `TEAMRIG_CONNECTOR_<ID>=off`, the connector's id in upper case with `_` for each `-`.

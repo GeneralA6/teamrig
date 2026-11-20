@@ -1,4 +1,4 @@
-import { ENV, KIT_NAME } from '../../core/home.ts';
+import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { activityRoutes, type ActivityAudience, type ActivityRoute } from '../../sync/activity.ts';
 import { addedTasks, type AddedTask, type RepoFailure } from '../../sync/auto.ts';
@@ -41,7 +41,8 @@ import { pullThreads, recordClocks, repoThreads } from './issue-clock.ts';
 import { fieldRunOf } from './issue-field-push.ts';
 import { reserveHour, settleHour } from './issue-push-hour.ts';
 import { issuePush, pushEndLine, pushRepos } from './issue-push.ts';
-import { GITHUB_OFF, githubOff, readSyncState, reportAutoSync } from './issue-sync-auto.ts';
+import { CONNECTOR_OFF } from '../connector-off.ts';
+import { githubOffBy, readSyncState, reportAutoSync } from './issue-sync-auto.ts';
 import { githubWatcher } from '../../sync/watcher.ts';
 
 /** The rows of steps a repository prints; the rest are counted. */
@@ -83,8 +84,9 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, write ? 'write' : 'read');
   const say = (line: string): void => runtime.out.stdout(line);
-  if (githubOff(runtime.env)) {
-    say(`OFF ${ENV.github}=${GITHUB_OFF} turns the GitHub import off on this machine; nothing was read or written`);
+  const offBy = githubOffBy(runtime.env);
+  if (offBy !== undefined) {
+    say(`OFF ${offBy}=${CONNECTOR_OFF} turns the GitHub import off on this machine; nothing was read or written`);
     return EXIT.ok;
   }
   if (config.github.repos.length === 0) {

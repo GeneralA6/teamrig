@@ -7,7 +7,7 @@ import type { WriteResult } from '../../register/register.ts';
 import { FakeIssueHost } from '../../testing/fake-issue-host.ts';
 import { testTask } from '../../testing/task.ts';
 import { EXIT, RefusedError } from '../runtime.ts';
-import { addWithIssue, type IssueAddRegister } from './add-issue.ts';
+import { addWithIssue, type IssueAddRegister, type TrackerOff } from './add-issue.ts';
 
 const INPUT: AddInput = { title: 'Private health check', description: 'private what and why', owner: 'alpha', source: 'lead', priority: 2 };
 const DRAFT: IssueDraft = { repo: 'acme/web', title: 'Add a health check', body: 'A probe the load balancer reads.', labels: [] };
@@ -33,7 +33,7 @@ class FakeAddRegister implements IssueAddRegister {
   }
 }
 
-async function run(register: FakeAddRegister, host: FakeIssueHost | undefined): Promise<{ end: Awaited<ReturnType<typeof addWithIssue>>; said: string[] }> {
+async function run(register: FakeAddRegister, host: FakeIssueHost | TrackerOff): Promise<{ end: Awaited<ReturnType<typeof addWithIssue>>; said: string[] }> {
   const said: string[] = [];
   const end = await addWithIssue((line) => said.push(line), register, host, 'lead', INPUT, DRAFT);
   return { end, said };
@@ -47,10 +47,15 @@ describe('addWithIssue', () => {
     assert.deepEqual([host.calls, register.adds], [[], []]);
   });
 
-  it('refuses with GitHub off on the machine, writing nothing and saying how to go on', async () => {
-    const register = new FakeAddRegister();
-    await assert.rejects(run(register, undefined), (error: unknown) => error instanceof RefusedError && /TEAMRIG_GITHUB=off .*nothing is written: turn GitHub on, or add the task with --local <reason>$/u.test(error.message));
-    assert.deepEqual(register.adds, []);
+  it('refuses with GitHub off on the machine, naming the variable that turns it off, writing nothing and saying how to go on', async () => {
+    for (const offBy of ['TEAMRIG_GITHUB', 'TEAMRIG_CONNECTOR_GITHUB']) {
+      const register = new FakeAddRegister();
+      await assert.rejects(
+        run(register, { offBy }),
+        (error: unknown) => error instanceof RefusedError && error.message.startsWith(`${offBy}=off turns GitHub off`) && /nothing is written: turn GitHub on, or add the task with --local <reason>$/u.test(error.message),
+      );
+      assert.deepEqual(register.adds, []);
+    }
   });
 
   it('writes nothing when GitHub cannot be reached', async () => {
