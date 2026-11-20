@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { OWNER_GATED_KEYS } from '../config/owner-gated.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import { changedGatedKeys, serviceRoleGuardOutput, type ServiceRoleGuardEnv } from './service-role-guard.ts';
+import { hookEventOf, replyText } from '../testing/host.ts';
+import { changedGatedKeys, serviceRoleGuardReply, type ServiceRoleGuardEnv } from './service-role-guard.ts';
 
 const CONFIG = 'C:/u/.teamrig/teams/shop/config.json';
 
@@ -73,8 +74,13 @@ function decisionOf(output: string): { readonly decision: string; readonly reaso
   return { decision: stringField(hook, 'permissionDecision') ?? '', reason: stringField(hook, 'permissionDecisionReason') ?? '' };
 }
 
+/** The guard's answer as the shipped host writes it, the call read as that host reads it on the guard's platform. */
+async function outputOf(payload: JsonRecord, guardEnv: ServiceRoleGuardEnv): Promise<string> {
+  return replyText('tool-start', await serviceRoleGuardReply(hookEventOf(payload, guardEnv.platform), guardEnv));
+}
+
 async function decide(payload: JsonRecord, guardEnv: ServiceRoleGuardEnv = env()): Promise<string | undefined> {
-  return decisionOf(await serviceRoleGuardOutput(payload, guardEnv))?.decision;
+  return decisionOf(await outputOf(payload, guardEnv))?.decision;
 }
 
 describe('service-role guard: roles grant and revoke', () => {
@@ -110,13 +116,13 @@ describe('service-role guard: roles grant and revoke', () => {
       assert.equal(await decide(call('Bash', { command })), 'deny', command);
     }
     assert.equal(await decide(call('PowerShell', { command: "teamrig roles grant github --holder alpha --commands 'issue close' --yes" })), 'deny');
-    const output = decisionOf(await serviceRoleGuardOutput(call('Bash', { command: lines[0] ?? '' }), env()));
+    const output = decisionOf(await outputOf(call('Bash', { command: lines[0] ?? '' }), env()));
     assert.match(output?.reason ?? '', /a permission only the owner gives/);
     assert.match(output?.reason ?? '', /a grant first shows what its commands reach, pull requests and outside authors included/, 'T2984');
   });
 
   it('refuses it with the route: the owner runs it from their own terminal, never at a prompt in a session (T3356)', async () => {
-    const output = decisionOf(await serviceRoleGuardOutput(call('Bash', { command: 'teamrig roles grant github --holder alpha --yes' }), env()));
+    const output = decisionOf(await outputOf(call('Bash', { command: 'teamrig roles grant github --holder alpha --yes' }), env()));
     assert.equal(output?.decision, 'deny');
     assert.match(output?.reason ?? '', /The owner runs it from their own terminal.*a session puts the change to its lead\./);
     assert.match(output?.reason ?? '', /approval:owner/);
@@ -214,7 +220,7 @@ describe('service-role guard: the team config', () => {
       ['//./C:/u/.teamrig/teams/shop/CONFIG~1.JSO', 'a device path'],
       ['\\\\localhost\\c$\\u\\.teamrig\\teams\\shop\\config.json', 'a network share path'],
     ]) {
-      const output = decisionOf(await serviceRoleGuardOutput(call('Write', { file_path, content: '{}' }), env()));
+      const output = decisionOf(await outputOf(call('Write', { file_path, content: '{}' }), env()));
       assert.equal(output?.decision, 'deny', file_path);
       assert.match(output?.reason ?? '', new RegExp(`names a config\\.json through ${form}`), file_path);
     }
@@ -286,7 +292,7 @@ describe('config guard: every owner-gated key (T3083)', () => {
       ['alerts', changed((c) => ({ ...c, alerts: { webhookEnv: 'X' } }))],
     ];
     for (const [key, content] of changes) {
-      const output = decisionOf(await serviceRoleGuardOutput(call('Write', { file_path: CONFIG, content }), env({ text })));
+      const output = decisionOf(await outputOf(call('Write', { file_path: CONFIG, content }), env({ text })));
       assert.equal(output?.decision, 'deny', key);
       assert.ok(output?.reason.includes(`changes ${key} in the team config`), `${key}: ${output?.reason ?? ''}`);
     }
