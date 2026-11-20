@@ -1,6 +1,4 @@
 import type { CliRuntime } from '../cli/runtime.ts';
-import { loadHostPorts } from '../composition/host-ports.ts';
-import { hostDeps } from './adapter-deps.ts';
 import { FakeCheckout } from './fake-checkout.ts';
 import { FakeCredentials, TEST_OWNERS } from './fake-credentials.ts';
 import { FakeExecSpawner } from './fake-exec-spawner.ts';
@@ -10,6 +8,7 @@ import { FakeHttp } from './fake-http.ts';
 import { FakeHostCpu } from './fake-host-cpu.ts';
 import { FakeHostMemory } from './fake-host-memory.ts';
 import { FakeHooks } from './fake-hooks.ts';
+import { SHIPPED_HOST } from './host.ts';
 import { FakeMergeGit } from './fake-merge-git.ts';
 import { FakePullGit } from './fake-pull-git.ts';
 import { FakePackageRegistry } from './fake-package-registry.ts';
@@ -30,12 +29,6 @@ export type OutsideWorld = Pick<CliRuntime, 'git' | 'pointerGit' | 'commitLog' |
  * gate; a spec that tests a memory wait sets less.
  */
 export const ROOMY_FREE_MB = 16_000;
-
-/**
- * The shipped host adapter, loaded once for every spec and given no program to run: a spec reads what the host
- * wrote through the code teamrig runs with, so a pin fails when that code changes.
- */
-const SHIPPED_HOST = await loadHostPorts(hostDeps().run);
 
 /**
  * The outside world when a run does not care about it: the repo on `branch` with no push target or config, a team pointer outside git, no commits in
