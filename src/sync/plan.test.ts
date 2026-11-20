@@ -5,7 +5,7 @@ import { testTask } from '../testing/task.ts';
 import { cutTask } from '../register/description-cut.ts';
 import type { HostIssue, LabelEvent } from '../issues/issue.ts';
 import { importRules, type ImportRules } from './map.ts';
-import { closedNote, importedTasks, latestIssues, linkedRefs, planSync, refHolders } from './plan.ts';
+import { closedNote, importedTasks, linkedRefs, planSync, refHolders } from './plan.ts';
 
 const RULES: ImportRules = importRules(testConfig({ github: { repos: ['acme/web'], owners: { octocat: 'bravo' } } }));
 
@@ -44,13 +44,6 @@ function accept(at: string): LabelEvent {
 function imported(id: string, number: number, overrides: Parameters<typeof testTask>[0] = {}) {
   return testTask({ id, title: `Issue ${number}`, owner: 'lead', source: 'github', ref: `gh:acme/web#${number}`, priority: 2, ...overrides });
 }
-
-describe('latestIssues', () => {
-  it('keeps each issue once, the closed read winning over the earlier open one', () => {
-    const closed = issue(2, { state: 'closed', stateReason: 'COMPLETED' });
-    assert.deepEqual(latestIssues([issue(1), issue(2)], [closed]), [issue(1), closed]);
-  });
-});
 
 describe('importedTasks', () => {
   it('indexes only the import tasks, by ref, the first of a ref winning', () => {

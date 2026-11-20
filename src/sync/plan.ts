@@ -30,14 +30,6 @@ export interface SyncPlan {
   readonly leftOut: readonly number[];
 }
 
-/**
- * Each issue once, as last read: the closed list is read after the open one, so an issue on both lists
- * (closed between the two reads) counts as closed.
- */
-export function latestIssues(open: readonly HostIssue[], closed: readonly HostIssue[]): HostIssue[] {
-  return [...new Map([...open, ...closed].map((issue) => [issue.number, issue])).values()];
-}
-
 /** The register's GitHub tasks by ref. Only the import adds them, one per ref (policy.ts). */
 export function importedTasks(tasks: Iterable<Task>): Map<string, Task> {
   const byRef = new Map<string, Task>();
