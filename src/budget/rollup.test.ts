@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { toolUseFrom, type CallLine, type PromptLine, type ToolUse, type TranscriptLine } from './line.ts';
-import { RollupFold, parseRollupLine, type RollupSource } from './rollup.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
+import { RollupFold, rollupLineOf, type RollupSource } from './rollup.ts';
 import type { DayRollup, TaskRow, UseClass, UseRow } from './rollup-file.ts';
 import type { Usage } from './weights.ts';
 
@@ -206,19 +207,20 @@ describe('RollupFold tasks', () => {
   });
 });
 
-describe('parseRollupLine', () => {
+describe('rollupLineOf', () => {
+  const reader = shippedTranscripts();
   const meta = (text: string, isMeta: boolean): string =>
     JSON.stringify({ type: 'user', isMeta, timestamp: '2026-11-02T12:00:00.000Z', message: { role: 'user', content: text } });
 
   it("reads the Stop hook's meta line as a pushed prompt", () => {
-    const line = parseRollupLine(meta('Stop hook feedback: go on', true));
+    const line = rollupLineOf(reader, meta('Stop hook feedback: go on', true));
     assert.equal(line?.kind, 'prompt');
     assert.equal(line?.kind === 'prompt' ? line.pushed : undefined, true);
   });
 
   it('drops any other meta line, and reads a plain prompt as the meter does', () => {
-    assert.equal(parseRollupLine(meta('Caveat: local commands', true)), undefined);
-    assert.equal(parseRollupLine(meta('fix the table', false))?.kind, 'prompt');
-    assert.equal(parseRollupLine('not json'), undefined);
+    assert.equal(rollupLineOf(reader, meta('Caveat: local commands', true)), undefined);
+    assert.equal(rollupLineOf(reader, meta('fix the table', false))?.kind, 'prompt');
+    assert.equal(rollupLineOf(reader, 'not json'), undefined);
   });
 });
