@@ -14,7 +14,9 @@ import { formatSessionRecord } from '../../sessions/record.ts';
 import { formatTabNeed } from '../../tabs/need.ts';
 import { CliHarness, CONFIG_PATH, EVENTS_PATH, TEAM, TEAM_HOME, type CliResult } from '../../testing/cli-harness.ts';
 import { rotateRegister } from '../../testing/rotation.ts';
+import { normalisePath } from '../../testing/memory-files.ts';
 import { teamConfigOf, teamHomeOf, teamInboxOf, treeHarness } from '../../testing/team-tree.ts';
+import { WatchedFiles } from '../../testing/watched-files.ts';
 import { EXIT } from '../runtime.ts';
 
 const READ_TASKS = ['read', 'tasks', '--json'] as const;
@@ -319,9 +321,16 @@ describe('teamrig read inbox', () => {
     assert.equal(new Set([first, read, posted]).size, 3);
   });
 
-  it('serves an empty inbox for a session the team does not have', async () => {
-    const answer = served(await new CliHarness().run(['read', 'inbox', '--json', '--session', 'gone']));
-    assert.deepEqual([answer['session'], answer['unread'], answer['lines']], [{ id: 'gone', name: 'gone' }, null, []]);
+  it('refuses a session the team does not have, naming no inbox file for it', async () => {
+    const kit = new CliHarness();
+    const files = new WatchedFiles(kit.files);
+    const result = await kit.run(['read', 'inbox', '--json', '--session', 'gone'], { files });
+    assert.deepEqual(result, {
+      code: EXIT.refused,
+      stdout: [],
+      stderr: ['REFUSED gone is not a session on this team (sessions: lead (app-lead), alpha (app-alpha), bravo (app-bravo))'],
+    });
+    assert.deepEqual(files.touched().filter((path) => path.includes('gone')), []);
   });
 
   it('writes no file, so no line is marked read', async () => {
@@ -576,6 +585,50 @@ describe('teamrig read --team', () => {
         { code: EXIT.refused, stdout: [], stderr: ['REFUSED read serves your own team (web) and the teams above it; --team ui names neither'] },
       ],
     );
+  });
+});
+
+describe('teamrig read: an argument never becomes a path as typed', () => {
+  const NO_IDS = ['../x', '..\\x', '/etc/x', 'C:\\x', 'a/b', 'App', '.'] as const;
+  const ASKED: readonly (readonly [string, readonly string[], RegExp])[] = [
+    ['--team', READ_TASKS, /is not a team id/],
+    ['--owner', READ_TASKS, /is not a session id or name/],
+    ['--session', ['read', 'inbox', '--json'], /is not a session id or name/],
+  ];
+
+  for (const [flag, argv, message] of ASKED) {
+    it(`is a usage error for a ${flag} that has no id's shape, before any file is touched`, async () => {
+      for (const typed of NO_IDS) {
+        const kit = new CliHarness();
+        const files = new WatchedFiles(kit.files);
+        const result = await kit.run([...argv, flag, typed], { files });
+        assert.deepEqual([typed, result.code, result.stdout], [typed, EXIT.usage, []]);
+        assert.match(result.stderr.join('\n'), message);
+        assert.deepEqual(files.touched(), []);
+      }
+    });
+  }
+
+  it('refuses inbox for a session of another team, touching no inbox file', async () => {
+    const kit = await treeHarness();
+    const files = new WatchedFiles(kit.files);
+    const result = await kit.run(['read', 'inbox', '--json', '--session', 'front'], { ...AS_UI, files });
+    assert.deepEqual([result.code, result.stdout], [EXIT.refused, []]);
+    assert.match(result.stderr.join('\n'), /^REFUSED front is not a session on this team \(sessions: lead \(ui-lead\), pixel \(ui-pixel\)\)$/);
+    assert.deepEqual(files.touched().filter((path) => /inbox/.test(path)), []);
+  });
+
+  it('reads of a team beside the caller\'s, when --team names it, only what placing the teams in the tree reads', async () => {
+    const kit = await treeHarness();
+    const beside = `${normalisePath(teamHomeOf('ops'))}/`;
+    const readOfOps = async (team: string): Promise<[number, string[]]> => {
+      const files = new WatchedFiles(kit.files);
+      const result = await kit.run([...READ_TASKS, '--team', team], { ...AS_UI, files });
+      return [result.code, [...new Set(files.touched().filter((path) => path.startsWith(beside)))].sort()];
+    };
+    const [served, forTheTree] = await readOfOps('web');
+    assert.deepEqual([served, forTheTree.includes(normalisePath(teamConfigOf('ops')))], [EXIT.ok, true]);
+    assert.deepEqual(await readOfOps('ops'), [EXIT.refused, forTheTree]);
   });
 });
 
