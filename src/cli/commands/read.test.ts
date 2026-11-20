@@ -28,6 +28,8 @@ const ALPHA_INBOX = teamInboxOf('app', 'alpha');
 const INBOX_MARKS = join(TEAM_HOME, 'state', 'inbox-marks.jsonl');
 const HOUR_MS = 3_600_000;
 const REVISION = /^[0-9a-f]{16}$/;
+/** A text one of teamrig's own secret shapes matches, built from parts so this file holds none. */
+const SECRET = ['pass', 'word', '=', 'hunter2'].join('');
 
 /** Every stdout line as the JSON object it must be: `read` writes nothing else there. */
 function answersOf(result: CliResult): JsonRecord[] {
@@ -302,10 +304,7 @@ describe('teamrig read inbox', () => {
     await kit.files.append(INBOX_MARKS, '{not json\n');
     const answer = served(await kit.run(READ_INBOX));
     assert.deepEqual([answer['unread'], wordsOf(answer)], [0, [['First', false]]]);
-    assert.deepEqual(
-      problemsOf(answer).map((problem) => problem.replace(INBOX_MARKS, 'inbox-marks.jsonl')),
-      ['inbox-marks.jsonl: 1 unreadable line(s) left out'],
-    );
+    assert.deepEqual(problemsOf(answer), ['app/state/inbox-marks.jsonl: 1 unreadable line(s) left out']);
   });
 
   it('holds its revision until a line is posted to the session or it reads its inbox', async () => {
@@ -480,21 +479,21 @@ describe('teamrig read sessions', () => {
 
   it('names a team folder whose config cannot be read in failures and problems, and serves the rest', async () => {
     const kit = await treeHarness();
-    await kit.files.write(teamConfigOf('torn'), '{ not json');
+    await kit.files.write(teamConfigOf('torn'), `{ not json ${SECRET}`);
     await kit.files.write(join(teamHomeOf('bare'), 'state', 'note.md'), 'no config here');
-    const answer = served(await kit.run(READ_SESSIONS));
-    const failures = Array.isArray(answer['failures']) ? answer['failures'].filter(isRecord) : [];
-    assert.deepEqual(failures.map((failure) => failure['team']), ['torn']);
-    assert.match(String(failures[0]?.['reason']), /^the team config cannot be read: /);
-    assert.deepEqual(problemsOf(answer), [`team torn: ${String(failures[0]?.['reason'])}`]);
+    const result = await kit.run(READ_SESSIONS);
+    const answer = served(result);
+    assert.deepEqual(answer['failures'], [{ team: 'torn', reason: 'torn/config.json cannot be read as a team config' }]);
+    assert.deepEqual(problemsOf(answer), ['torn/config.json cannot be read as a team config']);
     assert.equal(sessionsOf(answer).length, 10);
+    assert.equal(result.stdout.join('\n').includes(SECRET), false);
   });
 
   it('counts a damaged line of a hire log in problems', async () => {
     const kit = new CliHarness();
     const hires = join(TEAM_HOME, 'state', 'hires.jsonl');
     await kit.files.write(hires, '{not json\n');
-    assert.deepEqual(problemsOf(served(await kit.run(READ_SESSIONS))), [`${hires}: 1 damaged or newer line(s) left out`]);
+    assert.deepEqual(problemsOf(served(await kit.run(READ_SESSIONS))), ['app/state/hires.jsonl: 1 damaged or newer line(s) left out']);
   });
 
   it('keeps its revision while no file it reads changes, and moves it with a tab file, a start record and a new team', async () => {
@@ -676,10 +675,12 @@ describe('teamrig read: what could not be read', () => {
   it('carries a config problem in problems, where a text command warns on stderr', async () => {
     const kit = new CliHarness();
     await add(kit, 'Ship the gate', 'alpha');
-    await kit.files.write(CONFIG_PATH, formatConfig({ ...TEAM, pushGuard: { protectedBranches: 'main' } }));
-    const answer = served(await kit.run(READ_TASKS));
-    assert.equal(problemsOf(answer).length, 1);
+    await kit.files.write(CONFIG_PATH, formatConfig({ ...TEAM, pushGuard: { protectedBranches: SECRET } }));
+    const result = await kit.run(READ_TASKS);
+    const answer = served(result);
+    assert.deepEqual(problemsOf(answer), ['app/config.json: 1 problem(s), defaults used; run: teamrig config validate']);
     assert.deepEqual(titlesOf(answer), ['Ship the gate']);
+    assert.equal(result.stdout.join('\n').includes(SECRET), false);
   });
 
   it('serves the tasks it can read and counts a damaged line in problems', async () => {
@@ -688,10 +689,15 @@ describe('teamrig read: what could not be read', () => {
     await kit.files.append(EVENTS_PATH, '{not json\n');
     const answer = served(await kit.run(READ_TASKS));
     assert.deepEqual(titlesOf(answer), ['Ship the gate']);
-    assert.deepEqual(
-      problemsOf(answer).map((problem) => problem.replace(EVENTS_PATH, 'events.jsonl')),
-      ['events.jsonl: 1 unreadable line(s) left out'],
-    );
+    assert.deepEqual(problemsOf(answer), ['app/state/events.jsonl: 1 unreadable line(s) left out']);
+  });
+
+  it('names a damaged register line by its file and a count, never by the parser\'s words, which quote the line', async () => {
+    const kit = new CliHarness();
+    await kit.files.append(EVENTS_PATH, `{"note": "${SECRET}", torn\n`);
+    const result = await kit.run(READ_TASKS);
+    assert.deepEqual(problemsOf(served(result)), ['app/state/events.jsonl: 1 unreadable line(s) left out']);
+    assert.equal(result.stdout.join('\n').includes(SECRET), false);
   });
 
   it('serves no task and says why when an archive segment is gone, changing its revision when it is back', async () => {
@@ -704,7 +710,8 @@ describe('teamrig read: what could not be read', () => {
     await kit.files.remove(layout.segment(1));
     const broken = served(await kit.run(READ_TASKS));
     assert.deepEqual(tasksOf(broken), []);
-    assert.match(problemsOf(broken).join('\n'), /events-000001\.jsonl is missing: the register's archive is incomplete/);
+    const segment1 = normalisePath(layout.segment(1)).slice(normalisePath(TEAM_HOME).length);
+    assert.deepEqual(problemsOf(broken), [`app${segment1}: missing, so the register's archive is incomplete and its tasks cannot be read`]);
     await kit.files.write(layout.segment(1), segment);
     const whole = served(await kit.run(READ_TASKS));
     assert.deepEqual([titlesOf(whole), problemsOf(whole)], [['Ship the gate'], []]);

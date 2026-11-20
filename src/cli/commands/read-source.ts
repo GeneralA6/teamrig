@@ -1,7 +1,9 @@
+import { basename, isAbsolute, relative, sep } from 'node:path';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
+import type { TeamPaths } from '../../core/home.ts';
 import type { RevisionParts, SessionPlace } from '../../interface/index.ts';
-import type { Kit } from '../kit.ts';
+import type { Kit, LoadedConfig } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import type { KitTree } from '../tree.ts';
 
@@ -56,10 +58,42 @@ export async function stampsOf(runtime: CliRuntime, paths: readonly string[]): P
   return stamps;
 }
 
-/** The lines of a log that were left out of its read, a line per kind. */
-export function skippedOf(path: string, read: { readonly unreadable: number; readonly newer: number }): string[] {
+/** The team a problem's file is named under, and the folder its name is counted from. */
+export type ServedFolder = Pick<TeamPaths, 'team' | 'home'>;
+
+/**
+ * How a problem names a file: from the team's folder down, as `app/state/events.jsonl`, with `/` on every OS. Its
+ * place on the disk is never served: it holds the user's home. A file the config moved out of the team's folder
+ * (`paths`) is named by its own name alone, which is teamrig's.
+ */
+export function servedPathOf(folder: ServedFolder, path: string): string {
+  const below = relative(folder.home, path);
+  const inside = below !== '' && !below.startsWith('..') && !isAbsolute(below);
+  return [folder.team, ...(inside ? below.split(sep) : ['(moved)', basename(path)])].join('/');
+}
+
+/**
+ * The lines of a log that were left out of its read, a line per kind. Every problem a document carries is such a
+ * fixed text: a file's served name, a count and a kind, never a parser's own message, which quotes the damaged
+ * line, and that line was never scanned for a secret.
+ */
+export function skippedOf(folder: ServedFolder, path: string, read: { readonly unreadable: number; readonly newer: number }): string[] {
+  const name = servedPathOf(folder, path);
   return [
-    ...(read.unreadable > 0 ? [`${path}: ${read.unreadable} unreadable line(s) left out`] : []),
-    ...(read.newer > 0 ? [`${path}: ${read.newer} line(s) from a newer teamrig left out; update teamrig`] : []),
+    ...(read.unreadable > 0 ? [`${name}: ${read.unreadable} unreadable line(s) left out`] : []),
+    ...(read.newer > 0 ? [`${name}: ${read.newer} line(s) from a newer teamrig left out; update teamrig`] : []),
+  ];
+}
+
+/**
+ * What the config's own read has to tell, as `configWarnings` tells a person, less the first problem's words: they
+ * quote the value found, which no shape was looked for in. `teamrig config validate` prints them to the person.
+ */
+export function configProblemsOf(folder: ServedFolder, load: LoadedConfig): string[] {
+  const name = servedPathOf(folder, load.path);
+  const { newerVersion, issues } = load;
+  return [
+    ...(newerVersion === undefined ? [] : [`${name}: config version ${newerVersion}, from a newer teamrig, read best-effort; update teamrig`]),
+    ...(issues.length === 0 ? [] : [`${name}: ${issues.length} problem(s), defaults used; run: teamrig config validate`]),
   ];
 }
