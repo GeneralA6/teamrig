@@ -100,6 +100,19 @@ describe('JsonlColdSendLog', () => {
     assert.equal(await log.heldSince(TAB, 'alpha', NOW), true);
     assert.equal(await log.heldSince(TAB, 'alpha', new Date(NOW.getTime() + 1)), false);
   });
+
+  it('writes a hold as the very line every installed teamrig reads (T4762)', async () => {
+    const files = new MemoryFiles();
+    await new JsonlColdSendLog(files, LOG).record(TAB, 'alpha', NOW);
+    assert.equal(files.get(LOG), `{"v":1,"claudeSession":"${TAB}","to":"alpha","at":"${NOW.toISOString()}"}\n`);
+  });
+
+  it('counts a hold a later teamrig wrote, naming the tab hostSession (T4762)', async () => {
+    const files = new MemoryFiles({ [LOG]: `{"v":2,"hostSession":"${TAB}","to":"alpha","at":"${NOW.toISOString()}"}\n` });
+    const log = new JsonlColdSendLog(files, LOG);
+    assert.equal(await log.heldSince(TAB, 'alpha', NOW), true);
+    assert.equal(await log.heldSince(OTHER_TAB, 'alpha', NOW), false);
+  });
 });
 
 describe('the hold note', () => {
