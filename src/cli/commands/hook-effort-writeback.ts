@@ -1,11 +1,10 @@
 import { launchOf } from '../../config/launch.ts';
 import type { EffortLevel, KitConfig } from '../../config/types.ts';
 import type { SessionAddress } from '../../core/address.ts';
-import { errorMessage, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
+import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { effortChangeLine, effortChangeText, effortWriteback, withLaunchEffort, WritebackMarksStore, type Writeback, type WrittenEffort } from '../../effort/writeback.ts';
-import { payloadEffortOf } from '../../hooks/model-check.ts';
-import { sessionIdOf } from '../../inbox/inbox.ts';
+import type { HookEvent } from '../../ports/host/index.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { postToHolder, sessionNameOn } from '../holder-team.ts';
 import { transcriptsIfKept } from '../host.ts';
@@ -93,9 +92,9 @@ async function reportWriteback(runtime: CliRuntime, scope: SessionScope, claude:
  * looked at without a Claude Code session id; a log line or inbox line that fails leaves the written config and is
  * shown to the user.
  */
-export async function effortWritebackOf(runtime: CliRuntime, scope: SessionScope, payload: JsonRecord): Promise<EffortWritebackOutcome> {
-  const claude = sessionIdOf(payload);
-  if (claude === null) {
+export async function effortWritebackOf(runtime: CliRuntime, scope: SessionScope, event: Pick<HookEvent, 'session' | 'transcript' | 'effort'>): Promise<EffortWritebackOutcome> {
+  const claude = event.session;
+  if (claude === undefined) {
     return { config: scope.config, lines: [] };
   }
   let updated = scope.config;
@@ -114,8 +113,8 @@ export async function effortWritebackOf(runtime: CliRuntime, scope: SessionScope
   const change = await effortWriteback(deps, {
     id: scope.id,
     claude,
-    transcript: stringField(payload, 'transcript_path'),
-    running: payloadEffortOf(payload),
+    transcript: event.transcript,
+    running: event.effort,
     config: launchOf(scope.config, scope.id).effort,
   });
   if (change === undefined) {
@@ -131,11 +130,11 @@ export async function effortWritebackOf(runtime: CliRuntime, scope: SessionScope
  */
 export async function effortWritebackHook(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  if (isRecord(payload) && event !== undefined) {
+  const { event } = await readHookInput(runtime);
+  if (event !== undefined) {
     const scope = await hookScopeOf(runtime, event).catch(() => undefined);
     if (scope !== undefined) {
-      await effortWritebackOf(runtime, scope, payload).catch(() => undefined);
+      await effortWritebackOf(runtime, scope, event).catch(() => undefined);
     }
   }
   return EXIT.ok;

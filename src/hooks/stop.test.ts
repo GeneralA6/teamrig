@@ -1,11 +1,23 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { StopDecision } from '../refresh/decide.ts';
 import type { RefreshState } from '../refresh/state.ts';
-import { blockOutput, stopOutput, tabTitleSequence } from './stop.ts';
+import { replyText } from '../testing/host.ts';
+import { blockReply, stopReply, tabTitleSequence } from './stop.ts';
 
 const STATE: RefreshState = { phase: 'ready', task: 'T12', at: '2030-01-08T10:00:00.000Z', tokens: null, noticed: true, transcript: null, claudePid: null };
 
-describe('stopOutput', () => {
+/** What the shipped host reads on the hook's standard output for the reply at a turn's end. */
+function stopOutput(decision: StopDecision, notices?: readonly string[], tabTitle?: string): string {
+  return replyText('stop', stopReply(decision, notices, tabTitle));
+}
+
+/** The same for a block with any reason. */
+function blockOutput(reason: string, notices?: readonly string[]): string {
+  return replyText('stop', blockReply(reason, notices));
+}
+
+describe('stopReply', () => {
   it('keeps the session going with the reason when it blocks', () => {
     assert.deepEqual(JSON.parse(stopOutput({ kind: 'block', state: STATE, reason: 'Write your handover.' })), {
       decision: 'block',
@@ -37,6 +49,7 @@ describe('stopOutput', () => {
   });
 
   it('prints nothing for every other decision', () => {
+    assert.deepEqual(stopReply({ kind: 'none' }), { notice: undefined, tabTitle: undefined });
     assert.equal(stopOutput({ kind: 'none' }), '');
     assert.equal(stopOutput({ kind: 'measure' }), '');
     assert.equal(stopOutput({ kind: 'write', state: STATE }), '');
@@ -57,6 +70,7 @@ describe('stopOutput', () => {
   });
 
   it('blocks with any reason, the notices shown with it', () => {
+    assert.deepEqual(blockReply('Retire now.', ['BUDGET x', 'MODEL y']), { verdict: { kind: 'block', reason: 'Retire now.' }, notice: 'BUDGET x\nMODEL y' });
     assert.deepEqual(JSON.parse(blockOutput('Retire now.')), { decision: 'block', reason: 'Retire now.' });
     assert.deepEqual(JSON.parse(blockOutput('Retire now.', ['BUDGET x'])), { decision: 'block', reason: 'Retire now.', systemMessage: 'BUDGET x' });
   });

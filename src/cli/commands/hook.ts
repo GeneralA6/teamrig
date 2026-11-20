@@ -5,13 +5,12 @@ import { LeadTree } from '../../config/lead-tree.ts';
 import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { recordConfigDir } from '../../budget/config-dir.ts';
-import { errorMessage, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
+import { errorMessage, isRecord, type JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir, claudeTempDir, KIT_NAME, resolveKitHome } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
-import { sessionIdOf } from '../../inbox/inbox.ts';
 import { routeReminderOf } from '../../inbox/route.ts';
 import { boundPromptNote, boundStartNote, tabTitleFor } from '../../hooks/bind.ts';
-import { modelCheckLine, payloadEffortOf } from '../../hooks/model-check.ts';
+import { modelCheckLine } from '../../hooks/model-check.ts';
 import { ModelNoticeStore } from '../../hooks/model-notices.ts';
 import { sentMessageOf } from '../../hooks/cold-send.ts';
 import { failedSendLine, failedSendOf } from '../../hooks/failed-send.ts';
@@ -26,7 +25,7 @@ import { worktreeNoteOf } from '../../hooks/worktree-note.ts';
 import { stopModelNotices } from '../../hooks/stop-model.ts';
 import { leadStopLine, leadTallyOf } from '../../hooks/lead-boundary.ts';
 import { turnToolsOf } from '../../hooks/loop-nudge.ts';
-import { blockOutput, stopOutput } from '../../hooks/stop.ts';
+import { blockReply, stopReply } from '../../hooks/stop.ts';
 import { adoptTitle, promptNote, sessionStartNote, type TitleOutcome } from '../../names/detect.ts';
 import { JsonlRenameLog } from '../../names/log.ts';
 import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
@@ -36,13 +35,12 @@ import {
   reaskGrowth,
   thousands,
   thresholdOf,
-  type DueFacts,
   type RefreshSettings,
   type StopContext,
   type StopDecision,
   type StopFacts,
 } from '../../refresh/decide.ts';
-import type { HookEvent } from '../../ports/host/index.ts';
+import type { HookEvent, HookReply } from '../../ports/host/index.ts';
 import { ownerTurnsLine, ownerTurnsText, type OwnerTurn } from '../../refresh/owner-turns.ts';
 import { carryLines, carryStartOf, readCarry, type CarriedCron, type Carry, type CarryPlaces, type CarryStart } from '../../refresh/carry.ts';
 import { claudeProcessOf } from '../../refresh/restart.ts';
@@ -677,10 +675,9 @@ async function liveTasksPartOf(runtime: CliRuntime, kit: Kit, config: KitConfig,
 }
 
 /** The refresh facts every turn end may need: the lead's request, the context size from the transcript's tail, and the open meeting. */
-async function stopFactsOf(runtime: CliRuntime, scope: SessionScope, store: RefreshStore, payload: JsonRecord): Promise<StopFacts> {
+async function stopFactsOf(runtime: CliRuntime, scope: SessionScope, store: RefreshStore, transcript: string | undefined): Promise<StopFacts> {
   const { roster, id } = scope;
   const request = await store.request(id);
-  const transcript = stringField(payload, 'transcript_path');
   // A host that keeps no readable transcript or prices no call tells no context size: the lead's request and the meeting still count.
   const source = contextSourceIfTold(runtime);
   return {
@@ -689,11 +686,6 @@ async function stopFactsOf(runtime: CliRuntime, scope: SessionScope, store: Refr
     meeting: await inMeetingNow(runtime, scope),
     due: undefined,
   };
-}
-
-/** The facts a due refresh or notice reads (`dueFactsAt`), the running work from the transcript Claude Code gave the hook. */
-function dueFactsOf(runtime: CliRuntime, store: RefreshStore, id: string, payload: JsonRecord): Promise<DueFacts> {
-  return dueFactsAt(runtime, store, id, stringField(payload, 'transcript_path'));
 }
 
 /** The owner's turn-end line when the lead did hand-off work itself (lead-boundary.ts); none for another session, with the boundary off or without a transcript. */
@@ -712,7 +704,7 @@ async function leadStopLines(runtime: CliRuntime, scope: SessionScope, transcrip
 }
 
 /** The refresh decision for this turn's end; none with refresh off. */
-async function refreshDecisionOf(runtime: CliRuntime, scope: SessionScope, payload: JsonRecord): Promise<StopDecision> {
+async function refreshDecisionOf(runtime: CliRuntime, scope: SessionScope, event: HookEvent): Promise<StopDecision> {
   const { kit, config, roster, id } = scope;
   if (!config.refresh.enabled) {
     return { kind: 'none' };
@@ -723,24 +715,25 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: SessionScope, paylo
     // A turn after the notice: the session went on from its context, so a restart held back for work is stale (T1383).
     await store.clearParked(id);
   }
-  const target = restartTargetOf(runtime, payload);
+  const target = restartTargetOf(runtime, event);
   const settings = sessionRefreshOf(config, id);
   const context: StopContext = {
-    stopHookActive: payload['stop_hook_active'] === true,
+    stopHookActive: event.stopActive,
     settings,
     now: new Date(runtime.clock.now()).toISOString(),
     session: { id, team: kit.paths.team, name: roster.nameOf(id) ?? id },
     handoverPath: store.handoverPath(id),
     command: KIT_NAME,
     canRestart: autoRestartOf(config, id) && target !== undefined,
-    transcript: stringField(payload, 'transcript_path') ?? null,
+    transcript: event.transcript ?? null,
   };
   // The facts are read only as far as the decision needs them: most turn ends stop at the transcript's tail.
   const first = decideStop(state, context);
-  const facts = first.kind === 'measure' ? await stopFactsOf(runtime, scope, store, payload) : undefined;
+  const facts = first.kind === 'measure' ? await stopFactsOf(runtime, scope, store, event.transcript) : undefined;
   const measured = facts === undefined ? first : decideStop(state, context, facts);
+  // The facts a due refresh or notice reads, the running work from the transcript the event names.
   const decided =
-    facts !== undefined && measured.kind === 'measure' ? decideStop(state, context, { ...facts, due: await dueFactsOf(runtime, store, id, payload) }) : measured;
+    facts !== undefined && measured.kind === 'measure' ? decideStop(state, context, { ...facts, due: await dueFactsAt(runtime, store, id, event.transcript) }) : measured;
   // Looked up once for the restart and the state: each look at a process starts a PowerShell on Windows, and a Stop
   // hook past Claude Code's timeout is killed with every process it started.
   const claude = decided.kind === 'notice' ? await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid) : undefined;
@@ -765,10 +758,10 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: SessionScope, paylo
   return decision;
 }
 
-/** The model notices for the user at this turn's end (`stopModelNotices`); none without a Claude Code session id. */
-async function modelNoticesOf(runtime: CliRuntime, scope: SessionScope, payload: JsonRecord): Promise<readonly string[]> {
-  const claude = sessionIdOf(payload);
-  if (claude === null) {
+/** The model notices for the user at this turn's end (`stopModelNotices`); none when the event names no session. */
+async function modelNoticesOf(runtime: CliRuntime, scope: SessionScope, event: Pick<HookEvent, 'session' | 'transcript' | 'effort'>): Promise<readonly string[]> {
+  const claude = event.session;
+  if (claude === undefined) {
     return [];
   }
   const { kit, config, roster, id } = scope;
@@ -777,8 +770,8 @@ async function modelNoticesOf(runtime: CliRuntime, scope: SessionScope, payload:
     name: roster.nameOf(id) ?? id,
     launch: launchOf(config, id),
     claude,
-    effort: payloadEffortOf(payload),
-    transcript: stringField(payload, 'transcript_path'),
+    effort: event.effort,
+    transcript: event.transcript,
   });
 }
 
@@ -787,8 +780,8 @@ async function modelNoticesOf(runtime: CliRuntime, scope: SessionScope, payload:
  * (last-task-ask.ts), else, while a task of it waits, to work its other tasks (keep-working.ts). None on a stop the
  * hook already blocked, or while the refresh blocks or waits for its restart, so the asks wait for a later stop.
  */
-async function askBlockOf(runtime: CliRuntime, scope: SessionScope, payload: JsonRecord, decision: StopDecision): Promise<string | undefined> {
-  if (payload['stop_hook_active'] === true || decision.kind === 'block' || decision.kind === 'notice') {
+async function askBlockOf(runtime: CliRuntime, scope: SessionScope, stopActive: boolean, decision: StopDecision): Promise<string | undefined> {
+  if (stopActive || decision.kind === 'block' || decision.kind === 'notice') {
     return undefined;
   }
   return (await lastTaskAskReasonOf(runtime, scope.config, scope.kit.paths, scope.id)) ?? keepWorkingReasonOf(runtime, scope);
@@ -808,44 +801,44 @@ async function stopTabTitleOf(runtime: CliRuntime, team: TeamScope, roster: Rost
 }
 
 /**
- * What the Stop hook prints for this turn's end; '' outside a team, and only the tab's title (with tab status
- * on) in a tab that is no session of it. The refresh, the model notices, the budget lines and the verify-by
- * lines fail apart: an error in one leaves the others.
+ * The reply at this turn's end; none outside a team, and only the tab's title (with tab status on) in a tab
+ * that is no session of it. The refresh, the model notices, the budget lines and the verify-by lines fail
+ * apart: an error in one leaves the others.
  */
-async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord, event: HookEvent): Promise<string> {
+async function stopReplyOf(runtime: CliRuntime, payload: JsonRecord, event: HookEvent): Promise<HookReply | undefined> {
   const team = await teamScopeOf(runtime, event.cwd);
   const scope = team === undefined ? undefined : await sessionScopeOf(runtime, team, event.session);
   if (scope === undefined) {
     const none: StopDecision = { kind: 'none' };
-    return team === undefined ? '' : stopOutput(none, [], await stopTabTitleOf(runtime, team, undefined, payload, none));
+    return team === undefined ? undefined : stopReply(none, [], await stopTabTitleOf(runtime, team, undefined, payload, none));
   }
-  await logReply(runtime, { config: scope.config, paths: scope.kit.paths, id: scope.id }, payload).catch(() => undefined);
+  await logReply(runtime, { config: scope.config, paths: scope.kit.paths, id: scope.id }, event).catch(() => undefined);
   // Before the refresh, which records a block's state before it prints: this block leaves the rest to the next stop.
   const dropped = await droppedEditReasonOf(runtime, event, 'main').catch((): string | undefined => undefined);
   if (dropped !== undefined) {
-    return blockOutput(dropped);
+    return blockReply(dropped);
   }
   // Before the refresh too, for the same reason: a hand step typed into the reply is unsafe now (core rule 11).
-  const handStep = await handStepReasonOf(runtime, payload).catch((): string | undefined => undefined);
+  const handStep = await handStepReasonOf(runtime, event).catch((): string | undefined => undefined);
   if (handStep !== undefined) {
-    return blockOutput(handStep);
+    return blockReply(handStep);
   }
-  const decision = await refreshDecisionOf(runtime, scope, payload).catch((): StopDecision => ({ kind: 'none' }));
+  const decision = await refreshDecisionOf(runtime, scope, event).catch((): StopDecision => ({ kind: 'none' }));
   // Before the model notices, which then read the level just written: no "runs at another effort" for a typed /effort.
-  const effort = await effortWritebackOf(runtime, scope, payload).catch((): EffortWritebackOutcome => ({ config: scope.config, lines: [] }));
-  const notices = await modelNoticesOf(runtime, { ...scope, config: effort.config }, payload).catch((): readonly string[] => []);
-  const budget = await stopBudgetLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
+  const effort = await effortWritebackOf(runtime, scope, event).catch((): EffortWritebackOutcome => ({ config: scope.config, lines: [] }));
+  const notices = await modelNoticesOf(runtime, { ...scope, config: effort.config }, event).catch((): readonly string[] => []);
+  const budget = await stopBudgetLines(runtime, scope, event.transcript).catch((): readonly string[] => []);
   const verify = await verifyByLinesOf(runtime, scope.kit.paths, scope.id, teamZone(scope.config, runtime)).catch((): readonly string[] => []);
   await ensureWatch(runtime, scope.kit, scope.config).catch(() => undefined);
   const hookless = await checkHooklessTabs(runtime, scope.kit, scope.config).catch((): readonly string[] => []);
-  const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
+  const lead = await leadStopLines(runtime, scope, event.transcript).catch((): readonly string[] => []);
   const lines = [...effort.lines, ...notices, ...budget, ...verify, ...lead, ...hookless];
-  const ask = await askBlockOf(runtime, scope, payload, decision).catch((): string | undefined => undefined);
+  const ask = await askBlockOf(runtime, scope, event.stopActive, decision).catch((): string | undefined => undefined);
   if (ask === undefined && decision.kind !== 'block') {
     // Only a turn that ends: a block sends the session on working, which its next tool's end records.
     await recordTabNeed(runtime, payload, event, scope).catch(() => undefined);
   }
-  return ask === undefined ? stopOutput(decision, lines, await stopTabTitleOf(runtime, scope, scope.roster, payload, decision)) : blockOutput(ask, lines);
+  return ask === undefined ? stopReply(decision, lines, await stopTabTitleOf(runtime, scope, scope.roster, payload, decision)) : blockReply(ask, lines);
 }
 
 /**
@@ -874,10 +867,8 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord, event: Hoo
 export async function stop(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const { payload, event } = await readHookInput(runtime);
-  const output = isRecord(payload) && event !== undefined ? await stopOutputOf(runtime, payload, event).catch(() => '') : '';
-  if (output !== '') {
-    runtime.out.stdout(output);
-  }
+  const reply = isRecord(payload) && event !== undefined ? await stopReplyOf(runtime, payload, event).catch((): HookReply | undefined => undefined) : undefined;
+  writeReply(runtime, 'stop', reply);
   return EXIT.ok;
 }
 
