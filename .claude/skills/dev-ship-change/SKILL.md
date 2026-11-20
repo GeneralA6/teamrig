@@ -63,5 +63,9 @@ description: Land a finished teamrig change through small signed commits with Co
   `node tools/ship/ship.ts pr <repo dir> --head <branch> --approved <sha> --note-file <pr.md>`: it opens the pull
   request of origin's head when that head is the approved sha and clears on that approval as a merge would, takes
   the merge's title and body, runs no gate, merges nothing and prints the URL (an open one is found, not opened again).
+- The pull request is dressed from the branch's task (`tools/ship/pull-task.ts`): titled `T<n>: <issue title>`, a
+  `Closes` line for its issue, and the repo's labels for its priority, its type and the issue's area. A task with no
+  ref opens none: link its issue first (`teamrig update T<n> --ref gh:<owner/name>#<n>`). A `local:` ref is titled
+  by its first commit subject and closes nothing.
 
 Last verified: 2026-11-20
