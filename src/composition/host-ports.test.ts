@@ -1,12 +1,23 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isUnsupported, unsupported, type HostDeps, type ProgramRunner } from '../plugin-api/index.ts';
+import { HOST_PORT_NAMES } from '../ports/host/index.ts';
 import { hostDeclarationData } from '../testing/manifests.ts';
 import { DEFAULT_HOST } from './adapters.ts';
 import { loadHostPorts } from './host-ports.ts';
 import type { ModuleImporter } from './loader.ts';
 
 const run: ProgramRunner = () => Promise.reject(new Error('no program runs here'));
+
+/** Every host port named and none filled: the least an adapter may build. */
+function everyPortUnsupported(): Record<string, unknown> {
+  return Object.fromEntries(HOST_PORT_NAMES.map((name) => [name, unsupported(`this host has no ${name}`)]));
+}
+
+/** An importer serving a host entry whose `create` builds `ports`, whatever they are. */
+function building(ports: unknown): ModuleImporter {
+  return () => Promise.resolve({ default: { declaration: hostDeclarationData({ id: DEFAULT_HOST }), create: () => ports } });
+}
 
 describe('loadHostPorts', () => {
   it('gives the shipped host adapter a filled transcript reader, usage meter and status line', async () => {
@@ -23,7 +34,7 @@ describe('loadHostPorts', () => {
       declaration: hostDeclarationData({ id: DEFAULT_HOST }),
       create: (deps: HostDeps) => {
         built.push(deps);
-        return { transcripts: unsupported('this host keeps no transcript'), usage: unsupported('this host prices no call') };
+        return everyPortUnsupported();
       },
     };
     const importer: ModuleImporter = () => Promise.resolve({ default: entry });
@@ -31,7 +42,7 @@ describe('loadHostPorts', () => {
     assert.deepEqual(built, [], 'loading builds no port');
     const ports = source({ env: { RUN: 'one' }, platform: 'darwin' });
     source({ env: { RUN: 'two' }, platform: 'win32' });
-    assert.deepEqual(ports, { transcripts: { kind: 'unsupported', notice: 'this host keeps no transcript' }, usage: { kind: 'unsupported', notice: 'this host prices no call' } });
+    assert.deepEqual(ports, everyPortUnsupported());
     assert.deepEqual(built, [
       { env: { RUN: 'one' }, platform: 'darwin', run },
       { env: { RUN: 'two' }, platform: 'win32', run },
@@ -45,5 +56,24 @@ describe('loadHostPorts', () => {
     });
     const undefinedEntry: ModuleImporter = () => Promise.resolve({ default: {} });
     await assert.rejects(loadHostPorts(run, undefinedEntry), { message: /did not load: its entry is not made by defineHost/ });
+  });
+
+  it('refuses what an adapter built when a port is left unnamed, naming each one', async () => {
+    const source = await loadHostPorts(run, building({}));
+    assert.throws(() => source({ env: {}, platform: 'linux' }), {
+      message: `the host adapter ${DEFAULT_HOST} cannot be used: ${HOST_PORT_NAMES.map((name) => `it builds no ${name} port: a port its tool cannot fill is an unsupported(reason)`).join('; ')}`,
+    });
+  });
+
+  it('refuses a port that is not an object, and takes the others', async () => {
+    const source = await loadHostPorts(run, building({ ...everyPortUnsupported(), hooks: 'yes' }));
+    assert.throws(() => source({ env: {}, platform: 'linux' }), {
+      message: `the host adapter ${DEFAULT_HOST} cannot be used: it builds no hooks port: a port its tool cannot fill is an unsupported(reason)`,
+    });
+  });
+
+  it('refuses an adapter whose create builds nothing', async () => {
+    const source = await loadHostPorts(run, building(undefined));
+    assert.throws(() => source({ env: {}, platform: 'linux' }), { message: `the host adapter ${DEFAULT_HOST} cannot be used: its create function built no ports` });
   });
 });
