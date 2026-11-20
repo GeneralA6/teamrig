@@ -4,6 +4,7 @@ import type { PathProbe } from '../core/path-probe.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { isRecord, stringField } from '../core/guards.ts';
 import { PROMPT_MAX } from '../open/prompt.ts';
+import type { TranscriptReader } from '../ports/host/index.ts';
 import { carryOf } from '../refresh/carry.ts';
 import { runningWorkOf } from '../refresh/running.ts';
 import { INTENTIONAL_END_REASONS, type RestoreEntry } from './entry.ts';
@@ -171,9 +172,9 @@ export interface LostWork {
 }
 
 /** The work the transcript shows still live at `at`; `cut` when the text is the tail of a longer file. */
-export function lostWorkOf(text: string, cut: boolean, at: number): LostWork {
+export function lostWorkOf(reader: TranscriptReader, text: string, cut: boolean, at: number): LostWork {
   const carry = carryOf(text, at, []);
-  return { background: runningWorkOf(text, cut, at), crons: carry.crons.length, wake: carry.wake !== undefined };
+  return { background: runningWorkOf(reader, text, cut, at),crons: carry.crons.length, wake: carry.wake !== undefined };
 }
 
 function counted(count: number, one: string): string {

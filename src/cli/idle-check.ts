@@ -26,6 +26,7 @@ import { asksNowOf, urgentLinesText, WakeAsks, type WakeAsk } from '../wake/asks
 import { startableTasks } from '../wake/day-start.ts';
 import { inboxDepsOf } from './commands/inbox.ts';
 import { measureTranscript, type LastSession } from './commands/rehire.ts';
+import { transcriptsIfKept } from './host.ts';
 import { teamZone, type Kit } from './kit.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 import { teamRegister } from './team-register.ts';
@@ -237,6 +238,11 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   if (last === undefined) {
     return keep(`has no transcript of Claude Code session ${record.claudeSession} in any project folder, so its idle time is unknown`);
   }
+  // Unread, a transcript shows no work running: a close then could cut some off.
+  const reader = transcriptsIfKept(runtime);
+  if (reader === undefined) {
+    return keep('runs on a host whose transcript teamrig cannot read, so what it still runs is unknown');
+  }
   const { tail, cut } = await transcriptTailOf(runtime, last.transcript);
   // A tail with no timed own entry falls back to the file's last change, which is never earlier.
   const idleMinutes = Math.floor((now - (lastTurnAtOf(tail, cut) ?? last.changedAt)) / MINUTE_MS);
@@ -252,7 +258,7 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   if (activity !== 'idle') {
     return keep(TAB_ACTIVITY_CLAUSES[activity]);
   }
-  if ((await readRunningWork(runtime.files, last.transcript, now)) > 0) {
+  if ((await readRunningWork(reader, runtime.files, last.transcript, now)) > 0) {
     return keep('still runs background work its transcript shows');
   }
   const resume = resumeVerdict({ claudeSession: record.claudeSession, changedAt: last.changedAt, tokens: last.tokens }, config.hiring, now);

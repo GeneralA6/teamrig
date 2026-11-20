@@ -7,6 +7,7 @@ import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { readRunningKinds } from '../../refresh/running.ts';
 import { helpersRun, readyWaitsOnHelpers, tabChangeOf, tabTitle, topicOf, type TranscriptTail } from '../../tabs/status.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
+import { transcriptsIfKept } from '../host.ts';
 import { openKit, rosterOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { parseJson, sessionTeam } from './hook-input.ts';
@@ -33,10 +34,11 @@ async function transcriptTailOf(runtime: CliRuntime, payload: JsonRecord): Promi
   return text === undefined ? undefined : { text, whole: Buffer.byteLength(text, 'utf8') < TRANSCRIPT_TAIL_BYTES };
 }
 
-/** Whether a helper the session started still runs, by its transcript. */
+/** Whether a helper the session started still runs, by its transcript; none on a host that keeps no transcript teamrig can read. */
 async function helpersRunFor(runtime: CliRuntime, payload: JsonRecord): Promise<boolean> {
   const transcript = stringField(payload, 'transcript_path');
-  return transcript !== undefined && transcript !== '' && helpersRun(await readRunningKinds(runtime.files, transcript, runtime.clock.now()));
+  const reader = transcriptsIfKept(runtime);
+  return transcript !== undefined && transcript !== '' && reader !== undefined && helpersRun(await readRunningKinds(reader, runtime.files, transcript, runtime.clock.now()));
 }
 
 /**

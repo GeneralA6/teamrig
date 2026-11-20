@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import type { HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
+import { unsupported } from '../ports/host/index.ts';
 import { TAB_CIRCLES } from '../tabs/status.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
@@ -115,6 +117,13 @@ describe('hook stop: tab status', () => {
     assert.equal(titleOf(await (await teamWith()).run(['hook', 'stop'], { stdin: stop(), env: TITLE_OFF })), `${TAB_CIRCLES.ready} fix the build`);
     const busy = await teamWith(ON_TEAM, HELPER);
     assert.equal(titleOf(await busy.run(['hook', 'stop'], { stdin: stop(), env: TITLE_OFF })), `${TAB_CIRCLES.working} fix the build`);
+  });
+
+  it('shows ready at a turn end on a host that keeps no transcript it can read, whose helpers it cannot see', async () => {
+    const busy = await teamWith(ON_TEAM, HELPER);
+    const bare: HostSource = () => ({ transcripts: unsupported('no transcript is kept') });
+    const title = titleOf(await busy.run(['hook', 'stop'], { stdin: stop(), env: TITLE_OFF, host: bare }));
+    assert.equal(title?.startsWith(TAB_CIRCLES.ready), true, title);
   });
 
   it('shows the decision circle at a turn end that asks the user to decide, even while a helper runs, and ready at the next plain end', async () => {

@@ -211,6 +211,13 @@ describe('runCli: hook refresh-mid', () => {
     assert.deepEqual(await ended.mid(130_000), { kind: 'ask', text: ASK_130K, nextAt: 154_000 });
   });
 
+  it('asks plainly on a host that keeps no transcript it can read, whose background work it cannot see', async () => {
+    const tab = new Tab();
+    await tab.transcript(BACKGROUND_START);
+    const bare: HostSource = () => ({ transcripts: unsupported('no transcript is kept') });
+    assert.deepEqual(answerOf(await tab.run('refresh-mid', { tokens: 130_000 }, AS_ALPHA, bare)), { kind: 'ask', text: ASK_130K, nextAt: 154_000 });
+  });
+
   it('asks for nothing outside a team session, with refresh off, or on input it cannot read', async () => {
     const tab = new Tab();
     assert.deepEqual(answerOf(await tab.run('refresh-mid', { tokens: 130_000 }, {})), OFF, 'no team session');

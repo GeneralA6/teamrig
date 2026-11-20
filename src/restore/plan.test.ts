@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join, parse, resolve } from 'node:path';
 import { PROMPT_MAX } from '../open/prompt.ts';
 import { FakePathProbe } from '../testing/fake-processes.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import type { RestoreEntry } from './entry.ts';
 import {
   chooseMode,
@@ -230,8 +231,9 @@ describe('lostWorkOf', () => {
       call('toolu_wake', 'ScheduleWakeup', { delaySeconds: 3600, prompt: 'check CI', reason: 'r' }, at),
       '',
     ].join('\n');
-    assert.deepEqual(lostWorkOf(text, false, SHUTDOWN), { background: 1, crons: 1, wake: true });
-    assert.deepEqual(lostWorkOf('', false, SHUTDOWN), NOTHING);
+    const reader = shippedTranscripts();
+    assert.deepEqual(lostWorkOf(reader, text, false, SHUTDOWN), { background: 1, crons: 1, wake: true });
+    assert.deepEqual(lostWorkOf(reader, '', false, SHUTDOWN), NOTHING);
   });
 });
 

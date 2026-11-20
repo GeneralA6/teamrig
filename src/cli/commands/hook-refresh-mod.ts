@@ -43,10 +43,12 @@ function countOf(payload: JsonRecord, key: string): number | undefined {
  */
 export async function dueFactsAt(runtime: CliRuntime, store: RefreshStore, id: string, transcript: string | undefined): Promise<DueFacts> {
   const handover = await store.handover(id);
+  // A host that keeps no transcript teamrig can read shows no running work, as a missing transcript shows none.
+  const reader = transcriptsIfKept(runtime);
   return {
     handoverHash: handoverHashOf(handover),
     handover,
-    running: transcript === undefined ? 0 : await readRunningWork(runtime.files, transcript, runtime.clock.now()),
+    running: transcript === undefined || reader === undefined ? 0 : await readRunningWork(reader, runtime.files, transcript, runtime.clock.now()),
   };
 }
 
