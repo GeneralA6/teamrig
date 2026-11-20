@@ -1,6 +1,6 @@
 import { loadHostPorts, type HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import { isUnsupported, type HookBridge, type HookEvent, type HookEventName, type HookReply } from '../ports/host/index.ts';
+import { isUnsupported, type HookBridge, type HookEvent, type HookEventName, type HookReply, type ShellCall } from '../ports/host/index.ts';
 import { hostDeps } from './adapter-deps.ts';
 
 /**
@@ -29,4 +29,14 @@ export function hookEventOf(payload: JsonRecord, platform: NodeJS.Platform = 'li
   const event = testHooks(platform).parse(JSON.stringify(payload));
   if (event === undefined) throw new Error('the hook bridge read no event out of the payload');
   return event;
+}
+
+/**
+ * The shell call the shipped host reads when its tool `tool` runs `line` on `platform`: a spec's way to the texts the
+ * shell may run, as a hook is handed them.
+ */
+export function shellCallOf(tool: string, line: string, platform: NodeJS.Platform = 'linux'): ShellCall {
+  const { call } = hookEventOf({ tool_name: tool, tool_input: { command: line } }, platform);
+  if (call?.kind !== 'shell') throw new Error(`the shipped host reads no shell call for the tool ${tool}`);
+  return call;
 }

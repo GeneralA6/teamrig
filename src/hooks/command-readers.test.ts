@@ -10,13 +10,13 @@ import ts from 'typescript';
  * hands a Bash line to Git Bash through a Windows command line that halves backslash runs, so a guard reading only
  * the line as written can pass what bash then runs (core/bash-tool-readings.ts). A guard takes its readings from the
  * shell call the host port hands it (`readings`) or, reading the hook payload itself, from `toolCommandReadings`; a
- * route from `toolRouteOf` or a service role's call from `toolRoleCallOf`, each of which holds only when every reading
- * is that route or call; a reader whose verdict cannot change under the halving sits in EXEMPT with the reason it
- * holds. The spec fails on a new reader with none, and on an exemption whose file no longer reads a command.
+ * route from `shellRouteOf` or a service role's call from `shellRoleCallOf`, each of which holds only when every
+ * reading is that route or call; a reader whose verdict cannot change under the halving sits in EXEMPT with the reason
+ * it holds. The spec fails on a new reader with none, and on an exemption whose file no longer reads a command.
  */
 
-/** The functions that hand a reader every text a shell call may run. */
-const READINGS_IMPORTS: ReadonlySet<string> = new Set(['toolCommandReadings', 'toolRouteOf', 'toolRoleCallOf']);
+/** The functions that hand a reader every text a shell call may run, or judge the call in each of them. */
+const READINGS_IMPORTS: ReadonlySet<string> = new Set(['toolCommandReadings', 'shellRouteOf', 'shellRoleCallOf']);
 
 /** Readers whose verdict is the same in every reading, by the path under src/ with `/` separators, with why. */
 const EXEMPT: Readonly<Record<string, string>> = {
@@ -147,8 +147,17 @@ describe('commandReadingOf', () => {
     assert.deepEqual(commandReadingOf('a.ts', source), { readsCommand: true, importsReadings: true });
   });
 
-  it('finds toolRouteOf imported under another name', () => {
-    const source = "import { toolRouteOf as routeOf } from '../permissions/sanctioned.ts';\nconst f = ['tool_input', 'command'];";
+  it('finds shellRouteOf imported under another name', () => {
+    const source = "import { shellRouteOf as routeOf } from '../permissions/sanctioned.ts';\nconst f = ['tool_input', 'command'];";
+    assert.deepEqual(commandReadingOf('a.ts', source), { readsCommand: true, importsReadings: true });
+  });
+
+  it('finds a shell call handed whole to the function that judges it in every reading', () => {
+    const source = [
+      "import { shellRoleCallOf } from '../permissions/service-role-call.ts';",
+      "if (shell?.kind !== 'shell' || shell.command === undefined) return undefined;",
+      'const call = await shellRoleCallOf(shell, context);',
+    ].join('\n');
     assert.deepEqual(commandReadingOf('a.ts', source), { readsCommand: true, importsReadings: true });
   });
 
@@ -204,7 +213,7 @@ describe('teamrig hooks', () => {
 
   it('weigh every text bash may run wherever they read a command (T2332)', () => {
     const unweighed = [...readers].filter(([path, imports]) => !imports && EXEMPT[path] === undefined).map(([path]) => path);
-    assert.deepEqual(unweighed, [], "read the shell call's readings, import toolCommandReadings or toolRouteOf, or add the file to EXEMPT with why its verdict cannot change");
+    assert.deepEqual(unweighed, [], "read the shell call's readings, hand the call to shellRouteOf or shellRoleCallOf, or add the file to EXEMPT with why its verdict cannot change");
   });
 
   it('keep no exemption for a file that no longer reads a command, or that weighs every reading now', () => {
