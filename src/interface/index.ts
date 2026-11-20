@@ -9,7 +9,26 @@ export { answerOf, DOCUMENTS, isDocumentName, unchangedAnswer, type Answer, type
 export { inboxBody, type InboxBody, type InboxInput, type ServedLine } from './inbox.ts';
 export { refOf, type ServedRef } from './ref.ts';
 export { revisionText, type RevisionParts } from './revision.ts';
-export { sourceOf, type ServedSource, type SourceKind, type SourceNames } from './source.ts';
+export {
+  sessionsBody,
+  type MemberInput,
+  type RetiredInput,
+  type ServedAsk,
+  type ServedHire,
+  type ServedHost,
+  type ServedLaunch,
+  type ServedRetire,
+  type ServedSession,
+  type ServedTeam,
+  type SessionPlace,
+  type SessionsBody,
+  type SessionsInput,
+  type SessionState,
+  type TabInput,
+  type TeamFailure,
+  type TeamInput,
+} from './sessions.ts';
+export { sourceOf,type ServedSource, type SourceKind, type SourceNames } from './source.ts';
 export { tasksBody, type ServedAnswer, type ServedDecision, type ServedTask, type ServedWait, type TasksBody, type TasksInput } from './tasks.ts';
 export { cutText, ServedText, type Cut, type MarkedText, type SecretShapes, type TextSource } from './text.ts';
 export { checkInterfaceRange, INTERFACE_MAJOR, INTERFACE_MINOR, INTERFACE_VERSION, parseInterfaceVersion, type InterfaceVersion, type RangeCheck } from './version.ts';
