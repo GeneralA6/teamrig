@@ -70,8 +70,8 @@ import { ghFailureKind, ISSUE_LIMIT, type IssueList, listIssues, readCommentsIn,
 import { readFields } from './fields.ts';
 import { failedLogExcerpt } from './job-log.ts';
 import { listLinks } from './links.ts';
-import { createdNumber } from './migrate.ts';
-import { latestIssues } from './plan.ts';
+import { createdNumber } from '../sync/migrate.ts';
+import { latestIssues } from '../sync/plan.ts';
 import { readPosts } from './posts.ts';
 import { listPulls, PULL_LIMIT } from './pulls.ts';
 import { PULL_PAGE_SIZE } from './queries.ts';

@@ -17,7 +17,7 @@ import type { PathProbe } from '../core/path-probe.ts';
 import type { StoreFolders } from '../plugin-store/store.ts';
 import type { CredentialStore } from '../core/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
-import type { PullGit } from '../github/pull-conflicts.ts';
+import type { PullGit } from '../sync/pull-conflicts.ts';
 import type { MergeGit } from '../merge/git.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { HookRunner } from '../deploy/hooks.ts';
