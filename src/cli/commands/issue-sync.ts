@@ -1,12 +1,12 @@
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { activityRoutes, type ActivityAudience, type ActivityRoute } from '../../github/activity.ts';
-import { addedTasks, type AddedTask, type RepoFailure } from '../../github/auto.ts';
-import { followersOf, parseFollows } from '../../github/follows.ts';
-import { issueMarkStep, type IssueAudience, type IssueChangeRoute, type IssueMark } from '../../github/issue-marks.ts';
-import { importRules, issueOwner, issueRef } from '../../github/map.ts';
-import { importedTasks, linkedRefs, planSync, refHolders, type SyncPlan, type SyncStep } from '../../github/plan.ts';
-import { withCiExcerpts } from '../../github/ci-excerpt.ts';
+import { activityRoutes, type ActivityAudience, type ActivityRoute } from '../../sync/activity.ts';
+import { addedTasks, type AddedTask, type RepoFailure } from '../../sync/auto.ts';
+import { followersOf, parseFollows } from '../../sync/follows.ts';
+import { issueMarkStep, type IssueAudience, type IssueChangeRoute, type IssueMark } from '../../sync/issue-marks.ts';
+import { importRules, issueOwner, issueRef } from '../../sync/map.ts';
+import { importedTasks, linkedRefs, planSync, refHolders, type SyncPlan, type SyncStep } from '../../sync/plan.ts';
+import { withCiExcerpts } from '../../sync/ci-excerpt.ts';
 import {
   firstMentionWatch,
   mentionItems,
@@ -18,11 +18,11 @@ import {
   type MentionRouting,
   type MentionWatch,
   type SeenMention,
-} from '../../github/mention-route.ts';
-import { securityIssues, type SecurityIssue } from '../../github/security-alert.ts';
-import { eventsByRecipient, pullEvents, pullListeners, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from '../../github/pull-news.ts';
-import { ourLogins } from '../../github/trust.ts';
-import { applySteps, closedSince, type StepOutcome } from '../../github/sync.ts';
+} from '../../sync/mention-route.ts';
+import { securityIssues, type SecurityIssue } from '../../sync/security-alert.ts';
+import { eventsByRecipient, pullEvents, pullListeners, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from '../../sync/pull-news.ts';
+import { ourLogins } from '../../sync/trust.ts';
+import { applySteps, closedSince, type StepOutcome } from '../../sync/sync.ts';
 import { GITHUB_REPOS_HOST, type PullRequests, type ReviewPosts } from '../../issues/host.ts';
 import type { HostPull } from '../../issues/pull.ts';
 import { sessionLogins } from '../../issues/status-push.ts';
@@ -34,7 +34,7 @@ import { hostsOf, reposOf } from '../issue-hosts.ts';
 import { openTeamKit, requireConfig } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
-import type { Thread } from '../../github/clock.ts';
+import type { Thread } from '../../sync/clock.ts';
 import type { HostIssue } from '../../issues/issue.ts';
 import { claimBudget, recordClaims } from './issue-claim.ts';
 import { pullThreads, recordClocks, repoThreads } from './issue-clock.ts';
@@ -42,7 +42,7 @@ import { fieldRunOf } from './issue-field-push.ts';
 import { reserveHour, settleHour } from './issue-push-hour.ts';
 import { issuePush, pushEndLine, pushRepos } from './issue-push.ts';
 import { GITHUB_OFF, githubOff, readSyncState, reportAutoSync } from './issue-sync-auto.ts';
-import { githubWatcher } from '../../github/watcher.ts';
+import { githubWatcher } from '../../sync/watcher.ts';
 
 /** The rows of steps a repository prints; the rest are counted. */
 export const SHOWN_STEPS = 10;
@@ -61,7 +61,7 @@ type RepoEnd = 'ok' | 'failed' | 'refused';
  * instead. A sync only lists issues, and the
  * register's import writes (register.ts) touch only the tasks it added, as `github`. Without `--yes` it
  * shows what it would write and writes nothing. Either way a LEFT OUT line names, by number only, the open
- * issues of a repository that the trust rule kept out (github/trust.ts). `--auto`, which the watch runs when GitHub changed (issue-watch.ts), writes as
+ * issues of a repository that the trust rule kept out (sync/trust.ts). `--auto`, which the watch runs when GitHub changed (issue-watch.ts), writes as
  * `--yes` does and tells each owner's inbox its new tasks, and the lead's when the failing repositories change or
  * an issue is newly left out. Each repository's pull requests are read too and compared with what the last
  * `--auto` read of them (pull-news.ts): a PULL NEWS line per session names what happened since, but only `--auto`

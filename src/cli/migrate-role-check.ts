@@ -3,7 +3,7 @@ import type { Files } from '../core/files.ts';
 import { taskFolder, tasksFolder, type TeamPaths } from '../core/home.ts';
 import { isAtOrBelow, samePath } from '../core/paths.ts';
 import { SecretScanner } from '../core/secrets.ts';
-import { parseMigrateRows } from '../github/migrate.ts';
+import { parseMigrateRows } from '../sync/migrate.ts';
 import { TASK_ID } from '../register/model.ts';
 
 /**
