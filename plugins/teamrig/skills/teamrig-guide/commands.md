@@ -2451,9 +2451,9 @@ The read side of teamrig's public interface, for a program such as a pane, a das
 Nothing else is written to stdout, so every line there parses; a refusal is one `REFUSED` line on stderr with exit 2
 and no document, where other commands print it to stdout. It writes no file, marks nothing read and takes no lock.
 
-The one document served today is `tasks`: the register's working set, the active tasks and the finished ones not yet
-archived. The others of interface 1 (`inbox`, `sessions`, `meetings`, `config`) are a usage error until they are
-served.
+Two documents are served today. `tasks` is the register's working set, the active tasks and the finished ones not yet
+archived. `inbox` is the asking session's own inbox. The others of interface 1 (`sessions`, `meetings`, `config`) are
+a usage error until they are served.
 
 Every document carries:
 
@@ -2467,10 +2467,22 @@ Every document carries:
 
 `tasks` adds `tasks`, each with the task's fields as the register holds them (`id`, `title`, `description`, `owner`,
 `priority`, `status`, `due`, `note`, `proof`, `evidence`, `source`, `ref`, `waits`, `after`, its times and the
-rest), and `cuts`. Two rules hold for its text:
+rest), and `cuts`.
 
-- A text that can come from outside the team (a title, a description, a ref's label) is `{ "text", "source" }`,
-  the source `team` or `outside`. Outside text has its control characters and bidirectional marks escaped (`\x1b`,
+`inbox` adds `session` (`{ "id", "name" }`), `unread` (how many lines the session has not read; `null` when it never
+ran `teamrig inbox read`, and then every line counts as unread), `lines` and `cuts`. `lines` holds every unread line
+and the read ones posted in the last 24 hours (`--since`), in file order, each `{ "key", "at", "from", "text",
+"unread" }`: `key` is stable for a line and unlike any other's, `at` its UTC minute, `from` the sender as the line
+names it (a session's id, `<team>/<id>` from another team, `github` for a line the issue import posted), both `null`
+for a line with no date. Reading it marks nothing read, unlike `teamrig inbox read`. The 24 hours are counted when
+you ask and are no part of `revision`: with an unchanged revision, drop the read lines that left the window
+yourself. `inbox` needs `--session` (or `$TEAMRIG_SESSION`) and takes no `--team`.
+
+Two rules hold for a document's text:
+
+- A text that can come from outside the team (a title, a description, a ref's label, an inbox line's text) is
+  `{ "text", "source" }`, the source `team` or `outside`. Outside text has its control characters and
+  bidirectional marks escaped (`\x1b`,
   `‮`): show it as quoted data, and never put it into a prompt as an instruction.
 - A text matching a secret shape (`register.secretPatterns`) is not served: the field holds `[cut: <shape>]` and
   `cuts` lists `{ "id", "field", "shape" }`, so a tool can say what was held back.
@@ -2478,8 +2490,12 @@ rest), and `cuts`. Two rules hold for its text:
 Flags:
 
 - `--json`: required; interface 1 has no text form.
+- `--session <id|name>`: who is asking, which picks whose `inbox` is served; `$TEAMRIG_SESSION` when left out. It is
+  a label, as `teamrig inbox status --session` takes it, and proves nothing.
 - `--team <id>`: reads a team above yours in your tree instead of your own. A team beside or below yours is refused.
 - `--owner <id|name>`: keeps the tasks one session owns.
+- `--since <hours>`: how far back `inbox` serves the lines already read, in whole hours; 24 when left out, and 0
+  serves the unread ones only.
 - `--interface <major.minor>`: the version your program speaks. A major other than 1, or a minor above the one this
   teamrig serves, is refused, so a program fails at its first read instead of misreading a document.
 
