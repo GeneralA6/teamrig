@@ -8,11 +8,11 @@ import ts from 'typescript';
 /**
  * Every hook that reads a shell tool call's command weighs each text bash may run (T2332). On Windows Claude Code
  * hands a Bash line to Git Bash through a Windows command line that halves backslash runs, so a guard reading only
- * the line as written can pass what bash then runs (core/bash-tool-readings.ts). A guard takes its readings from
- * `toolCommandReadings`, a route from `toolRouteOf` or a service role's call from `toolRoleCallOf`, each of which holds
- * only when every reading is that route or call; a reader whose verdict cannot change under the halving sits in EXEMPT
- * with the reason it holds. The spec fails on a new reader with none, and on an exemption whose file no longer reads a
- * command.
+ * the line as written can pass what bash then runs (core/bash-tool-readings.ts). A guard takes its readings from the
+ * shell call the host port hands it (`readings`) or, reading the hook payload itself, from `toolCommandReadings`; a
+ * route from `toolRouteOf` or a service role's call from `toolRoleCallOf`, each of which holds only when every reading
+ * is that route or call; a reader whose verdict cannot change under the halving sits in EXEMPT with the reason it
+ * holds. The spec fails on a new reader with none, and on an exemption whose file no longer reads a command.
  */
 
 /** The functions that hand a reader every text a shell call may run. */
@@ -47,20 +47,61 @@ const SRC = fileURLToPath(new URL('..', import.meta.url));
 
 /** What one source says about the command it reads. */
 interface CommandReading {
-  /** Names both `tool_input` and `command` as strings: it reads a hook payload's command. */
+  /**
+   * It reads a shell call's command: off a hook payload, naming both `tool_input` and `command` as strings, or off
+   * the call the host port hands it, narrowing its kind to `shell` and reading the member `command`.
+   */
   readonly readsCommand: boolean;
-  /** Imports a function that gives every reading. */
+  /** Imports a function that gives every reading, or reads the shell call's `readings`. */
   readonly importsReadings: boolean;
 }
 
-/** Reads a source's string literals and imports; comments are no tokens, so prose naming a field is not a read. */
+/** The member a node reads off a value: `call.command`, or `command` in `const { command } = call`. */
+function memberOf(node: ts.Node): string | undefined {
+  if (ts.isPropertyAccessExpression(node)) {
+    return node.name.text;
+  }
+  if (ts.isBindingElement(node)) {
+    const name = node.propertyName ?? node.name;
+    return ts.isIdentifier(name) ? name.text : undefined;
+  }
+  return undefined;
+}
+
+function isShellKind(node: ts.Node): boolean {
+  return ts.isStringLiteralLike(node) && node.text === 'shell';
+}
+
+/**
+ * True where a call is narrowed to the shell kind: `call.kind === 'shell'`, `call?.kind !== 'shell'` or a
+ * `case 'shell':`. The word alone is no narrowing: a source may name a thing `shell` and read some other `command`.
+ */
+function narrowsToShell(node: ts.Node): boolean {
+  if (ts.isCaseClause(node)) {
+    return isShellKind(node.expression);
+  }
+  if (!ts.isBinaryExpression(node)) {
+    return false;
+  }
+  const sides = [node.left, node.right];
+  return sides.some(isShellKind) && sides.some((side) => ts.isPropertyAccessExpression(side) && side.name.text === 'kind');
+}
+
+/** Reads a source's string literals, members and imports; comments are no tokens, so prose naming a field is not a read. */
 function commandReadingOf(fileName: string, source: string): CommandReading {
   const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
   const strings = new Set<string>();
+  const members = new Set<string>();
   let importsReadings = false;
+  let narrowsShell = false;
   const visit = (node: ts.Node): void => {
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
       strings.add(node.text);
+    }
+    narrowsShell ||= narrowsToShell(node);
+    const member = memberOf(node);
+    if (member !== undefined) {
+      members.add(member);
     }
     if (ts.isImportSpecifier(node) && READINGS_IMPORTS.has((node.propertyName ?? node.name).text)) {
       importsReadings = true;
@@ -68,7 +109,9 @@ function commandReadingOf(fileName: string, source: string): CommandReading {
     ts.forEachChild(node, visit);
   };
   visit(file);
-  return { readsCommand: strings.has('tool_input') && strings.has('command'), importsReadings };
+  const offPayload = strings.has('tool_input') && strings.has('command');
+  const offCall = narrowsShell && members.has('command');
+  return { readsCommand: offPayload || offCall, importsReadings: importsReadings || members.has('readings') };
 }
 
 /** Every non-test TypeScript source under `dir`, but those in a skipped folder. */
@@ -113,6 +156,29 @@ describe('commandReadingOf', () => {
     assert.deepEqual(commandReadingOf('a.ts', source), { readsCommand: true, importsReadings: false });
   });
 
+  it("finds a read of the port's shell call, weighed when it takes the call's readings", () => {
+    const narrowed = "if (call?.kind !== 'shell' || call.command === undefined) return undefined;";
+    assert.deepEqual(commandReadingOf('a.ts', `${narrowed}\nconst texts = call.readings;`), { readsCommand: true, importsReadings: true });
+    assert.deepEqual(commandReadingOf('a.ts', `${narrowed}\nconst text = call.command;`), { readsCommand: true, importsReadings: false });
+  });
+
+  it('finds the shell call read by destructuring', () => {
+    const source = "if (call.kind === 'shell') { const { command, readings: texts } = call; }";
+    assert.deepEqual(commandReadingOf('a.ts', source), { readsCommand: true, importsReadings: true });
+    assert.deepEqual(commandReadingOf('a.ts', "if (call.kind === 'shell') { const { command } = call; }"), { readsCommand: true, importsReadings: false });
+  });
+
+  it('finds the shell call narrowed in a switch', () => {
+    const source = "switch (call.kind) { case 'shell': return call.command; default: return undefined; }";
+    assert.deepEqual(commandReadingOf('a.ts', source), { readsCommand: true, importsReadings: false });
+  });
+
+  it('leaves a command read off anything but a call narrowed to the shell kind', () => {
+    assert.equal(commandReadingOf('a.ts', 'const line = step.command;').readsCommand, false);
+    assert.equal(commandReadingOf('a.ts', "const name = 'shell';\nconst line = tool.command;").readsCommand, false);
+    assert.equal(commandReadingOf('a.ts', "if (step.shape === 'shell') { run(step.command); }").readsCommand, false);
+  });
+
   it('leaves a source naming the fields only in comments, or only one of them', () => {
     assert.equal(commandReadingOf('a.ts', "// reads tool_input's 'command'\nconst a = 1;").readsCommand, false);
     assert.equal(commandReadingOf('a.ts', "const hook = { type: 'command', command: 'x' };").readsCommand, false);
@@ -131,7 +197,7 @@ describe('teamrig hooks', () => {
 
   it('weigh every text bash may run wherever they read a command (T2332)', () => {
     const unweighed = [...readers].filter(([path, imports]) => !imports && EXEMPT[path] === undefined).map(([path]) => path);
-    assert.deepEqual(unweighed, [], 'import toolCommandReadings or toolRouteOf, or add the file to EXEMPT with why its verdict cannot change');
+    assert.deepEqual(unweighed, [], "read the shell call's readings, import toolCommandReadings or toolRouteOf, or add the file to EXEMPT with why its verdict cannot change");
   });
 
   it('keep no exemption for a file that no longer reads a command, or that weighs every reading now', () => {

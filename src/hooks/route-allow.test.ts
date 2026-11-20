@@ -32,6 +32,12 @@ describe('route allow', () => {
     assert.equal(guardsPassed(['', '{"hookSpecificOutput":{}}']), false);
   });
 
+  it('takes a guard with no reply as passed, and one with a refusal or only a note as not', () => {
+    assert.equal(guardsPassed([undefined, '']), true);
+    assert.equal(guardsPassed([undefined, { verdict: { kind: 'deny', reason: 'Why.' } }]), false);
+    assert.equal(guardsPassed([{ notice: 'a push went through' }]), false);
+  });
+
   it('prints a PreToolUse allow naming the route and what it is for', () => {
     const merge = routeOf('merge');
     assert.deepEqual(JSON.parse(routeAllowOutput(merge)), {
