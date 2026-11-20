@@ -128,6 +128,7 @@ const refsCommands = () => import('./commands/refs.ts');
 const sweepCommands = () => import('./commands/sweep.ts');
 const setupBackupCommands = () => import('./commands/setup-backup.ts');
 const auditCommand = () => import('./commands/audit.ts');
+const readCommand = () => import('./commands/read.ts');
 
 const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'type', 'class'];
 /** The parts of a bug's review `set` gives (register/review.ts REVIEW_FLAGS). */
@@ -215,6 +216,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'idle-close': { effect: 'internal', flags: ['team', 'project'], load: async () => (await idleActCommands()).idleClose },
   'idle-open': { effect: 'internal', flags: ['team', 'project'], load: async () => (await idleActCommands()).idleOpen },
   who: { effect: 'read', flags: [], load: async () => (await teamCommands()).who },
+  read: { effect: 'read', flags: ['team', 'owner', 'interface'], switches: ['json'], load: async () => (await readCommand()).read },
   sessions: { effect: 'read', flags: ['project'], switches: ['pass'], load: async () => (await sessionsCommands()).sessions },
   close: { effect: 'write', flags: ['session', 'project'], switches: ['yes'], load: async () => (await closeCommands()).close },
   'cleanup launchers': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await cleanupCommands()).cleanupLaunchers },
@@ -687,6 +689,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --team <child>: a request of a team below yours, whose roles.securityReviewer names you as <team>/<id>
   exec run R<n>        runs an approved request once, before its approval expires
   who [<id|name|role|team/id>] the name to message a session by (no argument: every session of yours)
+  read <document>... --json [--team <id>] [--owner <id|name>] [--interface <major.minor>]   the public
+      interface's read side, for a program: each document asked is one JSON line on stdout, in the order
+      asked, with its revision and what could not be served (problems); a refusal goes to stderr, so
+      stdout holds answers only. Documents: tasks (the register's working set; --owner keeps one
+      session's). --team: a team above yours. --interface: the version you speak, refused when this
+      teamrig does not serve it. It writes nothing
   sessions [--pass] [--project <dir>]   each session: running (and the MB its Claude Code's processes
       hold), closed or never recorded; then the host's free memory and commit charge. --pass: what an
       idle pass would close and reopen (one reopen a pass, with room on the host) and why it keeps or
