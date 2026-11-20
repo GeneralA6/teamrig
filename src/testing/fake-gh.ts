@@ -144,7 +144,7 @@ export function commentNode(at: string, association: string, kind = 'User', text
   return { createdAt: at, authorAssociation: association, author: { __typename: kind, ...(text.login === undefined ? {} : { login: text.login }) }, body: text.body ?? '' };
 }
 
-/** A pull request as the changed read gives it: that query asks for no comments or reviews (github/queries.ts). */
+/** A pull request as the changed read gives it: that query asks for no comments or reviews (the adapter's queries.ts). */
 function withoutPosts(pull: JsonRecord): JsonRecord {
   const { comments: _comments, reviews: _reviews, ...rest } = pull;
   return rest;
@@ -362,7 +362,7 @@ export class FakeGh implements GhRunner {
 
   /**
    * From now on, `repo` has these issue fields and types, and its open issues these values, as the fields query
-   * prints them (github/queries.ts ISSUE_FIELDS_QUERY); a repository a test gave none has no fields and no types.
+   * prints them (the adapter's queries.ts ISSUE_FIELDS_QUERY); a repository a test gave none has no fields and no types.
    */
   holdsFields(repo: string, fields: FakeFields): this {
     this.fielded.set(repo, fields);
