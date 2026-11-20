@@ -116,6 +116,8 @@ export {
   type StatusLineAnswer,
   type StatusLinePlan,
   type StatusReading,
+  type TextChange,
+  type TextReplacement,
   type TitleEntry,
   type RateLimits,
   type RateWindow,

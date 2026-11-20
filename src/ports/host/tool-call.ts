@@ -50,12 +50,30 @@ export interface ReadCall extends ToolCallBase {
   readonly path: string | undefined;
 }
 
+/** One text put in place of another in a file's text. */
+export interface TextReplacement {
+  readonly from: string;
+  readonly to: string;
+  /** Every place the text stands, not only the first. */
+  readonly all: boolean;
+}
+
+/** What an edit does to its file's text: the whole text it leaves, or the replacements it makes, in order. */
+export type TextChange =
+  | { readonly kind: 'whole'; readonly text: string }
+  | { readonly kind: 'replacements'; readonly replacements: readonly TextReplacement[] };
+
 /** One file written or changed. */
 export interface EditCall extends ToolCallBase {
   readonly kind: 'edit';
   readonly path: string | undefined;
   /** Every text the call writes into the file, in the input's order. */
   readonly texts: readonly string[];
+  /**
+   * The call as a change of the file's text; undefined when its input does not read as one (a field missing, an edit
+   * of something other than the text), so a reader cannot tell the text the call leaves.
+   */
+  readonly change: TextChange | undefined;
 }
 
 /** A search of file names or of file contents. */
