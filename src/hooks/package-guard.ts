@@ -1,9 +1,7 @@
 import { DEFAULT_PACKAGE_GUARD } from '../config/defaults.ts';
 import type { ConfigLoad } from '../config/load.ts';
 import type { AdHocRunners, PackageGuardConfig, PackageInstalls } from '../config/types.ts';
-import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import type { Files } from '../core/files.ts';
-import { isRecord, recordField, stringField } from '../core/guards.ts';
 import type { Clock } from '../core/lock.ts';
 import { uniqueBy } from '../core/unique-by.ts';
 import { adHocCallsOf } from '../package-guard/ad-hoc.ts';
@@ -13,7 +11,8 @@ import { lostFlagsOf, type LostFlag } from '../package-guard/lost-flags.ts';
 import type { ProgramsContext } from '../package-guard/programs.ts';
 import type { PackageRegistry } from '../package-guard/registry.ts';
 import { unvettedOf } from '../package-guard/vet.ts';
-import { holdBackOutput } from './permission.ts';
+import type { HookEvent, HookReply } from '../ports/host/index.ts';
+import { heldBack } from './permission.ts';
 
 /**
  * How long the guard waits for the registry, every request together. The hook runs under a 15 s limit and lets the
@@ -32,9 +31,6 @@ export interface PackageGuardEnv extends PackageGuardConfig {
   /** Where the guard reads each version an install names: its publish time and advisories. */
   readonly registry: PackageRegistry;
   readonly clock: Clock;
-  /** Whether a run the guard would ask about raises the prompt or is refused with what to do instead. */
-  /** The host's platform: on Windows a Bash line is judged as written and as bash receives it (core/bash-tool-readings.ts). */
-  readonly platform: NodeJS.Platform;
 }
 
 /** What ad-hoc runs and unvetted installs get. A missing or unreadable config keeps the default, so a broken config never switches the guard off. */
@@ -138,29 +134,21 @@ async function linkedModulesVerdict(readings: readonly string[], context: Progra
 }
 
 /**
- * The PreToolUse output for a Bash or PowerShell call: a refusal (or a question, as `packageGuard.adHocRunners` and
+ * The reply to a shell call about to run: a refusal (or a question, as `packageGuard.adHocRunners` and
  * `packageGuard.installs` say) when the line runs a package ad hoc or installs a version the registry does not vouch
  * for, and a refusal whatever the config says when an npx call hands its bin's flag to npm or a package manager would
- * rewrite node_modules through a link; else nothing, so the normal permission flow decides. One refusal among them
+ * rewrite node_modules through a link; else none, so the normal permission flow decides. One refusal among them
  * refuses the line, naming every reason. Under `hookAsks: refuse` the question is a refusal instead, its reason saying
- * what to do (see `holdBack`). A Bash line on Windows is judged in each reading bash may run (`toolCommandReadings`),
- * naming each call once.
+ * what to do (see `holdBack`). The line is judged in each text its shell may run (the call's `readings`), naming each
+ * call once.
  */
-export async function packageGuardOutput(payload: unknown, env: PackageGuardEnv): Promise<string> {
-  if (!isRecord(payload)) {
-    return '';
+export async function packageGuardReply(event: HookEvent, env: PackageGuardEnv): Promise<HookReply | undefined> {
+  const { call } = event;
+  if (call?.kind !== 'shell' || call.command === undefined) {
+    return undefined;
   }
-  const command = stringField(recordField(payload, 'tool_input') ?? {}, 'command');
-  if (command === undefined) {
-    return '';
-  }
-  const tool = stringField(payload, 'tool_name');
-  const context: ProgramsContext = {
-    cwd: stringField(payload, 'cwd') ?? env.cwd,
-    home: env.home,
-    dialect: tool === 'PowerShell' ? 'powershell' : 'bash',
-  };
-  const readings = toolCommandReadings(tool, command, env.platform);
+  const context: ProgramsContext = { cwd: event.cwd ?? env.cwd, home: env.home, dialect: call.dialect };
+  const { readings } = call;
   const [adHoc, install, linked] = await Promise.all([
     adHocVerdict(readings, context, env),
     installVerdict(readings, context, env),
@@ -168,8 +156,8 @@ export async function packageGuardOutput(payload: unknown, env: PackageGuardEnv)
   ]);
   const verdicts = [lostFlagVerdict(readings, context), linked, adHoc, install].filter((verdict) => verdict !== undefined);
   if (verdicts.length === 0) {
-    return '';
+    return undefined;
   }
   const decision = verdicts.some((verdict) => verdict.decision === 'deny') ? 'deny' : 'ask';
-  return holdBackOutput(decision, verdicts.map((verdict) => verdict.reason).join(' '));
+  return heldBack(decision, verdicts.map((verdict) => verdict.reason).join(' '));
 }
