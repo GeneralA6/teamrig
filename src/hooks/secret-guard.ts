@@ -4,6 +4,7 @@ import type { SecretGuardConfig, SecretReads, SecretWrites } from '../config/typ
 import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { resolveDir } from '../push-guard/location.ts';
+import { gitWorkTree } from '../secret-guard/credential-reads.ts';
 import { describeFinding, uniqueFindings, type SecretFinding } from '../secret-guard/findings.ts';
 import { braceAlternatives } from '../secret-guard/glob.ts';
 import { literalFindings, writtenFindings } from '../secret-guard/literals.ts';
@@ -68,7 +69,7 @@ export function secretFindingsOf(payload: JsonRecord, cwd: string, rules: Secret
       const command = stringField(input, 'command');
       return command === undefined
         ? []
-        : [...literalFindings(command, rules.shapes), ...shellFindings(command, { cwd: dir, home: rules.home, dialect: tool === 'PowerShell' ? 'powershell' : 'bash' }, rules)];
+        : [...literalFindings(command, rules.shapes), ...shellFindings(command, { cwd: dir, home: rules.home, dialect: tool === 'PowerShell' ? 'powershell' : 'bash', inWorkTree: gitWorkTree }, rules)];
     }
     case 'Read': {
       const path = stringField(input, 'file_path');

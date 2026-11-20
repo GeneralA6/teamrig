@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join as pathJoin } from 'node:path';
 import { DEFAULT_SECRET_GUARD } from '../config/defaults.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { secretRulesOf } from '../secret-guard/rules.ts';
@@ -445,6 +448,24 @@ describe('secretGuardOf', () => {
     assert.equal(secretGuardOf({ status: 'loaded', path: 'c.json', config, issues: [] }).secretReads, 'ask');
     for (const load of [undefined, { status: 'missing', path: 'c.json' } as const, { status: 'unreadable', path: 'c.json', issue: { path: '', message: 'bad' } } as const]) {
       assert.deepEqual(secretGuardOf(load), DEFAULT_SECRET_GUARD);
+    }
+  });
+});
+
+describe('secretFindingsOf on a git grep for a credential name (#1469)', () => {
+  const line = 'git grep -n teamrig-gh- -- src';
+
+  it('lets it by from a folder git finds a work tree in, as the checkout the tests run in is', () => {
+    assert.deepEqual(findings(call('Bash', { command: line }, { cwd: process.cwd() })), []);
+  });
+
+  it('names it from a folder that is no repository, where git may search the plain folder', () => {
+    const outside = mkdtempSync(pathJoin(tmpdir(), 'teamrig-no-repo-'));
+    try {
+      assert.deepEqual(findings(call('Bash', { command: line }, { cwd: outside })), ['credential']);
+      assert.deepEqual(findings(call('Bash', { command: `cd ${outside} && ${line}` }, { cwd: process.cwd() })), ['credential'], 'moved there by the line');
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
     }
   });
 });

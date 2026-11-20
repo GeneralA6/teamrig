@@ -570,6 +570,7 @@ export function runsOfReadings(readings: readonly string[], context: ProgramsCon
     fedShells: each.flatMap((runs) => runs.fedShells),
     foreignShells: each.flatMap((runs) => runs.foreignShells),
     envEdits: each.flatMap((runs) => runs.envEdits),
+    moves: each.flatMap((runs) => runs.moves),
   };
 }
 

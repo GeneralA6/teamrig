@@ -29,6 +29,8 @@ export interface ProgramRun {
   readonly stdin: ShellWord | undefined;
   /** True when the command that starts it reads the output of the command before it through a pipe. */
   readonly piped: boolean;
+  /** True when a wrapper such as `xargs` adds arguments read from stdin, so its argument list is not all on the line. */
+  readonly stdinArgs: boolean;
   /** True when `teamrig queue` or `teamrig test` starts it, at any depth, so it runs under the host lock. */
   readonly runner: boolean;
   /**
@@ -137,6 +139,8 @@ export interface LineRuns {
    * stays in `bare`.
    */
   readonly envEdits: EnvEdits[];
+  /** The words of each command that moves the shell's folder or its folder stack (`cd`, `pushd`, `popd`, `Set-Location` and the rest), which start no program. */
+  readonly moves: (readonly ShellWord[])[];
 }
 
 export interface ProgramsContext {
@@ -166,7 +170,7 @@ const PIPE_END = /(?:^|[^|])\|&?[\n(]*$/;
 
 /** What `command` runs, each in the order it runs. */
 export function runsOf(command: string, context: ProgramsContext): LineRuns {
-  const runs: LineRuns = { programs: [], bare: [], opaque: [], fedShells: [], foreignShells: [], envEdits: [] };
+  const runs: LineRuns = { programs: [], bare: [], opaque: [], fedShells: [], foreignShells: [], envEdits: [], moves: [] };
   visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, TOP, runs, SCREEN, false);
   return runs;
 }
@@ -253,6 +257,7 @@ function visitCommand(
   runs: LineRuns,
 ): Visited | undefined {
   if (location.apply(command.words, dialect)) {
+    runs.moves.push(command.words);
     return undefined;
   }
   const launched = launch(command.words, dialect, inlet.text);
@@ -278,6 +283,7 @@ function visitCommand(
       redirections: command.redirections,
       stdin: inlet.text,
       piped: inlet.fromPipe,
+      stdinArgs: launched.stdinArgs,
       runner: scope.runner || launched.runner,
       packageRunner: scope.packageRunner,
       pipe: outlet.pipe,

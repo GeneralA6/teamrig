@@ -566,7 +566,16 @@ a session that only captures a key (`T=$(gh auth token)`) holds it all the same:
 tokens under (`teamrig-gh-<owner>`, `teamrig-ship-gh`). Without this any session could read every key its user saved,
 so a key kept for one tool drew no line between sessions; teamrig's own commands still read theirs, in their own
 process. A line that only mentions one of these words is refused as well (`grep -rn teamrig-gh- src`): search with the
-Grep tool instead, which runs no shell. `secretGuard.secretReads` settles it; no `!pattern` lets one through. The
+Grep tool instead, which runs no shell. One exception: a line whose every program is a `git grep` of the repository may
+name a teamrig credential (`git grep -n teamrig-gh-`), since it searches tracked files and reads no store. The
+program word must be a bare `git`, and options on both sides of `grep` are allow-lists spelled in full (git takes any
+unique prefix of a long option): before it only `--no-pager` and `-P` (no `-C <dir>`: run it from the checkout, on a
+line with no `cd`, `pushd`, `popd` or `Set-Location` anywhere, even one that comes back, from a folder git finds a work
+tree in); after
+it read-only matching and output options (`-n -i -w -v -l -c -e -A -B -C --count --name-only --cached --max-depth` and
+the like). Anything else (`--no-index`, `--untracked`, `-O`, `--textconv` or an abbreviation of one), a word the shell
+expands (`$X`, `"${X}"`, an unquoted glob or `~`: quote a pattern as `-e 'name*'`), arguments fed from stdin (`xargs`), an
+environment set for git (`NAME=value git`, `env`), or any other command on the line keeps it refused. `secretGuard.secretReads` settles it; no `!pattern` lets one through. The
 reason: "teamrig secret guard: this call reads a saved credential out of the host's credential store (gh auth token),
 printed or not. A session never reads the store: each tool's key stays with the tool that reads it (teamrig's own
 commands read theirs themselves). To check a saved key, ask the owner to look in their own terminal.

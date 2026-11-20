@@ -27,9 +27,14 @@ const POP_DIR: Readonly<Record<ShellDialect, ReadonlySet<string>>> = {
   powershell: new Set(['popd', 'pop-location']),
   cmd: new Set(['popd']),
 };
-/** PowerShell location parameters that take a value, and the ones whose value is the target folder. */
+/** PowerShell location parameters whose value is the target folder; `-StackName` never reaches them (see Location.apply). */
 const PS_PATH_PARAMETERS: ReadonlySet<string> = new Set(['-path', '-literalpath', '-lp', '-pspath']);
-const PS_VALUED_PARAMETERS: ReadonlySet<string> = new Set(['-stackname']);
+
+/** Whether a bash `pushd` or `popd` takes `-n`, which changes only the stack and leaves the folder where it is. */
+function onlyStack(args: readonly ShellWord[]): boolean {
+  const end = args.findIndex((word) => word.text === '--');
+  return (end < 0 ? args : args.slice(0, end)).some((word) => !word.dynamic && word.text === '-n');
+}
 
 /**
  * Where a `cd` target leads from `current`; `~` is the home folder. A path with a drive letter resolves by
@@ -166,6 +171,20 @@ export class Location {
     }
     const name = head.text.toLowerCase();
     const args = words.slice(1);
+    if (dialect === 'bash' && name === 'dirs') {
+      // `dirs -c` empties the stack, so a later popd stays where it is; dirs starts its own program run all the same.
+      if (args.some((word) => /^-[a-z]*c/.test(word.text))) {
+        this.top.stack = [];
+      }
+      return false;
+    }
+    const folderCommand = CHANGE_DIR[dialect].has(name) || PUSH_DIR[dialect].has(name) || POP_DIR[dialect].has(name);
+    if (folderCommand && dialect === 'powershell' && args.some((word) => word.text.length >= 2 && '-stackname'.startsWith(word.text.toLowerCase()))) {
+      // A named stack (`-StackName`, or any prefix PowerShell takes for it) is one the guard does not follow, and
+      // Set-Location -StackName makes it the stack later Push-Location and Pop-Location use.
+      this.lose();
+      return true;
+    }
     if (CHANGE_DIR[dialect].has(name)) {
       this.changeDir(args, dialect);
     } else if (PUSH_DIR[dialect].has(name)) {
@@ -184,6 +203,17 @@ export class Location {
     top.dir = dir;
   }
 
+  /**
+   * Stops trusting the folder and every folder it could return to: after a stack change the guard does not follow, a
+   * `popd` or `cd -` that read a stale entry would name a known folder the line is not in.
+   */
+  private lose(): void {
+    const top = this.top;
+    top.dir = undefined;
+    top.previous = undefined;
+    top.stack = top.stack.map(() => undefined);
+  }
+
   /** The target folder of a `cd`-like command; `null` when there is none, so the command keeps or resets the folder. */
   private target(args: readonly ShellWord[], dialect: ShellDialect): ShellWord | null {
     const operands: ShellWord[] = [];
@@ -197,9 +227,7 @@ export class Location {
       if (options && dialect === 'powershell' && PS_PATH_PARAMETERS.has(lower)) {
         return args[index + 1] ?? null;
       }
-      if (options && dialect === 'powershell' && PS_VALUED_PARAMETERS.has(lower)) {
-        index += 1;
-      } else if (options && word.text === '--') {
+      if (options && word.text === '--') {
         options = false;
       } else if (options && !word.dynamic && (dialect === 'cmd' ? /^\/[A-Za-z]$/ : /^-[A-Za-z@]/).test(word.text)) {
         continue;
@@ -251,7 +279,9 @@ export class Location {
     const target = this.target(args, dialect);
     if (target === null) {
       // A bare pushd swaps the top two folders in bash, saves the folder in PowerShell, and only prints in cmd.
-      if (dialect === 'powershell') {
+      if (dialect === 'bash' && onlyStack(args)) {
+        this.lose();
+      } else if (dialect === 'powershell') {
         top.stack.push(top.dir);
       } else if (dialect === 'bash' && top.stack.length > 0) {
         const other = top.stack.pop();
@@ -260,8 +290,17 @@ export class Location {
       }
       return;
     }
-    // pushd +N and -N rotate the stack, which the guard does not track.
-    const dir = dialect === 'bash' && /^[+-]\d+$/.test(target.text) ? undefined : this.resolveTarget(target, dialect);
+    if (dialect === 'bash' && /^[+-]\d+$/.test(target.text)) {
+      // pushd +N and -N rotate the stack, which the guard does not track.
+      this.lose();
+      return;
+    }
+    const dir = this.resolveTarget(target, dialect);
+    if (dialect === 'bash' && onlyStack(args)) {
+      // `pushd -n dir` adds dir under the current folder and stays where it is.
+      top.stack.push(dir);
+      return;
+    }
     top.stack.push(top.dir);
     this.change(dir);
   }
@@ -270,7 +309,12 @@ export class Location {
     const top = this.top;
     if (this.target(args, dialect) !== null) {
       // `popd +N` / `-N` drops an entry and may move; the guard stops trusting the folder.
-      top.dir = undefined;
+      this.lose();
+      return;
+    }
+    if (dialect === 'bash' && onlyStack(args)) {
+      // `popd -n` drops the entry under the current folder and stays where it is.
+      top.stack.pop();
       return;
     }
     if (top.stack.length > 0) {

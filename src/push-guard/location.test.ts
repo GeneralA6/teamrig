@@ -90,6 +90,30 @@ describe('Location: bash', () => {
     assert.equal(dirAfter('pushd a; popd +1'), undefined);
   });
 
+  it('trusts no stack entry after a rotation, so a later popd or cd - names no stale folder', () => {
+    assert.equal(dirAfter('pushd a; pushd b; popd +1; popd'), undefined);
+    assert.equal(dirAfter('pushd a; pushd b; pushd +1; popd'), undefined);
+    assert.equal(dirAfter('pushd a; popd -0; cd -'), undefined);
+    assert.equal(dirAfter('pushd a; pushd +1; cd /abs'), resolve('/abs'));
+  });
+
+  it('reads pushd -n and popd -n as stack changes that leave the folder where it is', () => {
+    assert.equal(dirAfter('pushd -n /elsewhere'), resolve(CWD));
+    assert.equal(dirAfter('pushd -n /elsewhere; popd'), resolve('/elsewhere'));
+    assert.equal(dirAfter('pushd -n /elsewhere; pushd'), resolve('/elsewhere'));
+    assert.equal(dirAfter('pushd a; pushd -n /elsewhere; popd -n; popd'), resolve(CWD));
+    assert.equal(dirAfter('pushd -n -- -n'), resolve(CWD));
+    assert.equal(dirAfter('pushd -- -n'), resolve(CWD, '-n'));
+    assert.equal(dirAfter('pushd -n'), undefined);
+  });
+
+  it('reads dirs -c as an empty stack, and dirs as a command it does not apply', () => {
+    assert.equal(dirAfter('pushd /elsewhere; dirs -c; popd'), resolve('/elsewhere'));
+    assert.equal(dirAfter('pushd /elsewhere; dirs -lc; popd'), resolve('/elsewhere'));
+    assert.equal(dirAfter('pushd /elsewhere; dirs -v; popd'), resolve(CWD));
+    assert.equal(new Location(CWD, HOME).apply([word('dirs'), word('-c')], 'bash'), false);
+  });
+
   it('keeps a cd inside its subshell', () => {
     assert.equal(dirAfter('(cd a; git status)'), resolve(CWD, 'a'));
     assert.equal(dirAfter('(cd a); git status'), resolve(CWD));
@@ -120,8 +144,17 @@ describe('Location: PowerShell', () => {
   });
 
   it('follows Push-Location and Pop-Location', () => {
-    assert.equal(dirAfter('Push-Location -StackName s x; Pop-Location', 'powershell'), resolve(CWD));
     assert.equal(dirAfter('Push-Location; cd x; Pop-Location', 'powershell'), resolve(CWD));
+  });
+
+  it('stops trusting the folder and the stack at a named stack, which it does not follow', () => {
+    assert.equal(dirAfter('Push-Location -StackName s x; Pop-Location', 'powershell'), undefined);
+    assert.equal(dirAfter('Push-Location x; Pop-Location -StackName s', 'powershell'), undefined);
+    assert.equal(dirAfter('pushd -st s x; popd', 'powershell'), undefined);
+    assert.equal(dirAfter('Push-Location x; Set-Location -s s; Pop-Location', 'powershell'), undefined);
+    assert.equal(dirAfter('Push-Location x; Set-Location -StackName s; cd /abs; cd -', 'powershell'), undefined);
+    assert.equal(dirAfter('Push-Location -StackName s x; cd /abs', 'powershell'), resolve('/abs'));
+    assert.equal(dirAfter('Push-Location -PassThru x', 'powershell'), resolve(CWD, 'x'));
   });
 
   it('reads \\ as a separator on a POSIX host too, as PowerShell and cmd do, while bash keeps it in a name', () => {
