@@ -206,7 +206,8 @@ export class TabNeedStore {
     return this.files.remove(this.pathOf(id));
   }
 
-  private pathOf(id: string): string {
+  /** The session's tab file, for a reader that stamps it without reading it. */
+  pathOf(id: string): string {
     return join(this.folder, `${id}.json`);
   }
 }
