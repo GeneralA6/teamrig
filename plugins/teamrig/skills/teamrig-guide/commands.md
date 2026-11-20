@@ -2466,7 +2466,9 @@ Every document carries:
   no body and no `problems`: keep what you hold. `unchanged` speaks of the files only, so what moves with the clock
   (the read lines leaving the inbox's `--since` window, a meeting's `missed`) is yours to work out again.
 - `problems`: what could only partly be served, as text for a person: a config value read as its default, damaged
-  register lines left out, an archive segment that is gone (then `tasks` is empty). The exit is still 0.
+  register lines left out, an archive segment that is gone (then `tasks` is empty). The exit is still 0. A file is
+  named from its team's folder down, never by its place on the disk, and the texts are fixed ones with counts;
+  `failures[].reason` of `sessions` is one fixed text too.
 
 `tasks` adds `tasks`, each with the task's fields as the register holds them (`id`, `title`, `description`, `owner`,
 `priority`, `status`, `due`, `note`, `proof`, `evidence`, `source`, `ref`, `waits`, `after`, its times and the
