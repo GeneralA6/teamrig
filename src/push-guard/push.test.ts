@@ -1,6 +1,8 @@
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import type { PushToProtected } from '../config/types.ts';
 import { DASH_QUOTES, NOTHING_QUOTES } from '../testing/ansi-c-quotes.ts';
 import type { ConfigValue } from './invocations.ts';
@@ -1027,5 +1029,76 @@ describe('decisionReason, leasedReason and doubtReason', () => {
       doubtReason('its folder is only known when it runs', ['main', 'master']),
       'The guard cannot tell whether this command pushes to a protected branch (main, master): its folder is only known when it runs. Write the push out plainly, a branch named and no command built at run time.',
     );
+  });
+});
+
+describe('evaluatePushes: an interpreter whose output feeds a shell', () => {
+  it('asks when what an interpreter prints goes on to a shell and names a push', () => {
+    expectRows([
+      ['python3 -c \'print("git push origin main")\' | sh', 'ask', 'doubt'],
+      ['node -e "console.log(\'git push origin main\')" | bash', 'ask', 'doubt'],
+      ['python3 -c \'print("git push origin main")\' |& sh', 'ask', 'doubt'],
+      ['(python3 -c \'print("git push origin main")\') | sh', 'ask', 'doubt'],
+      ["python3 - <<'PY' | sh\nprint('git push origin main')\nPY", 'ask', 'doubt'],
+      ['eval "$(python3 -c \'print("git push origin main")\')"', 'ask', 'doubt'],
+    ]);
+  });
+
+  it('still lets its words pass where its output ends the line, goes to a file, or feeds no shell', () => {
+    expectRows([
+      ['python3 -c \'print("git push origin main")\'', 'allow'],
+      ['python3 -c \'print("git push origin main")\' > out.txt', 'allow'],
+      ['python3 -c \'print("pushed")\' | grep push', 'allow'],
+      ["python3 -c 'print(1)' | sh", 'allow'],
+    ]);
+  });
+});
+
+describe('evaluatePushes: an interpreter whose text may write shell code the guard cannot read', () => {
+  it('asks where a shell, eval or -c runs code the guard cannot read and an interpreter on the line names a push', () => {
+    expectRows([
+      ['python3 -c \'print("git push origin main")\' > c.txt; sh < c.txt', 'ask', 'doubt'],
+      ['python3 -c \'print("git push origin main")\' > c.txt; eval "$(cat c.txt)"', 'ask', 'doubt'],
+      ['python3 -c \'print("git push origin main")\' > c.txt; bash -c "$(cat c.txt)"', 'ask', 'doubt'],
+      ["python3 - <<'PY'\nopen('c.txt', 'w').write('git push origin main')\nPY\nbash -c \"$(cat c.txt)\"", 'ask', 'doubt'],
+      ['node -e \'console.log("push")\' && eval "$SETUP"', 'ask', 'doubt'],
+    ]);
+  });
+
+  it('asks where a program, a git command or an env -S line is only known when it runs and an interpreter names a push', () => {
+    expectRows([
+      ['python3 -c \'print("push your branch")\'; $T status', 'ask', 'doubt'],
+      ['python3 -c \'print("git push origin main")\' > c.txt; git "$(cat c.txt)"', 'ask', 'doubt'],
+      ['python3 -c \'print("git push origin main")\' > c.txt; env -S "$(cat c.txt)"', 'ask', 'doubt'],
+      ['python3 -c \'print("push your branch")\'; env -S \'git status \\q\'', 'ask', 'doubt'],
+    ]);
+  });
+
+  it('lets an interpreter that names a push pass beside doubts about anything else', () => {
+    expectRows([
+      ["python3 - <<'PY'\nbody = 'pushed as PR 61; push your branch'\nprint(body)\nPY", 'allow'],
+      ['eval "$SETUP"', 'allow'],
+    ]);
+  });
+});
+
+describe('evaluatePushes: pushGuard.trustedScripts', () => {
+  it("asks about a team's own tool that names a push until it is trusted, and keeps every other ask", () => {
+    const dir = mkdtempSync(join(tmpdir(), 'teamrig-trusted-'));
+    try {
+      mkdirSync(join(dir, 'tools', 'ship'), { recursive: true });
+      writeFileSync(join(dir, 'tools', 'ship', 'ship.ts'), 'import { execFileSync } from "node:child_process";\nexecFileSync("git", ["push", "origin", "HEAD"]);\n');
+      writeFileSync(join(dir, 'main.test.ts'), 'import { spawnSync } from "node:child_process";\nspawnSync("git", ["push", "fixture", "main"]);\n');
+      const verdict = (command: string, trustedScripts?: readonly string[]) =>
+        evaluatePushes(command, { cwd: dir, home: HOME, dialect: 'bash', protectedBranches: ['main'], pushToProtected: 'ask', repo: fakeRepo(), ...(trustedScripts === undefined ? {} : { trustedScripts }) }).decision;
+      assert.equal(verdict('node tools/ship/ship.ts'), 'ask');
+      assert.equal(verdict('node tools/ship/ship.ts', ['tools/ship/*.ts']), 'allow');
+      assert.equal(verdict('node main.test.ts'), 'ask');
+      assert.equal(verdict('node main.test.ts', ['*.test.ts']), 'allow');
+      assert.equal(verdict('node --test main.test.ts'), 'allow', 'a test run reads no test file');
+      assert.equal(verdict('node tools/ship/ship.ts; git push origin main', ['tools/ship/*.ts']), 'ask', 'a push on the line still asks');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -28,6 +28,8 @@ export interface PushGuardEnv {
   readonly protectedBranches: readonly string[];
   /** What a normal push to a protected branch gets: a question, or a note while it goes through. */
   readonly pushToProtected: PushToProtected;
+  /** The script files whose text the guard does not read (`pushGuard.trustedScripts`); absent trusts none. */
+  readonly trustedScripts?: readonly string[];
   /** The small-commits rule; its gate decides whether an asked or allowed push lists or refuses large commits. */
   readonly commits: CommitsConfig;
   readonly commitLog: CommitLog;
@@ -67,6 +69,11 @@ export function protectedBranchesOf(load: ConfigLoad | undefined): readonly stri
 /** What a normal push to a protected branch gets, with the same fallback as the protected branches: a broken config asks. */
 export function pushToProtectedOf(load: ConfigLoad | undefined): PushToProtected {
   return load?.status === 'loaded' ? load.config.pushGuard.pushToProtected : DEFAULT_PUSH_GUARD.pushToProtected;
+}
+
+/** The script files the push guard trusts (`pushGuard.trustedScripts`); a broken config trusts none. */
+export function trustedScriptsOf(load: ConfigLoad | undefined): readonly string[] {
+  return load?.status === 'loaded' ? load.config.pushGuard.trustedScripts : DEFAULT_PUSH_GUARD.trustedScripts;
 }
 
 /** The small-commits rule, with the same fallback as the protected branches. */
@@ -200,6 +207,7 @@ export async function pushGuardOutput(payload: unknown, env: PushGuardEnv): Prom
     protectedBranches: env.protectedBranches,
     pushToProtected: env.pushToProtected,
     repo: env.repo,
+    trustedScripts: env.trustedScripts ?? [],
   };
   const readings = toolCommandReadings(tool, command, env.platform).map((text) => {
     const found = findGitInvocations(text, finderContextOf(context));

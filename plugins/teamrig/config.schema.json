@@ -391,6 +391,13 @@
             "required": ["glob"]
           },
           "default": []
+        },
+        "trustedScripts": {
+          "description": "Script files an interpreter (python, node, perl, ruby, php...) runs that the push guard trusts: it reads no push in their text, so a team's own tool or test run is never refused for its text. A glob with no slash names a file at any depth, one with a slash is read from the session's folder or is absolute; case is ignored. Empty: every script file an interpreter runs is read.",
+          "type": "array",
+          "maxItems": 64,
+          "items": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "default": []
         }
       }
     },

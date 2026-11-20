@@ -63,6 +63,8 @@ export interface OpaqueLaunch {
   readonly command?: { readonly program: ShellWord; readonly args: readonly ShellWord[] };
   /** True when what it cannot read is the commands a shell takes from stdin, which a pipe into it may carry. */
   readonly stdinScript?: true;
+  /** True when what it cannot read is a command only known when it runs, which a file an interpreter wrote may fill. */
+  readonly shellCode?: true;
 }
 
 /** What one simple command starts: nothing (a keyword line, an expression, a script file), a program, a script, or something unreadable. */
@@ -341,7 +343,7 @@ class LaunchReader {
    */
   private dynamicHead(words: readonly ShellWord[], head: ShellWord): Step {
     if (this.dialect !== 'powershell' || this.called) {
-      return { kind: 'opaque', reason: 'the program it runs is only known when it runs', gated: true, command: { program: head, args: words.slice(1) } };
+      return { kind: 'opaque', reason: 'the program it runs is only known when it runs', gated: true, shellCode: true, command: { program: head, args: words.slice(1) } };
     }
     const right = assignedWords(words);
     if (right === undefined) {
@@ -467,11 +469,11 @@ class LaunchReader {
       }
       if (option !== undefined && value !== undefined && has(spec.split, option)) {
         if (value.dynamic) {
-          return { kind: 'opaque', reason: 'env -S splits a command line only known when it runs', gated: true };
+          return { kind: 'opaque', reason: 'env -S splits a command line only known when it runs', gated: true, shellCode: true };
         }
         const split = splitEnvString(value.text);
         if (split.kind === 'refused') {
-          return { kind: 'opaque', reason: split.reason, gated: true };
+          return { kind: 'opaque', reason: split.reason, gated: true, shellCode: true };
         }
         // GNU env puts the split words in place of -S and reads its options on from there, so they may hold more.
         return this.wrapper(spec, [...split.words, ...args.slice(index + 1)]);

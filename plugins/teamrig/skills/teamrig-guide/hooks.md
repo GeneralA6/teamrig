@@ -341,13 +341,31 @@ the guard cannot read (`--script-shell=node`, or a variable) is refused as a dou
   line with more than one reading or
   `bash -c "$CMD"`, ask only when the line names a push in a word of its own (`push`, `--push`, `git-push`), never in
   a path such as `src/push-guard`.
+- **Judges an interpreter script by its text**: what a python (or `py`), node, deno, bun, perl, ruby or php run takes as
+  its program (its arguments, a heredoc or here-string it is fed, and any argument naming a readable file, the first 256
+  KiB) is a script, not shell words. Its words never count as a push named in a word of the line, so a python heredoc
+  that posts a message saying "push" turns no other doubt on. A script that names a push **and** can reach git (a
+  process call such as `subprocess`, `asyncio.create_subprocess_*`, `os.system`, `child_process`, `Deno.Command` or
+  perl's piped `open`, a backtick in perl, ruby or php, or a git library such as GitPython or simple-git) is refused: "it runs
+  a <language> script that may run git push, whose push the guard cannot read; run the push as a plain git command on
+  the line instead". A script that only talks about a push, or only runs `git status`, passes. Where its output goes on
+  to another command (`python3 -c 'print("git push ...")' | sh`, or a `$( )`), its text still names a push for that
+  command, so a shell fed a printed push is refused, and so is a doubt about shell code the guard cannot read (a shell
+  reading stdin, `eval` or `-c` of a command line only known when it runs, or a program, git command or `env -S`
+  line only known when it runs), which its output may have written. Only a
+  regular file is read, never a FIFO, device or UNC path, and a line's files together at most 1 MiB. A script file
+  `pushGuard.trustedScripts` names (a team's own tool, its tests) is not read, so its text never refuses running it. A test run
+  (`node --test`, `deno test`, `bun test`) reads no file it names as a test (`*.test.ts`, `*.spec.js`, node's own
+  test-file names, a `test` folder): a test's git runs in the repositories it makes. Its preloads and any other file
+  it runs are still read. This is a
+  text rule against an accidental push, not a sandbox: a script that builds `'gi' + 't'` or decodes its command passes.
 
 What to do: push your own branch and merge through a pull request, or write the push out plainly so the guard
 can read it. Never route around a refusal; report it to the lead. On Windows a Git Bash drive folder (`cd /c/work`,
 `git -C /c/work`) is read as `C:\work`. The guard reads chains, subshells, nested shells,
 wrappers and git aliases (an `env -S` string and an alias value split by env's and git's own rules, a CR a plain
-space in both), but it does not see a push inside a script or program the command runs, `gh pr merge`,
-git extensions, or pushes run outside Claude Code. It is a guard against mistakes, not a sandbox: protect the
+space in both), but it does not see a push inside a script or program the command runs (a script of the interpreters
+above is judged by its text), `gh pr merge`, git extensions, or pushes run outside Claude Code. It is a guard against mistakes, not a sandbox: protect the
 branch on your git host too.
 
 ## Before a shell command: the commit guard

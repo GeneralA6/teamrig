@@ -1,9 +1,10 @@
 import { packagedStartOf, type PackagedStart } from '../package-guard/packaged.ts';
+import { interpreterDoubt, interpreterOf, interpreterText, MAX_LINE_SCRIPT_BYTES, readScriptFile, scriptMayPush, type ScriptBudget } from './interpreters.ts';
 import { isAssignment, launch, programName, staticWord, type Assignment, type Launch, type ProgramLaunch } from './launchers.ts';
 import { bashNativeWord, Location, resolveDir } from './location.ts';
 import { splitGitAlias } from './program-split.ts';
 import { redirectsInput, stdinUse } from './stdin.ts';
-import { parseHeldText, parseShell, type ShellDialect, type ShellParse, type ShellWord } from './tokenizer.ts';
+import { parseHeldText, parseShell, type ShellCommand, type ShellDialect, type ShellParse, type ShellWord } from './tokenizer.ts';
 import { resolveLiteralVariables } from './variables.ts';
 
 /** One git config value: set, unset (git exits 1), or unreadable (git failed or is missing). */
@@ -37,6 +38,13 @@ export interface Doubt {
   readonly reason: string;
   /** True when it matters only on a command line that mentions a push anywhere; false when it always asks. */
   readonly gated: boolean;
+  /**
+   * True when it is about shell code the guard cannot read (a shell reading its commands from stdin, `eval` or `-c`
+   * of a command line only known when it runs, a program, git command or `env -S` line only known when it runs, a part
+   * that never closes): an interpreter's text may have written that
+   * code, so for this doubt an interpreter's words and stdin name a push too (`scriptMentionsPush`).
+   */
+  readonly shellCode?: true;
 }
 
 /** Every git command a command line runs, in order, and what the guard could not read. */
@@ -49,6 +57,12 @@ export interface GitInvocations {
    * targets do not count.
    */
   readonly mentionsPush: boolean;
+  /**
+   * True when an interpreter's words or stdin name a push (see {@link saysPush}). They are its script, judged by its
+   * text, so they gate only the doubts about shell code the guard cannot read (`Doubt.shellCode`), which the script
+   * may have written: `python3 -c 'print("git push origin main")' > c.txt; sh < c.txt`.
+   */
+  readonly scriptMentionsPush: boolean;
   /** Each place the line runs one of several readings of what a package runner starts, of which only one runs. */
   readonly readings: readonly ReadingSpan[];
 }
@@ -69,6 +83,10 @@ export interface FinderContext {
   readonly home: string;
   readonly dialect: ShellDialect;
   readonly git: GitConfigReader;
+  /** Reads a script file an interpreter runs (see interpreters.ts); undefined when unreadable. Defaults to the file system. */
+  readonly readScript?: (path: string, maxBytes: number) => string | undefined;
+  /** Whether a script file an interpreter runs is trusted (`pushGuard.trustedScripts`): its text is then not read. */
+  readonly trustedScript?: (path: string) => boolean;
 }
 
 /** Git's own commands; an alias never overrides one. */
@@ -244,6 +262,17 @@ export function configWrite(args: readonly ShellWord[]): ConfigWrite | undefined
   return value === undefined ? undefined : { kind: 'set', key, value };
 }
 
+/** A command's terminator that pipes its output to the next command, a newline or two after it. */
+const PIPE_TERMINATOR = /^\|&?\n*$/;
+
+/**
+ * True when what `command` prints goes on to another command: down a pipe (`|`, `|&`, also from a `( )` group the
+ * command ends), or into the command holding the substitution it sits in.
+ */
+function outputFeedsCommand(command: ShellCommand): boolean {
+  return command.nesting > 0 || PIPE_TERMINATOR.test(command.terminator.replace(/[()]/g, ''));
+}
+
 /** Quotes a word for a bash command line, so a git shell alias gets its arguments as typed. */
 function shellQuote(word: ShellWord): string {
   return word.dynamic ? word.text : `'${word.text.replace(/'/g, `'\\''`)}'`;
@@ -287,6 +316,9 @@ class GitInvocationFinder {
   private readonly doubts: Doubt[] = [];
   private readonly readings: ReadingSpan[] = [];
   private mentionsPush = false;
+  private scriptMentionsPush = false;
+  /** Above 0 while reading a script whose text is only known when it runs (`bash -c "$CMD"`, `eval "$X"`). */
+  private dynamicScripts = 0;
   /** Aliases a `git config alias.x value` earlier in the line sets; undefined marks one only known when it runs. */
   private readonly lineAliases = new Map<string, string | undefined>();
   /** True once the line sets a `GIT_DIR`-like variable in its shell, so later git commands run in a repository the guard cannot place. */
@@ -299,22 +331,34 @@ class GitInvocationFinder {
    */
   private shellHooksOverride: string | undefined;
   private readonly context: FinderContext;
+  /** The script file bytes the line's interpreters may still read, shared with the finders of its held text. */
+  private readonly scriptBudget: ScriptBudget;
 
-  constructor(context: FinderContext) {
+  constructor(context: FinderContext, scriptBudget: ScriptBudget = { left: MAX_LINE_SCRIPT_BYTES }) {
     this.context = context;
+    this.scriptBudget = scriptBudget;
   }
 
   find(command: string): GitInvocations {
     this.visitScript(staticWord(command), this.context.dialect, new Location(this.context.cwd, this.context.home), 0);
-    return { invocations: this.invocations, doubts: this.doubts, mentionsPush: this.mentionsPush, readings: this.readings };
+    return { invocations: this.invocations, doubts: this.doubts, mentionsPush: this.mentionsPush, scriptMentionsPush: this.scriptMentionsPush, readings: this.readings };
   }
 
-  private doubt(reason: string, gated: boolean): void {
-    this.doubts.push({ reason, gated });
+  /** Records a doubt; one raised inside a script only known when it runs is about shell code the guard cannot read. */
+  private doubt(reason: string, gated: boolean, shellCode = false): void {
+    this.doubts.push(shellCode || this.dynamicScripts > 0 ? { reason, gated, shellCode: true } : { reason, gated });
   }
 
   private mention(text: string): void {
     this.mentionsPush ||= saysPush(text);
+  }
+
+  /** Reads a script file an interpreter runs, unless the team trusts it (`FinderContext.trustedScript`). */
+  private readonly readScript = (path: string, maxBytes: number): string | undefined =>
+    this.context.trustedScript?.(path) === true ? undefined : (this.context.readScript ?? readScriptFile)(path, maxBytes);
+
+  private scriptMention(text: string): void {
+    this.scriptMentionsPush ||= saysPush(text);
   }
 
   /**
@@ -336,7 +380,7 @@ class GitInvocationFinder {
       return;
     }
     if (unread !== undefined) {
-      this.doubt(unread, true);
+      this.doubt(unread, true, true);
       this.mention(source);
     }
     parsed.unreadBodies.forEach((body) => this.mention(body.text));
@@ -345,7 +389,6 @@ class GitInvocationFinder {
     const commands = dialect === 'bash' ? resolveLiteralVariables(parsed, depth === 0 ? location.home : undefined) : parsed.commands;
     let piped: { readonly body: ShellWord; readonly nesting: number } | undefined;
     for (const command of commands) {
-      command.words.forEach((word) => this.mention(word.text));
       let stdin = command.stdin;
       // A substitution's commands, read before the command that holds them, sit between a pipe's two ends.
       if (piped !== undefined && command.nesting <= piped.nesting) {
@@ -354,6 +397,12 @@ class GitInvocationFinder {
       }
       location.enter(command.subshells);
       const launched = this.visitCommand(command.words, dialect, location, depth, stdin);
+      // An interpreter's words and stdin are its script, judged by visitCommand, not shell words that name a push:
+      // a python heredoc that posts a message saying "push" arms no doubt about the line. Its output feeding another
+      // command (a pipe, a substitution) may be shell code it prints, so there its words and stdin still name a push
+      // for the gated doubts that command raises (`python3 -c 'print("git push ...")' | sh`).
+      const script = launched?.kind === 'program' && interpreterOf(launched) !== undefined && !outputFeedsCommand(command);
+      command.words.forEach((word) => (script ? this.scriptMention(word.text) : this.mention(word.text)));
       // A shell that runs a word as a script reads its substitutions as commands already.
       if (launched?.kind !== 'script') {
         this.visitHeld(command.words, location, depth);
@@ -361,7 +410,11 @@ class GitInvocationFinder {
       if (stdin !== undefined) {
         const use = launched === undefined ? 'read' : stdinUse(command, launched);
         if (use !== 'stored') {
-          this.mention(stdin.text);
+          if (script) {
+            this.scriptMention(stdin.text);
+          } else {
+            this.mention(stdin.text);
+          }
         }
         piped = use === 'passed' ? { body: stdin, nesting: command.nesting } : undefined;
       }
@@ -382,9 +435,9 @@ class GitInvocationFinder {
       }
       const parsed = parseHeldText(word.held);
       const unread = parsed.skipped ? 'it holds quoted text the guard cannot read for the commands bash runs if an expansion reads it again' : undefined;
-      const held = new GitInvocationFinder(this.context);
+      const held = new GitInvocationFinder(this.context, this.scriptBudget);
       held.visitParsed(parsed, word.held, unread, 'bash', location.child(), depth + 1);
-      this.doubts.push(...held.doubts);
+      this.doubts.push(...held.doubts.map((doubt) => (this.dynamicScripts > 0 && doubt.shellCode !== true ? { ...doubt, shellCode: true as const } : doubt)));
       if (held.invocations.some((invocation) => invocation.subcommand === 'push')) {
         this.doubt('it holds a quoted command substitution that pushes, which bash runs if an expansion reads it again', true);
       }
@@ -406,15 +459,21 @@ class GitInvocationFinder {
       case 'nothing':
         break;
       case 'opaque':
-        this.doubt(launched.reason, launched.gated);
+        this.doubt(launched.reason, launched.gated, launched.stdinScript === true || launched.shellCode === true);
         break;
       case 'script': {
         const inner = location.child();
         launched.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));
         if (launched.script.dynamic && launched.dialect !== dialect) {
-          this.doubt(`it hands ${DIALECT_NAMES[launched.dialect]} a command line built from ${DIALECT_NAMES[dialect]} variables`, true);
+          this.doubt(`it hands ${DIALECT_NAMES[launched.dialect]} a command line built from ${DIALECT_NAMES[dialect]} variables`, true, true);
         }
-        this.inheriting(hooksVariableOf(launched.env), launched.sameShell, () => this.visitScript(launched.script, launched.dialect, inner, depth + 1));
+        const dynamic = launched.script.dynamic ? 1 : 0;
+        this.dynamicScripts += dynamic;
+        try {
+          this.inheriting(hooksVariableOf(launched.env), launched.sameShell, () => this.visitScript(launched.script, launched.dialect, inner, depth + 1));
+        } finally {
+          this.dynamicScripts -= dynamic;
+        }
         if (launched.sameShell) {
           location.adopt(inner);
         }
@@ -425,6 +484,16 @@ class GitInvocationFinder {
         const packaged = packagedStartOf(name, launched.args, launched.env);
         if (packaged.length > 0) {
           this.visitPackaged(packaged, launched, dialect, location, depth, stdin);
+          break;
+        }
+        const language = interpreterOf(launched);
+        if (language !== undefined) {
+          const inner = location.child();
+          launched.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));
+          const text = interpreterText(launched, stdin, inner.dir, this.readScript, this.scriptBudget);
+          if (scriptMayPush(text, language)) {
+            this.doubt(interpreterDoubt(language), false);
+          }
           break;
         }
         const subcommand = name.startsWith('git-') ? name.slice(4) : undefined;
@@ -471,7 +540,7 @@ class GitInvocationFinder {
     switch (start.kind) {
       case 'script':
         if (start.script.dynamic && start.dialect !== dialect) {
-          this.doubt(`it hands ${DIALECT_NAMES[start.dialect]} a command line built from ${DIALECT_NAMES[dialect]} variables`, true);
+          this.doubt(`it hands ${DIALECT_NAMES[start.dialect]} a command line built from ${DIALECT_NAMES[dialect]} variables`, true, true);
         }
         this.inheriting(hooksVariableOf(runner.env), false, () => this.visitScript(start.script, start.dialect, inner, depth + 1));
         return;
@@ -575,7 +644,7 @@ class GitInvocationFinder {
       return;
     }
     if (sub.dynamic) {
-      this.doubt('the git command it runs is only known when it runs', true);
+      this.doubt('the git command it runs is only known when it runs', true, true);
       return;
     }
     const state: GitState = { dir, gitDir, configOverride, aliases, aliasesUnknown, hooksOverride };

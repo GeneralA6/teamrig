@@ -1333,7 +1333,17 @@ describe('parseConfig', () => {
     const bad = parseConfig({ ...ROSTER, pushGuard: { protectedBranches: ['release'], pushToProtected: 'always' } });
     assert.deepEqual(paths(bad.issues), ['pushGuard.pushToProtected']);
     assert.match(bad.issues[0]?.message ?? '', /ask, allow, lead, gated/);
-    assert.deepEqual(bad.config.pushGuard, { protectedBranches: ['release'], pushToProtected: 'ask', reviewPaths: [] });
+    assert.deepEqual(bad.config.pushGuard, { protectedBranches: ['release'], pushToProtected: 'ask', reviewPaths: [], trustedScripts: [] });
+  });
+
+  it('reads the trusted script globs, defaulting to none and leaving out a bad entry', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.pushGuard.trustedScripts, []);
+    const set = parseConfig({ ...ROSTER, pushGuard: { trustedScripts: ['tools/ship/*.ts', '*.test.ts'] } });
+    assert.deepEqual(set.issues, []);
+    assert.deepEqual(set.config.pushGuard.trustedScripts, ['tools/ship/*.ts', '*.test.ts']);
+    const bad = parseConfig({ ...ROSTER, pushGuard: { trustedScripts: ['tools/*.ts', 'x'.repeat(201), 7] } });
+    assert.deepEqual(bad.config.pushGuard.trustedScripts, ['tools/*.ts']);
+    assert.equal(bad.issues.length, 2);
   });
 
   it('reads the review paths, defaulting mode and class and leaving out an entry with no glob', () => {

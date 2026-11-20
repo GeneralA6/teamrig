@@ -19,6 +19,7 @@ export const CONFIG_LIMITS = {
   ruleConflicts: { maxItems: 40 },
   protectedBranches: { maxItems: 8, maxLength: 64 },
   reviewPaths: { maxItems: 128 },
+  trustedScripts: { maxItems: 64, maxLength: 200 },
   commitMaxLines: { min: 50, max: 5000 },
   commitMaxFiles: { min: 2, max: 500 },
   testPatterns: { maxItems: 8, maxLength: 100 },

@@ -1,6 +1,7 @@
 import type { PushToProtected } from '../config/types.ts';
 import { BranchMoves, type BranchView } from './branch-moves.ts';
 import { findGitInvocations, type FinderContext, type GitConfigReader, type GitInvocation, type GitInvocations, type ReadingSpan } from './invocations.ts';
+import { trustedScriptMatcher } from './interpreters.ts';
 import { namedPushTarget, type MapChange, type NamedPushTarget } from './named-push.ts';
 import type { ShellDialect, ShellWord } from './tokenizer.ts';
 
@@ -58,6 +59,8 @@ export interface GuardContext {
    */
   readonly pushToProtected: PushToProtected;
   readonly repo: RepoState;
+  /** Globs of the script files an interpreter runs whose text is not read (`pushGuard.trustedScripts`); absent trusts none. */
+  readonly trustedScripts?: readonly string[];
 }
 
 /** A protected branch a push updates: the commits of `source` not yet on `base` are what it sends. */
@@ -473,7 +476,9 @@ export function evaluatePushes(command: string, context: GuardContext): PushVerd
 
 /** How the guard's finder reads a line for `context`. */
 export function finderContextOf(context: GuardContext): FinderContext {
-  return { cwd: context.cwd, home: context.home, dialect: context.dialect, git: context.repo };
+  const trusted = context.trustedScripts ?? [];
+  const base = { cwd: context.cwd, home: context.home, dialect: context.dialect, git: context.repo };
+  return trusted.length === 0 ? base : { ...base, trustedScript: trustedScriptMatcher(trusted, context.cwd) };
 }
 
 /** {@link evaluatePushes} for the git commands already found in a line, so a caller that also reads them finds them once. */
@@ -508,7 +513,8 @@ export function judgePushes(found: GitInvocations, context: GuardContext): PushV
   if (protectedPush === 'leased' || (protectedPush === 'normal' && context.pushToProtected === 'ask')) {
     return { decision: 'ask', updates, protectedPush };
   }
-  doubt ??= found.doubts.find((candidate) => !candidate.gated || found.mentionsPush)?.reason;
+  // An interpreter's text is its script: it names a push only for the doubts about shell code it may have written.
+  doubt ??= found.doubts.find((candidate) => !candidate.gated || found.mentionsPush || (candidate.shellCode === true && found.scriptMentionsPush))?.reason;
   if (doubt !== undefined) {
     return { decision: 'ask', updates, doubt };
   }

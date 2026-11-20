@@ -461,3 +461,29 @@ describe('skipHooksOf', () => {
     assert.equal(skipHooksOf(undefined), 'deny');
   });
 });
+
+describe('pushGuardOutput on interpreter scripts', () => {
+  it('lets a python heredoc that posts a message through, quoted or not', async () => {
+    const post = "python3 - <<'PY'\nimport json,urllib.request\nbody='pushed as PR #61; push your branch'\nurllib.request.urlopen(urllib.request.Request('http://localhost:1/x', data=body.encode()))\nPY";
+    assert.equal(await pushGuardOutput(payload(post), env()), '');
+    assert.equal(await pushGuardOutput(payload("python3 - <<'EOF'\nbody=\"head `$X` push\"\nEOF"), env()), '');
+  });
+
+  it('refuses, as on main, when an unquoted heredoc runs a program only known when it runs and the script names a push (T3356)', async () => {
+    assert.equal(decisionOf(await pushGuardOutput(payload('python3 - <<EOF\nbody="head `$X` push"\nEOF'), env())), 'deny');
+  });
+
+  it('refuses a script that may push, and still refuses a push to main however the shell runs it (T3356)', async () => {
+    for (const command of [
+      "python3 - <<'PY'\nimport subprocess\nsubprocess.run(['git', 'push', 'origin', 'main'])\nPY",
+      'python3 -c \'import os; os.system("git push origin main")\'',
+    ]) {
+      const refused = hookOutput(await pushGuardOutput(payload(command), env()));
+      assert.equal(refused.decision, 'deny');
+      assert.match(refused.reason, /script that may run git push/);
+    }
+    for (const command of ['git push origin main', 'git -C /work/app push origin main', "bash <<'X'\ngit push origin main\nX", "cat <<'X' | sh\ngit push origin main\nX", "bash -c 'git push origin main'"]) {
+      assert.equal(decisionOf(await pushGuardOutput(payload(command), env())), 'deny', command);
+    }
+  });
+});

@@ -141,7 +141,7 @@ export const DEFAULT_LOCK: LockConfig = { ttlMs: 300_000, pollMs: 50, waitMs: 20
 /** No exec PATH: a privileged command names its program by absolute path until the team lists its tool folders. */
 export const DEFAULT_EXEC: ExecConfig = { path: [] };
 
-export const DEFAULT_PUSH_GUARD: PushGuardConfig = { protectedBranches: ['main', 'master'], pushToProtected: 'ask', reviewPaths: [] };
+export const DEFAULT_PUSH_GUARD: PushGuardConfig = { protectedBranches: ['main', 'master'], pushToProtected: 'ask', reviewPaths: [], trustedScripts: [] };
 
 /**
  * Refused by default: a helper's `npx eslint` once fetched and ran an unvetted package (T450, 10-16), and an install
