@@ -1,6 +1,4 @@
 import { createHash } from 'node:crypto';
-import type { Roster } from '../../config/roster.ts';
-import type { KitConfig } from '../../config/types.ts';
 import { ENV, type Env } from '../../core/home.ts';
 import { PlainLogFile } from '../../core/log-file.ts';
 import { SecretScanner } from '../../core/secrets.ts';
@@ -29,9 +27,10 @@ import { layoutPaths, MissingSegmentError, readWorkingSet, type LayoutPaths } fr
 import type { RegisterSnapshot } from '../../register/snapshot.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
 import { sessionRef } from '../inputs.ts';
-import { configWarnings, findTeam, loadedConfig, openKit, pastOrPresentIdOf, rosterOf, type Kit } from '../kit.ts';
+import { configWarnings, findTeam, loadedConfig, openKit, pastOrPresentIdOf, rosterOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
+import { skippedOf, stampsOf, type DocumentSource, type ReadScope } from './read-source.ts';
 
 /** The trackers a document names a ref or a source by; a second one is one more entry here. */
 const CONNECTORS: readonly Connector[] = [GITHUB_CONNECTOR];
@@ -49,42 +48,6 @@ interface ReadRequest {
   readonly session: string | undefined;
   readonly sinceHours: number;
   readonly speaks: InterfaceVersion | undefined;
-}
-
-/** What every document of one run is read from. */
-interface ReadScope {
-  readonly runtime: CliRuntime;
-  /** The caller's own team; `kit` is another's when `--team` names one above it. */
-  readonly own: string;
-  readonly kit: Kit;
-  readonly config: KitConfig;
-  readonly roster: Roster;
-  /** The one session whose tasks are served, by id; null serves every session's. */
-  readonly owner: string | null;
-  /**
-   * The session asking, as typed (an id or a name); null when the run names none. The document that needs it reads
-   * it against the roster, so a stale session variable never refuses a document that does not.
-   */
-  readonly asker: string | null;
-  readonly sinceHours: number;
-  /** What the config's own read has to tell: every document is read through it, so each carries these. */
-  readonly warnings: readonly string[];
-}
-
-/** A document's own fields, and what could only partly be served. */
-interface Built {
-  readonly body: object;
-  readonly problems: readonly string[];
-}
-
-/**
- * One document: what its revision is made of, and its answer. `parts` reads file stamps only and is asked first,
- * so a write landing while `build` reads leaves the answer newer than its revision, never older: the reader's next
- * comparison then sees a change and reads again.
- */
-interface DocumentSource {
-  parts(): Promise<RevisionParts>;
-  build(): Promise<Built>;
 }
 
 /** The documents this teamrig can build; the rest of interface 1 joins here, one by one. */
@@ -219,14 +182,6 @@ function revisionOf(parts: RevisionParts): string {
   return createHash('sha256').update(KIT_VERSION).update('\n').update(revisionText(parts)).digest('hex').slice(0, 16);
 }
 
-async function stampsOf(runtime: CliRuntime, paths: readonly string[]): Promise<(string | null)[]> {
-  const stamps: (string | null)[] = [];
-  for (const path of paths) {
-    stamps.push((await runtime.files.stamp(path)) ?? null);
-  }
-  return stamps;
-}
-
 /**
  * `tasks`: the register's working set. It reads the config (the owner's marker, the secret shapes, the sessions),
  * the renames (a session's name), the register's snapshot and its events after it. The archive's segments count by
@@ -336,12 +291,4 @@ async function workingSetOf(runtime: CliRuntime, layout: LayoutPaths): Promise<W
 function damageOf(snapshot: RegisterSnapshot, path: string): string[] {
   const { orphans } = snapshot.state;
   return [...skippedOf(path, snapshot.read), ...(orphans > 0 ? [`${path}: ${orphans} event(s) naming no task left out`] : [])];
-}
-
-/** The lines of a log that were left out of its read, a line per kind. */
-function skippedOf(path: string, read: { readonly unreadable: number; readonly newer: number }): string[] {
-  return [
-    ...(read.unreadable > 0 ? [`${path}: ${read.unreadable} unreadable line(s) left out`] : []),
-    ...(read.newer > 0 ? [`${path}: ${read.newer} line(s) from a newer teamrig left out; update teamrig`] : []),
-  ];
 }
