@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import type { PointerGit, PointerInGit } from '../setup/pointer-ignore.ts';
 import { CliHarness, APP, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import { EXIT } from './runtime.ts';
 
 /** A value a rule can hold; no output may carry it. Joined, so no source line holds a URL the secret redactor catches. */
@@ -41,6 +42,15 @@ function assertNoSecret(lines: readonly string[]): void {
 }
 
 describe('teamrig permissions trim', () => {
+  it("refuses on a host whose folders teamrig does not know, with the host's own reason, and writes nothing", async () => {
+    const kit = await withSettings();
+    const before = kit.files.get(USER);
+    const result = await kit.run(['permissions', 'trim', '--yes'], { ...OPTIONS, host: NO_PATHS_HOST });
+    assert.equal(result.code, EXIT.refused);
+    assert.match([...result.stdout, ...result.stderr].join('\n'), /REFUSED no folder of the host is known/);
+    assert.equal(kit.files.get(USER), before);
+  });
+
   it('previews the wide and credential rules off the keep-list in each file by class, and writes nothing without --yes', async () => {
     const kit = await withSettings();
     const before = [USER, SHARED, LOCAL, TREE].map((path) => kit.files.get(path));

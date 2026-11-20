@@ -11,6 +11,7 @@ import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { promptLine, replyLine, type FixtureTool } from '../testing/transcript-lines.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import { SKILL_DOCTOR_ARGS } from '../setup/skill-doctor.ts';
 import { DEFAULT_SCAN_DAYS } from './commands/setup-scan.ts';
 import { EXIT } from './runtime.ts';
@@ -75,6 +76,14 @@ function okLines(result: CliResult): readonly string[] {
 }
 
 describe('setup scan', () => {
+  it("refuses on a host whose folders teamrig does not know, with the host's own reason: it has no file to scan", async () => {
+    const harness = await world();
+    const result = await harness.run(['setup', 'scan'], { host: NO_PATHS_HOST, probe: new MemoryPathProbe(harness.files), transcripts: new MemoryTranscripts(), hooks: new FakeHooks() });
+    assert.equal(result.code, EXIT.refused);
+    assert.match([...result.stdout, ...result.stderr].join('\n'), /REFUSED no folder of the host is known/);
+    assert.ok(!result.stdout.some((line) => line.startsWith('CONTEXT')), result.stdout.join('\n'));
+  });
+
   it("in a team's project: loads the team's rules, lists the team's skills, the override line and the skill no transcript used", async () => {
     const harness = await world();
     await harness.files.write(join(TEAM_HOME, 'rules.md'), 'Team rules.\n');

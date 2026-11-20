@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import type { PointerGit } from '../setup/pointer-ignore.ts';
 import { CliHarness, APP, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
+import { EXIT } from './runtime.ts';
 
 /** A value a rule can hold; no output may carry it. Joined, so no source line holds a URL the secret redactor catches. */
 const HELD_VALUE = ['postgres://user:', 'hunter22', '@db.example.net'].join('');
@@ -68,6 +70,15 @@ describe('the allow-wide flag', () => {
       doctor.stdout.join('\n'),
     );
     assert.ok(doctor.stdout.every((line) => !line.includes('hush-42')));
+  });
+
+  it('is quiet on a host whose folders teamrig does not know: doctor and check go on with no settings file read', async () => {
+    const kit = await withWideRules();
+    const options: RunOptions = { ...OPTIONS, host: NO_PATHS_HOST };
+    const doctor = await kit.run(['doctor'], options);
+    const check = await kit.run(['check', '--all', '--session', 'lead'], options);
+    assert.deepEqual([doctor.code, check.code], [EXIT.ok, EXIT.ok], [...doctor.stderr, ...check.stderr].join('\n'));
+    assert.ok(![...doctor.stdout, ...check.stdout].some((line) => line.includes('allow-wide')), [...doctor.stdout, ...check.stdout].join('\n'));
   });
 
   it('is quiet once no file holds a wide or credential rule off the keep-list', async () => {

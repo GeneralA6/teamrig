@@ -1,13 +1,20 @@
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { samePath } from '../core/paths.ts';
+import type { HostPaths } from '../ports/host/index.ts';
 
 /**
- * The Claude Code settings files whose allow rules a team's sessions run under: the person's own user settings, and
- * each project folder's shared and local settings, in the folder itself and in each worktree Claude Code made under
- * its `.claude/worktrees` (a worktree's local settings keep the rules "Yes, don't ask again" wrote while a session
- * worked there).
+ * The host's settings files whose allow rules a team's sessions run under: the person's own user settings, and each
+ * project folder's shared and local settings, in the folder itself and in each worktree the host made for it (a
+ * worktree's local settings keep the rules "Yes, don't ask again" wrote while a session worked there). The host's
+ * paths name every one of them, so no file or folder name of the host's is joined here.
  */
+
+/** Where the host keeps one person's settings: its paths, and the home folder of that person. */
+export interface SettingsHost {
+  readonly paths: Pick<HostPaths, 'userSettings' | 'folderSettings' | 'worktrees'>;
+  readonly userHome: string;
+}
 
 /**
  * `user` and `local` files are the person's own, so a trim rewrites them; a `shared` one is committed with its repo, so a
@@ -19,34 +26,22 @@ export type SettingsKind = 'user' | 'local' | 'shared';
 export interface SettingsFile {
   readonly path: string;
   readonly kind: SettingsKind;
-  /** For a file in one of a project's `.claude/worktrees`, the same file in that project folder. */
+  /** For a file in one of the worktrees the host made for a project, the same file in that project folder. */
   readonly projectFile?: string;
 }
 
-/** Where Claude Code makes a project's worktrees, from the project folder. */
-const WORKTREES = ['.claude', 'worktrees'] as const;
-
-/** A folder's settings files under its `.claude`, with their kinds. */
-const FOLDER_FILES = [
-  ['settings.json', 'shared'],
-  ['settings.local.json', 'local'],
-] as const;
-
-function projectFiles(folder: string): SettingsFile[] {
-  return FOLDER_FILES.map(([name, kind]) => ({ path: join(folder, '.claude', name), kind }));
-}
-
-function worktreeFiles(folder: string, worktree: string): SettingsFile[] {
-  return FOLDER_FILES.map(([name, kind]) => ({ path: join(worktree, '.claude', name), kind, projectFile: join(folder, '.claude', name) }));
+/** A worktree's settings files, each with the file at the same place under the project folder it was made for. */
+function worktreeFiles(paths: SettingsHost['paths'], folder: string, worktree: string): SettingsFile[] {
+  return paths.folderSettings(worktree).map((file) => ({ ...file, projectFile: join(folder, relative(worktree, file.path)) }));
 }
 
 /** The user settings, then each project folder's files and its worktrees' in name order; a path named twice is listed once, as first named. */
-export async function settingsScope(files: Files, claudeDir: string, projects: readonly string[], platform: NodeJS.Platform): Promise<SettingsFile[]> {
-  const scope: SettingsFile[] = [{ path: join(claudeDir, 'settings.json'), kind: 'user' }];
+export async function settingsScope(files: Files, { paths, userHome }: SettingsHost, projects: readonly string[], platform: NodeJS.Platform): Promise<SettingsFile[]> {
+  const scope: SettingsFile[] = [{ path: paths.userSettings(userHome), kind: 'user' }];
   for (const folder of projects) {
-    const worktrees = join(folder, ...WORKTREES);
+    const worktrees = paths.worktrees(folder);
     const names = (await files.list(worktrees)).sort((left, right) => left.localeCompare(right));
-    scope.push(...projectFiles(folder), ...names.flatMap((name) => worktreeFiles(folder, join(worktrees, name))));
+    scope.push(...paths.folderSettings(folder), ...names.flatMap((name) => worktreeFiles(paths, folder, join(worktrees, name))));
   }
   return scope.filter((file, index) => scope.findIndex((other) => samePath(other.path, file.path, platform)) === index);
 }
