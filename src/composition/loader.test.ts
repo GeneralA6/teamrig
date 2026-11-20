@@ -31,7 +31,8 @@ describe('the adapter loader, on the adapters teamrig ships', () => {
     const load = await loadHost('claude-code');
     assert.equal(load.kind, 'loaded');
     assert.equal(load.kind === 'loaded' && load.value.declaration.name, 'Claude Code');
-    assert.deepEqual(load.kind === 'loaded' && load.value.create({ env: {}, platform: 'linux', run: () => Promise.reject(new Error('no program runs here')) }), {});
+    const ports = load.kind === 'loaded' ? load.value.create({ env: {}, platform: 'linux', run: () => Promise.reject(new Error('no program runs here')) }) : {};
+    assert.deepEqual(Object.keys(ports), ['transcripts']);
   });
 
   it('loads each connector through the real importer', async () => {

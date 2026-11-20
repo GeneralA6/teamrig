@@ -36,12 +36,15 @@ export {
 } from '../features/registry.ts';
 export {
   INPUT_ORIGINS,
+  isUnsupported,
+  unsupported,
   type BackgroundMark,
   type CallUsage,
   type CompactEntry,
   type EntryKind,
   type EntryThread,
   type HookNoteEntry,
+  type HostPorts,
   type InputEntry,
   type InputOrigin,
   type OtherEntry,
@@ -51,6 +54,7 @@ export {
   type TranscriptEntry,
   type TranscriptReader,
   type UnreadLine,
+  type Unsupported,
 } from '../ports/host/index.ts';
 export type { CredentialRead, CredentialStore } from '../core/credentials.ts';
 // What an adapter reads outside JSON with, an API's answer or a host's own line: it is narrowed, never cast.

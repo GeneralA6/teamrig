@@ -39,12 +39,14 @@ describe('the plugin API surface', () => {
       'isRecord',
       'isStringArray',
       'isSupport',
+      'isUnsupported',
       'manifestProblems',
       'provedOn',
       'recordField',
       'stampCredit',
       'stringField',
       'supportProblem',
+      'unsupported',
       'withoutStampFooter',
     ]);
   });
