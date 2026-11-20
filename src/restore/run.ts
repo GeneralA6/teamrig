@@ -128,11 +128,11 @@ export interface ReopenEffort {
  * The config's `launch.<id>.effort` wins once set, so a restore after a config change brings the session back on the
  * new level, not the old one its transcript ran at (T2440); a session the config leaves unset comes back at its last.
  */
-function reopenEffortOf(team: TeamSession | undefined, text: string): ReopenEffort | undefined {
+function reopenEffortOf(reader: TranscriptReader, team: TeamSession | undefined, text: string): ReopenEffort | undefined {
   if (team?.effort !== undefined) {
     return { level: team.effort, from: 'config' };
   }
-  const last = lastRecordedEffort(text);
+  const last = lastRecordedEffort(reader, text);
   return last === undefined ? undefined : { level: last, from: 'last run' };
 }
 
@@ -184,7 +184,7 @@ async function itemOf(deps: RestoreDeps, facts: JudgeFacts, judged: Judged): Pro
   const team = teamSessionOf(entry, deps.teams);
   const label = team?.name ?? customTitleOf(deps.reader, text) ?? `Claude ${entry.claudeSession.slice(0, 8)}`;
   const resumeFolder = transcript === undefined ? undefined : resumeFolderOf(transcript, text, entry.projectDir, deps.projectsDir, deps.platform);
-  return { ...judged, transcript, resumeFolder, label, team, lost, effort: reopenEffortOf(team, text), ...chooseMode(entry, lost, team?.isLead === true) };
+  return { ...judged, transcript, resumeFolder, label, team, lost, effort: reopenEffortOf(deps.reader, team, text), ...chooseMode(entry, lost, team?.isLead === true) };
 }
 
 /** Where a restored session reopens, and why there when that is not the folder it started in. */
