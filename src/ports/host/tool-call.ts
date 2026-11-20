@@ -112,12 +112,21 @@ export interface MessageCall extends ToolCallBase {
   readonly text: string | undefined;
 }
 
-/** A call of a kind that carries no field of its own. */
-export interface PlainCall extends ToolCallBase {
-  readonly kind: 'ask' | 'schedule' | 'task-input' | 'other';
+/** A stop of the turn to ask the human. */
+export interface AskCall extends ToolCallBase {
+  readonly kind: 'ask';
+  /** What the human is asked for: an answer to a question, or a yes to a plan. */
+  readonly asks: 'question' | 'plan';
+  /** The call's first question as written; undefined when it carries none. */
+  readonly question: string | undefined;
 }
 
-export type ToolCall = ShellCall | ReadCall | EditCall | SearchCall | WebCall | HelperCall | SkillCall | MessageCall | PlainCall;
+/** A call of a kind that carries no field of its own. */
+export interface PlainCall extends ToolCallBase {
+  readonly kind: 'schedule' | 'task-input' | 'other';
+}
+
+export type ToolCall = ShellCall | ReadCall | EditCall | SearchCall | WebCall | HelperCall | SkillCall | MessageCall | AskCall | PlainCall;
 
 /** The port that reads a host's tool call into a {@link ToolCall}. */
 export interface ToolCallShape {
