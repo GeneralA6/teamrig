@@ -354,6 +354,16 @@ describe('teamrig read sessions', () => {
     assert.deepEqual(sessionOf(answer, 'app', 'alpha')['launch'], { model: null, effort: null, text: 'the default model and effort' });
   });
 
+  it('serves no leader, never an empty id, for the sessions of a team whose config names no lead', async () => {
+    const kit = await treeHarness();
+    await kit.files.write(teamConfigOf('new'), JSON.stringify({ configVersion: 1, team: { id: 'new', parent: 'app' }, sessions: ['solo', 'duo'], roles: {}, leads: { solo: ['duo'] } }));
+    const answer = served(await kit.run(READ_SESSIONS));
+    const solo = sessionOf(answer, 'new', 'solo');
+    const duo = sessionOf(answer, 'new', 'duo');
+    assert.deepEqual([solo['leader'], solo['ledBy'], solo['leads']], [null, [], 1]);
+    assert.deepEqual([duo['leader'], duo['ledBy']], ['solo', ['solo']]);
+  });
+
   it('reads a session\'s state from its tab file and serves the ask\'s kind and task, never its words', async () => {
     const kit = await treeHarness();
     const since = new Date(kit.clock.now()).toISOString();
