@@ -8,6 +8,7 @@ import { rotateRegister } from '../testing/rotation.ts';
 import { testTask } from '../testing/task.ts';
 import { currentWeekOf } from './week.ts';
 import { compactRegister, isRetirable, RETAIN_DAYS } from './compaction.ts';
+import { cutOf, cutTask, holdsDescription } from './description-cut.ts';
 import { EVENT_VERSION } from './events.ts';
 import { assemble, layoutPaths, readHistory, readSnapshotText, readWorkingSet } from './layout.ts';
 import { TASK_STATUSES } from './model.ts';
@@ -32,7 +33,8 @@ function random(seed: number): () => number {
  * A register's log lines as many sessions write it over three weeks: creates, status changes and
  * updates (week tags, priorities, owners), events for tasks that do not exist, second creates and torn
  * lines. A task is never written to once a compaction may have retired it; `touchedAfter` gives the ids
- * written from a point on, which a compaction there keeps.
+ * written from a point on, which a compaction there keeps. Which creates give a description, and which updates
+ * give or clear one, goes by the line's index and never by a draw, so a seed's sequence stays what it was.
  */
 function workload(seed: number, count: number): string[] {
   const next = random(seed);
@@ -47,13 +49,15 @@ function workload(seed: number, count: number): string[] {
     const at = new Date(START + index * 4 * 3_600_000).toISOString();
     const roll = next();
     const id = tasks === 0 || roll < 0.3 ? `T${(tasks += 1)}` : `T${1 + Math.floor(next() * tasks)}`;
-    const task = { title: `Task ${id}`, owner: pick(['alpha', 'bravo']), source: 'lead', ref: null, priority: pick([1, 2, 3]), due: null, goals: [], week: pick(WEEKS) };
+    const fields = { title: `Task ${id}`, owner: pick(['alpha', 'bravo']), source: 'lead', ref: null, priority: pick([1, 2, 3]), due: null, goals: [], week: pick(WEEKS) };
+    const task = index % 3 === 0 ? { ...fields, description: `Why ${id} is here, as line ${index} says` } : fields;
     if (roll < 0.3) {
       lines.push(toJsonlLine({ v: EVENT_VERSION, type: 'create', id, at, by: 'lead', task }));
     } else if (roll < 0.65) {
       lines.push(toJsonlLine({ v: EVENT_VERSION, type: 'status', id, at, by: pick(['alpha', 'bravo']), status: pick(TASK_STATUSES), note: 'n', evidence: pick([null, 'e']), skill: null }));
     } else if (roll < 0.9) {
-      const changes = pick([{ week: pick(WEEKS) }, { priority: pick([1, 2, 3]) }, { owner: pick(['alpha', 'bravo']) }]);
+      const drawn = pick([{ week: pick(WEEKS) }, { priority: pick([1, 2, 3]) }, { owner: pick(['alpha', 'bravo']) }]);
+      const changes = index % 4 === 0 ? { ...drawn, description: index % 8 === 0 ? null : `Line ${index} says it otherwise` } : drawn;
       lines.push(toJsonlLine({ v: EVENT_VERSION, type: 'update', id, at, by: 'lead', changes, note: null }));
     } else if (roll < 0.95) {
       lines.push(toJsonlLine({ v: EVENT_VERSION, type: 'status', id: `T${tasks + 50}`, at, by: 'alpha', status: 'open', note: null, evidence: null, skill: null }));
@@ -80,7 +84,8 @@ function timeAt(lines: readonly string[], at: number): Date {
 /**
  * The working set must read exactly as the whole history does on every task it holds and on every count a
  * reader shows; the tasks it leaves out are the retired ones, all finished. The history read of the
- * rotated files must equal the fold of the one file it replaced.
+ * rotated files must equal the fold of the one file it replaced. A description is the one field a task line
+ * leaves out (T4781): the working set holds it whole or as the mark of the very text the history holds.
  */
 function assertParity(working: RegisterSnapshot, history: RegisterSnapshot, whole: RegisterSnapshot, now: Date): void {
   assert.deepEqual(history.state, whole.state, 'history state');
@@ -88,7 +93,10 @@ function assertParity(working: RegisterSnapshot, history: RegisterSnapshot, whol
   assert.deepEqual([history.read.unreadable, history.read.newer, history.read.newestVersion], [whole.read.unreadable, whole.read.newer, whole.read.newestVersion]);
   const windowFrom = working.window === null ? null : Date.parse(working.window.from);
   for (const [id, task] of working.state.tasks) {
-    assert.deepEqual(task, whole.state.tasks.get(id), `task ${id}`);
+    const told = whole.state.tasks.get(id);
+    assert.ok(told !== undefined, `task ${id} is in the history`);
+    assert.deepEqual(cutTask(task), cutTask(told), `task ${id}`);
+    assert.ok(holdsDescription(task, told.description), `description of ${id}`);
     const all = whole.read.events.filter((event) => event.id === id);
     const mine = working.read.events.filter((event) => event.id === id);
     // A snapshot of task lines keeps only a task's latest events: the tail of its whole history, holding at
@@ -270,6 +278,38 @@ describe('compactRegister', () => {
     const assembled = assemble({ base: read, segments: [], skipped: undefined }, [], readEvents(''));
     assert.deepEqual(assembled.state.tasks, recent.state.tasks, 'read back, it folds as the whole log does');
     assert.deepEqual(assembled.window, { from: day(26), tasks: read.tasks });
+  });
+
+  const described = (id: string, n: number, description: string): string =>
+    toJsonlLine({ v: EVENT_VERSION, type: 'create', id, at: day(n), by: 'lead', task: { title: id, description, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null } });
+
+  it('leaves a description out of its task line, which holds its mark, and keeps an event of the window as written (T4781)', () => {
+    const edit = toJsonlLine({ v: EVENT_VERSION, type: 'update', id: 'T4', at: day(27), by: 'lead', changes: { description: 'said again' }, note: null });
+    const whole = readRegister(described('T3', 14, 'what and why') + described('T4', 14, 'said at first') + create('T5', 14, null) + edit);
+    const compaction = compactRegister(whole, { covered: 1, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() });
+    assert.deepEqual([compaction.header.tasks, compaction.header.events], [3, 1]);
+    assert.deepEqual([compaction.text.includes('what and why'), compaction.text.includes('said at first'), compaction.text.endsWith(edit)], [false, false, true]);
+    const read = readSnapshotText(compaction.text);
+    assert.ok(read.kind === 'usable');
+    const marks = ['T3', 'T4', 'T5'].map((id) => [read.tasks.get(id)?.description, read.tasks.get(id)?.descriptionCut]);
+    assert.deepEqual(marks, [[null, cutOf('what and why')], [null, cutOf('said at first')], [null, null]]);
+    const { tasks } = assemble({ base: read, segments: [], skipped: undefined }, [], readEvents('')).state;
+    const source = whole.state.tasks.get('T3');
+    assert.ok(source !== undefined);
+    assert.deepEqual(tasks.get('T3'), cutTask(source), 'a task no event of the window describes stays cut');
+    assert.deepEqual(tasks.get('T4'), whole.state.tasks.get('T4'), 'the update in the window gives its text whole');
+    assert.deepEqual(tasks.get('T5'), whole.state.tasks.get('T5'), 'a task with no description is as it was');
+  });
+
+  it('writes a snapshot whose size follows the tasks it keeps, not their descriptions (T4781)', () => {
+    // The register this is for holds imported issue bodies of thousands of characters on most tasks; 200 such
+    // tasks are 400,000 characters of description here, and 1,800,000 in the second register.
+    const sized = (chars: number): number => {
+      const lines = Array.from({ length: 200 }, (_, index) => described(`T${index + 1}`, 14, String(index % 10).repeat(chars)));
+      return Buffer.byteLength(compactRegister(readRegister(lines.join('')), { covered: 1, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() }).text);
+    };
+    assert.equal(sized(2_000), sized(9_000), 'longer descriptions add no byte');
+    assert.ok(sized(2_000) < 200 * 1_024, `${sized(2_000)} bytes for 200 task lines`);
   });
 
   it('never moves the window back past where the source read starts', () => {

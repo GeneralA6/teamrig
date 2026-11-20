@@ -10,6 +10,7 @@ import { FaultyFiles, systemError, type FileOperation } from '../testing/faulty-
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { compactRegister, RETAIN_DAYS } from './compaction.ts';
+import { cutOf, cutTask, holdsDescription } from './description-cut.ts';
 import { EVENT_VERSION } from './events.ts';
 import { layoutPaths, readHistory, readSnapshotText, readWorkingSet, snapshotHeaderRecord } from './layout.ts';
 import { markerRecord } from './marker.ts';
@@ -27,8 +28,9 @@ const START = Date.parse('2030-01-07T09:00:00.000Z');
 
 const at = (day: number): string => new Date(START + day * MS_PER_DAY).toISOString();
 
-function create(id: string, day: number): string {
-  const task = { title: `Task ${id}`, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null };
+function create(id: string, day: number, description?: string): string {
+  const fields = { title: `Task ${id}`, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null };
+  const task = description === undefined ? fields : { ...fields, description };
   return toJsonlLine({ v: EVENT_VERSION, type: 'create', id, at: at(day), by: 'lead', task });
 }
 
@@ -56,14 +58,20 @@ function contents(files: MemoryFiles): Record<string, string | undefined> {
   return Object.fromEntries(files.paths().map((path) => [path, files.get(path)]));
 }
 
-/** The working set holds the tasks the whole log folds to, but the retired ones; the history folds to all of them. */
+/**
+ * The working set holds the tasks the whole log folds to, but the retired ones, a description whole or as the mark
+ * of that text (T4781); the history folds to all of them.
+ */
 async function assertReadsAs(files: MemoryFiles, text: string): Promise<void> {
   const whole = readRegister(text);
   const history = await readHistory(files, PATHS);
   assert.deepEqual(history.state, whole.state, 'history');
   const working = await readWorkingSet(files, PATHS);
   for (const [id, task] of working.state.tasks) {
-    assert.deepEqual(task, whole.state.tasks.get(id), `task ${id}`);
+    const told = whole.state.tasks.get(id);
+    assert.ok(told !== undefined, `task ${id} is in the whole log`);
+    assert.deepEqual(cutTask(task), cutTask(told), `task ${id}`);
+    assert.ok(holdsDescription(task, told.description), `description of ${id}`);
   }
   assert.equal(working.state.tasks.size + (working.retired?.count ?? 0), whole.state.tasks.size, 'kept and retired');
 }
@@ -178,6 +186,58 @@ describe('planRotation and applyRotation', () => {
     );
     assert.equal(readSnapshotText(files.get(PATHS.snapshot)).kind, 'usable');
     await assertReadsAs(files, TEXT);
+  });
+
+  /** T1 described on day 0, T2 in progress since day 3: a rotation on day 4 holds T1 as a task line. */
+  const DESCRIBED = create('T1', 0, 'what and why') + create('T2', 2) + status('T2', 3, 'in-progress');
+  const DIFFERS = 'T1 folds otherwise in the working set than in the history';
+
+  it('hold a working set whose task lines leave descriptions out against the history that keeps them, rotation after rotation (T4781)', async () => {
+    const files = new MemoryFiles({ [LOG]: DESCRIBED });
+    const first = await rotate(files, 4);
+    assert.deepEqual([first.source, first.unchanged, first.problems], ['history', 2, []]);
+    assert.equal((files.get(PATHS.snapshot) ?? '').includes('what and why'), false);
+    assert.ok((files.get(PATHS.segment(1)) ?? '').includes('what and why'), 'the archive keeps the text');
+    // The second rotation goes on from the working set, whose T1 holds the mark, and checks it against the history,
+    // whose T1 holds the text; so does the third, from a snapshot written from a cut source.
+    for (const [day, more, segment, tasks] of [[6, create('T3', 5, 'another why'), 2, 3], [9, create('T4', 8), 3, 4]] as const) {
+      await files.append(LOG, more);
+      const plan = await rotate(files, day);
+      assert.deepEqual([plan.source, plan.segment, plan.unchanged, plan.history?.tasks, plan.historyDiffers, plan.problems], ['working set', segment, tasks, tasks, false, []]);
+    }
+    const working = await readWorkingSet(files, PATHS);
+    const held = ['T1', 'T3', 'T4'].map((id) => [working.state.tasks.get(id)?.description, working.state.tasks.get(id)?.descriptionCut]);
+    assert.deepEqual(held, [[null, cutOf('what and why')], [null, cutOf('another why')], [null, null]]);
+    await assertReadsAs(files, DESCRIBED + create('T3', 5, 'another why') + create('T4', 8));
+  });
+
+  it('name a task line whose mark is of another text than the history holds, and rebuild it from the history when asked (T4781)', async () => {
+    const files = new MemoryFiles({ [LOG]: DESCRIBED });
+    await rotate(files, 4);
+    const snapshot = files.get(PATHS.snapshot) ?? '';
+    const { hash } = cutOf('what and why');
+    assert.ok(snapshot.includes(hash));
+    await files.write(PATHS.snapshot, snapshot.replace(hash, cutOf('what and why not').hash));
+    const plain = await planRotation(files, PATHS, options(4));
+    assert.deepEqual([plain.source, plain.problems, plain.historyDiffers], ['working set', [DIFFERS], true]);
+    const plan = await planRotation(files, PATHS, options(4, { fromHistory: true }));
+    assert.deepEqual([plan.source, plan.rebuild, plan.problems], ['history', { differences: [DIFFERS], restoredLines: 0 }, []]);
+    await applyRotation(files, PATHS, plan);
+    assert.deepEqual((await readWorkingSet(files, PATHS)).state.tasks.get('T1')?.descriptionCut, cutOf('what and why'));
+  });
+
+  it('skip a snapshot whose task lines were written before the mark existed for the whole history, and write one with it (T4781)', async () => {
+    const files = new MemoryFiles({ [LOG]: create('T1', 0) + create('T2', 2) });
+    await rotate(files, 4);
+    const snapshot = files.get(PATHS.snapshot) ?? '';
+    assert.ok(snapshot.includes('"descriptionCut":null,'));
+    await files.write(PATHS.snapshot, snapshot.replaceAll('"descriptionCut":null,', ''));
+    const working = await readWorkingSet(files, PATHS);
+    assert.deepEqual([...working.state.tasks.keys()], ['T1', 'T2'], 'a reader folds the history in its place');
+    const plan = await rotate(files, 4);
+    assert.deepEqual([plan.source, plan.skippedSnapshot, plan.problems], ['history', 'a task line is damaged (T1: descriptionCut is neither a mark nor null)', []]);
+    assert.equal(readSnapshotText(files.get(PATHS.snapshot)).kind, 'usable');
+    await assertReadsAs(files, create('T1', 0) + create('T2', 2));
   });
 
   it('call a rotation idle when nothing came since the last one and nothing retires; an empty log is idle too', async () => {
