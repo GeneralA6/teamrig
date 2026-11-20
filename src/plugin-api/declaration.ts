@@ -40,7 +40,7 @@ export interface AdapterEntry {
   readonly declaration: unknown;
 }
 
-/** The entry when `value` has the shape `defineHost` and `defineConnector` return: a declaration and a `create` function. */
+/** The entry when `value` has the shape `defineHost`, `defineConnector` and `defineTerminal` return: a declaration and a `create` function. */
 export function adapterEntry(value: unknown): AdapterEntry | undefined {
   return isRecord(value) && typeof value['create'] === 'function' ? { declaration: value['declaration'] } : undefined;
 }

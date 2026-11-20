@@ -40,6 +40,17 @@ export {
   type Wake,
 } from './terminal.ts';
 export {
+  defineTerminal,
+  isTerminalAdapter,
+  isTerminalDeclaration,
+  terminalAdapterProblems,
+  terminalDeclarationProblems,
+  type TerminalAdapter,
+  type TerminalDeclaration,
+  type TerminalDeps,
+  type TerminalPorts,
+} from './terminal-adapter.ts';
+export {
   CONNECTOR_FEATURES,
   CONNECTOR_KINDS,
   HOST_FEATURES,
