@@ -6,12 +6,6 @@ import type { HookReply } from '../ports/host/index.ts';
 /** How a teamrig hook holds a call back: one it would once have asked a person about, or a plain refusal. */
 export type HoldBack = 'ask' | 'deny';
 
-/** The PreToolUse permission fields of a call a hook holds back: always a refusal, never a prompt. */
-export interface Permission {
-  readonly permissionDecision: 'deny';
-  readonly permissionDecisionReason: string;
-}
-
 /**
  * What the session does with a call a guard holds back instead of asking a person (T3356): take the route the reason
  * names, record a step that still needs a person's yes for the owner, and ask for a rule change it thinks is wrong.
@@ -31,21 +25,16 @@ export function hookAsksOf(load: ConfigLoad | undefined): HookAsks {
   return load?.status === 'loaded' ? load.config.prompts.hookAsks : DEFAULT_PROMPTS.hookAsks;
 }
 
-/**
- * The permission fields for a call a hook holds back. A guard never asks a person: a prompt holds the session's tab
- * until someone answers it (T3356). What it would have asked about is refused instead, its reason followed by what to
- * do (`ASK_REFUSED_NOTE`); a refusal stays a refusal with its own reason.
- */
-export function holdBack(decision: HoldBack, reason: string): Permission {
-  return { permissionDecision: 'deny', permissionDecisionReason: decision === 'ask' ? `${reason} ${ASK_REFUSED_NOTE}` : reason };
-}
-
 /** A hook's reply refusing a call with its reason as given. */
 export function refusal(reason: string): HookReply {
   return { verdict: { kind: 'deny', reason } };
 }
 
-/** A hook's reply holding a call back: a refusal with the reason `holdBack` gives it. */
+/**
+ * A hook's reply holding a call back. A guard never asks a person: a prompt holds the session's tab until someone
+ * answers it (T3356). What it would have asked about is refused instead, its reason followed by what to do
+ * (`ASK_REFUSED_NOTE`); a refusal stays a refusal with its own reason.
+ */
 export function heldBack(decision: HoldBack, reason: string): HookReply {
-  return refusal(holdBack(decision, reason).permissionDecisionReason);
+  return refusal(decision === 'ask' ? `${reason} ${ASK_REFUSED_NOTE}` : reason);
 }
