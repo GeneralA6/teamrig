@@ -4,6 +4,7 @@ import { DEFAULT_PERMISSIONS } from '../../config/defaults.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { expandHome } from '../../core/paths.ts';
 import { SecretScanner } from '../../core/secrets.ts';
+import { sessionSettingsFiles } from '../../doctor/settings-env.ts';
 import { KeepList } from '../../permissions/allow-rules.ts';
 import type { SettingsFile } from '../../permissions/settings-scope.ts';
 import type { HostPaths } from '../../ports/host/index.ts';
@@ -93,6 +94,7 @@ export async function scan(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     since: runtime.clock.now() - days * DAY_MS,
     maxBytes: maxMb * BYTES_PER_MB,
     settings: await settingsOf(runtime, team, host, project),
+    sessionSettings: sessionSettingsFiles({ paths: host, userHome: runtime.userHome }, project),
     keep: new KeepList((team?.config.permissions ?? DEFAULT_PERMISSIONS).keepAllow),
     secrets,
     conflicts: team?.config.ruleConflicts ?? [],

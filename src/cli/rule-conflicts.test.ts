@@ -7,6 +7,7 @@ import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { APP, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { configChangedMeanwhile, hired } from '../testing/config-race.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
 import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { SCAN_LIST_MAX } from './commands/rule-conflicts.ts';
@@ -76,6 +77,14 @@ const WITHHELD = 'CANDIDATE ~/.claude/CLAUDE.md:3 [15 push, 16 worktrees] (withh
 const SKIPPED = 'SKIPPED ~/.claude/CLAUDE.md:3: it looks like it holds a secret, so it was withheld and stays to settle by hand';
 
 describe('rules scan', () => {
+  it("refuses on a host whose folders teamrig does not know, with the host's own reason: it has no file of the host to scan", async () => {
+    const kit = await world();
+    const result = await kit.run(['rules', 'scan'], { probe: new MemoryPathProbe(kit.files), host: NO_PATHS_HOST });
+    assert.equal(result.code, EXIT.refused);
+    assert.match([...result.stdout, ...result.stderr].join('\n'), /REFUSED no folder of the host is known/);
+    assert.ok(!result.stdout.some((line) => line.startsWith('SCANNED')), result.stdout.join('\n'));
+  });
+
   it('counts the places of each kind and lists the candidate lines, a secret-shaped one withheld', async () => {
     const kit = await world();
     const lines = ok(await run(kit, 'scan'));

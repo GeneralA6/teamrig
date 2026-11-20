@@ -7,6 +7,7 @@ import type { JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir, KIT_NAME } from '../../core/home.ts';
 import { expandHome, homeRelative, pathKey } from '../../core/paths.ts';
 import { SecretScanner } from '../../core/secrets.ts';
+import { sessionSettingsFiles } from '../../doctor/settings-env.ts';
 import { CORE_RULE_KEYS, coreRuleKeyOf, ruleLabel, type CoreRuleKey } from '../../rules/keys.ts';
 import { isPlaceKind, PLACE_KINDS, type PlaceKind } from '../../rules/places.ts';
 import { coreRuleTexts, type KeptRule } from '../../rules/pack.ts';
@@ -16,6 +17,7 @@ import { isCleared, nextVerdicts, RULE_HASH_CLOCK, ruleHashesOf, verdictsByText,
 import { lineHash } from '../../inbox/line-hash.ts';
 import { formatUtcDay } from '../../core/time.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
+import { pathsOf } from '../host.ts';
 import { callerOf, listOf } from '../inputs.ts';
 import { checkedNextConfig, configFileJson, configLockOf, leadOnly, openTeamKit, projectFolder, requireConfig, rosterOf, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -132,10 +134,12 @@ async function scanView(runtime: CliRuntime, kit: Kit, config: KitConfig, kind: 
   const project = await projectFolder(runtime, config);
   const kitTree = await loadTree(runtime);
   const teamRules = teamRulesFilesOf(kit, kitTree).map((file) => file.path);
+  // The scan's whole work is the files the host loads into a session, so a host whose folders teamrig does not know refuses here.
+  const sessionSettings = sessionSettingsFiles({ paths: pathsOf(runtime), userHome: runtime.userHome }, project);
   const found = await scanRules<KeptRule>(
     runtime.files,
     runtime.probe,
-    { claudeDir: claudeConfigDir(runtime.env, runtime.userHome), userHome: runtime.userHome, project, skills: kit.paths.skills, teamRules },
+    { claudeDir: claudeConfigDir(runtime.env, runtime.userHome), userHome: runtime.userHome, project, sessionSettings, skills: kit.paths.skills, teamRules },
     [...config.ruleConflicts, ...keptRulesAboveOf(kit, kitTree)],
   );
   const kinds = kind === undefined ? PLACE_KINDS : [kind];
