@@ -825,13 +825,16 @@ them (`echo "exec approve R1"`). A command word only known when it runs counts o
   those repositories raw `gh` only reads. A read is a command on a short list: `view`, `list`, `status`, `diff`,
   `checks`, `search`, `browse`, a `pr checkout`, `repo clone`, `release download` or `run download`, a `gh api` GET
   with no body, and a GraphQL query. Every other command is a write, any command gh adds later too. A write is placed
-  on its `-R` repository and those its words name, else on `GH_REPO` or the folder's git remotes. The reason names
+  on its `-R` repository, before or after the command, and those its words name, else on `GH_REPO` or the folder's
+  git remotes (gh's `{owner}/{repo}` and `:owner/:repo` in a `gh api` path too). The reason names
   the teamrig command that writes it with the team's saved key: `teamrig issue reply` for a comment, `issue close`,
   `issue edit`, `issue label` and `issue assign`, `teamrig add --issue` to open an issue, and `teamrig merge` for a
   pull request; a write no command does goes to the session's lead. A write it cannot place is refused too: an
-  account or organization write, an alias or extension, a GraphQL mutation, a word only known when it runs, or a
-  folder's write on a line that may change which repository the folder is (`git remote set-url`, a `GH_REPO` or
-  `GIT_DIR` it sets, a git alias); name the repository with `-R`. Every write is refused while the team config does
+  account or organization write, an alias or extension, a GraphQL mutation, a word only known when it runs (in a
+  `gh api` call or as the group, a read-looking one too, since it may split into a write), a `gh api` path with a
+  `.`, `..` or `%` segment, or a folder's write on a line that may change which repository the folder is (`git remote
+  set-url`, a `GH_REPO` or `GIT_DIR` it sets, a git alias) or whose remote may reach GitHub in a form the guard cannot
+  read (an SSH host alias, a port); name the repository with `-R`. Every write is refused while the team config does
   not load. A repository outside `github.repos` keeps plain `gh`, so a contributor's own fork works, and a team with
   no `github.repos` is not checked.
 
