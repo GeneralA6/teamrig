@@ -1,6 +1,5 @@
-import { stringField, type JsonRecord } from '../core/guards.ts';
 import { aiTitleOf, customTitleOf } from '../names/title.ts';
-import type { EntryKind, InputEntry, TranscriptReader } from '../ports/host/index.ts';
+import type { EntryKind, HookEvent, InputEntry, TranscriptReader } from '../ports/host/index.ts';
 import type { BackgroundKind } from '../refresh/running.ts';
 
 /**
@@ -44,9 +43,6 @@ const HELPER_KINDS: ReadonlySet<BackgroundKind> = new Set(['helper', 'workflow']
 /** The one kind of transcript entry a first prompt can be. */
 const KINDS: readonly EntryKind[] = ['input'];
 
-/** The tools that stop a turn to ask the user: a question, or a plan to approve. */
-const ASKING_TOOLS: ReadonlySet<string> = new Set(['AskUserQuestion', 'ExitPlanMode']);
-
 /** The SessionStart sources that open a session on an empty prompt; a compaction's start falls mid-turn. */
 const OPENING_SOURCES: ReadonlySet<string> = new Set(['startup', 'resume', 'clear']);
 
@@ -68,42 +64,47 @@ const FENCE = /^ {0,3}(```|~~~)/;
 /** C0 and C1 controls and DEL: inside the title, one would end the sequence early or make Claude Code refuse it. */
 const CONTROLS = /[\u0000-\u001f\u007f-\u009f]/g;
 
-/** What a hook event does to the tab, from its `hook_event_name` and the fields that event carries. */
-export function tabChangeOf(payload: JsonRecord): TabChange {
-  switch (stringField(payload, 'hook_event_name')) {
-    case 'SessionStart':
-      return OPENING_SOURCES.has(stringField(payload, 'source') ?? '') ? 'ready' : undefined;
-    case 'UserPromptSubmit':
-      return SLASH_COMMAND.test(stringField(payload, 'prompt') ?? '') ? 'ready' : 'working';
-    case 'PreToolUse':
-      return ASKING_TOOLS.has(stringField(payload, 'tool_name') ?? '') ? 'waiting' : undefined;
-    case 'PermissionRequest':
-    case 'Elicitation':
+/** What the tab's state reads of a hook event. */
+export type TabEvent = Pick<HookEvent, 'name' | 'source' | 'prompt' | 'call' | 'lastReply' | 'trigger'>;
+
+/** What a hook event does to the tab, from its name and the fields that event carries. */
+export function tabChangeOf(event: TabEvent): TabChange {
+  switch (event.name) {
+    case 'session-start':
+      return OPENING_SOURCES.has(event.source ?? '') ? 'ready' : undefined;
+    case 'prompt':
+      return SLASH_COMMAND.test(event.prompt ?? '') ? 'ready' : 'working';
+    case 'tool-start':
+      // Only a call that stops the turn to ask the user: a question, or a plan to approve.
+      return event.call?.kind === 'ask' ? 'waiting' : undefined;
+    case 'permission-prompt':
+    case 'form-start':
       return 'waiting';
-    case 'PostToolUse':
-    case 'PostToolUseFailure':
-    case 'ElicitationResult':
-    case 'SubagentStart':
+    case 'tool-end':
+    case 'tool-failed':
+    case 'form-end':
+    case 'helper-start':
       return 'working';
-    case 'Stop':
-      return asksDecision(stringField(payload, 'last_assistant_message')) ? 'decision' : 'ready';
-    case 'StopFailure':
+    case 'stop':
+      return asksDecision(event.lastReply) ? 'decision' : 'ready';
+    case 'stop-failed':
       return 'error';
-    case 'PreCompact':
+    case 'compact-start':
       return 'compacting';
-    case 'PostCompact':
+    case 'compact-end':
       // A /compact the user typed ends there; an automatic one carries on with the turn it interrupted.
-      return stringField(payload, 'trigger') === 'manual' ? 'ready' : 'working';
-    case 'SessionEnd':
+      return event.trigger === 'manual' ? 'ready' : 'working';
+    case 'session-end':
       return 'reset';
-    default:
+    case 'helper-stop':
+    case 'other':
       return undefined;
   }
 }
 
 /**
  * Whether a turn's last message puts a decision to the user: one of its lines outside a fenced code block opens
- * with `DECISION_MARKER`. Claude Code gives the message to Stop as `last_assistant_message`, so no transcript is read.
+ * with `DECISION_MARKER`. The turn end's hook event carries the message as its last reply, so no transcript is read.
  */
 export function asksDecision(message: string | undefined): boolean {
   return decisionLineOf(message) !== undefined;
@@ -127,8 +128,8 @@ export function decisionLineOf(message: string | undefined): string | undefined 
  * at a turn's end they run on in the background. A session that just started has none of its own (a
  * resumed one lost them with its old process, though its transcript never says they ended).
  */
-export function readyWaitsOnHelpers(payload: JsonRecord, change: TabChange): boolean {
-  return change === 'ready' && stringField(payload, 'hook_event_name') !== 'SessionStart';
+export function readyWaitsOnHelpers(event: Pick<HookEvent, 'name'>, change: TabChange): boolean {
+  return change === 'ready' && event.name !== 'session-start';
 }
 
 /** Whether running background work includes a helper (`readRunningKinds`), so a ready tab still shows working. */
@@ -190,20 +191,20 @@ function folderNameOf(path: string): string | undefined {
 }
 
 /**
- * What the tab calls the session, the first of: the session's title (the payload's, else the newest
+ * What the tab calls the session, the first of: the session's title (the hook event's, else the newest
  * the user gave in the transcript), the title Claude Code made up, the first prompt (from a whole
  * transcript, else this event's own), the folder's name, then `FALLBACK_TOPIC`. With no `reader` (a
  * host that keeps no transcript teamrig can read) the transcript's candidates are skipped.
  */
-export function topicOf(reader: TranscriptReader | undefined, payload: JsonRecord, tail: TranscriptTail | undefined): string {
+export function topicOf(reader: TranscriptReader | undefined, event: Pick<HookEvent, 'title' | 'prompt' | 'cwd'>, tail: TranscriptTail | undefined): string {
   const read = reader === undefined || tail === undefined ? undefined : { reader, tail };
   const candidates = [
-    () => stringField(payload, 'session_title'),
+    () => event.title,
     () => (read === undefined ? undefined : customTitleOf(read.reader, read.tail.text)),
     () => (read === undefined ? undefined : aiTitleOf(read.reader, read.tail.text)),
     () => (read?.tail.whole === true ? firstPromptOf(read.reader, read.tail.text) : undefined),
-    () => topicalPrompt(stringField(payload, 'prompt')),
-    () => folderNameOf(stringField(payload, 'cwd') ?? ''),
+    () => topicalPrompt(event.prompt),
+    () => folderNameOf(event.cwd ?? ''),
   ];
   for (const candidate of candidates) {
     const text = titleText(candidate() ?? '');

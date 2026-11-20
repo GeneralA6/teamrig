@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
+import type { HookEvent } from '../ports/host/index.ts';
+import { hookEventOf } from '../testing/host.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
 import { askOf, formatTabNeed, NEED_TEXT_MAX_CHARS, parseTabNeed, TabNeedStore, tabNeedOf, taskOf, type TabNeed } from './need.ts';
 
@@ -9,8 +11,9 @@ const PATHS = { tabs: join('/', 'team', 'state', 'tabs') };
 const SINCE = '2030-01-08T10:00:00.000Z';
 const WAITING: TabNeed = { session: 'alpha', state: 'waiting', kind: 'permission', text: 'Bash: npm test', task: null, pid: 6900, since: SINCE };
 
-function event(name: string, fields: JsonRecord = {}): JsonRecord {
-  return { hook_event_name: name, ...fields };
+/** The hook event the shipped host's bridge reads from the host's event `name` with these payload `fields`. */
+function event(name: string, fields: JsonRecord = {}): HookEvent {
+  return hookEventOf({ hook_event_name: name, ...fields });
 }
 
 describe('askOf', () => {
