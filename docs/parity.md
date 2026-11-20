@@ -148,39 +148,40 @@ The AI CLIs a session runs in.
 The outside tools holding a team's issues (the `tracker` rows) or its code and pull requests (the `codehost` rows).
 
 - GitHub (`github`), built on plugin API 0.1.0
+- Jira (`jira`), built on plugin API 0.1.0
 - Local (`local`), built on plugin API 0.1.0
 
 ### tracker
 
-| Feature | What it does | GitHub | Local |
-| --- | --- | --- | --- |
-| `tracker.issue-import` | a task per open issue, kept in step with it (`issue sync`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.accept-label` | an outsider's issue is taken once one of the team's people labels it accepted | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.watch` | a look for changes every few seconds, a sync only after one (`issue watch`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.issue-open` | opening a task's issue with its labels (`add --issue`, `issue migrate`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.comment` | a comment on an issue (`issue reply`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.edit-body` | rewriting an issue's body (`issue edit-body`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.close` | closing an issue as completed, not planned or duplicate (`issue close`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.labels` | adding, removing and making labels (`issue label`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.status-push` | a status label per active task, its owner as assignee (`issue push`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.assign` | assigning and unassigning people (`issue assign`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.claims` | a commenter's take line assigns them, and an idle claim is taken off | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.clocks` | the response clock: threads waiting on an answer from the team | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.mentions` | a post naming one of the team's people wakes their session | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.follow` | a session hears the changes on an item it follows (`follow`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.links` | parent and blocker links between issues (`issue links`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.fields` | a task's priority and type written to issue fields | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.similar` | finding imported issues alike (`issue similar`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.security-alert` | a security-labelled issue pages the lead | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.stamp` | posted text ends with the made-with-teamrig footer | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `tracker.hidden-mark` | a mark on an issue that its readers do not see | unsupported: GitHub shows every mark on an issue to its readers: a mark there is a label or a comment | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| Feature | What it does | GitHub | Jira | Local |
+| --- | --- | --- | --- | --- |
+| `tracker.issue-import` | a task per open issue, kept in step with it (`issue sync`) | supported, unproved | partial (missing: a description's formatting, and the reporter's tie to the project), unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.accept-label` | an outsider's issue is taken once one of the team's people labels it accepted | supported, unproved | unsupported: the Jira connector does not read who put a label on an issue yet, so the accept label takes no issue | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.watch` | a look for changes every few seconds, a sync only after one (`issue watch`) | supported, unproved | partial (missing: a free look for a change), unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.issue-open` | opening a task's issue with its labels (`add --issue`, `issue migrate`) | supported, unproved | unsupported: the Jira connector does not open issues yet | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.comment` | a comment on an issue (`issue reply`) | supported, unproved | partial (missing: Markdown), unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.edit-body` | rewriting an issue's body (`issue edit-body`) | supported, unproved | partial (missing: Markdown), unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.close` | closing an issue as completed, not planned or duplicate (`issue close`) | supported, unproved | unsupported: the Jira connector does not close issues yet | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.labels` | adding, removing and making labels (`issue label`) | supported, unproved | partial (missing: a label made with a colour and a description, and a name holding a space), unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.status-push` | a status label per active task, its owner as assignee (`issue push`) | supported, unproved | partial (missing: the assignee, and the two status labels whose names hold a space), unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.assign` | assigning and unassigning people (`issue assign`) | supported, unproved | unsupported: the Jira connector does not assign issues yet | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.claims` | a commenter's take line assigns them, and an idle claim is taken off | supported, unproved | unsupported: the Jira connector does not assign issues yet, so a claim line takes no issue | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.clocks` | the response clock: threads waiting on an answer from the team | supported, unproved | partial (missing: a commenter's tie to the project), unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.mentions` | a post naming one of the team's people wakes their session | supported, unproved | unsupported: the Jira connector does not read comments for a mention yet | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.follow` | a session hears the changes on an item it follows (`follow`) | supported, unproved | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.links` | parent and blocker links between issues (`issue links`) | supported, unproved | unsupported: the Jira connector does not read or write issue links yet | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.fields` | a task's priority and type written to issue fields | supported, unproved | unsupported: the Jira connector does not write an issue's priority or type yet | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.similar` | finding imported issues alike (`issue similar`) | supported, unproved | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.security-alert` | a security-labelled issue pages the lead | supported, unproved | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.stamp` | posted text ends with the made-with-teamrig footer | supported, unproved | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `tracker.hidden-mark` | a mark on an issue that its readers do not see | unsupported: GitHub shows every mark on an issue to its readers: a mark there is a label or a comment | unsupported: the Jira connector keeps no hidden mark on an issue yet | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
 
 ### codehost
 
-| Feature | What it does | GitHub | Local |
-| --- | --- | --- | --- |
-| `codehost.pull-news` | opened, merged, conflicting, failing and reviewed pull requests reach their session | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `codehost.ci-excerpt` | the end of a failed CI job's log | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `codehost.pr-conflicts` | the files a pull request conflicts on (`pr conflicts`) | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `codehost.review-posts` | review comments and reviews in the mention scan | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
-| `codehost.linked-pulls` | how many open pull requests close an issue | supported, unproved | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| Feature | What it does | GitHub | Jira | Local |
+| --- | --- | --- | --- | --- |
+| `codehost.pull-news` | opened, merged, conflicting, failing and reviewed pull requests reach their session | supported, unproved | unsupported: Jira is a tracker: pull requests, their checks and their reviews need a code host connector | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `codehost.ci-excerpt` | the end of a failed CI job's log | supported, unproved | unsupported: Jira is a tracker: pull requests, their checks and their reviews need a code host connector | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `codehost.pr-conflicts` | the files a pull request conflicts on (`pr conflicts`) | supported, unproved | unsupported: Jira is a tracker: pull requests, their checks and their reviews need a code host connector | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `codehost.review-posts` | review comments and reviews in the mention scan | supported, unproved | unsupported: Jira is a tracker: pull requests, their checks and their reviews need a code host connector | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |
+| `codehost.linked-pulls` | how many open pull requests close an issue | supported, unproved | unsupported: Jira is a tracker: pull requests, their checks and their reviews need a code host connector | unsupported: the local connector keeps tasks in the register: it has no outside tracker or code host |

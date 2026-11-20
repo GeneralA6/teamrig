@@ -75,10 +75,10 @@ describe('renderParity', () => {
     );
   });
 
-  it('draws the adapters teamrig ships: Claude Code, then GitHub beside the local connector', async () => {
+  it('draws the adapters teamrig ships: Claude Code, then GitHub, Jira and the local connector side by side', async () => {
     const text = renderParity(await readDeclarations());
     assert.ok(text.includes('\n| Feature | What it does | Claude Code |\n'));
-    assert.ok(text.includes('\n| Feature | What it does | GitHub | Local |\n'));
-    assert.match(rowOf(text, 'tracker.hidden-mark') ?? '', / \| unsupported: GitHub shows every mark .* \| unsupported: the local connector .* \|$/);
+    assert.ok(text.includes('\n| Feature | What it does | GitHub | Jira | Local |\n'));
+    assert.match(rowOf(text, 'tracker.hidden-mark') ?? '', / \| unsupported: GitHub shows every mark .* \| unsupported: the Jira connector keeps no hidden mark .* \| unsupported: the local connector .* \|$/);
   });
 });

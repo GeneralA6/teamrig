@@ -35,8 +35,9 @@ describe('the adapter loader, on the adapters teamrig ships', () => {
   });
 
   it('loads each connector through the real importer', async () => {
-    const [github, local] = await Promise.all([loadConnector('github', importModule), loadConnector('local', importModule)]);
+    const [github, jira, local] = await Promise.all([loadConnector('github', importModule), loadConnector('jira', importModule), loadConnector('local', importModule)]);
     assert.equal(github.kind === 'loaded' && github.value.declaration.refPrefix, 'gh:');
+    assert.equal(jira.kind === 'loaded' && jira.value.declaration.refPrefix, 'jira:');
     assert.equal(local.kind === 'loaded' && local.value.declaration.refPrefix, 'local:');
   });
 
@@ -50,6 +51,7 @@ describe('the adapter loader, on the adapters teamrig ships', () => {
       connectors.map((load) => [load.id, load.kind, load.kind === 'loaded' && load.value.name]),
       [
         ['github', 'loaded', 'GitHub'],
+        ['jira', 'loaded', 'Jira'],
         ['local', 'loaded', 'Local'],
       ],
     );
@@ -61,14 +63,20 @@ describe('reading the declarations', () => {
     const { importer, asked } = serving({
       '../adapters/hosts/claude-code/declaration.ts': { declaration: hostDeclarationData({ id: 'claude-code' }) },
       '../adapters/connectors/github/declaration.ts': { declaration: connectorDeclarationData({ id: 'github' }) },
+      '../adapters/connectors/jira/declaration.ts': { declaration: connectorDeclarationData({ id: 'jira' }) },
       '../adapters/connectors/local/declaration.ts': { declaration: connectorDeclarationData({ id: 'local' }) },
     });
     const { hosts, connectors } = await readDeclarations(importer);
     assert.deepEqual(
       [...hosts, ...connectors].map((load) => load.kind),
-      ['loaded', 'loaded', 'loaded'],
+      ['loaded', 'loaded', 'loaded', 'loaded'],
     );
-    assert.deepEqual(asked, ['../adapters/hosts/claude-code/declaration.ts', '../adapters/connectors/github/declaration.ts', '../adapters/connectors/local/declaration.ts']);
+    assert.deepEqual(asked, [
+      '../adapters/hosts/claude-code/declaration.ts',
+      '../adapters/connectors/github/declaration.ts',
+      '../adapters/connectors/jira/declaration.ts',
+      '../adapters/connectors/local/declaration.ts',
+    ]);
   });
 
   it('refuses the one adapter whose declaration is broken, and still reads the others', async () => {
@@ -80,6 +88,7 @@ describe('reading the declarations', () => {
     assert.deepEqual(hosts.map(noticesOf), [undefined]);
     assert.deepEqual(connectors.map(noticesOf), [
       ['its refPrefix must be a lower-case word ending in a colon'],
+      ['its declaration.ts did not load: Cannot find module ../adapters/connectors/jira/declaration.ts'],
       ['its declaration.ts did not load: Cannot find module ../adapters/connectors/local/declaration.ts'],
     ]);
   });
@@ -90,8 +99,8 @@ describe('an adapter the loader refuses', () => {
     const { importer, asked } = serving({});
     assert.deepEqual(await loadHost('codex', importer), { kind: 'refused', id: 'codex', notices: ['no host adapter is named codex: the host adapters are claude-code'] });
     assert.deepEqual(noticesOf(await loadHost('github', importer)), ['no host adapter is named github: the host adapters are claude-code']);
-    assert.deepEqual(noticesOf(await loadConnector('claude-code', importer)), ['no connector adapter is named claude-code: the connector adapters are github, local']);
-    assert.deepEqual(noticesOf(await loadConnector('constructor', importer)), ['no connector adapter is named constructor: the connector adapters are github, local']);
+    assert.deepEqual(noticesOf(await loadConnector('claude-code', importer)), ['no connector adapter is named claude-code: the connector adapters are github, jira, local']);
+    assert.deepEqual(noticesOf(await loadConnector('constructor', importer)), ['no connector adapter is named constructor: the connector adapters are github, jira, local']);
     assert.deepEqual(asked, []);
   });
 
