@@ -81,6 +81,21 @@ export const TEAMRIG_RELEASE_MANIFEST: VersionFile = { path: '.release-please-ma
 /** Every teamrig file of which a ship or a catch-up rewrites only the version token, which an approval masks (approval.ts). */
 export const TEAMRIG_SHIP_VERSION_FILES: readonly VersionFile[] = [...TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_MANIFEST];
 
+/** Any plugin's manifest in a repo the ship serves, such as teamrig-pane's, whose `version` a release raises. */
+const PLUGIN_MANIFEST_PATH = /^plugins\/[^/]+\/\.claude-plugin\/plugin\.json$/;
+const PLUGIN_MANIFEST_VERSION = /("version":\s*")(\d+\.\d+\.\d+)(")/;
+
+/**
+ * The version file a repo profile's regenerated path names, or undefined for none: one of teamrig's own, or a plugin
+ * manifest by its shape, so another repo the ship serves (teamrig-pane, T4821) has its release raise read and masked
+ * as teamrig's is, without the ship naming each of its paths.
+ */
+export function shipVersionFileOf(path: string): VersionFile | undefined {
+  const known = TEAMRIG_SHIP_VERSION_FILES.find((file) => file.path === path);
+  if (known !== undefined) return known;
+  return PLUGIN_MANIFEST_PATH.test(path) ? { path, pattern: PLUGIN_MANIFEST_VERSION } : undefined;
+}
+
 /**
  * The release stamps a change carries beside the version raise, each set to the version the change ships in (the
  * kit's), so it follows each raise the ship sets again on a newer main: a config migration's first release
