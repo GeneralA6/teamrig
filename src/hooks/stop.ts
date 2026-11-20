@@ -1,11 +1,6 @@
 import type { HookReply } from '../ports/host/index.ts';
 import type { StopDecision } from '../refresh/decide.ts';
 
-/** The xterm sequence that sets the terminal tab's title (OSC 0, ended by BEL). */
-export function tabTitleSequence(title: string): string {
-  return `\u001b]0;${title}\u0007`;
-}
-
 /** The lines for the human as one notice, a line each, or none when there are none. */
 function noticeOf(lines: readonly string[]): string | undefined {
   return lines.length === 0 ? undefined : lines.join('\n');

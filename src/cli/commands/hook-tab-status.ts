@@ -1,17 +1,16 @@
 import type { KitConfig } from '../../config/types.ts';
-import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV, type Env } from '../../core/home.ts';
 import { tabDisplayOf, type TeamRoster } from '../../hooks/bind.ts';
-import { tabTitleSequence } from '../../hooks/stop.ts';
 import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
+import type { HookEvent } from '../../ports/host/index.ts';
 import { readRunningKinds } from '../../refresh/running.ts';
 import { helpersRun, readyWaitsOnHelpers, tabChangeOf, tabTitle, topicOf, type TranscriptTail } from '../../tabs/status.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { transcriptsIfKept } from '../host.ts';
 import { openKit, rosterOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { readHookInput, sessionTeam, type HookOrigin } from './hook-input.ts';
-import { pickerRefusal, type PickerCaller } from './hook-picker-guard.ts';
+import { readHookInput, sessionTeam, writeReply } from './hook-input.ts';
+import { pickerRefusal } from './hook-picker-guard.ts';
 import { recordTabNeed } from './hook-tab-need.ts';
 
 /** The values Claude Code reads as on for a switch such as `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`. */
@@ -27,68 +26,57 @@ export function tabStatusOn(env: Env, config: KitConfig): boolean {
   return config.tabStatus.enabled && titleLeftToHooks(env);
 }
 
-/** The end of the payload's transcript the topic reads; undefined without one. */
-async function transcriptTailOf(runtime: CliRuntime, payload: JsonRecord): Promise<TranscriptTail | undefined> {
-  const transcript = stringField(payload, 'transcript_path');
+/** The end of the session's transcript the topic reads; undefined without one. */
+async function transcriptTailOf(runtime: CliRuntime, transcript: string | undefined): Promise<TranscriptTail | undefined> {
   const text = transcript === undefined || transcript === '' ? undefined : await runtime.files.readTail(transcript, TRANSCRIPT_TAIL_BYTES);
   return text === undefined ? undefined : { text, whole: Buffer.byteLength(text, 'utf8') < TRANSCRIPT_TAIL_BYTES };
 }
 
 /** Whether a helper the session started still runs, by its transcript; none on a host that keeps no transcript teamrig can read. */
-async function helpersRunFor(runtime: CliRuntime, payload: JsonRecord): Promise<boolean> {
-  const transcript = stringField(payload, 'transcript_path');
+async function helpersRunFor(runtime: CliRuntime, transcript: string | undefined): Promise<boolean> {
   const reader = transcriptsIfKept(runtime);
   return transcript !== undefined && transcript !== '' && reader !== undefined && helpersRun(await readRunningKinds(reader, runtime.files, transcript, runtime.clock.now()));
 }
 
 /**
  * The title this hook event gives the tab: its state's circle before `label` (a refresh notice's title), else
- * before the session's topic, read from the transcript only when the payload has no session title; a topic
+ * before the session's topic, read from the transcript only when the event has no session title; a topic
  * naming one session of `own` reads `[<team>] <name>` (tabDisplayOf). A ready state reads as working while a
  * helper still runs. '' gives the title back to the terminal; undefined leaves it. On a host that keeps no
- * transcript teamrig can read, the topic comes from the payload alone.
+ * transcript teamrig can read, the topic comes from the event alone.
  */
-export async function tabTitleOf(runtime: CliRuntime, payload: JsonRecord, own: TeamRoster, label?: string): Promise<string | undefined> {
-  const change = tabChangeOf(payload);
+export async function tabTitleOf(runtime: CliRuntime, event: HookEvent, own: TeamRoster, label?: string): Promise<string | undefined> {
+  const change = tabChangeOf(event);
   if (change === undefined || change === 'reset') {
     return change === 'reset' ? '' : undefined;
   }
-  const state = readyWaitsOnHelpers(payload, change) && (await helpersRunFor(runtime, payload)) ? 'working' : change;
+  const state = readyWaitsOnHelpers(event, change) && (await helpersRunFor(runtime, event.transcript)) ? 'working' : change;
   if (label !== undefined) {
     return tabTitle(state, label);
   }
-  const named = stringField(payload, 'session_title')?.trim();
   const reader = transcriptsIfKept(runtime);
-  const tail = reader !== undefined && (named === undefined || named === '') ? await transcriptTailOf(runtime, payload) : undefined;
-  return tabTitle(state, tabDisplayOf(own, topicOf(reader, payload, tail)));
+  const tail = reader !== undefined && event.title === undefined ? await transcriptTailOf(runtime, event.transcript) : undefined;
+  return tabTitle(state, tabDisplayOf(own, topicOf(reader, event, tail)));
 }
 
 /**
- * The tab title this payload sets, as a terminal sequence; undefined with tab status off or no change. A question
- * picker the picker guard refuses leaves the title: the picker never opens, and the session goes on. `origin` is the
- * hook event's, which finds the session's team.
+ * The tab title this hook event sets; undefined with tab status off or no change. A question picker the picker
+ * guard refuses leaves the title: the picker never opens, and the session goes on.
  */
-export async function tabSequenceOf(runtime: CliRuntime, payload: JsonRecord, origin: HookOrigin & PickerCaller): Promise<string | undefined> {
+export async function tabStatusTitleOf(runtime: CliRuntime, event: HookEvent): Promise<string | undefined> {
   // The switch first: it costs no file read, and on most machines it is off.
   if (!titleLeftToHooks(runtime.env)) {
     return undefined;
   }
-  const found = await sessionTeam(origin.cwd, runtime);
+  const found = await sessionTeam(event.cwd, runtime);
   const kit = found.kind === 'team' ? await openKit(runtime, found.team) : undefined;
   if (kit?.load.status !== 'loaded' || !kit.load.config.tabStatus.enabled) {
     return undefined;
   }
-  if ((await pickerRefusal(runtime, kit, kit.load.config, payload, origin)) !== undefined) {
+  if ((await pickerRefusal(runtime, kit, kit.load.config, event)) !== undefined) {
     return undefined;
   }
-  const title = await tabTitleOf(runtime, payload, { team: kit.paths.team, roster: await rosterOf(runtime, kit, kit.load.config) });
-  return title === undefined ? undefined : tabTitleSequence(title);
-}
-
-/** What the hook prints for this payload: the tab title's terminal sequence in Claude Code's JSON, or '' for none. */
-export async function tabStatusOutputOf(runtime: CliRuntime, payload: JsonRecord, origin: HookOrigin & PickerCaller): Promise<string> {
-  const sequence = await tabSequenceOf(runtime, payload, origin);
-  return sequence === undefined ? '' : JSON.stringify({ terminalSequence: sequence });
+  return tabTitleOf(runtime, event, { team: kit.paths.team, roster: await rosterOf(runtime, kit, kit.load.config) });
 }
 
 /**
@@ -99,13 +87,14 @@ export async function tabStatusOutputOf(runtime: CliRuntime, payload: JsonRecord
  */
 export async function tabStatus(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  if (!isRecord(payload) || event === undefined) {
+  const { event } = await readHookInput(runtime);
+  if (event === undefined) {
     return EXIT.ok;
   }
-  const [output] = await Promise.all([tabStatusOutputOf(runtime, payload, event).catch(() => ''), recordTabNeed(runtime, payload, event).catch(() => undefined)]);
-  if (output !== '') {
-    runtime.out.stdout(output);
+  const [tabTitle] = await Promise.all([tabStatusTitleOf(runtime, event).catch((): string | undefined => undefined), recordTabNeed(runtime, event).catch(() => undefined)]);
+  // An event teamrig has no name for changes no tab, so it has no title to write.
+  if (event.name !== 'other') {
+    writeReply(runtime, event.name, { tabTitle });
   }
   return EXIT.ok;
 }

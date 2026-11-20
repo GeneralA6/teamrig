@@ -1,5 +1,4 @@
 import type { KitConfig } from '../../config/types.ts';
-import { isRecord, type JsonRecord } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { cdCompoundOfEvent, cdCompoundReason, guardsCdCompound, type CdCompound } from '../../hooks/cd-compound.ts';
 import { helperOf } from '../../hooks/helper-start.ts';
@@ -50,17 +49,17 @@ async function parentLeadOf(runtime: CliRuntime, kit: Kit, config: KitConfig): P
   return tree.placeOf(kit.paths.team)?.parentLead;
 }
 
-/** What the guard reads of the hook event that calls the picker: whose session it is, and whether a helper calls. */
-export type PickerCaller = Pick<HookEvent, 'session' | 'helper'>;
+/** What the guard reads of a hook event: whether it calls the picker, whose session it is, and whether a helper calls. */
+export type PickerCaller = Pick<HookEvent, 'name' | 'call' | 'session' | 'helper'>;
 
 /**
- * Why the guard refuses this payload's question picker (hooks/picker-guard.ts); undefined lets the call go: the
+ * Why the guard refuses this hook event's question picker (hooks/picker-guard.ts); undefined lets the call go: the
  * switch is off, it is no picker call or no team session asks. The session is read only for a picker call with the
  * switch on, so the tab-status hook's other events read no file, and the team tree and the meeting, which only pick
  * the reason, only for the lead's own thread.
  */
-export async function pickerRefusal(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: JsonRecord, caller: PickerCaller): Promise<string | undefined> {
-  if (!guardsPicker(config.pickerGuard.enabled, payload)) {
+export async function pickerRefusal(runtime: CliRuntime, kit: Kit, config: KitConfig, caller: PickerCaller): Promise<string | undefined> {
+  if (!guardsPicker(config.pickerGuard.enabled, caller)) {
     return undefined;
   }
   const session = await teamSessionOf(runtime, kit, await rosterOf(runtime, kit, config), caller.session ?? null);
@@ -88,7 +87,7 @@ async function cdCompoundRefusal(runtime: CliRuntime, kit: Kit, config: KitConfi
 }
 
 /** The hook's reply to this call: the refusal with its reason, or none when the call goes on. */
-async function pickerGuardReplyOf(runtime: CliRuntime, payload: JsonRecord, event: HookEvent): Promise<HookReply | undefined> {
+async function pickerGuardReplyOf(runtime: CliRuntime, event: HookEvent): Promise<HookReply | undefined> {
   // Every Bash line reaches this hook, so a line with no cd compound to refuse returns before any file is read.
   const bash = guardsCdCompound(true, event);
   const compound = bash ? cdCompoundOfEvent(event, { cwd: event.cwd ?? runtime.cwd, home: runtime.userHome }) : undefined;
@@ -101,7 +100,7 @@ async function pickerGuardReplyOf(runtime: CliRuntime, payload: JsonRecord, even
     return undefined;
   }
   const config = kit.load.config;
-  const reason = compound === undefined ? await pickerRefusal(runtime, kit, config, payload, event) : await cdCompoundRefusal(runtime, kit, config, event, compound);
+  const reason = compound === undefined ? await pickerRefusal(runtime, kit, config, event) : await cdCompoundRefusal(runtime, kit, config, event, compound);
   return reason === undefined ? undefined : refusal(reason);
 }
 
@@ -118,8 +117,8 @@ async function pickerGuardReplyOf(runtime: CliRuntime, payload: JsonRecord, even
  */
 export async function pickerGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  const reply = isRecord(payload) && event !== undefined ? await pickerGuardReplyOf(runtime, payload, event).catch(() => undefined) : undefined;
+  const { event } = await readHookInput(runtime);
+  const reply = event === undefined ? undefined : await pickerGuardReplyOf(runtime, event).catch(() => undefined);
   writeReply(runtime, 'tool-start', reply);
   return EXIT.ok;
 }
