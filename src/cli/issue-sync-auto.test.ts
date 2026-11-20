@@ -5,7 +5,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import { parseSyncState, SYNC_STATE_FORMAT } from '../sync/auto.ts';
 import { formatFollows } from '../sync/follows.ts';
 import { REVIEW_READS_MAX } from '../issues/scan-caps.ts';
-import { isIssueQuery } from '../github/gh.ts';
+import { isIssueQuery } from '../adapters/connectors/github/gh.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { SECURITY_ALERTS_PER_RUN } from '../sync/security-alert.ts';
 import { FakeGh, ghIssue, ghPull, restComment, restIssue } from '../testing/fake-gh.ts';
