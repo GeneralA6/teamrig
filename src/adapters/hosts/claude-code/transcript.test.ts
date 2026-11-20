@@ -251,6 +251,15 @@ describe("Claude Code's transcript lines as entries", () => {
     assert.deepEqual(transcriptReader.entry(compactLine(AT)), { ...BARE, at: AT_MS, kind: 'compact' });
   });
 
+  it("reads each of the three marks of a turn's end, and no other system line, as the end of a turn", () => {
+    for (const subtype of ['stop_hook_summary', 'turn_duration', 'local_command']) {
+      assert.deepEqual(transcriptReader.entry(JSON.stringify({ type: 'system', subtype })), { ...BARE, kind: 'turn-end' }, subtype);
+    }
+    assert.deepEqual(transcriptReader.entry(systemLine(AT)), { ...BARE, at: AT_MS, kind: 'turn-end' });
+    assert.equal(transcriptReader.entry(JSON.stringify({ type: 'attachment', subtype: 'turn_duration' }))?.kind, 'other');
+    assert.equal(transcriptReader.entry(JSON.stringify({ subtype: 'turn_duration' }))?.kind, 'other');
+  });
+
   it("reads a hook's note with its texts, and whether it was written at the session's start", () => {
     assert.deepEqual(transcriptReader.entry(sessionStartNoteLine(AT, ['one', 'two'])), { ...BARE, at: AT_MS, thread: 'main', kind: 'hook-note', atStart: true, texts: ['one', 'two'] });
     assert.deepEqual(transcriptReader.entry(sessionStartNoteLine(AT, ['later'], 'UserPromptSubmit')), { ...BARE, at: AT_MS, thread: 'main', kind: 'hook-note', atStart: false, texts: ['later'] });
@@ -264,7 +273,9 @@ describe("Claude Code's transcript lines as entries", () => {
     const others: readonly (readonly [Readonly<Record<string, unknown>>, string | undefined])[] = [
       [{ type: 'attachment', attachment: { type: 'environment', snapshot: {} } }, 'attachment'],
       [{ type: 'attachment' }, 'attachment'],
-      [{ type: 'system', subtype: 'turn_duration' }, 'system'],
+      [{ type: 'system', subtype: 'api_error' }, 'system'],
+      [{ type: 'system' }, 'system'],
+      [{ type: 'system', subtype: 7 }, 'system'],
       [{ type: 'queue-operation', operation: 'enqueue', content: 'go' }, 'queue-operation'],
       [{ type: 'user' }, 'user'],
       [{ type: 'user', message: 'go' }, 'user'],
@@ -276,7 +287,7 @@ describe("Claude Code's transcript lines as entries", () => {
     for (const [entry, type] of others) {
       assert.deepEqual(transcriptReader.entry(JSON.stringify(entry)), { ...BARE, kind: 'other', type }, JSON.stringify(entry));
     }
-    assert.deepEqual(transcriptReader.entry(systemLine(AT)), { ...BARE, at: AT_MS, kind: 'other', type: 'system' });
+    assert.deepEqual(transcriptReader.entry(JSON.stringify({ type: 'file-history-snapshot', timestamp: AT })), { ...BARE, at: AT_MS, kind: 'other', type: 'file-history-snapshot' });
   });
 
   it('says a torn line and a line that is no object are unread, and a blank line is nothing', () => {
@@ -298,10 +309,11 @@ describe('reading only some kinds of entry', () => {
     input: promptLine(AT),
     reply: replyLine({ id: 'm-1', at: AT, usage: { input: 1 } }),
     compact: compactLine(AT),
+    'turn-end': systemLine(AT),
     'hook-note': sessionStartNoteLine(AT, ['note']),
-    other: systemLine(AT),
+    other: JSON.stringify({ type: 'system', subtype: 'api_error', timestamp: AT }),
   } as const;
-  const kinds = ['input', 'reply', 'compact', 'hook-note', 'other'] as const;
+  const kinds = ['input', 'reply', 'compact', 'turn-end', 'hook-note', 'other'] as const;
 
   it('gives a line of a named kind as it reads without the filter', () => {
     for (const kind of kinds) {
@@ -345,7 +357,7 @@ describe('the recorded session read as entries', () => {
       .filter((line) => line.trim() !== '')
       .map((line, index) => ({ where: `${transcript.file} line ${index + 1}`, line })),
   );
-  const kinds = ['input', 'reply', 'compact', 'hook-note', 'other'] as const;
+  const kinds = ['input', 'reply', 'compact', 'turn-end', 'hook-note', 'other'] as const;
 
   it('reads every line the host wrote: none is damaged, and the session has inputs and replies in both threads', () => {
     assert.equal(recording.transcripts.length >= 2, true, 'the session and a helper were recorded');
@@ -355,7 +367,7 @@ describe('the recorded session read as entries', () => {
       [],
     );
     const seen = new Set(read.map(({ entry }) => (entry === undefined || entry.kind === 'unread' ? 'none' : `${entry.kind} ${entry.thread ?? 'unmarked'}`)));
-    for (const expected of ['input main', 'reply main', 'input helper', 'reply helper']) {
+    for (const expected of ['input main', 'reply main', 'input helper', 'reply helper', 'turn-end main']) {
       assert.equal(seen.has(expected), true, `no ${expected} line in the recording`);
     }
   });

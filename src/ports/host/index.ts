@@ -29,5 +29,6 @@ export {
   type ToolOutcome,
   type TranscriptEntry,
   type TranscriptReader,
+  type TurnEndEntry,
   type UnreadLine,
 } from './transcript-reader.ts';

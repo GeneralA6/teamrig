@@ -89,6 +89,7 @@ export {
   type ToolOutcome,
   type TranscriptEntry,
   type TranscriptReader,
+  type TurnEndEntry,
   type UnreadLine,
   type Unsupported,
 } from '../ports/host/index.ts';

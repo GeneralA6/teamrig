@@ -118,6 +118,14 @@ export interface CompactEntry extends EntryBase {
   readonly kind: 'compact';
 }
 
+/**
+ * The host's mark that nothing more is coming: written once the model stopped, or once a command that started no
+ * turn ended. A turn the person stopped by hand may leave none.
+ */
+export interface TurnEndEntry extends EntryBase {
+  readonly kind: 'turn-end';
+}
+
 /** Text a hook added to the session. */
 export interface HookNoteEntry extends EntryBase {
   readonly kind: 'hook-note';
@@ -132,7 +140,7 @@ export interface OtherEntry extends EntryBase {
   readonly type: string | undefined;
 }
 
-export type TranscriptEntry = InputEntry | ReplyEntry | CompactEntry | HookNoteEntry | OtherEntry;
+export type TranscriptEntry = InputEntry | ReplyEntry | CompactEntry | TurnEndEntry | HookNoteEntry | OtherEntry;
 export type EntryKind = TranscriptEntry['kind'];
 
 /** A line that is no entry: damaged or torn text, or JSON that is not an object. It is said, never skipped. */

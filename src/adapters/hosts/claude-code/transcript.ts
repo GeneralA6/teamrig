@@ -27,16 +27,23 @@ import {
 
 /**
  * The text every line of a kind holds, tested before the line is parsed: Claude Code writes each line as compact
- * JSON, so an entry's own `type` reads `"type":"user"`, while a copy quoted inside another line is escaped. `other`
- * has none: any line can be one.
+ * JSON, so an entry's own `type` reads `"type":"user"`, while a copy quoted inside another line is escaped. A turn's
+ * end has three marks, so its words are the type they share. `other` has none: any line can be one.
  */
 const KIND_WORDS = {
   input: '"type":"user"',
   reply: '"type":"assistant"',
   compact: '"compact_boundary"',
+  'turn-end': '"type":"system"',
   'hook-note': '"hook_additional_context"',
   other: undefined,
 } as const satisfies Readonly<Record<EntryKind, string | undefined>>;
+
+/**
+ * The `system` lines Claude Code writes once nothing more is coming: `stop_hook_summary` and `turn_duration` after
+ * the model stopped, `local_command` after a slash command that started no turn.
+ */
+const TURN_END_MARKS: ReadonlySet<string> = new Set(['stop_hook_summary', 'turn_duration', 'local_command']);
 
 /** The model name of a reply Claude Code wrote itself, such as the text of a failed API call. */
 const SYNTHETIC_MODEL = '<synthetic>';
@@ -242,6 +249,23 @@ function hookNoteOf(base: Base, entry: JsonRecord): HookNoteEntry | undefined {
   return { ...base, kind: 'hook-note', atStart: attachment['hookEvent'] === 'SessionStart', texts };
 }
 
+/** A `system` line teamrig has a kind for: a compaction boundary, or a turn's end; undefined for any other. */
+function systemOf(base: Base, entry: JsonRecord): TranscriptEntry | undefined {
+  const subtype = stringField(entry, 'subtype');
+  if (subtype === 'compact_boundary') {
+    return { ...base, kind: 'compact' };
+  }
+  return subtype !== undefined && TURN_END_MARKS.has(subtype) ? { ...base, kind: 'turn-end' } : undefined;
+}
+
+/** A line that carries no message, as the kind its type and marks make it; undefined for a line of no known kind. */
+function markedOf(base: Base, entry: JsonRecord, type: string | undefined): TranscriptEntry | undefined {
+  if (type === 'system') {
+    return systemOf(base, entry);
+  }
+  return type === 'attachment' ? hookNoteOf(base, entry) : undefined;
+}
+
 function entryOf(entry: JsonRecord): TranscriptEntry {
   const base = baseOf(entry);
   const type = stringField(entry, 'type');
@@ -252,11 +276,7 @@ function entryOf(entry: JsonRecord): TranscriptEntry {
   if (type === 'assistant' && message !== undefined) {
     return replyOf(base, entry, message);
   }
-  if (type === 'system' && entry['subtype'] === 'compact_boundary') {
-    return { ...base, kind: 'compact' };
-  }
-  const note = type === 'attachment' ? hookNoteOf(base, entry) : undefined;
-  return note ?? { ...base, kind: 'other', type };
+  return markedOf(base, entry, type) ?? { ...base, kind: 'other', type };
 }
 
 function entryOfLine(line: string): TranscriptEntry | UnreadLine {
