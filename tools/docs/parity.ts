@@ -28,6 +28,7 @@ const INTRO = [
 const SIDES: { readonly [Side in FeatureSide]: { readonly title: string; readonly what: string } } = {
   host: { title: 'Hosts', what: 'The AI CLIs a session runs in.' },
   connector: { title: 'Connectors', what: "The outside tools holding a team's issues (the `tracker` rows) or its code and pull requests (the `codehost` rows)." },
+  terminal: { title: 'Terminals', what: 'The programs whose panes the sessions run in.' },
 };
 
 /** Where a row that runs is proved, and where it is not yet. */

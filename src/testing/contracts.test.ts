@@ -81,6 +81,21 @@ describe('suiteOf', () => {
     const kit: readonly ContractOutline[] = [{ port: 'greeter', side: 'host', features: ['rules.session-start'] }];
     assert.deepEqual(suite(connector, 'linux', kit), { name: 'Some Tool and the contracts of its ports', groups: [], problems: [] });
   });
+
+  it('reads a terminal by its own manifest, and holds it to the contracts of its side only', () => {
+    const manifest = manifestOf('terminal');
+    assert.ok(isManifest('terminal', manifest));
+    const terminal: ContractsOf = { side: 'terminal', declaration: { apiVersion: API_VERSION, id: 'some-terminal', name: 'Some Terminal', manifest }, bound: [] };
+    const kit: readonly ContractOutline[] = [
+      { port: 'greeter', side: 'host', features: ['rules.session-start'] },
+      { port: 'terminal', side: 'terminal', features: ['pane.deliver'] },
+    ];
+    assert.deepEqual(suite(terminal, 'linux', kit), {
+      name: 'Some Terminal and the contracts of its ports',
+      groups: [],
+      problems: ['the manifest says pane.deliver is supported, and its contract terminal is not bound'],
+    });
+  });
 });
 
 describeContracts(host());

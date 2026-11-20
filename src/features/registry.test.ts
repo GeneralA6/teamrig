@@ -2,9 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import { isRecord } from '../core/guards.ts';
-import { CONNECTOR_FEATURES, HOST_FEATURES, featuresOf, isConnectorFeatureId, isConnectorKind, isHostFeatureId, type FeatureSide } from './registry.ts';
+import { CONNECTOR_FEATURES, HOST_FEATURES, TERMINAL_FEATURES, featuresOf, isConnectorFeatureId, isConnectorKind, isHostFeatureId, isTerminalFeatureId, type FeatureSide } from './registry.ts';
 
-const SIDES: readonly FeatureSide[] = ['host', 'connector'];
+const SIDES: readonly FeatureSide[] = ['host', 'connector', 'terminal'];
 
 interface GroupFile {
   readonly group: string;
@@ -75,7 +75,21 @@ describe('the feature registry', () => {
     }
   });
 
+  it('holds a terminal row for each request of the terminal protocol, and one for what a terminal sees of a draft', () => {
+    assert.deepEqual(
+      featuresOf('terminal').map((row) => row.id),
+      ['pane.open', 'pane.focus', 'pane.close', 'pane.restart', 'pane.rename', 'pane.deliver', 'pane.is-idle', 'pane.list', 'pane.sees-draft'],
+    );
+    for (const row of featuresOf('terminal')) {
+      assert.equal(row.group, 'pane', row.id);
+    }
+  });
+
   it('tells the ids of one side from any other text', () => {
+    assert.equal(isTerminalFeatureId('pane.deliver'), true);
+    assert.equal(isTerminalFeatureId('tabs.title-status'), false);
+    assert.equal(isTerminalFeatureId('valueOf'), false);
+    assert.equal(isHostFeatureId('pane.deliver'), false);
     assert.equal(isHostFeatureId('hooks.pretool-guard'), true);
     assert.equal(isHostFeatureId('tracker.comment'), false);
     assert.equal(isHostFeatureId('toString'), false);
@@ -94,5 +108,6 @@ describe('the feature registry', () => {
   it('lists the rows in the order the tables hold them', () => {
     assert.deepEqual(featuresOf('host').map((row) => row.id), Object.keys(HOST_FEATURES));
     assert.deepEqual(featuresOf('connector').map((row) => row.id), Object.keys(CONNECTOR_FEATURES));
+    assert.deepEqual(featuresOf('terminal').map((row) => row.id), Object.keys(TERMINAL_FEATURES));
   });
 });

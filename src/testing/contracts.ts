@@ -4,12 +4,13 @@ import { CONTRACTS, choiceOf, osOf, type BoundCase, type BoundContract, type Con
 import type { AdapterDeclaration, Os } from '../plugin-api/index.ts';
 
 /**
- * An adapter as its contract spec gives it: what it declares, and the contracts it binds. The two sides are spelled
- * out so a host's manifest is never read with a connector's contracts.
+ * An adapter as its contract spec gives it: what it declares, and the contracts it binds. The sides are spelled out
+ * so one side's manifest is never read with another's contracts.
  */
 export type ContractsOf =
   | { readonly side: 'host'; readonly declaration: AdapterDeclaration<'host'>; readonly bound: readonly BoundContract<'host'>[] }
-  | { readonly side: 'connector'; readonly declaration: AdapterDeclaration<'connector'>; readonly bound: readonly BoundContract<'connector'>[] };
+  | { readonly side: 'connector'; readonly declaration: AdapterDeclaration<'connector'>; readonly bound: readonly BoundContract<'connector'>[] }
+  | { readonly side: 'terminal'; readonly declaration: AdapterDeclaration<'terminal'>; readonly bound: readonly BoundContract<'terminal'>[] };
 
 export interface SuiteRequest {
   /** The operating system the cases run on; none when the machine's is not one a proof is made on. */
