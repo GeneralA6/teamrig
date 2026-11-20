@@ -30,6 +30,7 @@ import { sessionRef } from '../inputs.ts';
 import { configWarnings, findTeam, loadedConfig, openKit, pastOrPresentIdOf, rosterOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
+import { selfOf, sessionsSource } from './read-sessions.ts';
 import { skippedOf, stampsOf, type DocumentSource, type ReadScope } from './read-source.ts';
 
 /** The trackers a document names a ref or a source by; a second one is one more entry here. */
@@ -46,14 +47,20 @@ interface ReadRequest {
   readonly owner: string | undefined;
   /** Who is asking, by id or name: a label for whose inbox to serve, as `inbox status` takes it, never a proof. */
   readonly session: string | undefined;
+  /** The host's own id of the conversation asking, which `sessions` answers `self` by; a label too. */
+  readonly conversation: string | undefined;
   readonly sinceHours: number;
   readonly speaks: InterfaceVersion | undefined;
 }
+
+/** A host's conversation id is opaque; this only keeps one a shell or a path could misread out of the run. */
+const CONVERSATION_PATTERN = /^[\w.:-]{1,128}$/;
 
 /** The documents this teamrig can build; the rest of interface 1 joins here, one by one. */
 const SOURCES: Partial<Record<DocumentName, (scope: ReadScope) => DocumentSource>> = {
   tasks: tasksSource,
   inbox: inboxSource,
+  sessions: sessionsSource,
 };
 
 /**
@@ -93,9 +100,17 @@ function requestOf(args: ParsedArgs, env: Env): ReadRequest {
     team: args.flags.get('team'),
     owner: args.flags.get('owner'),
     session: askerOf(args.flags.get('session'), env),
+    conversation: conversationOf(args.flags.get('conversation')),
     sinceHours: sinceHoursOf(args.flags.get('since')),
     speaks,
   };
+}
+
+function conversationOf(typed: string | undefined): string | undefined {
+  if (typed !== undefined && !CONVERSATION_PATTERN.test(typed)) {
+    throw new UsageError('--conversation takes the host\'s conversation id: 1 to 128 letters, digits, "_", ".", ":" or "-"');
+  }
+  return typed;
 }
 
 /** Who is asking: `--session`, else the session variable; undefined with neither, which only `inbox` minds. */
@@ -159,18 +174,41 @@ async function answersOf(request: ReadRequest, runtime: CliRuntime): Promise<obj
 /**
  * The team a run reads: the caller's own, or with `--team` one above it in its tree, whose work the caller's team
  * is part of. Any other team is refused, a team below too: what a team shows the ones above it is its own call.
+ * With `--conversation` and no session named, the asker is the session of the caller's team that conversation runs
+ * in, so a host that knows only its conversation still reads its own inbox.
  */
 async function scopeOf(request: ReadRequest, runtime: CliRuntime): Promise<ReadScope> {
   const own = (await findTeam(runtime)).team;
+  const tree = once(() => loadTree(runtime));
   const team = request.team ?? own;
-  if (team !== own && !(await loadTree(runtime)).tree.ancestorsOf(own).includes(team)) {
+  if (team !== own && !(await tree()).tree.ancestorsOf(own).includes(team)) {
     throw new RefusedError(`read serves your own team (${own}) and the teams above it; --team ${team} names neither`);
   }
   const kit = await openKit(runtime, team);
   const load = loadedConfig(kit);
   const roster = await rosterOf(runtime, kit, load.config);
-  const owner = request.owner === undefined ? null : pastOrPresentIdOf(roster, request.owner);
-  return { runtime, own, kit, config: load.config, roster, owner, asker: request.session ?? null, sinceHours: request.sinceHours, warnings: configWarnings(load) };
+  const conversation = request.conversation ?? null;
+  const self = conversation === null ? null : await selfOf(runtime, await tree(), own, conversation);
+  return {
+    runtime,
+    own,
+    kit,
+    config: load.config,
+    roster,
+    owner: request.owner === undefined ? null : pastOrPresentIdOf(roster, request.owner),
+    asker: request.session ?? (self?.team === own ? self.session : null),
+    conversation,
+    self,
+    tree,
+    sinceHours: request.sinceHours,
+    warnings: configWarnings(load),
+  };
+}
+
+/** `load`, run at the first call and answered from that one run after it. */
+function once<T>(load: () => Promise<T>): () => Promise<T> {
+  let loaded: Promise<T> | undefined;
+  return () => (loaded ??= load());
 }
 
 /**
@@ -231,7 +269,8 @@ function inboxSource(scope: ReadScope): DocumentSource {
     throw new UsageError(`inbox is the asking session's own, in its own team (${scope.own}): ask for it without --team`);
   }
   if (scope.asker === null) {
-    throw new UsageError(`inbox is one session's: name it with --session (or $${ENV.session})`);
+    const held = scope.conversation === null ? '' : `no session of team ${scope.own} holds conversation ${scope.conversation}; `;
+    throw new UsageError(`inbox is one session's: ${held}name it with --session (or $${ENV.session})`);
   }
   const session = pastOrPresentIdOf(roster, scope.asker);
   const inboxes = new InboxDir(runtime.files, kit.paths.inbox);

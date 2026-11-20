@@ -1,8 +1,9 @@
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
-import type { RevisionParts } from '../../interface/index.ts';
+import type { RevisionParts, SessionPlace } from '../../interface/index.ts';
 import type { Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
+import type { KitTree } from '../tree.ts';
 
 /** What every document of one run of `teamrig read` is read from. */
 export interface ReadScope {
@@ -19,6 +20,12 @@ export interface ReadScope {
    * it against the roster, so a stale session variable never refuses a document that does not.
    */
   readonly asker: string | null;
+  /** The host's conversation the run was asked from (`--conversation`); null when it names none. */
+  readonly conversation: string | null;
+  /** The session that conversation runs in, among the tree's teams; null with no conversation, or one no session holds. */
+  readonly self: SessionPlace | null;
+  /** Every team of the kit home, read once for the whole run by whichever part asks first. */
+  readonly tree: () => Promise<KitTree>;
   readonly sinceHours: number;
   /** What the config's own read has to tell: every document is read through it, so each carries these. */
   readonly warnings: readonly string[];
