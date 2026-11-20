@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { ignoreClosedPipe } from './node-main.ts';
+import { ignoreClosedPipe, processOutput } from './node-main.ts';
 
 const MAIN = fileURLToPath(new URL('main.ts', import.meta.url));
 
@@ -49,5 +49,27 @@ describe('ignoreClosedPipe', () => {
     const stream = new PassThrough();
     ignoreClosedPipe(stream);
     assert.throws(() => stream.emit('error', streamError('EIO')), /write EIO/);
+  });
+
+  it('gives a signal that aborts at the EPIPE, so a command that only prints can end with its reader', () => {
+    const stream = new PassThrough();
+    const closed = ignoreClosedPipe(stream);
+    assert.equal(closed.aborted, false);
+    stream.emit('error', streamError('EPIPE'));
+    assert.equal(closed.aborted, true);
+  });
+
+  it('leaves the signal alone at any other stream error', () => {
+    const stream = new PassThrough();
+    const closed = ignoreClosedPipe(stream);
+    assert.throws(() => stream.emit('error', streamError('EIO')));
+    assert.equal(closed.aborted, false);
+  });
+});
+
+describe('processOutput', () => {
+  it("carries stdout's signal as the output's closed", () => {
+    const closed = new AbortController();
+    assert.equal(processOutput(closed.signal).closed, closed.signal);
   });
 });

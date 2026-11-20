@@ -184,6 +184,8 @@ export interface RunOptions {
   readonly webhook?: ChatWebhook;
   /** Where the CLI runs from and the node options it was started with; default the quiet world's, with none. */
   readonly self?: SelfLocation;
+  /** The signal that the run's stdout reader is gone (`Output.closed`), which a spec aborts; default an output that never closes. */
+  readonly outputClosed?: AbortSignal;
 }
 
 /**
@@ -219,7 +221,11 @@ export class CliHarness {
   async run(argv: readonly string[], options: RunOptions = {}): Promise<CliResult> {
     const stdout: string[] = [];
     const stderr: string[] = [];
-    const out: Output = { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) };
+    const out: Output = {
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+      ...(options.outputClosed === undefined ? {} : { closed: options.outputClosed }),
+    };
     const code = await runCli(argv, this.runtime(options, out));
     return { code, stdout, stderr };
   }

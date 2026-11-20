@@ -35,6 +35,12 @@ import type { ShellRunner } from '../test-run/shell.ts';
 export interface Output {
   stdout(line: string): void;
   stderr(line: string): void;
+  /**
+   * Aborts once stdout's reader is gone (`teamrig events --json | head -1`). A write after that is dropped without an
+   * error, so a command that prints until it is stopped has only this to end on. Absent on an output that keeps its
+   * lines and so cannot close: a guard's answer, a queued step's log.
+   */
+  readonly closed?: AbortSignal;
 }
 
 /** Where this CLI runs from, so `teamrig open` can start it again in a new tab, where the plugin's bin folder is not on PATH. */

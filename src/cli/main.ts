@@ -1,13 +1,13 @@
 import { text } from 'node:stream/consumers';
 import { fileURLToPath } from 'node:url';
-import { PROCESS_OUTPUT, ignoreClosedPipe, runWithNode } from './node-main.ts';
+import { ignoreClosedPipe, processOutput, runWithNode } from './node-main.ts';
 
-ignoreClosedPipe(process.stdout);
+const stdoutClosed = ignoreClosedPipe(process.stdout);
 ignoreClosedPipe(process.stderr);
 
 /** The CLI's entry script: the `teamrig` launchers and every hook but the guards (`guard-main.ts`) run it. */
 process.exitCode = await runWithNode(process.argv.slice(2), {
-  out: PROCESS_OUTPUT,
+  out: processOutput(stdoutClosed),
   script: fileURLToPath(import.meta.url),
   readStdin: () => text(process.stdin),
 });

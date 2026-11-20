@@ -56,22 +56,29 @@ export interface NodeEntry {
   readonly readStdin: () => Promise<string>;
 }
 
-/** The process's own stdout and stderr, a line at a time. */
-export const PROCESS_OUTPUT: Output = {
-  stdout: (line) => process.stdout.write(`${line}\n`),
-  stderr: (line) => process.stderr.write(`${line}\n`),
-};
+/** The process's own stdout and stderr, a line at a time; `stdoutClosed` is what `ignoreClosedPipe` gave for stdout. */
+export function processOutput(stdoutClosed: AbortSignal): Output {
+  return {
+    stdout: (line) => process.stdout.write(`${line}\n`),
+    stderr: (line) => process.stderr.write(`${line}\n`),
+    closed: stdoutClosed,
+  };
+}
 
 /**
  * Ends the stack dump a reader that closed early causes (`teamrig show T1 | head -2`): the write fails with EPIPE, and
  * with no 'error' listener node throws it as an uncaught exception. The run goes on to its own exit code, since a
  * command that also writes files must not stop halfway because nobody reads its output; any other stream error still
- * throws as before.
+ * throws as before. The signal it returns aborts at that EPIPE, for the command that only prints and so has to end
+ * with its reader (`Output.closed`).
  */
-export function ignoreClosedPipe(stream: Writable): void {
+export function ignoreClosedPipe(stream: Writable): AbortSignal {
+  const closed = new AbortController();
   stream.on('error', (error: NodeJS.ErrnoException) => {
     if (error.code !== 'EPIPE') throw error;
+    closed.abort();
   });
+  return closed.signal;
 }
 
 /**
