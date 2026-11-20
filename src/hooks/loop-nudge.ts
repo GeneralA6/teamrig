@@ -1,7 +1,8 @@
 import { formatW } from '../budget/format.ts';
-import { parseTranscriptLine, type ToolUse } from '../budget/line.ts';
+import { transcriptLineOf, type ToolUse } from '../budget/line.ts';
 import { kindOf, type ToolKind } from '../budget/patterns.ts';
 import { contextTokens, WEIGHTS } from '../budget/weights.ts';
+import type { TranscriptReader } from '../ports/host/index.ts';
 
 /**
  * The run of single-step calls that ends the current turn. A step is a call with exactly one tool
@@ -43,12 +44,12 @@ interface Turn {
   readonly tasks: readonly string[];
 }
 
-function turnOf(text: string, cut: boolean): Turn {
+function turnOf(reader: TranscriptReader, text: string, cut: boolean): Turn {
   const lines = text.split('\n');
   let calls: TurnCall[] = [];
   let tasks: readonly string[] = [];
   for (const raw of cut ? lines.slice(1) : lines) {
-    const line = parseTranscriptLine(raw);
+    const line = transcriptLineOf(reader, raw);
     if (line?.kind === 'prompt') {
       calls = [];
       tasks = line.tasks ?? [];
@@ -65,8 +66,8 @@ function turnOf(text: string, cut: boolean): Turn {
 }
 
 /** The turn's calls, with `current` as the last one when the transcript has not got it yet. */
-function callsWith(text: string, cut: boolean, current: ToolUse | undefined): TurnCall[] {
-  const { calls } = turnOf(text, cut);
+function callsWith(reader: TranscriptReader, text: string, cut: boolean, current: ToolUse | undefined): TurnCall[] {
+  const { calls } = turnOf(reader, text, cut);
   const written = current === undefined || calls.some((call) => call.tools.some((tool) => tool.id === current.id));
   if (!written) {
     calls.push({ key: undefined, tools: [current], context: calls.at(-1)?.context ?? 0 });
@@ -75,13 +76,13 @@ function callsWith(text: string, cut: boolean, current: ToolUse | undefined): Tu
 }
 
 /** The main thread's tool calls since the last prompt, `current` included. */
-export function turnToolsOf(text: string, cut: boolean, current: ToolUse | undefined): ToolUse[] {
-  return callsWith(text, cut, current).flatMap((call) => call.tools);
+export function turnToolsOf(reader: TranscriptReader, text: string, cut: boolean, current: ToolUse | undefined): ToolUse[] {
+  return callsWith(reader, text, cut, current).flatMap((call) => call.tools);
 }
 
 /** The task ids the current turn's prompt names; none when the text starts inside the turn, past its prompt. */
-export function turnTasksOf(text: string, cut: boolean): readonly string[] {
-  return turnOf(text, cut).tasks;
+export function turnTasksOf(reader: TranscriptReader, text: string, cut: boolean): readonly string[] {
+  return turnOf(reader, text, cut).tasks;
 }
 
 /**
@@ -89,8 +90,8 @@ export function turnTasksOf(text: string, cut: boolean): readonly string[] {
  * start mid-line, so its first line is skipped). `current` is the tool the hook fires for: when its
  * reply is not in the transcript yet, it counts as one more single-tool call.
  */
-export function chainOf(text: string, cut: boolean, current: ToolUse | undefined): Chain {
-  const calls = callsWith(text, cut, current);
+export function chainOf(reader: TranscriptReader, text: string, cut: boolean, current: ToolUse | undefined): Chain {
+  const calls = callsWith(reader, text, cut, current);
   const kinds: ToolKind[] = [];
   for (let index = calls.length - 1; index >= 0; index -= 1) {
     const call = calls[index];

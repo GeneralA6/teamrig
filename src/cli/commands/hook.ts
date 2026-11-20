@@ -51,6 +51,7 @@ import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
+import { transcriptsOf } from '../host.ts';
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { keptRulesAboveOf, readTeamRules } from '../team-rules.ts';
@@ -724,7 +725,7 @@ async function leadStopLines(runtime: CliRuntime, scope: SessionScope, transcrip
   if (text === undefined) {
     return [];
   }
-  const turn = turnToolsOf(text, Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES, undefined);
+  const turn = turnToolsOf(transcriptsOf(runtime), text, Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES, undefined);
   const line = leadStopLine(leadTallyOf(turn, await turnLeadPathsOf(runtime, kit, config, await loadTree(runtime), turn)), config.leadBoundary.searchNudgeAt);
   return line === undefined ? [] : [line];
 }

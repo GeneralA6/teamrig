@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import type { ToolUse } from '../budget/line.ts';
 import { promptLine, replyLine, resultsLine, transcript } from '../testing/transcript-lines.ts';
 import { commandNormalized, leadNudgeLine, leadStopLine, leadTallyOf, leadWorkOf, OwnPaths, taskOwnersOf, tasksSearched, TeamFolders, type LeadPaths, type SubTeamPlace } from './lead-boundary.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { turnTasksOf, turnToolsOf } from './loop-nudge.ts';
+
+const reader = shippedTranscripts();
 
 const TEAM_HOME = '~/.teamrig/teams/app';
 const OWN = new OwnPaths([TEAM_HOME, '~/ops/lead', '~/ops/board/lead.md', '~/.claude/projects/*/memory'], 'D:\\team\\lee');
@@ -294,8 +297,8 @@ describe('the lead boundary', () => {
     const at = '2030-01-08T10:00:00.000Z';
     const reply = replyLine({ id: 'm1', requestId: 'r1', at, usage: { cacheRead: 1 }, tools: [{ id: 't1', name: 'Read', path: 'C:/app/a.ts' }] });
     const text = transcript([promptLine(at, 'see T9'), reply, promptLine(at, 'T12 asks: does T7 hold? T12 again, not T0 or XT5'), reply]);
-    assert.deepEqual(turnTasksOf(text, false), ['T12', 'T7']);
-    assert.deepEqual(turnTasksOf(transcript([promptLine(at), reply]), false), []);
+    assert.deepEqual(turnTasksOf(reader, text, false), ['T12', 'T7']);
+    assert.deepEqual(turnTasksOf(reader, transcript([promptLine(at), reply]), false), []);
   });
 
   it('reads the turn calls with their paths from the transcript, adding the current call', () => {
@@ -305,7 +308,7 @@ describe('the lead boundary', () => {
       replyLine({ id: 'm1', requestId: 'r1', at, usage: { cacheRead: 1 }, tools: [{ id: 't1', name: 'Edit', path: 'C:/app/a.ts' }] }),
       resultsLine(at, [{ id: 't1', text: 'ok' }]),
     ]);
-    const turn = turnToolsOf(text, false, tool('Read', { path: 'C:/app/b.ts' }, 't2'));
+    const turn = turnToolsOf(reader, text, false, tool('Read', { path: 'C:/app/b.ts' }, 't2'));
     assert.deepEqual(
       turn.map((call) => [call.name, call.path]),
       [

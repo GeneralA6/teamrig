@@ -9,6 +9,7 @@ import { sessionIdOf } from '../../inbox/inbox.ts';
 import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
+import { transcriptsOf } from '../host.ts';
 import { openKit, rosterOf, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { meterTabMidTurn } from './hook-budget.ts';
@@ -51,10 +52,11 @@ async function promptTaskOwners(runtime: CliRuntime, kit: Kit, config: KitConfig
  * it generic.
  */
 async function leadBoundaryLine(runtime: CliRuntime, kit: Kit, config: KitConfig, text: string, cut: boolean, current: ToolUse): Promise<string | undefined> {
-  const turn = turnToolsOf(text, cut, current);
+  const reader = transcriptsOf(runtime);
+  const turn = turnToolsOf(reader, text, cut, current);
   const paths = await turnLeadPathsOf(runtime, kit, config, await loadTree(runtime), turn);
   const research = leadWorkOf(current, paths) === 'research';
-  const owners = research ? await promptTaskOwners(runtime, kit, config, turnTasksOf(text, cut)).catch((): readonly string[] => []) : [];
+  const owners = research ? await promptTaskOwners(runtime, kit, config, turnTasksOf(reader, text, cut)).catch((): readonly string[] => []) : [];
   return leadNudgeLine(turn, current, paths, config.leadBoundary.searchNudgeAt, owners);
 }
 
@@ -87,7 +89,7 @@ async function loopNudgeLines(payload: unknown, runtime: CliRuntime): Promise<re
   }
   const cut = Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES;
   const current = currentToolOf(payload);
-  const chain = at > 0 ? nudgeLine(chainOf(text, cut, current), at) : undefined;
+  const chain = at > 0 ? nudgeLine(chainOf(transcriptsOf(runtime), text, cut, current), at) : undefined;
   const boundary = lead && current !== undefined ? await leadBoundaryLine(runtime, kit, config, text, cut, current) : undefined;
   return [chain, boundary].filter((line): line is string => line !== undefined);
 }
