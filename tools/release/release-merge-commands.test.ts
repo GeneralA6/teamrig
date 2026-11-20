@@ -6,7 +6,7 @@ import { TempRepo } from '../lib/temp-repo.ts';
 import { profileFor, readProfiles, type RepoProfile } from '../ship/repos.ts';
 import { TEAMRIG_SHIP_VERSION_FILES } from '../ship/version-bump.ts';
 import type { AppKey, Fetch, GateDeps, GateOutcome, GateTarget, MergeDeps, MergeOutcome, MergeTarget } from './release-merge.ts';
-import { gateCommand, gateSummary, mergeCommand, type Env } from './release-merge-commands.ts';
+import { epochSeconds, gateCommand, gateSummary, mergeCommand, type Env } from './release-merge-commands.ts';
 
 const REPO = 'acme/tool';
 const HEAD_BRANCH = 'release-please--branches--main';
@@ -85,7 +85,7 @@ describe('gateCommand', () => {
     ...over,
   });
   const run = (gate: (target: GateTarget, deps: GateDeps) => Promise<GateOutcome>, over: Env = {}, profiles = PROFILES): Promise<number> =>
-    gateCommand(env(over), { git: (args) => repo.git(...args), profiles, gate, fetchFn: noFetch, out: (text) => printed.push(text) });
+    gateCommand(env(over), { git: (args) => repo.git(...args), profiles, gate, fetchFn: noFetch, out: (line) => printed.push(line) });
 
   beforeEach(() => {
     repo = new TempRepo('release-merge-commands').init();
@@ -110,7 +110,7 @@ describe('gateCommand', () => {
     assert.equal(readFileSync(output, 'utf8'), `pass=true\npr=12\nsha=${sha}\nchecks=9\npaths=${[MANIFEST, CHANGELOG, PLUGIN, VERSION_TS].join(',')}\n`);
     const said = `Release merge gate passed pull request #12 at \`${sha}\`: 9 checks green.\n`;
     assert.equal(readFileSync(summary, 'utf8'), said);
-    assert.deepEqual(printed, [said]);
+    assert.deepEqual(printed, [said.trimEnd()]);
   });
 
   it("refuses with exit 1 and pass=false when the files check refuses the head, naming the check's reason", async () => {
@@ -217,5 +217,13 @@ describe('mergeCommand', () => {
       const outcome: MergeOutcome = { kind: 'merged', sha: SHA, commented: true, revoked: true };
       await assert.rejects(runMerge(outcome, { [name]: value }), new RegExp(`${name} is not`));
     }
+  });
+});
+
+describe('epochSeconds', () => {
+  it('reads the clock in whole seconds', () => {
+    const before = Math.floor(Date.now() / 1000);
+    const now = epochSeconds();
+    assert.ok(Number.isInteger(now) && now >= before && now <= before + 1);
   });
 });
