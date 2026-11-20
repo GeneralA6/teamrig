@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
-import { isIssueQuery, isLinkAdd } from '../github/gh.ts';
+import { isIssueQuery, isLinkAdd } from '../adapters/connectors/github/gh.ts';
 import { CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';

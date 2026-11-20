@@ -1,8 +1,18 @@
-import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import type { IssueComment } from '../issues/issue.ts';
-import type { FailedJob, HostPull, PullChecks, PullMergeable, PullReview, PullState } from '../issues/pull.ts';
+import {
+  isRecord,
+  plainLine,
+  recordField,
+  stringField,
+  type FailedJob,
+  type HostPull,
+  type IssueComment,
+  type JsonRecord,
+  type PullChecks,
+  type PullMergeable,
+  type PullReview,
+  type PullState,
+} from '../../../plugin-api/index.ts';
 import type { GhRunner } from './gh.ts';
-import { plainLine } from '../core/printable.ts';
 import { connectionPage, kindOf, loginOf, nodesOf, postOf, repoPage, runRead, timeField, WEB_URL, type ReadKind } from './issues.ts';
 import { pullPageArgs, type PullRead } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';

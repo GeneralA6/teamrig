@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
-import { isIssueQuery } from '../github/gh.ts';
+import { isIssueQuery } from '../adapters/connectors/github/gh.ts';
 import { foldEvents, type Task } from '../register/fold.ts';
 import { readEvents } from '../register/snapshot.ts';
 import { CliHarness, EVENTS_PATH, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';

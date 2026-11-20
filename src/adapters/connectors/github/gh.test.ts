@@ -1,6 +1,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { ProgramRequest, ProgramResult, ProgramRunner } from '../plugin-api/index.ts';
+import {
+  areaLabelSpec,
+  MANAGED_LABEL_SPECS,
+  MENTION_PAGES_MAX,
+  type IssueDraft,
+  type LabelSpec,
+  type ProgramRequest,
+  type ProgramResult,
+  type ProgramRunner,
+} from '../../../plugin-api/index.ts';
 import {
   assigneeReadArgs,
   blockedByAddArgs,
@@ -65,9 +74,6 @@ import {
   viewerReadArgs,
   type IssueNumber,
 } from './gh.ts';
-import type { IssueDraft, LabelSpec } from '../issues/host.ts';
-import { areaLabelSpec, MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
-import { MENTION_PAGES_MAX } from '../issues/scan-caps.ts';
 import { CLOSED_ISSUES_QUERY, closedPageArgs, OPEN_ISSUES_QUERY, openPageArgs, PULL_REQUESTS_QUERY, pullPageArgs } from './queries.ts';
 
 /** A first page of acme/web's open issues: a command line the runner starts. */
