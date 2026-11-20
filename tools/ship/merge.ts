@@ -20,6 +20,7 @@ import { queueLanding } from './merge-queue.ts';
 import { realRenamedCallersDeps, renamedCallersRefusal } from './renamed-callers.ts';
 import { type LocalChecks, type ReleasePull, type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
 import { APPROVED_SHA } from './ship-plan.ts';
+import { type Supersede, pullCommitsOf, supersedeFrom } from './superseded.ts';
 import { describeCredential } from './token-check.ts';
 
 /**
@@ -365,6 +366,7 @@ export async function mergeThroughPull(
   main: MainBranch,
   proof: Proof,
   log: (line: string) => void,
+  supersede: Supersede,
   landing: Landing = directLanding(gh, main),
 ): Promise<MergeResult> {
   const { repo, head, base, sha } = request;
@@ -379,6 +381,9 @@ export async function mergeThroughPull(
   log(`${found === null ? 'opened' : 'found'} pull request #${pull.number} ${pull.url}`);
   if (found !== null && request.lacks !== null) log(`warning: pull request #${pull.number} lacks ${request.lacks}, which this repo's template asks for: add it to its text`);
   if (pull.headSha !== sha) return { kind: 'refused', pull, reason: `the pull request head ${pull.headSha.slice(0, 7)} is not ${head} ${sha.slice(0, 7)}: push ${head} first` };
+  // Before the checks, which may run long: the earlier pushes' pull requests stop asking for review now (T4780). The
+  // release pull request has no earlier pushes: its tool rewrites one head.
+  if (request.opens) supersede(pull);
 
   const failed = await proof.prove(sha, log);
   if (failed !== null) return { kind: 'refused', pull, reason: failed };
@@ -781,6 +786,7 @@ export async function mergeRun(args: MergeArgs, deps: MergeDeps, gate: MergeGate
     main,
     proof.proof,
     deps.out,
+    supersedeFrom(gh, repo, profile.main, pullCommitsOf(git, profile.main, profile.regenerated), deps.out),
     profile.queue ? queueLanding(gh, main, deps.waiter, polling) : directLanding(gh, main),
   );
   if (result.kind === 'moved') {

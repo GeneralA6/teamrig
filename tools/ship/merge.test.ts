@@ -8,6 +8,7 @@ import type { Credential } from './keychain.ts';
 import type { GateDeps } from './local-gate.ts';
 import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, MERGE_ATTEMPTS, ciProof,mainBranchOf, mergeBranch, mergeCommand, mergeRun, mergeThroughPull, parseArgs, pullBody, realMergeDeps, runMerge, missingSections, stepShareOf, waitForChecks } from './merge.ts';
 import { parseProfiles } from './repos.ts';
+import type { Supersede } from './superseded.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
 
 const REPO = 'Owner/repo';
@@ -132,8 +133,8 @@ const POLLING = { timeoutMs: 10 * MINUTE, intervalMs: MINUTE };
 const CHECKS: RequiredChecks = { names: ['gates', 'test'], summary: null, flaky: [], conditional: [] };
 
 /** mergeThroughPull on the `ci` gate: checks gates and test on GitHub. */
-const mergeOnCi = (gh: Gh, main: MainBranch, log: (line: string) => void, lacks: string | null = null): Promise<MergeResult> =>
-  mergeThroughPull(request({ lacks }), gh, main, ciProof(gh, REPO, HEAD, CHECKS, fakeWaiter(), POLLING), log);
+const mergeOnCi = (gh: Gh, main: MainBranch, log: (line: string) => void, lacks: string | null = null, supersede: Supersede = () => undefined): Promise<MergeResult> =>
+  mergeThroughPull(request({ lacks }), gh, main, ciProof(gh, REPO, HEAD, CHECKS, fakeWaiter(), POLLING), log, supersede);
 
 const green: readonly JobState[] = [
   ['gates', 'completed', 'success'],
@@ -181,6 +182,29 @@ test('reuses an open pull request instead of opening a second one', async () => 
   assert.equal((await mergeOnCi(gh, fakeMain(), line => log.push(line))).kind, 'merged');
   assert.equal(writes.length, 1);
   assert.match(log[0] ?? '', /^found pull request #3/);
+});
+
+test('hands the pull request it opened or found to supersede once, before its checks run (T4780)', async () => {
+  for (const openPullSha of [null, SHA]) {
+    const log: string[] = [];
+    const seen: string[][] = [];
+    const supersede = mock.fn<Supersede>(() => {
+      seen.push([...log]);
+    });
+    assert.equal((await mergeOnCi(fakeGitHub({ rounds: [green], openPullSha }).gh, fakeMain(), line => log.push(line), null, supersede)).kind, 'merged');
+    assert.deepEqual(supersede.mock.calls.map(call => call.arguments[0].number), [3]);
+    assert.deepEqual(seen, [[`${openPullSha === null ? 'opened' : 'found'} pull request #3 https://github.com/${REPO}/pull/3`]]);
+  }
+});
+
+test('supersedes nothing for a pull request at another head, or for the release pull request', async () => {
+  const supersede = mock.fn<Supersede>();
+  const moved = await mergeOnCi(fakeGitHub({ rounds: [green], openPullSha: 'other99' }).gh, fakeMain(), () => undefined, null, supersede);
+  assert.equal(moved.kind, 'refused');
+  const { gh } = fakeGitHub({ rounds: [green], openPullSha: SHA });
+  const release = await mergeThroughPull(request({ opens: false }), gh, fakeMain(), ciProof(gh, REPO, HEAD, CHECKS, fakeWaiter(), POLLING), () => undefined, supersede);
+  assert.equal(release.kind, 'merged');
+  assert.equal(supersede.mock.callCount(), 0);
 });
 
 test('opens no pull request whose body lacks a section the repo asks for, but merges one already open with a warning', async () => {

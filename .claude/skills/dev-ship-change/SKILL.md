@@ -42,6 +42,10 @@ description: Land a finished teamrig change through small signed commits with Co
 - Main moved while you worked: the merge catches the branch up itself (`tools/ship/merge.ts`), dropping a
   `build: rebuild the plugin dist` commit a branch cut before main stopped tracking the dist still carries. When it
   refuses, rebase onto `origin/main` by hand.
+- Each catch-up or hand rebase pushes a new `<stem>-N` branch with its own pull request. Once a merge or `ship.ts pr`
+  holds the newest one, it closes each older open pull request of that stem whose work commits the new head carries,
+  with a comment linking the new one (`tools/ship/superseded.ts`). A pull request with work the new head lacks stays
+  open, and the merge's warning line names the commits.
 - `tools/ship` builds the dist only to run the checks and commits none, as main tracks none; a run without
   `--merge`, for an approval, leaves the work alone on the head.
 - The local gate proves a committed tree, so it refuses uncommitted changes: commit or stash them first.
@@ -60,4 +64,4 @@ description: Land a finished teamrig change through small signed commits with Co
   request of origin's head when that head is the approved sha and clears on that approval as a merge would, takes
   the merge's title and body, runs no gate, merges nothing and prints the URL (an open one is found, not opened again).
 
-Last verified: 2026-11-19
+Last verified: 2026-11-20
