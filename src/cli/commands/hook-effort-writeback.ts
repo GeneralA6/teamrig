@@ -8,6 +8,7 @@ import { payloadEffortOf } from '../../hooks/model-check.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { postToHolder, sessionNameOn } from '../holder-team.ts';
+import { transcriptsIfKept } from '../host.ts';
 import { checkedNextConfig, configFileJson, configLockOf, requireConfig, teamZone } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { leadAboveOf } from '../tree.ts';
@@ -100,6 +101,7 @@ export async function effortWritebackOf(runtime: CliRuntime, scope: SessionScope
   let updated = scope.config;
   const deps = {
     files: runtime.files,
+    reader: transcriptsIfKept(runtime),
     clock: runtime.clock,
     marks: new WritebackMarksStore(runtime.files, scope.kit.paths.effortWriteback),
     configChangedAt: () => runtime.files.modifiedAt(scope.kit.load.path),

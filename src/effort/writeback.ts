@@ -5,6 +5,7 @@ import { isRecord, numberField, stringField, type JsonRecord } from '../core/gua
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import type { Clock } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
+import type { TranscriptReader } from '../ports/host/index.ts';
 import { RUNNING_TAIL_BYTES } from '../refresh/running.ts';
 import { typedEffortsOf, type TypedEffort } from './typed-effort.ts';
 
@@ -102,6 +103,8 @@ export interface WritebackInput {
 
 export interface WritebackDeps {
   readonly files: Files;
+  /** Reads the transcript's lines; undefined on a host that keeps no transcript teamrig can read, where nothing typed is seen. */
+  readonly reader: TranscriptReader | undefined;
   readonly clock: Clock;
   readonly marks: WritebackMarksStore;
   /** When the config file last changed; undefined when it cannot be told. */
@@ -144,8 +147,9 @@ export async function effortWriteback(deps: WritebackDeps, input: WritebackInput
   const lastAt = marks.config === config ? marks.lastAt : Math.max(marks.lastAt, (await deps.configChangedAt()) ?? deps.clock.now());
   const seen: WritebackMarks = { ...marks, lastAt, config };
   const runsAsConfigured = isEffortLevel(input.running) && input.running === input.config;
-  const text = runsAsConfigured || input.transcript === undefined ? undefined : await deps.files.readTail(input.transcript, RUNNING_TAIL_BYTES);
-  const typed = text === undefined ? undefined : newestAfter(typedEffortsOf(text, input.claude), lastAt);
+  const { reader } = deps;
+  const text = runsAsConfigured || input.transcript === undefined || reader === undefined ? undefined : await deps.files.readTail(input.transcript, RUNNING_TAIL_BYTES);
+  const typed = text === undefined || reader === undefined ? undefined : newestAfter(typedEffortsOf(reader, text, input.claude), lastAt);
   if (typed === undefined) {
     if (!sameMarks(seen, marks)) {
       await deps.marks.save(input.id, seen);

@@ -12,6 +12,7 @@ import { RestartLog, type RestartRecord } from '../../refresh/restart-log.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../../restore/registry.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
+import { transcriptsOf } from '../host.ts';
 import { openKit, reloadTeamConfig, requireConfig, rosterOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { inboxDepsOf } from './inbox.ts';
@@ -84,6 +85,7 @@ export async function restart(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
     {
       store,
       files: runtime.files,
+      reader: transcriptsOf(runtime),
       processes: runtime.sessionProcesses,
       clock: runtime.clock,
       sleep: runtime.sleep,

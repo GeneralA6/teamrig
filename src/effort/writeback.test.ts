@@ -4,6 +4,7 @@ import type { EffortLevel } from '../config/types.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { effortLines, transcript } from '../testing/transcript-lines.ts';
 import {
   effortChangeLine,
@@ -41,7 +42,7 @@ interface World {
   readonly deps: WritebackDeps;
 }
 
-function world(options: { configChangedAt?: number; failWrite?: boolean } = {}): World {
+function world(options: { configChangedAt?: number; failWrite?: boolean; noTranscripts?: boolean } = {}): World {
   const files = new CountingFiles();
   const clock = new FakeClock(START);
   const marks = new WritebackMarksStore(files, MARKS);
@@ -53,7 +54,7 @@ function world(options: { configChangedAt?: number; failWrite?: boolean } = {}):
     writes.push(level);
     return { from: 'high', to: level, backup: 'D:/t/backups/effort-alpha.json' };
   };
-  return { files, clock, marks, writes, deps: { files, clock, marks, configChangedAt: async () => options.configChangedAt, write } };
+  return { files, clock, marks, writes, deps: { files, reader: options.noTranscripts === true ? undefined : shippedTranscripts(), clock, marks, configChangedAt: async () => options.configChangedAt, write } };
 }
 
 function typedAt(offsetMs: number, uuid: string, level: string): readonly string[] {
@@ -96,6 +97,16 @@ describe('effortWriteback', () => {
     await w.files.write(PATH, transcript(typedAt(1_000, 'u1', 'low')));
     assert.equal(await effortWriteback(w.deps, input({ running: 'high' })), undefined);
     assert.equal(w.files.tails, 0);
+    assert.deepEqual(await w.marks.read('alpha'), { lastAt: START, uuid: undefined, config: 'high' });
+  });
+
+  it('reads no transcript and writes nothing on a host that keeps none it can read', async () => {
+    const w = world({ noTranscripts: true });
+    await looked(w);
+    await w.files.write(PATH, transcript(typedAt(1_000, 'u1', 'low')));
+    assert.equal(await effortWriteback(w.deps, input({ running: 'low' })), undefined);
+    assert.equal(w.files.tails, 0);
+    assert.deepEqual(w.writes, []);
     assert.deepEqual(await w.marks.read('alpha'), { lastAt: START, uuid: undefined, config: 'high' });
   });
 

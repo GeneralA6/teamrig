@@ -6,6 +6,7 @@ import type { ProcessInfo } from '../open/session-processes.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
 import type { EffortLevel } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
@@ -107,6 +108,7 @@ class World {
     this.deps = {
       store: this.store,
       files: this.files,
+      reader: shippedTranscripts(),
       asks: this.asks,
       restore: new RestoreRegistry(this.files, restoreSessionsDir(join('/', 'kit'))),
       processes: this.processes,
