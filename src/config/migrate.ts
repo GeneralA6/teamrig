@@ -257,7 +257,7 @@ export const DROPPED_ROLE_COMMAND = 'issue comment';
  */
 export const DROP_ROLE_COMMENT: ConfigMigration = {
   from: 8,
-  firstRelease: '0.493.0',
+  firstRelease: '0.496.0',
   apply: (config) => {
     const roles = config['serviceRoles'];
     if (!isRecord(roles)) {
