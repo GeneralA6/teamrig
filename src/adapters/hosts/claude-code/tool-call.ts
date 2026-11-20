@@ -36,6 +36,15 @@ const helper: Reader = (name, input) => ({ kind: 'helper', name, input, type: st
 
 const web: Reader = (name, input) => ({ kind: 'web', name, input, url: stringField(input, 'url') });
 
+/**
+ * The receiver a SendMessage call names. A name may carry a ` [ref]` that picks one of two sessions sharing it: the
+ * mark is Claude Code's, so the receiver is the name without it; undefined for a call naming none.
+ */
+function receiverOf(input: JsonRecord): string | undefined {
+  const to = stringField(input, 'to')?.replace(/\s*\[[^\]]*\]$/, '').trim();
+  return to === '' ? undefined : to;
+}
+
 /** Claude Code's tools by name. One it adds later, and every MCP tool, is `other` until a row here names its kind. */
 const READERS: Readonly<Record<string, Reader>> = {
   Bash: shell('bash'),
@@ -63,7 +72,7 @@ const READERS: Readonly<Record<string, Reader>> = {
   ExitPlanMode: plain('ask'),
   CronCreate: plain('schedule'),
   ScheduleWakeup: plain('schedule'),
-  SendMessage: (name, input) => ({ kind: 'message', name, input, to: stringField(input, 'to'), text: stringField(input, 'message') }),
+  SendMessage: (name, input) => ({ kind: 'message', name, input, to: receiverOf(input), text: stringField(input, 'message') }),
 };
 
 /** The tool-call port of Claude Code on `platform`, which decides what a Bash command's readings are. */

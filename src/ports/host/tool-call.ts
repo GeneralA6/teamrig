@@ -83,7 +83,9 @@ export interface SkillCall extends ToolCallBase {
 /** A message to another agent. */
 export interface MessageCall extends ToolCallBase {
   readonly kind: 'message';
+  /** The receiver's name, less any mark the host adds to tell two agents of one name apart; undefined when the call names none. */
   readonly to: string | undefined;
+  /** The text sent; undefined for a call that sends none. */
   readonly text: string | undefined;
 }
 
