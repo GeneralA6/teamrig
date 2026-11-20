@@ -878,7 +878,9 @@ function weekMayBeRetired(week: string): HistoryNeed {
 
 /**
  * `show` prints a task's history and counts its events, so it reads the whole history for a task the working set
- * lacks (retired) or one created before the snapshot's event window, whose older events only the history holds.
+ * lacks (retired) or one created before the snapshot's event window, whose older events only the history holds. That
+ * second case also covers every task whose task line left its description out (T4781): a snapshot holds a task as a
+ * line only once its create event is before the window, so `show` prints such a description from the history.
  */
 function showNeedsHistory(id: string): HistoryNeed {
   return (snapshot) => {
