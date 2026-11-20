@@ -45,10 +45,32 @@ describe('the session log', () => {
     assert.equal(closedOf([CLOSE], 'bravo'), undefined);
   });
 
+  it('writes a close as the very line every installed teamrig reads (T4762)', async () => {
+    const files = new MemoryFiles();
+    await new SessionLog(files, PATH).append(CLOSE);
+    // The record's own keys are spread into the line, so a renamed property renames the key on disk: this line may
+    // change only in the commit that raises the written format.
+    assert.equal(files.get(PATH), '{"v":1,"kind":"close","session":"alpha","by":"lead","at":"2030-01-08T10:00:00.000Z","claudeSession":"claude-1","idleMinutes":75,"freedMb":1300}\n');
+  });
+
+  it('reads the lines a later teamrig wrote, naming the tab hostSession, and writes beside them (T4762)', async () => {
+    const files = new MemoryFiles();
+    const { claudeSession, ...close } = CLOSE;
+    const later = [{ v: 2, ...close, hostSession: claudeSession }, { v: 2, ...RESUMED }];
+    await files.write(PATH, later.map((line) => `${JSON.stringify(line)}\n`).join(''));
+    const log = new SessionLog(files, PATH);
+    assert.deepEqual(await log.read(), { records: [CLOSE, RESUMED], skipped: 0 });
+    // A tab still on this code logs its close beside them: refused, the close would end the tab unlogged.
+    const again: CloseRecord = { ...CLOSE, at: '2030-01-09T10:00:00.000Z' };
+    await log.append(again);
+    assert.deepEqual(await log.read(), { records: [CLOSE, RESUMED, again], skipped: 0 });
+    assert.equal(files.get(PATH)?.trimEnd().split('\n').at(-1), JSON.stringify({ v: SESSION_LOG_FORMAT, ...again }));
+  });
+
   it('skips a damaged or newer line, and refuses to write beside a newer one', async () => {
     const files = new MemoryFiles();
     const damaged = JSON.stringify({ v: SESSION_LOG_FORMAT, ...CLOSE, freedMb: 'lots' });
-    const newer = JSON.stringify({ v: SESSION_LOG_FORMAT + 1, ...CLOSE });
+    const newer = JSON.stringify({ v: SESSION_LOG_FORMAT + 2, ...CLOSE });
     await files.write(PATH, `${damaged}\nnot json\n${JSON.stringify({ v: SESSION_LOG_FORMAT, ...RESUMED })}\n${newer}`);
     const log = new SessionLog(files, PATH);
     assert.deepEqual(await log.read(), { records: [RESUMED], skipped: 3 });
@@ -61,7 +83,7 @@ describe('the session log', () => {
     for (const record of [CLOSE, RESUMED]) {
       await log.append(record);
     }
-    const newer = JSON.stringify({ v: SESSION_LOG_FORMAT + 1, ...CLOSE });
+    const newer = JSON.stringify({ v: SESSION_LOG_FORMAT + 2, ...CLOSE });
     const text = `${files.get(PATH) ?? ''}{torn\n${newer}\n`;
     assert.deepEqual(readSessionLog(text), { records: [CLOSE, RESUMED], skipped: 2 });
     assert.deepEqual(readSessionLog(''), { records: [], skipped: 0 });
