@@ -317,6 +317,15 @@ describe("Claude Code's transcript lines as entries", () => {
     }
   });
 
+  it('reads a prompt the host queued, with its text when the line holds one', () => {
+    const line = JSON.stringify({ type: 'queue-operation', operation: 'enqueue', timestamp: AT, sessionId: 's-1', content: 'daily check' });
+    assert.deepEqual(transcriptReader.entry(line), { ...BARE, at: AT_MS, session: 's-1', kind: 'queued-prompt', text: 'daily check' });
+    for (const content of [undefined, 7, ['daily check']]) {
+      const untold = JSON.stringify({ type: 'queue-operation', operation: 'enqueue', content });
+      assert.deepEqual(transcriptReader.entry(untold), { ...BARE, kind: 'queued-prompt', text: undefined }, untold);
+    }
+  });
+
   it('names the type of every other line, so none is lost unseen', () => {
     const others: readonly (readonly [Readonly<Record<string, unknown>>, string | undefined])[] = [
       [{ type: 'attachment', attachment: { type: 'environment', snapshot: {} } }, 'attachment'],
@@ -324,7 +333,8 @@ describe("Claude Code's transcript lines as entries", () => {
       [{ type: 'system', subtype: 'api_error' }, 'system'],
       [{ type: 'system' }, 'system'],
       [{ type: 'system', subtype: 7 }, 'system'],
-      [{ type: 'queue-operation', operation: 'enqueue', content: 'go' }, 'queue-operation'],
+      [{ type: 'queue-operation', operation: 'dequeue' }, 'queue-operation'],
+      [{ type: 'queue-operation', content: 'go' }, 'queue-operation'],
       [{ type: 'user' }, 'user'],
       [{ type: 'user', message: 'go' }, 'user'],
       [{ type: 'assistant', message: [] }, 'assistant'],
@@ -361,9 +371,10 @@ describe('reading only some kinds of entry', () => {
     continued: JSON.stringify({ type: 'continued-in', timestamp: AT, continuedInSessionId: 's-2' }),
     'hook-note': sessionStartNoteLine(AT, ['note']),
     'scheduled-carry': JSON.stringify({ type: 'attachment', timestamp: AT, attachment: { type: 'session_cron_carry', tasks: [] } }),
+    'queued-prompt': JSON.stringify({ type: 'queue-operation', operation: 'enqueue', timestamp: AT, content: 'go' }),
     other: JSON.stringify({ type: 'system', subtype: 'api_error', timestamp: AT }),
   } as const;
-  const kinds = ['input', 'reply', 'compact', 'turn-end', 'continued', 'hook-note', 'scheduled-carry', 'other'] as const;
+  const kinds = ['input', 'reply', 'compact', 'turn-end', 'continued', 'hook-note', 'scheduled-carry', 'queued-prompt', 'other'] as const;
 
   it('gives a line of a named kind as it reads without the filter', () => {
     for (const kind of kinds) {
@@ -387,8 +398,8 @@ describe('reading only some kinds of entry', () => {
     const quoting = textLine('u-1', [lines.input, lines.compact]);
     assert.equal(transcriptReader.entry(quoting, ['input', 'compact', 'hook-note']), undefined);
     assert.equal(transcriptReader.entry(quoting, ['reply'])?.kind, 'reply');
-    const named = userLine({}, 'the "compact_boundary", "hook_additional_context" and "session_cron_carry" lines');
-    assert.equal(transcriptReader.entry(named, ['compact', 'hook-note', 'scheduled-carry']), undefined);
+    const named = userLine({}, 'the "compact_boundary", "hook_additional_context", "session_cron_carry" and "type":"queue-operation" lines');
+    assert.equal(transcriptReader.entry(named, ['compact', 'hook-note', 'scheduled-carry', 'queued-prompt']), undefined);
   });
 
   it('still says a damaged line that could be of a named kind is unread, and passes one that could not', () => {
@@ -407,7 +418,7 @@ describe('the recorded session read as entries', () => {
       .filter((line) => line.trim() !== '')
       .map((line, index) => ({ where: `${transcript.file} line ${index + 1}`, line })),
   );
-  const kinds = ['input', 'reply', 'compact', 'turn-end', 'continued', 'hook-note', 'scheduled-carry', 'other'] as const;
+  const kinds = ['input', 'reply', 'compact', 'turn-end', 'continued', 'hook-note', 'scheduled-carry', 'queued-prompt', 'other'] as const;
 
   it('reads every line the host wrote: none is damaged, and the session has inputs and replies in both threads', () => {
     assert.equal(recording.transcripts.length >= 2, true, 'the session and a helper were recorded');

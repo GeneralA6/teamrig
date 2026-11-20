@@ -25,6 +25,7 @@ export {
   type InputEntry,
   type InputOrigin,
   type OtherEntry,
+  type QueuedPromptEntry,
   type ReplyCall,
   type ReplyEntry,
   type ScheduledCarryEntry,

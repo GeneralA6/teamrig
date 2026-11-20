@@ -167,13 +167,23 @@ export interface ScheduledCarryEntry extends EntryBase {
   readonly jobs: readonly ScheduledJob[];
 }
 
+/**
+ * A prompt the host put in the session's queue: one typed while a turn ran, a notification, or the prompt of a
+ * scheduled job or a wake-up that came due.
+ */
+export interface QueuedPromptEntry extends EntryBase {
+  readonly kind: 'queued-prompt';
+  /** The prompt as it was queued; undefined when the line holds none. */
+  readonly text: string | undefined;
+}
+
 /** A line of a type no reader uses yet; `type` is the host's name for it, so a check can count unknown ones. */
 export interface OtherEntry extends EntryBase {
   readonly kind: 'other';
   readonly type: string | undefined;
 }
 
-export type TranscriptEntry = InputEntry | ReplyEntry | CompactEntry | TurnEndEntry | ContinuedEntry | HookNoteEntry | ScheduledCarryEntry | OtherEntry;
+export type TranscriptEntry = InputEntry | ReplyEntry | CompactEntry | TurnEndEntry | ContinuedEntry | HookNoteEntry | ScheduledCarryEntry | QueuedPromptEntry | OtherEntry;
 export type EntryKind = TranscriptEntry['kind'];
 
 /** A line that is no entry: damaged or torn text, or JSON that is not an object. It is said, never skipped. */

@@ -11,6 +11,7 @@ import {
   type InputEntry,
   type InputOrigin,
   type JsonRecord,
+  type QueuedPromptEntry,
   type ReplyCall,
   type ReplyEntry,
   type ScheduledCarryEntry,
@@ -40,6 +41,7 @@ const KIND_WORDS = {
   continued: '"type":"continued-in"',
   'hook-note': '"hook_additional_context"',
   'scheduled-carry': '"session_cron_carry"',
+  'queued-prompt': '"type":"queue-operation"',
   other: undefined,
 } as const satisfies Readonly<Record<EntryKind, string | undefined>>;
 
@@ -303,10 +305,21 @@ function systemOf(base: Base, entry: JsonRecord): TranscriptEntry | undefined {
   return subtype !== undefined && TURN_END_MARKS.has(subtype) ? { ...base, kind: 'turn-end' } : undefined;
 }
 
+/**
+ * A prompt Claude Code put in the session's queue, which it writes as a `queue-operation` line of the `enqueue`
+ * operation; undefined for the queue's other operations, which take a prompt out.
+ */
+function queuedPromptOf(base: Base, entry: JsonRecord): QueuedPromptEntry | undefined {
+  return entry['operation'] === 'enqueue' ? { ...base, kind: 'queued-prompt', text: stringField(entry, 'content') } : undefined;
+}
+
 /** A line that carries no message, as the kind its type and marks make it; undefined for a line of no known kind. */
 function markedOf(base: Base, entry: JsonRecord, type: string | undefined): TranscriptEntry | undefined {
   if (type === 'system') {
     return systemOf(base, entry);
+  }
+  if (type === 'queue-operation') {
+    return queuedPromptOf(base, entry);
   }
   if (type === 'continued-in') {
     return { ...base, kind: 'continued', into: stringField(entry, 'continuedInSessionId') };
