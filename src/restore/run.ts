@@ -182,7 +182,7 @@ async function itemOf(deps: RestoreDeps, facts: JudgeFacts, judged: Judged): Pro
   const text = (transcript === undefined ? undefined : await deps.readTail(transcript, CARRY_TAIL_BYTES)) ?? '';
   const lost = lostWorkOf(deps.reader, text,Buffer.byteLength(text, 'utf8') >= CARRY_TAIL_BYTES, diedAt(entry, facts.shutdown?.start));
   const team = teamSessionOf(entry, deps.teams);
-  const label = team?.name ?? customTitleOf(text) ?? `Claude ${entry.claudeSession.slice(0, 8)}`;
+  const label = team?.name ?? customTitleOf(deps.reader, text) ?? `Claude ${entry.claudeSession.slice(0, 8)}`;
   const resumeFolder = transcript === undefined ? undefined : resumeFolderOf(transcript, text, entry.projectDir, deps.projectsDir, deps.platform);
   return { ...judged, transcript, resumeFolder, label, team, lost, effort: reopenEffortOf(team, text), ...chooseMode(entry, lost, team?.isLead === true) };
 }

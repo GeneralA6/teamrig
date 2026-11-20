@@ -1,16 +1,17 @@
 import type { Roster } from '../config/roster.ts';
 import { sessionsTitled } from '../hooks/bind.ts';
 import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from '../names/title.ts';
+import type { TranscriptReader } from '../ports/host/index.ts';
 import type { TranscriptBytes } from './cursor.ts';
 import type { ClaudeSessionFiles, TranscriptSet } from './discover.ts';
 
 const NO_TRANSCRIPTS: TranscriptSet = { main: [], subagents: [] };
 
-/** The title the user gave a Claude Code session, from its transcript's last `TRANSCRIPT_TAIL_BYTES`. */
-export async function transcriptTitleOf(transcripts: TranscriptBytes, path: string): Promise<string | undefined> {
+/** The title the user gave a host session, from its transcript's last `TRANSCRIPT_TAIL_BYTES`. */
+export async function transcriptTitleOf(reader: TranscriptReader, transcripts: TranscriptBytes, path: string): Promise<string | undefined> {
   const size = (await transcripts.size(path)) ?? 0;
   const length = Math.min(size, TRANSCRIPT_TAIL_BYTES);
-  return length === 0 ? undefined : customTitleOf((await transcripts.read(path, size - length, length)).toString('utf8'));
+  return length === 0 ? undefined : customTitleOf(reader, (await transcripts.read(path, size - length, length)).toString('utf8'));
 }
 
 /** The team session a Claude Code session works as, and why. */

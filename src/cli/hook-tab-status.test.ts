@@ -70,6 +70,17 @@ describe('hook tab-status', () => {
     assert.equal(titleOf(failed), `${TAB_CIRCLES.error} fix the build`);
   });
 
+  it("takes the topic from the payload alone on a host that keeps no transcript it can read", async () => {
+    const kit = await teamWith(ON_TEAM, [JSON.stringify({ type: 'custom-title', customTitle: 'scout' })]);
+    const bare: HostSource = () => ({ transcripts: unsupported('no transcript is kept') });
+    const kept = await kit.run(['hook', 'tab-status'], { stdin: payload('UserPromptSubmit', { prompt: 'and the tests' }), env: TITLE_OFF });
+    assert.equal(titleOf(kept), `${TAB_CIRCLES.working} scout`);
+    const prompt = await kit.run(['hook', 'tab-status'], { stdin: payload('UserPromptSubmit', { prompt: 'and the tests' }), env: TITLE_OFF, host: bare });
+    assert.equal(titleOf(prompt), `${TAB_CIRCLES.working} and the tests`);
+    const named = await kit.run(['hook', 'tab-status'], { stdin: payload('UserPromptSubmit', { session_title: 'web' }), env: TITLE_OFF, host: bare });
+    assert.equal(titleOf(named), `${TAB_CIRCLES.working} web`);
+  });
+
   // T2256: the picker guard refuses the lead's picker in the meeting too, so its title stays there as well.
   it('leaves the title for a question picker the picker guard refuses, the lead in a meeting too', async () => {
     const kit = await teamWith({ ...ON_TEAM, pickerGuard: { enabled: true } });

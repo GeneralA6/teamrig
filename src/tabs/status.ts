@@ -1,7 +1,7 @@
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { aiTitleOf, customTitleOf } from '../names/title.ts';
-import type { InputEntry } from '../ports/host/index.ts';
+import type { InputEntry, TranscriptReader } from '../ports/host/index.ts';
 import type { BackgroundKind } from '../refresh/running.ts';
 
 /**
@@ -200,14 +200,16 @@ function folderNameOf(path: string): string | undefined {
 /**
  * What the tab calls the session, the first of: the session's title (the payload's, else the newest
  * the user gave in the transcript), the title Claude Code made up, the first prompt (from a whole
- * transcript, else this event's own), the folder's name, then `FALLBACK_TOPIC`.
+ * transcript, else this event's own), the folder's name, then `FALLBACK_TOPIC`. With no `reader` (a
+ * host that keeps no transcript teamrig can read) the transcript's candidates are skipped.
  */
-export function topicOf(payload: JsonRecord, tail: TranscriptTail | undefined): string {
+export function topicOf(reader: TranscriptReader | undefined, payload: JsonRecord, tail: TranscriptTail | undefined): string {
+  const read = reader === undefined || tail === undefined ? undefined : { reader, tail };
   const candidates = [
     () => stringField(payload, 'session_title'),
-    () => (tail === undefined ? undefined : customTitleOf(tail.text)),
-    () => (tail === undefined ? undefined : aiTitleOf(tail.text)),
-    () => (tail?.whole === true ? firstPromptOf(tail.text) : undefined),
+    () => (read === undefined ? undefined : customTitleOf(read.reader, read.tail.text)),
+    () => (read === undefined ? undefined : aiTitleOf(read.reader, read.tail.text)),
+    () => (read?.tail.whole === true ? firstPromptOf(read.tail.text) : undefined),
     () => topicalPrompt(stringField(payload, 'prompt')),
     () => folderNameOf(stringField(payload, 'cwd') ?? ''),
   ];

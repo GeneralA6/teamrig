@@ -2,9 +2,11 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { aiTitleOf, customTitleOf, sessionTitleOf, TRANSCRIPT_TAIL_BYTES } from './title.ts';
 
 const TRANSCRIPT = join('/', 'home', 'transcripts', 'session.jsonl');
+const reader = shippedTranscripts();
 
 function entries(...lines: readonly object[]): string {
   return `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`;
@@ -18,7 +20,7 @@ describe('customTitleOf', () => {
       { type: 'custom-title', customTitle: ' ranger ' },
       { type: 'assistant', message: 'hi' },
     );
-    assert.equal(customTitleOf(text), 'ranger');
+    assert.equal(customTitleOf(reader, text), 'ranger');
   });
 
   it('ignores made-up titles, agent names, a prompt that quotes the entry, empty titles and torn lines', () => {
@@ -30,7 +32,7 @@ describe('customTitleOf', () => {
       JSON.stringify({ type: 'custom-title', customTitle: '  ' }),
       JSON.stringify({ type: 'custom-title', customTitle: 7 }),
     ].join('\n');
-    assert.equal(customTitleOf(text), undefined);
+    assert.equal(customTitleOf(reader, text), undefined);
   });
 });
 
@@ -42,29 +44,36 @@ describe('aiTitleOf', () => {
       { type: 'custom-title', customTitle: 'scout' },
       { type: 'ai-title', aiTitle: '' },
     );
-    assert.equal(aiTitleOf(text), 'Shipping the fix');
-    assert.equal(aiTitleOf(entries({ type: 'custom-title', customTitle: 'scout' })), undefined);
+    assert.equal(aiTitleOf(reader, text), 'Shipping the fix');
+    assert.equal(aiTitleOf(reader, entries({ type: 'custom-title', customTitle: 'scout' })), undefined);
+    assert.equal(aiTitleOf(reader, `ai-title","aiTitle":"torn"}\n${JSON.stringify({ type: 'ai-title', aiTitle: 7 })}`), undefined);
   });
 });
 
 describe('sessionTitleOf', () => {
   it("takes the payload's title first, and reads no transcript for it", async () => {
     const files = new MemoryFiles({ [TRANSCRIPT]: entries({ type: 'custom-title', customTitle: 'scout' }) });
-    assert.equal(await sessionTitleOf({ session_title: ' ranger', transcript_path: TRANSCRIPT }, files), 'ranger');
+    assert.equal(await sessionTitleOf(reader, { session_title: ' ranger', transcript_path: TRANSCRIPT }, files), 'ranger');
   });
 
   it("falls back to the end of the transcript, and only its end", async () => {
     const turns = entries({ type: 'user', message: 'x'.repeat(TRANSCRIPT_TAIL_BYTES) });
     const files = new MemoryFiles({ [TRANSCRIPT]: `${entries({ type: 'custom-title', customTitle: 'scout' })}${turns}` });
-    assert.equal(await sessionTitleOf({ session_title: '', transcript_path: TRANSCRIPT }, files), undefined);
+    assert.equal(await sessionTitleOf(reader, { session_title: '', transcript_path: TRANSCRIPT }, files), undefined);
     await files.append(TRANSCRIPT, entries({ type: 'custom-title', customTitle: 'ranger' }));
-    assert.equal(await sessionTitleOf({ transcript_path: TRANSCRIPT }, files), 'ranger');
+    assert.equal(await sessionTitleOf(reader, { transcript_path: TRANSCRIPT }, files), 'ranger');
+  });
+
+  it("takes only the payload's title on a host that keeps no transcript it can read", async () => {
+    const files = new MemoryFiles({ [TRANSCRIPT]: entries({ type: 'custom-title', customTitle: 'scout' }) });
+    assert.equal(await sessionTitleOf(undefined, { session_title: 'ranger', transcript_path: TRANSCRIPT }, files), 'ranger');
+    assert.equal(await sessionTitleOf(undefined, { transcript_path: TRANSCRIPT }, files), undefined);
   });
 
   it('has no title without a payload, a transcript path or a transcript file', async () => {
     const files = new MemoryFiles();
-    assert.equal(await sessionTitleOf('not a payload', files), undefined);
-    assert.equal(await sessionTitleOf({ transcript_path: '' }, files), undefined);
-    assert.equal(await sessionTitleOf({ transcript_path: TRANSCRIPT }, files), undefined);
+    assert.equal(await sessionTitleOf(reader, 'not a payload', files), undefined);
+    assert.equal(await sessionTitleOf(reader, { transcript_path: '' }, files), undefined);
+    assert.equal(await sessionTitleOf(reader, { transcript_path: TRANSCRIPT }, files), undefined);
   });
 });

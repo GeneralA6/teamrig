@@ -127,11 +127,12 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   const { marks } = await new JsonlMarkLog(new PlainLogFile(files, kit.paths.inboxMarks)).read();
   const account = recount ? undefined : await accountWeekOn(runtime, config.budget, kit.paths, now);
   const peers = account === undefined ? [] : await peerMarksOf(files, account.peers);
+  const reader = transcriptsOf(runtime);
   const measured = await measure(
     {
       transcripts: runtime.transcripts,
-      reader: transcriptsOf(runtime),
-      titleOf: (path) => transcriptTitleOf(runtime.transcripts, path),
+      reader,
+      titleOf: (path) => transcriptTitleOf(reader, runtime.transcripts, path),
       team: recount ? new MemoryUsageStore() : new UsageStore(files, kit.paths.usage),
       outside: recount ? new MemoryUsageStore() : new UsageStore(files, outsideUsageDir(kit.paths.usage)),
       clock,
