@@ -84,7 +84,7 @@ export async function scan(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const claudeDir = host.home(runtime.userHome);
   const secrets = new SecretScanner(team?.config.register.secretPatterns);
   const doctor = claudeSkillDoctor({ env: runtime.env, platform: runtime.platform, probe: runtime.probe, files: runtime.files, node: runtime.self.node, hooks: runtime.hooks });
-  const found = await scanSetup({ files: runtime.files, probe: runtime.probe, transcripts: runtime.transcripts, reader: transcriptsOf(runtime), doctor }, {
+  const found = await scanSetup({ files: runtime.files, probe: runtime.probe, transcripts: runtime.transcripts, reader: transcriptsOf(runtime), paths: host, doctor }, {
     claudeDir,
     userHome: runtime.userHome,
     project,
@@ -102,7 +102,7 @@ export async function scan(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   });
   const backups = await listBackups({ files: runtime.files, probe: runtime.probe }, setupBackupsDir(runtime.env, runtime.userHome, runtime.platform));
   const backup = latestBackupOf(backups, { claudeDir, project, teamSkills: teamSkillsOf(team?.kit.paths.skills, claudeDir) });
-  const lines = scanReport(found, { project, team: team?.name, days, now: runtime.clock.now(), maxMb, userHome: runtime.userHome, secrets, backup });
+  const lines = scanReport(found, { project, paths: host, team: team?.name, days, now: runtime.clock.now(), maxMb, userHome: runtime.userHome, secrets, backup });
   lines.forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
 }
