@@ -68,6 +68,22 @@ const CASES: ReadonlyArray<{ readonly id: string; readonly hits: readonly string
     ],
   },
   {
+    id: 'discord-webhook',
+    hits: [
+      join('https://discord', '.com/api/webhooks/', '1'.repeat(18), '/', 'aB3_-x'.repeat(11)),
+      join('https://discordapp', '.com/api/v10/webhooks/', '2'.repeat(19), '/', 'Qw9-_z'.repeat(11)),
+      join('HTTPS://CANARY.DISCORD', '.COM/API/WEBHOOKS/', '3'.repeat(17), '/', 'k4'.repeat(10)),
+    ],
+    misses: [
+      join('https://discord', '.com/api/webhooks/', '1'.repeat(18)),
+      join('https://discord', '.com/api/webhooks/', '<id>/<token>'),
+      join('https://discord', '.com/api/webhooks/', '1'.repeat(18), '/', 'short'),
+      join('https://mydiscord', '.com/api/webhooks/', '1'.repeat(18), '/', 'aB3_-x'.repeat(11)),
+      join('https://discord', '.com/channels/', '1'.repeat(18), '/', '4'.repeat(24)),
+      'post the page to the Discord webhook',
+    ],
+  },
+  {
     id: 'slack-webhook',
     hits: [
       join('https://hooks.slack', '.com/services/', 'T0AB12CD3', '/', 'B0EF45GH6', '/', 'a1B2c3'.repeat(4)),
