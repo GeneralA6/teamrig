@@ -15,6 +15,7 @@ import { NODE_PATH_PROBE } from '../core/path-probe.ts';
 import { NODE_STORE_FOLDERS } from '../core/node-store-folders.ts';
 import { chatWebhook } from '../core/webhook.ts';
 import { CREDENTIAL_TIMEOUT_MS, systemCredentials } from '../core/credentials.ts';
+import { nodeHttpClient } from '../core/http.ts';
 import { nodeProgramRunner } from '../core/program-runner.ts';
 import { GIT_CHECKOUT } from '../exec/binding.ts';
 import { nodeExecSpawner } from '../exec/runner.ts';
@@ -108,6 +109,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     cpu: nodeHostCpu(),
     gh: nodeGhRunner(),
     credentials: systemCredentials(process.platform, nodeProgramRunner(CREDENTIAL_TIMEOUT_MS)),
+    http: nodeHttpClient(),
     probe: NODE_PATH_PROBE,
     pluginStore: NODE_STORE_FOLDERS,
     transcripts: nodeTranscriptSource,

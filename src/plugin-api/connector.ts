@@ -1,6 +1,7 @@
 import type { CredentialStore } from '../core/credentials.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
+import type { HttpClient } from '../core/http.ts';
 import type { ProgramRunner } from '../core/program-runner.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { featuresOf, isConnectorKind, type ConnectorKind } from '../features/registry.ts';
@@ -19,6 +20,8 @@ export interface ConnectorDeclaration extends AdapterDeclaration<'connector'> {
 /** What the loader hands a connector adapter to build its ports from: nothing else of teamrig reaches it. */
 export interface ConnectorDeps {
   readonly run: ProgramRunner;
+  /** The tool's API, for a connector whose tool has no command line to run: https only, no redirect followed. */
+  readonly http: HttpClient;
   readonly credentials: CredentialStore;
   readonly env: Env;
   readonly scanner: SecretScanner;

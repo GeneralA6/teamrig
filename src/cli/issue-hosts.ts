@@ -14,8 +14,8 @@ export interface Hosts {
 /** Loads the connector adapter of an id, or says why it is refused (composition/loader.ts). */
 export type ConnectorLoader = (id: string) => Promise<Load<ConnectorAdapter>>;
 
-/** What of a CLI run a host is built from: the gh runner, the saved secrets and the environment. */
-export type HostRuntime = Pick<CliRuntime, 'gh' | 'credentials' | 'env'>;
+/** What of a CLI run a host is built from: the gh runner, the HTTP client, the saved secrets and the environment. */
+export type HostRuntime = Pick<CliRuntime, 'gh' | 'http' | 'credentials' | 'env'>;
 
 /**
  * A host's connector adapter gave no host. The adapters ship with teamrig, so this is teamrig's own fault and never
@@ -44,7 +44,14 @@ export async function hostsOf(kind: HostKind, runtime: HostRuntime, scanner: Sec
   if (loaded.kind === 'refused') {
     throw new HostAdapterError(kind, loaded.notices);
   }
-  const { tracker, codeHost } = loaded.value.create({ run: programOverGh(runtime.gh, runtime.env), credentials: runtime.credentials, env: runtime.env, scanner, stamp });
+  const { tracker, codeHost } = loaded.value.create({
+    run: programOverGh(runtime.gh, runtime.env),
+    http: runtime.http,
+    credentials: runtime.credentials,
+    env: runtime.env,
+    scanner,
+    stamp,
+  });
   if (tracker === undefined || codeHost === undefined) {
     throw new HostAdapterError(kind, [...(tracker === undefined ? ['it builds no tracker'] : []), ...(codeHost === undefined ? ['it builds no code host'] : [])]);
   }

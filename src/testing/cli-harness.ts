@@ -23,6 +23,7 @@ import type { CommitLog } from '../push-guard/commit-size.ts';
 import type { RepoState } from '../push-guard/push.ts';
 import type { SecretsGit } from '../secret-guard/secrets-git.ts';
 import type { CredentialStore } from '../core/credentials.ts';
+import type { HttpClient } from '../core/http.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { ShellRunner } from '../test-run/shell.ts';
 import type { HostCpu } from '../delivery/cpu.ts';
@@ -142,6 +143,8 @@ export interface RunOptions {
   readonly gh?: GhRunner;
   /** The saved secrets `issue sync` reads tokens from; default a store with none. */
   readonly credentials?: CredentialStore;
+  /** The outside API a connector adapter reaches; default one where no request is answered. */
+  readonly http?: HttpClient;
   /** The folders and programs the CLI sees; default none. */
   readonly probe?: PathProbe;
   /** The plugin store the idle pass dates; default one with nothing in it. */
@@ -241,6 +244,7 @@ export class CliHarness {
       ...(options.shell === undefined ? {} : { shell: options.shell }),
       ...(options.gh === undefined ? {} : { gh: options.gh }),
       ...(options.credentials === undefined ? {} : { credentials: options.credentials }),
+      ...(options.http === undefined ? {} : { http: options.http }),
       ...(options.probe === undefined ? {} : { probe: options.probe }),
       ...(options.pluginStore === undefined ? {} : { pluginStore: options.pluginStore }),
       ...(options.requirements === undefined ? {} : { requirements: options.requirements }),
