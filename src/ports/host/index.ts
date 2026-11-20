@@ -27,6 +27,8 @@ export {
   type OtherEntry,
   type ReplyCall,
   type ReplyEntry,
+  type ScheduledCarryEntry,
+  type ScheduledJob,
   type ToolOutcome,
   type TranscriptEntry,
   type TranscriptReader,

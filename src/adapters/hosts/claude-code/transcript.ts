@@ -13,6 +13,8 @@ import {
   type JsonRecord,
   type ReplyCall,
   type ReplyEntry,
+  type ScheduledCarryEntry,
+  type ScheduledJob,
   type ToolOutcome,
   type TranscriptEntry,
   type TranscriptReader,
@@ -37,6 +39,7 @@ const KIND_WORDS = {
   'turn-end': '"type":"system"',
   continued: '"type":"continued-in"',
   'hook-note': '"hook_additional_context"',
+  'scheduled-carry': '"session_cron_carry"',
   other: undefined,
 } as const satisfies Readonly<Record<EntryKind, string | undefined>>;
 
@@ -248,15 +251,47 @@ function replyOf(base: Base, entry: JsonRecord, message: JsonRecord): ReplyEntry
   };
 }
 
-/** A hook's added context, which Claude Code writes as an attachment; undefined for any other attachment. */
-function hookNoteOf(base: Base, entry: JsonRecord): HookNoteEntry | undefined {
-  const attachment = recordField(entry, 'attachment');
-  if (attachment === undefined || attachment['type'] !== 'hook_additional_context') {
-    return undefined;
-  }
+/** A hook's added context, which Claude Code writes as a `hook_additional_context` attachment. */
+function hookNoteOf(base: Base, attachment: JsonRecord): HookNoteEntry {
   const content = attachment['content'];
   const texts = Array.isArray(content) ? content.filter((part): part is string => typeof part === 'string') : [];
   return { ...base, kind: 'hook-note', atStart: attachment['hookEvent'] === 'SessionStart', texts };
+}
+
+/** One job of a snapshot's list; undefined for one without its id, schedule, prompt or time. Only `recurring: false` runs once. */
+function scheduledJobOf(task: JsonRecord): ScheduledJob | undefined {
+  const id = stringField(task, 'id');
+  const cron = stringField(task, 'cron');
+  const prompt = stringField(task, 'prompt');
+  const createdAt = task['createdAt'];
+  if (id === undefined || cron === undefined || prompt === undefined || typeof createdAt !== 'number') {
+    return undefined;
+  }
+  return { id, cron, prompt, recurring: task['recurring'] !== false, createdAt };
+}
+
+function scheduledJobsOf(tasks: unknown): readonly ScheduledJob[] {
+  return Array.isArray(tasks) ? tasks.filter(isRecord).flatMap((task) => scheduledJobOf(task) ?? []) : [];
+}
+
+/**
+ * The jobs live in the process when Claude Code compacted, which it writes as a `session_cron_carry` attachment: the
+ * session's own (`tasks`) and those an earlier session in the process armed (`otherArmed`, Claude Code 2.1.310).
+ */
+function scheduledCarryOf(base: Base, attachment: JsonRecord): ScheduledCarryEntry {
+  return { ...base, kind: 'scheduled-carry', jobs: [...scheduledJobsOf(attachment['tasks']), ...scheduledJobsOf(attachment['otherArmed'])] };
+}
+
+/** An `attachment` line teamrig has a kind for: a hook's added context, or the scheduled jobs live at a compaction; undefined for any other. */
+function attachmentOf(base: Base, entry: JsonRecord): TranscriptEntry | undefined {
+  const attachment = recordField(entry, 'attachment');
+  if (attachment === undefined) {
+    return undefined;
+  }
+  if (attachment['type'] === 'hook_additional_context') {
+    return hookNoteOf(base, attachment);
+  }
+  return attachment['type'] === 'session_cron_carry' ? scheduledCarryOf(base, attachment) : undefined;
 }
 
 /** A `system` line teamrig has a kind for: a compaction boundary, or a turn's end; undefined for any other. */
@@ -276,7 +311,7 @@ function markedOf(base: Base, entry: JsonRecord, type: string | undefined): Tran
   if (type === 'continued-in') {
     return { ...base, kind: 'continued', into: stringField(entry, 'continuedInSessionId') };
   }
-  return type === 'attachment' ? hookNoteOf(base, entry) : undefined;
+  return type === 'attachment' ? attachmentOf(base, entry) : undefined;
 }
 
 function entryOf(entry: JsonRecord): TranscriptEntry {

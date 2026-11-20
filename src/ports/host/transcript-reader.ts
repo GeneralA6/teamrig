@@ -146,13 +146,34 @@ export interface HookNoteEntry extends EntryBase {
   readonly texts: readonly string[];
 }
 
+/** A scheduled job as the host lists it. */
+export interface ScheduledJob {
+  readonly id: string;
+  /** When it runs, as a cron expression. */
+  readonly cron: string;
+  readonly prompt: string;
+  /** False for a job that runs once. */
+  readonly recurring: boolean;
+  /** When it was made, in epoch ms. */
+  readonly createdAt: number;
+}
+
+/**
+ * The scheduled jobs live in the host's process when it compacted the session: the session's own first, then those
+ * an earlier session of the process armed. A job the host lists without its id, schedule, prompt or time is left out.
+ */
+export interface ScheduledCarryEntry extends EntryBase {
+  readonly kind: 'scheduled-carry';
+  readonly jobs: readonly ScheduledJob[];
+}
+
 /** A line of a type no reader uses yet; `type` is the host's name for it, so a check can count unknown ones. */
 export interface OtherEntry extends EntryBase {
   readonly kind: 'other';
   readonly type: string | undefined;
 }
 
-export type TranscriptEntry = InputEntry | ReplyEntry | CompactEntry | TurnEndEntry | ContinuedEntry | HookNoteEntry | OtherEntry;
+export type TranscriptEntry = InputEntry | ReplyEntry | CompactEntry | TurnEndEntry | ContinuedEntry | HookNoteEntry | ScheduledCarryEntry | OtherEntry;
 export type EntryKind = TranscriptEntry['kind'];
 
 /** A line that is no entry: damaged or torn text, or JSON that is not an object. It is said, never skipped. */

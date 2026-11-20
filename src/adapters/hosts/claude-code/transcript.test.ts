@@ -298,6 +298,25 @@ describe("Claude Code's transcript lines as entries", () => {
     assert.deepEqual(transcriptReader.entry(unlisted), { ...BARE, kind: 'hook-note', atStart: false, texts: [] });
   });
 
+  it('reads the scheduled jobs live when the host compacted, those an earlier session armed after its own', () => {
+    const own = { id: 'j-1', cron: '3 13 * * *', prompt: 'daily check', recurring: true, createdAt: AT_MS };
+    const armed = { id: 'j-2', cron: '17 5 26 10 *', prompt: 'look once', recurring: false, createdAt: AT_MS + 1 };
+    const line = JSON.stringify({ type: 'attachment', timestamp: AT, attachment: { type: 'session_cron_carry', tasks: [own], otherArmed: [armed] } });
+    assert.deepEqual(transcriptReader.entry(line), { ...BARE, at: AT_MS, kind: 'scheduled-carry', jobs: [own, armed] });
+    // Only a job marked as not recurring runs once; one without its id, schedule, prompt or time is no job.
+    const whole = { id: 'j-3', cron: '* * * * *', prompt: 'p', createdAt: 5 };
+    const tasks = [whole, { ...whole, id: undefined }, { ...whole, cron: 7 }, { ...whole, prompt: undefined }, { ...whole, createdAt: AT }, 'text', null];
+    assert.deepEqual(transcriptReader.entry(JSON.stringify({ type: 'attachment', attachment: { type: 'session_cron_carry', tasks } })), {
+      ...BARE,
+      kind: 'scheduled-carry',
+      jobs: [{ ...whole, recurring: true }],
+    });
+    for (const lists of [{}, { tasks: 'none', otherArmed: 7 }]) {
+      const empty = JSON.stringify({ type: 'attachment', attachment: { type: 'session_cron_carry', ...lists } });
+      assert.deepEqual(transcriptReader.entry(empty), { ...BARE, kind: 'scheduled-carry', jobs: [] }, empty);
+    }
+  });
+
   it('names the type of every other line, so none is lost unseen', () => {
     const others: readonly (readonly [Readonly<Record<string, unknown>>, string | undefined])[] = [
       [{ type: 'attachment', attachment: { type: 'environment', snapshot: {} } }, 'attachment'],
@@ -341,9 +360,10 @@ describe('reading only some kinds of entry', () => {
     'turn-end': systemLine(AT),
     continued: JSON.stringify({ type: 'continued-in', timestamp: AT, continuedInSessionId: 's-2' }),
     'hook-note': sessionStartNoteLine(AT, ['note']),
+    'scheduled-carry': JSON.stringify({ type: 'attachment', timestamp: AT, attachment: { type: 'session_cron_carry', tasks: [] } }),
     other: JSON.stringify({ type: 'system', subtype: 'api_error', timestamp: AT }),
   } as const;
-  const kinds = ['input', 'reply', 'compact', 'turn-end', 'continued', 'hook-note', 'other'] as const;
+  const kinds = ['input', 'reply', 'compact', 'turn-end', 'continued', 'hook-note', 'scheduled-carry', 'other'] as const;
 
   it('gives a line of a named kind as it reads without the filter', () => {
     for (const kind of kinds) {
@@ -367,8 +387,8 @@ describe('reading only some kinds of entry', () => {
     const quoting = textLine('u-1', [lines.input, lines.compact]);
     assert.equal(transcriptReader.entry(quoting, ['input', 'compact', 'hook-note']), undefined);
     assert.equal(transcriptReader.entry(quoting, ['reply'])?.kind, 'reply');
-    const named = userLine({}, 'the "compact_boundary" and "hook_additional_context" lines');
-    assert.equal(transcriptReader.entry(named, ['compact', 'hook-note']), undefined);
+    const named = userLine({}, 'the "compact_boundary", "hook_additional_context" and "session_cron_carry" lines');
+    assert.equal(transcriptReader.entry(named, ['compact', 'hook-note', 'scheduled-carry']), undefined);
   });
 
   it('still says a damaged line that could be of a named kind is unread, and passes one that could not', () => {
@@ -387,7 +407,7 @@ describe('the recorded session read as entries', () => {
       .filter((line) => line.trim() !== '')
       .map((line, index) => ({ where: `${transcript.file} line ${index + 1}`, line })),
   );
-  const kinds = ['input', 'reply', 'compact', 'turn-end', 'continued', 'hook-note', 'other'] as const;
+  const kinds = ['input', 'reply', 'compact', 'turn-end', 'continued', 'hook-note', 'scheduled-carry', 'other'] as const;
 
   it('reads every line the host wrote: none is damaged, and the session has inputs and replies in both threads', () => {
     assert.equal(recording.transcripts.length >= 2, true, 'the session and a helper were recorded');
