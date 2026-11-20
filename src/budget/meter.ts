@@ -3,7 +3,8 @@ import type { Clock } from '../core/lock.ts';
 import { formatUtcDay, formatUtcHour, MS_PER_DAY } from '../core/time.ts';
 import { findLineAtOrAfter, readLines, type TranscriptBytes } from './cursor.ts';
 import type { TranscriptSet } from './discover.ts';
-import { parseTranscriptLine, type CallLine } from './line.ts';
+import type { TranscriptReader } from '../ports/host/index.ts';
+import { transcriptLineOf, type CallLine } from './line.ts';
 import { MissTracker } from './misses.ts';
 import { emptyPatterns, PatternTracker, type Count, type PatternField } from './patterns.ts';
 import {
@@ -22,6 +23,8 @@ import { contextTokens, modelWeightOf, WEIGHTS, weightOf } from './weights.ts';
 /** What the meter reads with and where it keeps its totals. */
 export interface MeterDeps {
   readonly bytes: TranscriptBytes;
+  /** The host's reading of one transcript line. */
+  readonly reader: TranscriptReader;
   readonly store: UsageStorage;
   readonly clock: Clock;
 }
@@ -172,8 +175,10 @@ class TranscriptFold {
   private readonly tally: Tally;
   private readonly weight: number;
   private readonly modelWeights: readonly ModelWeight[];
+  private readonly reader: TranscriptReader;
 
-  constructor(cursor: TranscriptCursor, tally: Tally, transcript: WeightedTranscript) {
+  constructor(cursor: TranscriptCursor, tally: Tally, transcript: WeightedTranscript, reader: TranscriptReader) {
+    this.reader = reader;
     this.call = cursor.call;
     this.tracker = new PatternTracker(cursor.patterns, transcript.weight);
     this.misses = new MissTracker(cursor.misses, (day) => tally.counter(day));
@@ -189,7 +194,7 @@ class TranscriptFold {
   }
 
   line(raw: string): void {
-    const line = parseTranscriptLine(raw);
+    const line = transcriptLineOf(this.reader, raw);
     if (line === undefined) {
       return;
     }
@@ -309,7 +314,7 @@ export async function runMeter(deps: MeterDeps, run: MeterRun): Promise<MeterRes
     budget -= batch.bytes;
     bytesRead += batch.bytes;
     catchingUp ||= batch.capped;
-    const fold = new TranscriptFold(cursor, tally, transcript);
+    const fold = new TranscriptFold(cursor, tally, transcript, deps.reader);
     for (const line of batch.lines) {
       fold.line(line);
     }

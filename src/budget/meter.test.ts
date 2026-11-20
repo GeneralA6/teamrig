@@ -5,6 +5,7 @@ import { blockStartLines } from '../hooks/live-tasks.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import {
   promptLine,
   replyLine,
@@ -59,7 +60,7 @@ function world(now: string, transcripts: Readonly<Record<string, string>> = {}):
     files,
     clock,
     run: (maxBytes = 10_000_000, transcripts = BOTH, subagentWeight = 1, modelWeights = []) =>
-      runMeter({ bytes, store, clock }, { session: SESSION, transcripts, subagentWeight, modelWeights, maxBytes }),
+      runMeter({ bytes, reader: shippedTranscripts(), store, clock },{ session: SESSION, transcripts, subagentWeight, modelWeights, maxBytes }),
   };
 }
 
@@ -322,7 +323,7 @@ describe('runMeter', () => {
     const bytes = new MemoryTranscripts({ [MAIN]: transcript([replyLine(R1)]) });
     const clock = new FakeClock(at(12));
     const store = new UsageStore(files, DIR);
-    const run = (): Promise<MeterResult> => runMeter({ bytes, store, clock }, { session: SESSION, transcripts: { main: [MAIN], subagents: [] }, subagentWeight: 1, modelWeights: [], maxBytes: 10_000 });
+    const run = (): Promise<MeterResult> => runMeter({ bytes, reader: shippedTranscripts(), store, clock },{ session: SESSION, transcripts: { main: [MAIN], subagents: [] }, subagentWeight: 1, modelWeights: [], maxBytes: 10_000 });
     files.race = async () => {
       await run();
       bytes.append(MAIN, transcript([replyLine(R2)]));
