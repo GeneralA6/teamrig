@@ -1,4 +1,4 @@
-import { isUnsupported, type HostPorts, type StatusLine, type TranscriptReader, type UsageMeter } from '../ports/host/index.ts';
+import { isUnsupported, type HookBridge, type HostPorts, type StatusLine, type TranscriptReader, type UsageMeter } from '../ports/host/index.ts';
 import type { ContextSource } from '../refresh/usage.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
@@ -8,6 +8,18 @@ import { RefusedError, type CliRuntime } from './runtime.ts';
  */
 export function hostOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): HostPorts {
   return runtime.host({ env: runtime.env, platform: runtime.platform });
+}
+
+/**
+ * The hook bridge of one run, for a hook command. A host with no hooks calls none of them, so one run there is
+ * refused with the host's own reason.
+ */
+export function hooksOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): HookBridge {
+  const { hooks } = hostOf(runtime);
+  if (isUnsupported(hooks)) {
+    throw new RefusedError(hooks.notice);
+  }
+  return hooks;
 }
 
 /**
