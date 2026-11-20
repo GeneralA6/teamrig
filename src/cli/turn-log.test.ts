@@ -5,7 +5,7 @@ import type { HostSource } from '../composition/host-ports.ts';
 import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
-import { bareHost } from '../testing/bare-host.ts';
+import { HOOKS_ONLY_HOST } from '../testing/host.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { promptLine, textLine, transcript } from '../testing/transcript-lines.ts';
@@ -67,7 +67,7 @@ describe('turn log hooks', () => {
   });
 
   it('logs that message alone, taking no transcript entry, on a host whose transcript teamrig cannot read', async () => {
-    const bare: HostSource = bareHost;
+    const bare: HostSource = HOOKS_ONLY_HOST;
     const kit = new CliHarness(TEAM);
     await kit.files.write(TRANSCRIPT, transcript([promptLine(AT, 'fix the build'), textLine('a1', ['Looking.'])]));
     await kit.run(['hook', 'stop'], { stdin: payload('Stop', { last_assistant_message: 'Fixed.' }), env: ALPHA, host: bare });

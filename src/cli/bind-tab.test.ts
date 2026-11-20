@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import type { HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { indexMarks, readMarks } from '../inbox/marks.ts';
-import { bareHost } from '../testing/bare-host.ts';
+import { HOOKS_ONLY_HOST } from '../testing/host.ts';
 import { APP, CLAUDE_SESSION, CliHarness, contextOf, RENAMES_PATH, TEAM, TEAM_HOME, titledPromptOf, USER_HOME } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { treeHarness } from '../testing/team-tree.ts';
@@ -52,7 +52,7 @@ describe('runCli: a hand-started tab binds itself by its Claude Code title (T302
     const kit = new CliHarness();
     const path = join(USER_HOME, '.claude', 'projects', 'work-app', `${CLAUDE_SESSION}.jsonl`);
     await kit.files.write(path, `${JSON.stringify({ type: 'custom-title', customTitle: 'alpha' })}\n`);
-    const bare: HostSource = bareHost;
+    const bare: HostSource = HOOKS_ONLY_HOST;
     const unread = await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ transcript_path: path }), host: bare });
     assert.match(unread.stdout[0] ?? '', /^teamrig: this tab is not bound to a session of team app\./);
     const read = await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ transcript_path: path }) });
