@@ -469,7 +469,7 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, sta
     liveTasksNote: await liveTasksPartOf(runtime, kit, config, id, start.source, refresh),
     modelNote: modelNoteOf(config, roster, id, start.model),
     verifyNote: await verifyStartNoteOf(runtime, kit.paths, id),
-    worktreeNote: worktreeNoteOf(start.cwd),
+    worktreeNote: worktreeNoteOf(start.cwd, pathsIfKnown(runtime)),
     session,
     sessionInEnv: fromEnv !== undefined,
     tree: kitTree.tree.placeOf(kit.paths.team),

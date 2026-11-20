@@ -10,6 +10,7 @@ import type { MadeBackup } from './backup.ts';
 import { MEMORY_INDEX_LINES, type ListedSkill, type LoadedFile } from './scan-context.ts';
 import { tokensOf, type Finding } from './scan-finding.ts';
 import { unusedSection } from './scan-unused.ts';
+import type { WorktreePaths } from './scan-usage.ts';
 import type { Listing, SetupScan } from './scan.ts';
 
 /**
@@ -35,6 +36,8 @@ const OVERRIDE_TOP = 10;
 /** Where the scan ran, and what its lines need to show paths and quotes. */
 export interface ScanReportContext {
   readonly project: string;
+  /** The host's paths: a project in one of the host's worktrees is judged as the project that worktree copies. */
+  readonly paths: WorktreePaths;
   /** The team the project belongs to; undefined before one is created. */
   readonly team: string | undefined;
   readonly days: number;
