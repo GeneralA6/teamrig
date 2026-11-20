@@ -1,6 +1,7 @@
 import { DEFAULT_PROMPTS } from '../config/defaults.ts';
 import type { ConfigLoad } from '../config/load.ts';
 import type { HookAsks } from '../config/types.ts';
+import type { HookReply } from '../ports/host/index.ts';
 
 /** How a teamrig hook holds a call back: one it would once have asked a person about, or a plain refusal. */
 export type HoldBack = 'ask' | 'deny';
@@ -37,6 +38,16 @@ export function hookAsksOf(load: ConfigLoad | undefined): HookAsks {
  */
 export function holdBack(decision: HoldBack, reason: string): Permission {
   return { permissionDecision: 'deny', permissionDecisionReason: decision === 'ask' ? `${reason} ${ASK_REFUSED_NOTE}` : reason };
+}
+
+/** A hook's reply refusing a call with its reason as given. */
+export function refusal(reason: string): HookReply {
+  return { verdict: { kind: 'deny', reason } };
+}
+
+/** A hook's reply holding a call back: a refusal with the reason `holdBack` gives it. */
+export function heldBack(decision: HoldBack, reason: string): HookReply {
+  return refusal(holdBack(decision, reason).permissionDecisionReason);
 }
 
 /** The PreToolUse output of a call a hook refuses with its reason as given. */
