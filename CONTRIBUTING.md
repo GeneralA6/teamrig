@@ -152,6 +152,13 @@ log, both in `src/core/jsonl.ts`); a store without that check needs one first. A
 current format with `fieldPaths` (`src/testing/field-paths.ts`), as `src/budget/store.test.ts` does for the
 usage files.
 
+A field renamed in a stored file goes in two releases, since a tab keeps the teamrig it loaded until it reloads and
+old and new code share the file meanwhile. The first release only reads: a `<STORE>_NEXT_FORMAT` constant beside
+the written one names the format a later teamrig writes, the parser takes both formats and either field name, and
+a store that refuses to write beside a newer format lets the next one pass. The writer moves in a later release,
+once every tab reads it. Two tests hold each store to this: the exact line written today, and a line as the later
+release will write it. `src/core/host-session.ts` and `src/sessions/log.ts` show the pattern.
+
 The register's event log (`EVENT_VERSION`) is an exception: a field an older reader can ignore takes no new number.
 Compaction copies each kept line as written, so no rewrite drops the field, and the header of
 `src/register/events.ts` lists each field added this way. A line an older teamrig must not act on still raises the
