@@ -20,7 +20,7 @@ describe('the host ports', () => {
   });
 
   it('list every port an adapter must name', () => {
-    assert.deepEqual(HOST_PORT_NAMES, ['hooks', 'toolCall', 'transcripts', 'usage', 'statusLine']);
+    assert.deepEqual(HOST_PORT_NAMES, ['hooks', 'toolCall', 'transcripts', 'usage', 'statusLine', 'paths']);
   });
 });
 
@@ -28,7 +28,14 @@ describe('an unsupported port', () => {
   it('carries its reason, and is told from a port that is filled', () => {
     const missing = unsupported('this host calls no hook');
     assert.deepEqual(missing, { kind: 'unsupported', notice: 'this host calls no hook' });
-    const ports: HostPorts = { hooks: missing, toolCall: { normalize: (name, input) => ({ kind: 'other', name, input }) }, transcripts: missing, usage: missing, statusLine: missing };
+    const ports: HostPorts = {
+      hooks: missing,
+      toolCall: { normalize: (name, input) => ({ kind: 'other', name, input }) },
+      transcripts: missing,
+      usage: missing,
+      statusLine: missing,
+      paths: missing,
+    };
     assert.equal(isUnsupported(ports.hooks), true);
     assert.equal(isUnsupported(ports.toolCall), false);
   });

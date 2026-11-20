@@ -11,5 +11,6 @@ export function bareHost(): HostPorts {
     transcripts: unsupported('no transcript is kept'),
     usage: unsupported('no call is priced'),
     statusLine: unsupported('no status line is drawn'),
+    paths: unsupported('no folder of the host is known'),
   };
 }
