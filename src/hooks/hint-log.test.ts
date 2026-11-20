@@ -26,6 +26,13 @@ describe('firstHint', () => {
     assert.equal(await firstHint(new JsonlHintLog(new PlainLogFile(files, LOG)), TAB, 'untitled', NOW), false);
   });
 
+  it('counts a hint a later teamrig recorded, naming the tab hostSession (T4762)', async () => {
+    const files = new MemoryFiles({ [LOG]: `{"v":2,"hostSession":"${TAB}","reason":"untitled","at":"${NOW.toISOString()}"}\n` });
+    const log = new JsonlHintLog(new PlainLogFile(files, LOG));
+    assert.equal(await firstHint(log, TAB, 'untitled', NOW), false);
+    assert.equal(await firstHint(log, OTHER_TAB, 'untitled', NOW), true);
+  });
+
   it('lets the hint through when the log cannot be read or written', async () => {
     const memory = new MemoryFiles();
     const unreadable = new FaultyFiles(memory).fail('read', LOG, systemError('EBUSY'));
