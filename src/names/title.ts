@@ -1,6 +1,5 @@
 import type { Files } from '../core/files.ts';
-import { isRecord, stringField } from '../core/guards.ts';
-import type { EntryKind, TitleEntry, TranscriptReader } from '../ports/host/index.ts';
+import type { EntryKind, HookEvent, TitleEntry, TranscriptReader } from '../ports/host/index.ts';
 
 /**
  * How much of a transcript's end is searched for the session's title, and for its context size at a
@@ -41,20 +40,18 @@ export function aiTitleOf(reader: TranscriptReader, text: string): string | unde
   return newestTitleOf(reader, text, 'host');
 }
 
+/** What a hook event says of its session's title: the title itself, and the transcript that may hold one. */
+export type TitleSource = Pick<HookEvent, 'title' | 'transcript'>;
+
 /**
- * The title of the session a hook runs for: the payload's `session_title`, else the newest title the
+ * The title of the host session a hook runs for: the one its event carries, else the newest title the
  * user gave near the end of its transcript. Undefined when the user never named it, and with no
- * `reader` (a host that keeps no transcript teamrig can read) when the payload names none.
+ * `reader` (a host that keeps no transcript teamrig can read) when the event carries none.
  */
-export async function sessionTitleOf(reader: TranscriptReader | undefined, payload: unknown, files: Files): Promise<string | undefined> {
-  if (!isRecord(payload)) {
-    return undefined;
-  }
-  const title = stringField(payload, 'session_title')?.trim();
-  if (title !== undefined && title !== '') {
+export async function sessionTitleOf(reader: TranscriptReader | undefined, { title, transcript }: TitleSource, files: Files): Promise<string | undefined> {
+  if (title !== undefined) {
     return title;
   }
-  const transcript = stringField(payload, 'transcript_path');
   const text = reader === undefined || transcript === undefined || transcript === '' ? undefined : await files.readTail(transcript, TRANSCRIPT_TAIL_BYTES);
   return reader === undefined || text === undefined ? undefined : customTitleOf(reader, text);
 }

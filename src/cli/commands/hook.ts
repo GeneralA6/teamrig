@@ -18,11 +18,10 @@ import { failedSendLine, failedSendOf } from '../../hooks/failed-send.ts';
 import { deliveredSendOf } from '../../hooks/route-reminder.ts';
 import { passRecordGuardReply } from '../../hooks/pass-record-guard.ts';
 import { JsonlHintLog } from '../../hooks/hint-log.ts';
-import { promptOutput } from '../../hooks/prompt-output.ts';
 import { showsLiveTasks } from '../../hooks/live-tasks.ts';
 import { requirementsNoteOnce } from '../../hooks/requirements-note.ts';
 import { helperOf } from '../../hooks/helper-start.ts';
-import { sessionStartContext, sessionStartOutput, type CuttableNote, type SessionStartInput } from '../../hooks/session-start.ts';
+import { sessionStartContext, sessionStartReply, type CuttableNote, type SessionStartInput } from '../../hooks/session-start.ts';
 import { worktreeNoteOf } from '../../hooks/worktree-note.ts';
 import { stopModelNotices } from '../../hooks/stop-model.ts';
 import { leadStopLine, leadTallyOf } from '../../hooks/lead-boundary.ts';
@@ -192,7 +191,7 @@ export async function execGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
  * the rename log, never by moving data. It never throws, so the hook always answers; a failure is
  * retried on the next prompt.
  */
-async function titleOutcome(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown, read: TitleRead): Promise<TitleOutcome> {
+async function titleOutcome(runtime: CliRuntime, kit: Kit, config: KitConfig, hostSession: string | undefined, read: TitleRead): Promise<TitleOutcome> {
   if (read.kind === 'failed') {
     return { kind: 'failed', error: read.error };
   }
@@ -202,7 +201,7 @@ async function titleOutcome(runtime: CliRuntime, kit: Kit, config: KitConfig, pa
       return { kind: 'none' };
     }
     const roster = await rosterOf(runtime, kit, config);
-    const id = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
+    const id = await teamSessionOf(runtime, kit, roster, hostSession ?? null);
     return id === undefined ? { kind: 'none' } : await adoptTitle(renameDepsOf(runtime, kit, config), { team: kit.paths.team, roster }, id, title);
   } catch (error) {
     return { kind: 'failed', error: errorMessage(error) };
@@ -245,19 +244,19 @@ async function cancelledRestartLine(runtime: CliRuntime, kit: Kit, id: string, r
  */
 export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
-  const claudeSession = sessionIdOf(payload);
-  if (claudeSession === null) {
+  const { event } = await readHookInput(runtime);
+  const hostSession = event?.session;
+  if (event === undefined || hostSession === undefined) {
     return EXIT.ok;
   }
-  const found = await sessionTeam(event?.cwd, runtime);
+  const found = await sessionTeam(event.cwd, runtime);
   switch (found.kind) {
     case 'none':
       return EXIT.ok;
     case 'broken': {
       // A broken pointer still guards the prompt, with the shipped secret shapes only.
-      const block = await promptSecretBlock(runtime, { kitHome: resolveKitHome(runtime.env, runtime.userHome), patterns: [] }, claudeSession, payload);
-      runtime.out.stdout(block ?? `${KIT_NAME}: no team, so no inbox reminder: ${found.from} ${found.problem}`);
+      const block = await promptSecretBlock(runtime, { kitHome: resolveKitHome(runtime.env, runtime.userHome), patterns: [] }, hostSession, event.prompt);
+      writeReply(runtime, 'prompt', block ?? { context: `${KIT_NAME}: no team, so no inbox reminder: ${found.from} ${found.problem}` });
       return EXIT.ok;
     }
     case 'team':
@@ -266,38 +265,36 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   const kit = await openKit(runtime, found.team);
   const patterns = kit.load.status === 'loaded' ? kit.load.config.register.secretPatterns : [];
   // Before anything reads the prompt: a stopped prompt is neither logged nor shown its inbox lines, which stay unshown.
-  const block = await promptSecretBlock(runtime, { kitHome: kit.paths.kitHome, patterns }, claudeSession, payload);
+  const block = await promptSecretBlock(runtime, { kitHome: kit.paths.kitHome, patterns }, hostSession, event.prompt);
   if (block !== undefined) {
-    runtime.out.stdout(block);
+    writeReply(runtime, 'prompt', block);
     return EXIT.ok;
   }
   if (kit.load.status !== 'loaded') {
     return EXIT.ok;
   }
   const { config } = kit.load;
-  const title = await readTitle(runtime, payload);
+  const title = await readTitle(runtime, event);
   const own = { team: kit.paths.team, roster: await rosterOf(runtime, kit, config) };
-  const binding = await bindTab(runtime, kit, own, claudeSession, title);
+  const binding = await bindTab(runtime, kit, own, hostSession, title);
   const bound = boundPromptNote(binding.outcome, own, KIT_NAME);
-  const renamed = promptNote(await titleOutcome(runtime, kit, config, payload, title), KIT_NAME);
-  const hint = await bindHintOnce(runtime, kit, binding, claudeSession);
+  const renamed = promptNote(await titleOutcome(runtime, kit, config, hostSession, title), KIT_NAME);
+  const hint = await bindHintOnce(runtime, kit, binding, hostSession);
   // Found like a rename: `$TEAMRIG_SESSION` first, so a session is shown its lines before its first `inbox read`.
-  const session = await teamSessionOf(runtime, kit, own.roster, claudeSession);
+  const session = await teamSessionOf(runtime, kit, own.roster, hostSession);
   if (session !== undefined) {
-    await logPrompt(runtime, { config, paths: kit.paths, id: session }, payload).catch(() => undefined);
+    await logPrompt(runtime, { config, paths: kit.paths, id: session }, event).catch(() => undefined);
   }
   const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session, sessionRefreshOf(config, session)).catch(() => undefined);
   const budgetLine = session === undefined ? undefined : await promptBudgetLine(runtime, { kit, config, roster: own.roster, id: session }).catch(() => undefined);
   // Like the inbox lines below, reading the digest moves its cursor, so it is read late; only a leader gets one.
   const digest = session === undefined ? undefined : await leaderDigestText(runtime, kit.paths, config, session).catch(() => undefined);
   // Read last, as reading marks the lines shown: a hook killed at its timeout before printing must leave them unshown.
-  const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession, teamZone(config, runtime));
+  const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, hostSession, teamZone(config, runtime));
   // An unreadable title may be one the user set, so only a title read as absent is given.
-  const tabTitle = title.kind === 'read' ? tabTitleFor(own.roster, session, title.title) : undefined;
+  const sessionTitle = title.kind === 'read' ? tabTitleFor(own.roster, session, title.title) : undefined;
   const texts = [bound, renamed, hint, cancelled, lines, digest, budgetLine].filter((text): text is string => text !== undefined);
-  for (const text of promptOutput(texts, tabTitle)) {
-    runtime.out.stdout(text);
-  }
+  writeReply(runtime, 'prompt', { context: texts.length === 0 ? undefined : texts.join('\n'), sessionTitle });
   return EXIT.ok;
 }
 
@@ -417,6 +414,12 @@ async function helperGateOf(runtime: CliRuntime, event: HookEvent): Promise<stri
   return scope === undefined ? undefined : helperGateOutput(runtime, scope, event.transcript);
 }
 
+/** What a session's start reads of its hook event. */
+type StartEvent = Pick<HookEvent, 'session' | 'cwd' | 'transcript' | 'title' | 'source' | 'model'>;
+
+/** The start whose input was no hook input: nothing is known of it, and the session still gets its rules. */
+const UNKNOWN_START: StartEvent = { session: undefined, cwd: undefined, transcript: undefined, title: undefined, source: undefined, model: undefined };
+
 type TeamParts = Pick<
   SessionStartInput,
   'teamRules' | 'keptRulesAbove' | 'renames' | 'titleNote' | 'refreshNote' | 'liveTasksNote' | 'modelNote' | 'verifyNote' | 'duplicateNote' | 'worktreeNote' | 'session' | 'sessionInEnv' | 'tree'
@@ -436,25 +439,25 @@ type TeamParts = Pick<
  * in a tree of teams, read from every team config of the kit home. It records the Claude Code process the session
  * started in and the team's Claude config dir (budget/config-dir.ts), binds a tab `$TEAMRIG_SESSION` names to that session in the inbox marks, marks a /clear or a compaction in the session's turn log and prunes the log's old hours (hook-turn-log.ts).
  */
-async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown): Promise<TeamParts> {
-  const title = await readTitle(runtime, payload);
-  const claudeSession = sessionIdOf(payload);
-  const bound = claudeSession === null ? undefined : await startBindNoteOf(runtime, kit, config, payload, claudeSession, title);
-  const renamed = sessionStartNote(await titleOutcome(runtime, kit, config, payload, title));
+async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, start: StartEvent): Promise<TeamParts> {
+  const title = await readTitle(runtime, start);
+  const hostSession = start.session;
+  const bound = hostSession === undefined ? undefined : await startBindNoteOf(runtime, kit, config, start.source, hostSession, title);
+  const renamed = sessionStartNote(await titleOutcome(runtime, kit, config, hostSession, title));
   const titleNote = bound === undefined || renamed === undefined ? (bound ?? renamed) : `${bound} ${renamed}`;
   const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
   const roster = new Roster(config, kit.paths.team, renames);
-  const refresh = await refreshStartOf(runtime, kit, config, roster, payload);
+  const refresh = await refreshStartOf(runtime, kit, config, roster, start);
   const fromEnv = envSession(runtime);
   const kitTree = await loadTree(runtime);
-  const session = fromEnv ?? (await startSessionOf(runtime, kit, roster, claudeSession ?? undefined));
+  const session = fromEnv ?? (await startSessionOf(runtime, kit, roster, hostSession));
   const id = rosterIdOf(roster, session);
   if (id !== undefined) {
-    await logStart(runtime, { config, paths: kit.paths, id }, payload).catch(() => undefined);
+    await logStart(runtime, { config, paths: kit.paths, id }, start).catch(() => undefined);
     await recordConfigDir(runtime.files, kit.paths.configDirRecord, claudeConfigDir(runtime.env, runtime.userHome)).catch(() => undefined);
   }
-  const recorded = id === undefined || claudeSession === null ? undefined : await recordSessionStart(runtime, kit, roster.ids, id, claudeSession, startTranscriptOf(payload));
-  const envBindNote = fromEnv === undefined || id === undefined || claudeSession === null ? undefined : await bindNamedTab(runtime, kit, id, claudeSession);
+  const recorded = id === undefined || hostSession === undefined ? undefined : await recordSessionStart(runtime, kit, roster.ids, id, hostSession, start.transcript);
+  const envBindNote = fromEnv === undefined || id === undefined || hostSession === undefined ? undefined : await bindNamedTab(runtime, kit, id, hostSession);
   return {
     recordNote: recorded?.failure,
     envBindNote,
@@ -464,10 +467,10 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
     renames,
     titleNote,
     refreshNote: refresh.note,
-    liveTasksNote: await liveTasksPartOf(runtime, kit, config, id, payload, refresh),
-    modelNote: modelNoteOf(config, roster, id, payload),
+    liveTasksNote: await liveTasksPartOf(runtime, kit, config, id, start.source, refresh),
+    modelNote: modelNoteOf(config, roster, id, start.model),
     verifyNote: await verifyStartNoteOf(runtime, kit.paths, id),
-    worktreeNote: worktreeNoteOf(isRecord(payload) ? stringField(payload, 'cwd') : undefined),
+    worktreeNote: worktreeNoteOf(start.cwd),
     session,
     sessionInEnv: fromEnv !== undefined,
     tree: kitTree.tree.placeOf(kit.paths.team),
@@ -478,28 +481,26 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
  * The SessionStart note for a tab bound as it started: by its title, else, after a /clear, by the Claude
  * Code process its session refreshed in (a /clear keeps the process; the title may name no session).
  */
-async function startBindNoteOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown, claudeSession: string, title: TitleRead): Promise<string | undefined> {
+async function startBindNoteOf(runtime: CliRuntime, kit: Kit, config: KitConfig, source: string | undefined, hostSession: string, title: TitleRead): Promise<string | undefined> {
   const roster = await rosterOf(runtime, kit, config);
-  const { outcome } = await bindTab(runtime, kit, { team: kit.paths.team, roster }, claudeSession, title);
-  const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
+  const { outcome } = await bindTab(runtime, kit, { team: kit.paths.team, roster }, hostSession, title);
   if (source !== 'clear' || outcome.kind === 'kept' || outcome.kind === 'bound') {
     return boundStartNote(outcome);
   }
-  return bindAfterClear(runtime, kit, roster, claudeSession);
+  return bindAfterClear(runtime, kit, roster, hostSession);
 }
 
 /**
  * The line for a session of the team that runs on another model than its `launch` entry (for the
- * lead, unset: `opus`), from the payload's model; Claude Code leaves it out at some starts, and then
+ * lead, unset: `opus`), from the model the start's event names; Claude Code leaves it out at some starts, and then
  * nothing is checked. The effort is checked at the first Stop: SessionStart gets no effort level, and
  * `$CLAUDE_EFFORT` here can be the value of the session whose shell started this one.
  */
-function modelNoteOf(config: KitConfig, roster: Roster, id: string | undefined, payload: unknown): string | undefined {
+function modelNoteOf(config: KitConfig, roster: Roster, id: string | undefined, model: string | undefined): string | undefined {
   if (id === undefined) {
     return undefined;
   }
-  const running = { model: isRecord(payload) ? stringField(payload, 'model') : undefined, effort: undefined };
-  return modelCheckLine(roster.nameOf(id) ?? id, launchOf(config, id), running);
+  return modelCheckLine(roster.nameOf(id) ?? id, launchOf(config, id), { model, effort: undefined });
 }
 
 /** The team session an id or any name it has had finds; undefined for none, or a name the team does not know. */
@@ -510,11 +511,6 @@ function rosterIdOf(roster: Roster, session: string | undefined): string | undef
 
 function carryPlaces(runtime: CliRuntime): CarryPlaces {
   return { tempDir: claudeTempDir(runtime.env, tmpdir()), claudeDir: claudeConfigDir(runtime.env, runtime.userHome) };
-}
-
-/** The fresh session's transcript, from the SessionStart payload. */
-function startTranscriptOf(payload: unknown): string | undefined {
-  return isRecord(payload) ? stringField(payload, 'transcript_path') : undefined;
 }
 
 function carryRecordFailed(error: unknown): string {
@@ -560,9 +556,9 @@ async function keepCarried(store: RefreshStore, id: string, crons: readonly Carr
  * scratchpad and plan file; a /clear records its jobs for the next refresh. A transcript it cannot read, or a
  * record it cannot write, is said, never thrown: the note itself must still reach the session.
  */
-async function carriedLinesOf(runtime: CliRuntime, store: RefreshStore, id: string, transcript: string, payload: unknown, zone: TimeZone): Promise<readonly string[]> {
+async function carriedLinesOf(runtime: CliRuntime, store: RefreshStore, id: string, transcript: string, { source, transcript: fresh }: StartEvent, zone: TimeZone): Promise<readonly string[]> {
   const now = runtime.clock.now();
-  const start = carryStartOf(isRecord(payload) ? stringField(payload, 'source') : undefined);
+  const start = carryStartOf(source);
   let read: CarryRead;
   try {
     read = await carryFrom(runtime, store, id, transcript, now);
@@ -571,7 +567,7 @@ async function carriedLinesOf(runtime: CliRuntime, store: RefreshStore, id: stri
   }
   const lines = read.carry === undefined ? [] : [...carryLines(read.carry, now, start, zone), ...(await ownerTurnsNoteOf(runtime, store, id, read.carry.ownerTurns ?? []))];
   try {
-    await keepCarried(store, id, read.carry?.crons ?? read.inherited, start, startTranscriptOf(payload));
+    await keepCarried(store, id, read.carry?.crons ?? read.inherited, start, fresh);
     return lines;
   } catch (error) {
     return [...lines, carryRecordFailed(error)];
@@ -603,8 +599,7 @@ async function ownerTurnsNoteOf(runtime: CliRuntime, store: RefreshStore, id: st
  * it on to the fresh transcript with the jobs the cleared session made, a compaction keeps the transcript and the
  * record, and a new process ends them all. Says, never throws, when it cannot.
  */
-async function carryRecordAt(runtime: CliRuntime, store: RefreshStore, id: string, payload: unknown): Promise<string | undefined> {
-  const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
+async function carryRecordAt(runtime: CliRuntime, store: RefreshStore, id: string, { source, transcript: fresh }: StartEvent): Promise<string | undefined> {
   if (source === undefined || source === 'compact') {
     return undefined;
   }
@@ -616,7 +611,7 @@ async function carryRecordAt(runtime: CliRuntime, store: RefreshStore, id: strin
     const record = await store.carried(id);
     if (record !== undefined) {
       const carry = await carryOfTranscript(runtime, record.transcript, runtime.clock.now(), record.crons);
-      await keepCarried(store, id, carry?.crons ?? record.crons, 'same-process', startTranscriptOf(payload));
+      await keepCarried(store, id, carry?.crons ?? record.crons, 'same-process', fresh);
     }
     return undefined;
   } catch (error) {
@@ -638,14 +633,14 @@ const NO_REFRESH: RefreshStart = { note: undefined, refreshed: false };
  * leaves the handover waiting; a small context again (a compaction too) starts the task count over.
  * It never throws, so the session always gets its rules.
  */
-async function refreshStartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, payload: unknown): Promise<RefreshStart> {
+async function refreshStartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, start: StartEvent): Promise<RefreshStart> {
   try {
-    const id = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
+    const id = await teamSessionOf(runtime, kit, roster, start.session ?? null);
     if (id === undefined) {
       return NO_REFRESH;
     }
     const store = new RefreshStore(runtime.files, kit.paths);
-    const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
+    const { source } = start;
     const now = new Date(runtime.clock.now()).toISOString();
     const state = await store.state(id);
     const decision = decideStart(state, source, config.refresh, store.handoverPath(id), now);
@@ -653,15 +648,15 @@ async function refreshStartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, 
       if (decision.kind === 'reset') {
         await store.setState(id, decision.state);
       }
-      const recordNote = config.refresh.enabled ? await carryRecordAt(runtime, store, id, payload) : undefined;
+      const recordNote = config.refresh.enabled ? await carryRecordAt(runtime, store, id, start) : undefined;
       return recordNote === undefined ? NO_REFRESH : { note: recordNote, refreshed: false };
     }
     await store.setState(id, decision.state);
     await store.clearRequest(id);
     const carried =
       state?.phase === 'ready' && state.transcript !== null
-        ? await carriedLinesOf(runtime, store, id, state.transcript, payload, teamZone(config, runtime))
-        : [await carryRecordAt(runtime, store, id, payload)].filter((line) => line !== undefined);
+        ? await carriedLinesOf(runtime, store, id, state.transcript, start, teamZone(config, runtime))
+        : [await carryRecordAt(runtime, store, id, start)].filter((line) => line !== undefined);
     return { note: [decision.note, ...carried].join('\n'), refreshed: true };
   } catch (error) {
     return { note: `${KIT_NAME} could not check for a refresh handover (${errorMessage(error)}); if you wrote one before a /clear, read it first.`, refreshed: false };
@@ -673,8 +668,7 @@ async function refreshStartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, 
  * first lines, which make it the work block's start (T1529), with its shorter forms for a start with less room (T1939);
  * none at another start or for no session.
  */
-async function liveTasksPartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, id: string | undefined, payload: unknown, refresh: RefreshStart): Promise<CuttableNote | undefined> {
-  const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
+async function liveTasksPartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, id: string | undefined, source: string | undefined, refresh: RefreshStart): Promise<CuttableNote | undefined> {
   if (id === undefined || !showsLiveTasks(source, refresh.refreshed)) {
     return undefined;
   }
@@ -895,27 +889,27 @@ export async function stop(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
  */
 export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { payload, event } = await readHookInput(runtime);
+  const { event } = await readHookInput(runtime);
   const found = await sessionTeam(event?.cwd, runtime);
   switch (found.kind) {
     case 'none':
       return EXIT.ok;
     case 'broken':
-      runtime.out.stdout(sessionStartOutput(`${KIT_NAME}: no team, so no team rules: ${found.from} ${found.problem}`));
+      writeReply(runtime, 'session-start', sessionStartReply(`${KIT_NAME}: no team, so no team rules: ${found.from} ${found.problem}`));
       return EXIT.ok;
     case 'team':
       break;
   }
   const kit = await openKit(runtime, found.team);
-  const helper = helperOf(payload);
+  const helper = helperOf(event?.helper);
   if (helper !== undefined) {
     // A compaction inside a helper: the helper's rules again, and none of the session's side effects.
-    runtime.out.stdout(sessionStartOutput(await helperContextOf(runtime, kit, event?.session, helper.agentType)));
+    writeReply(runtime, 'session-start', sessionStartReply(await helperContextOf(runtime, kit, event?.session, helper.agentType)));
     return EXIT.ok;
   }
   const parts: TeamParts =
     kit.load.status === 'loaded'
-      ? await teamPartsOf(runtime, kit, kit.load.config, payload)
+      ? await teamPartsOf(runtime, kit, kit.load.config, event ?? UNKNOWN_START)
       : {
           recordNote: undefined,
           envBindNote: undefined,
@@ -937,7 +931,7 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
   const requirementsNote = await requirementsNoteOnce({
     problems: await runtime.requirements.problems(),
     log: new JsonlHintLog(hookLogOf(runtime, kit.paths, 'bind-hints')),
-    claudeSession: sessionIdOf(payload),
+    claudeSession: event?.session ?? null,
     now: new Date(runtime.clock.now()),
     command: KIT_NAME,
   });
@@ -945,6 +939,6 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
     // A team whose sessions all stopped has no watch; the first to start brings it back, before any turn ends.
     await ensureWatch(runtime, kit, kit.load.config).catch(() => undefined);
   }
-  runtime.out.stdout(sessionStartOutput(context, [parts.duplicateNote, parts.modelNote, parts.recordNote, parts.envBindNote, requirementsNote]));
+  writeReply(runtime, 'session-start', sessionStartReply(context, [parts.duplicateNote, parts.modelNote, parts.recordNote, parts.envBindNote, requirementsNote]));
   return EXIT.ok;
 }

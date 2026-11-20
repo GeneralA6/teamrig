@@ -11,7 +11,7 @@ import { transcriptsIfKept } from '../host.ts';
 import { openKit, rosterOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { readHookInput, sessionTeam, type HookOrigin } from './hook-input.ts';
-import { pickerRefusal } from './hook-picker-guard.ts';
+import { pickerRefusal, type PickerCaller } from './hook-picker-guard.ts';
 import { recordTabNeed } from './hook-tab-need.ts';
 
 /** The values Claude Code reads as on for a switch such as `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`. */
@@ -68,7 +68,7 @@ export async function tabTitleOf(runtime: CliRuntime, payload: JsonRecord, own: 
  * picker the picker guard refuses leaves the title: the picker never opens, and the session goes on. `origin` is the
  * hook event's, which finds the session's team.
  */
-export async function tabSequenceOf(runtime: CliRuntime, payload: JsonRecord, origin: HookOrigin): Promise<string | undefined> {
+export async function tabSequenceOf(runtime: CliRuntime, payload: JsonRecord, origin: HookOrigin & PickerCaller): Promise<string | undefined> {
   // The switch first: it costs no file read, and on most machines it is off.
   if (!titleLeftToHooks(runtime.env)) {
     return undefined;
@@ -78,7 +78,7 @@ export async function tabSequenceOf(runtime: CliRuntime, payload: JsonRecord, or
   if (kit?.load.status !== 'loaded' || !kit.load.config.tabStatus.enabled) {
     return undefined;
   }
-  if ((await pickerRefusal(runtime, kit, kit.load.config, payload)) !== undefined) {
+  if ((await pickerRefusal(runtime, kit, kit.load.config, payload, origin)) !== undefined) {
     return undefined;
   }
   const title = await tabTitleOf(runtime, payload, { team: kit.paths.team, roster: await rosterOf(runtime, kit, kit.load.config) });
@@ -86,7 +86,7 @@ export async function tabSequenceOf(runtime: CliRuntime, payload: JsonRecord, or
 }
 
 /** What the hook prints for this payload: the tab title's terminal sequence in Claude Code's JSON, or '' for none. */
-export async function tabStatusOutputOf(runtime: CliRuntime, payload: JsonRecord, origin: HookOrigin): Promise<string> {
+export async function tabStatusOutputOf(runtime: CliRuntime, payload: JsonRecord, origin: HookOrigin & PickerCaller): Promise<string> {
   const sequence = await tabSequenceOf(runtime, payload, origin);
   return sequence === undefined ? '' : JSON.stringify({ terminalSequence: sequence });
 }
