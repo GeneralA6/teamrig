@@ -1,4 +1,5 @@
 import { KIT_NAME } from '../core/home.ts';
+import type { ShellDialect } from '../ports/host/index.ts';
 import { isStaticWord, parseShell, type Redirection, type ShellCommand } from '../push-guard/tokenizer.ts';
 import { posixWord } from '../test-run/shell.ts';
 
@@ -40,14 +41,17 @@ export interface Rerun {
   readonly programs: readonly string[];
 }
 
-/** The exact line to rerun a Bash `command` as, or undefined when no rule gives one or any doubt remains. */
-export function rerunForm(tool: string | undefined, command: string): string | undefined {
-  return rerunOf(tool, command)?.form;
+/** The exact line to rerun a `command` of the shell `dialect` as, or undefined when no rule gives one or any doubt remains. */
+export function rerunForm(dialect: ShellDialect, command: string): string | undefined {
+  return rerunOf(dialect, command)?.form;
 }
 
-/** The rerun form of a Bash `command` with what it moves and runs, or undefined when no rule gives one or any doubt remains. */
-export function rerunOf(tool: string | undefined, command: string): Rerun | undefined {
-  if (tool !== 'Bash') {
+/**
+ * The rerun form of a `command` of the shell `dialect` with what it moves and runs, or undefined when no rule gives
+ * one or any doubt remains: the rules are written for bash lines, so any other dialect has none.
+ */
+export function rerunOf(dialect: ShellDialect, command: string): Rerun | undefined {
+  if (dialect !== 'bash') {
     return undefined;
   }
   const parse = parseShell(command, 'bash');

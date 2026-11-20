@@ -2,16 +2,15 @@ import { isRecord, type JsonRecord } from '../../core/guards.ts';
 import { toJsonlLine } from '../../core/jsonl.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { hookAsksOf } from '../../hooks/permission.ts';
-import { promptAnswerOf, promptAnswerOutput, promptAnswerRecord, refusedTool } from '../../hooks/prompt-refuse.ts';
+import { promptAnswerOf, promptAnswerRecord, promptAnswerReply, refusedCall } from '../../hooks/prompt-refuse.ts';
 import { callReads } from '../../hooks/readonly-shell.ts';
-import { sessionIdOf } from '../../inbox/inbox.ts';
-import type { HookEvent } from '../../ports/host/index.ts';
+import type { HookEvent, HookReply } from '../../ports/host/index.ts';
 import type { CommandTable } from '../../slash/plan.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
 import { openKit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { envSession, readHookInput, sessionTeam } from './hook-input.ts';
+import { envSession, readHookInput, sessionTeam, writeReply } from './hook-input.ts';
 import { readonlyCheckOf } from './hook-readonly-allow.ts';
 import { callRouteOf } from './hook-route-context.ts';
 
@@ -24,28 +23,28 @@ export interface PromptRefuseDeps {
 }
 
 /**
- * What the hook prints for this payload: the answer for its case (an allow for a sanctioned route or a read-only line,
- * else a refusal with its reason), or '' when the prompt opens. Each answer is logged to the team's prompt answers.
+ * The hook's reply to this event: the answer for its case (an allow for a sanctioned route or a read-only line, else a
+ * refusal with its reason), or none when the prompt opens. Each answer is logged to the team's prompt answers.
  */
-async function promptRefuseOutputOf(runtime: CliRuntime, payload: JsonRecord, event: HookEvent, deps: PromptRefuseDeps): Promise<string> {
+async function promptRefuseReplyOf(runtime: CliRuntime, payload: JsonRecord, event: HookEvent, deps: PromptRefuseDeps): Promise<HookReply | undefined> {
   const found = await sessionTeam(payload, runtime);
   if (found.kind !== 'team') {
-    return '';
+    return undefined;
   }
   const kit = await openKit(runtime, found.team);
-  const tool = refusedTool(hookAsksOf(kit.load), payload);
-  if (tool === undefined || kit.load.status !== 'loaded') {
-    return '';
+  const call = refusedCall(hookAsksOf(kit.load), event);
+  if (call === undefined || kit.load.status !== 'loaded') {
+    return undefined;
   }
   const route = await callRouteOf(runtime, kit, kit.load.config, event, deps.table);
   // The prompt would wait for a person under refuse, so a provably read-only line runs even with the read-only allow off.
   const check = await readonlyCheckOf(runtime, kit.load.config);
-  const answer = promptAnswerOf(tool, payload, () => callReads(event, check.rules, check.printsSecret), route?.id);
-  const facts = { at: new Date(runtime.clock.now()), session: envSession(runtime), claudeSession: sessionIdOf(payload), tool, answer, payload };
+  const answer = promptAnswerOf(call, () => callReads(event, check.rules, check.printsSecret), route?.id);
+  const facts = { at: new Date(runtime.clock.now()), session: envSession(runtime), claudeSession: event.session ?? null, call, answer };
   const record = promptAnswerRecord(facts, new SecretScanner(kit.load.config.register.secretPatterns));
   // Best effort: the log feeds the daily triage, and a full disk or a held lock must not turn the answer into an open prompt.
   await hookLogOf(runtime, kit.paths, 'prompt-answers').append(toJsonlLine(record)).catch(() => undefined);
-  return promptAnswerOutput(tool, answer);
+  return promptAnswerReply(call.name, answer);
 }
 
 /**
@@ -62,10 +61,8 @@ export function promptRefuse(deps: PromptRefuseDeps): (args: ParsedArgs, runtime
   return async (args, runtime) => {
     noPositionals(args);
     const { payload, event } = await readHookInput(runtime);
-    const output = isRecord(payload) && event !== undefined ? await promptRefuseOutputOf(runtime, payload, event, deps).catch(() => '') : '';
-    if (output !== '') {
-      runtime.out.stdout(output);
-    }
+    const reply = isRecord(payload) && event !== undefined ? await promptRefuseReplyOf(runtime, payload, event, deps).catch(() => undefined) : undefined;
+    writeReply(runtime, 'permission-prompt', reply);
     return EXIT.ok;
   };
 }
