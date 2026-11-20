@@ -1,6 +1,6 @@
 /** A tracker outside the team (an issue host today), as a document names it. */
 export interface ConnectorName {
-  /** Stable, and the `source` of every task the connector's import wrote. */
+  /** Stable, the `source` of every task the connector's import wrote and the sender of every inbox line it posts. */
   readonly id: string;
   /** What a person calls it. */
   readonly name: string;

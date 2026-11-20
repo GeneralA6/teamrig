@@ -1,13 +1,20 @@
 import { createHash } from 'node:crypto';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
+import { ENV, type Env } from '../../core/home.ts';
+import { PlainLogFile } from '../../core/log-file.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { KIT_VERSION } from '../../core/version.ts';
 import { GITHUB_CONNECTOR } from '../../github/connector.ts';
+import { lineHash } from '../../inbox/line-hash.ts';
+import { indexMarks } from '../../inbox/marks.ts';
+import { InboxDir, JsonlMarkLog } from '../../inbox/store.ts';
+import { unreadOf } from '../../inbox/unread.ts';
 import {
   answerOf,
   checkInterfaceRange,
   DOCUMENTS,
+  inboxBody,
   isDocumentName,
   parseInterfaceVersion,
   revisionText,
@@ -21,6 +28,7 @@ import type { Task } from '../../register/fold.ts';
 import { layoutPaths, MissingSegmentError, readWorkingSet, type LayoutPaths } from '../../register/layout.ts';
 import type { RegisterSnapshot } from '../../register/snapshot.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
+import { sessionRef } from '../inputs.ts';
 import { configWarnings, findTeam, loadedConfig, openKit, pastOrPresentIdOf, rosterOf, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
@@ -28,22 +36,37 @@ import { loadTree } from '../tree.ts';
 /** The trackers a document names a ref or a source by; a second one is one more entry here. */
 const CONNECTORS: readonly Connector[] = [GITHUB_CONNECTOR];
 
-/** What one run of `read` was asked for, checked as far as the command line alone allows. */
+/** How far back `inbox` serves the lines already read, when `--since` names no other reach. */
+const READ_LINES_HOURS = 24;
+const HOUR_MS = 3_600_000;
+
+/** What one run of `read` was asked for, checked as far as the command line and the environment alone allow. */
 interface ReadRequest {
   readonly documents: readonly DocumentName[];
   readonly team: string | undefined;
   readonly owner: string | undefined;
+  /** Who is asking, by id or name: a label for whose inbox to serve, as `inbox status` takes it, never a proof. */
+  readonly session: string | undefined;
+  readonly sinceHours: number;
   readonly speaks: InterfaceVersion | undefined;
 }
 
 /** What every document of one run is read from. */
 interface ReadScope {
   readonly runtime: CliRuntime;
+  /** The caller's own team; `kit` is another's when `--team` names one above it. */
+  readonly own: string;
   readonly kit: Kit;
   readonly config: KitConfig;
   readonly roster: Roster;
   /** The one session whose tasks are served, by id; null serves every session's. */
   readonly owner: string | null;
+  /**
+   * The session asking, as typed (an id or a name); null when the run names none. The document that needs it reads
+   * it against the roster, so a stale session variable never refuses a document that does not.
+   */
+  readonly asker: string | null;
+  readonly sinceHours: number;
   /** What the config's own read has to tell: every document is read through it, so each carries these. */
   readonly warnings: readonly string[];
 }
@@ -67,6 +90,7 @@ interface DocumentSource {
 /** The documents this teamrig can build; the rest of interface 1 joins here, one by one. */
 const SOURCES: Partial<Record<DocumentName, (scope: ReadScope) => DocumentSource>> = {
   tasks: tasksSource,
+  inbox: inboxSource,
 };
 
 /**
@@ -77,7 +101,7 @@ const SOURCES: Partial<Record<DocumentName, (scope: ReadScope) => DocumentSource
  * no mark and no lock.
  */
 export async function read(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  const request = requestOf(args);
+  const request = requestOf(args, runtime.env);
   try {
     const answers = await answersOf(request, runtime);
     answers.forEach((answer) => runtime.out.stdout(JSON.stringify(answer)));
@@ -91,7 +115,7 @@ export async function read(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   }
 }
 
-function requestOf(args: ParsedArgs): ReadRequest {
+function requestOf(args: ParsedArgs, env: Env): ReadRequest {
   const documents = documentsOf(args.positionals);
   if (!args.switches.has('json')) {
     throw new UsageError('read answers only as JSON in interface 1: add --json');
@@ -101,7 +125,30 @@ function requestOf(args: ParsedArgs): ReadRequest {
   if (typed !== undefined && speaks === undefined) {
     throw new UsageError(`--interface takes <major.minor>, such as 1.0; got "${typed}"`);
   }
-  return { documents, team: args.flags.get('team'), owner: args.flags.get('owner'), speaks };
+  return {
+    documents,
+    team: args.flags.get('team'),
+    owner: args.flags.get('owner'),
+    session: askerOf(args.flags.get('session'), env),
+    sinceHours: sinceHoursOf(args.flags.get('since')),
+    speaks,
+  };
+}
+
+/** Who is asking: `--session`, else the session variable; undefined with neither, which only `inbox` minds. */
+function askerOf(flag: string | undefined, env: Env): string | undefined {
+  const name = flag ?? env[ENV.session]?.trim();
+  return name === undefined || name === '' ? undefined : sessionRef('--session', name);
+}
+
+function sinceHoursOf(typed: string | undefined): number {
+  if (typed === undefined) {
+    return READ_LINES_HOURS;
+  }
+  if (!/^\d{1,5}$/.test(typed)) {
+    throw new UsageError(`--since takes whole hours, such as ${READ_LINES_HOURS}; got "${typed}"`);
+  }
+  return Number(typed);
 }
 
 function documentsOf(names: readonly string[]): DocumentName[] {
@@ -160,7 +207,7 @@ async function scopeOf(request: ReadRequest, runtime: CliRuntime): Promise<ReadS
   const load = loadedConfig(kit);
   const roster = await rosterOf(runtime, kit, load.config);
   const owner = request.owner === undefined ? null : pastOrPresentIdOf(roster, request.owner);
-  return { runtime, kit, config: load.config, roster, owner, warnings: configWarnings(load) };
+  return { runtime, own, kit, config: load.config, roster, owner, asker: request.session ?? null, sinceHours: request.sinceHours, warnings: configWarnings(load) };
 }
 
 /**
@@ -217,6 +264,53 @@ function tasksSource(scope: ReadScope): DocumentSource {
   };
 }
 
+/**
+ * `inbox`: the asking session's own inbox, its unread lines and the read ones of the last `--since` hours. It reads
+ * the config (the secret shapes, the session's name), the renames, the session's inbox file and the read marks, and
+ * never `readInbox`, which marks the lines read. The clock is no part of its revision: a line leaves the window with
+ * no file changing, so a reader holding an unchanged revision applies the window again over the `at` it holds.
+ */
+function inboxSource(scope: ReadScope): DocumentSource {
+  const { runtime, kit, config, roster } = scope;
+  if (kit.paths.team !== scope.own) {
+    throw new UsageError(`inbox is the asking session's own, in its own team (${scope.own}): ask for it without --team`);
+  }
+  if (scope.asker === null) {
+    throw new UsageError(`inbox is one session's: name it with --session (or $${ENV.session})`);
+  }
+  const session = pastOrPresentIdOf(roster, scope.asker);
+  const inboxes = new InboxDir(runtime.files, kit.paths.inbox);
+  const marks = new JsonlMarkLog(new PlainLogFile(runtime.files, kit.paths.inboxMarks));
+  return {
+    async parts() {
+      return {
+        document: 'inbox',
+        args: [
+          ['team', kit.paths.team],
+          ['session', session],
+          ['since', String(scope.sinceHours)],
+        ],
+        stamps: await stampsOf(runtime, [kit.load.path, kit.paths.renames, inboxes.pathOf(session), kit.paths.inboxMarks]),
+      };
+    },
+    async build() {
+      const lines = (await inboxes.lines(session)) ?? [];
+      const log = await marks.read();
+      const mark = indexMarks(log.marks).byArea.get(session) ?? null;
+      const body = inboxBody({
+        session: { id: session, name: roster.nameOf(session) ?? session },
+        lines,
+        unread: mark === null ? null : unreadOf(session, lines, mark, lineHash).lines.length,
+        readSince: runtime.clock.now() - scope.sinceHours * HOUR_MS,
+        keyOf: lineHash,
+        connectors: CONNECTORS,
+        shapes: new SecretScanner(config.register.secretPatterns),
+      });
+      return { body, problems: skippedOf(kit.paths.inboxMarks, log) };
+    },
+  };
+}
+
 interface WorkingSet {
   readonly tasks: Iterable<Task>;
   readonly problems: readonly string[];
@@ -240,11 +334,14 @@ async function workingSetOf(runtime: CliRuntime, layout: LayoutPaths): Promise<W
 
 /** Damaged or newer lines never stop a read; each kind left out is one line, so a reader shows which it is. */
 function damageOf(snapshot: RegisterSnapshot, path: string): string[] {
-  const { unreadable, newer } = snapshot.read;
   const { orphans } = snapshot.state;
+  return [...skippedOf(path, snapshot.read), ...(orphans > 0 ? [`${path}: ${orphans} event(s) naming no task left out`] : [])];
+}
+
+/** The lines of a log that were left out of its read, a line per kind. */
+function skippedOf(path: string, read: { readonly unreadable: number; readonly newer: number }): string[] {
   return [
-    ...(unreadable > 0 ? [`${path}: ${unreadable} unreadable line(s) left out`] : []),
-    ...(newer > 0 ? [`${path}: ${newer} line(s) from a newer teamrig left out; update teamrig`] : []),
-    ...(orphans > 0 ? [`${path}: ${orphans} event(s) naming no task left out`] : []),
+    ...(read.unreadable > 0 ? [`${path}: ${read.unreadable} unreadable line(s) left out`] : []),
+    ...(read.newer > 0 ? [`${path}: ${read.newer} line(s) from a newer teamrig left out; update teamrig`] : []),
   ];
 }

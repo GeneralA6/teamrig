@@ -6,6 +6,7 @@
  */
 export { type Connector, type ConnectorItem, type ConnectorName } from './connector.ts';
 export { answerOf, DOCUMENTS, isDocumentName, unchangedAnswer, type Answer, type DocumentName, type EnvelopeHead, type UnchangedAnswer } from './envelope.ts';
+export { inboxBody, type InboxBody, type InboxInput, type ServedLine } from './inbox.ts';
 export { refOf, type ServedRef } from './ref.ts';
 export { revisionText, type RevisionParts } from './revision.ts';
 export { sourceOf, type ServedSource, type SourceKind, type SourceNames } from './source.ts';
