@@ -25,6 +25,7 @@ import { currentWeekOf } from '../../register/week.ts';
 import { fitLines } from '../../register/fit.ts';
 import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
 import { readRunFiles } from '../hand-step-file.ts';
+import { withCardTexts } from '../card-texts.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
 import { subtreeOf, type RolledTeam, type RollUp } from '../roll-up.ts';
@@ -88,6 +89,16 @@ async function meetingKit(args: ParsedArgs, runtime: CliRuntime, access: Access)
 /** The registers of the lead's team and of every team under it, depth first, its own first (subtreeOf). */
 async function meetingRegisters(runtime: CliRuntime, mk: MeetingKit): Promise<RollUp> {
   return subtreeOf(runtime, { kit: mk.kit, config: mk.config, roster: mk.roster }, mk.kitTree);
+}
+
+/**
+ * The registers the agenda prints from: `meetingRegisters`, each with the description of its cards on the owner, which
+ * the agenda prints as `what and why:` and a snapshot's task line leaves out (withCardTexts).
+ */
+async function agendaRegisters(runtime: CliRuntime, mk: MeetingKit): Promise<RollUp> {
+  const { own, teams } = await meetingRegisters(runtime, mk);
+  const read = await Promise.all(teams.map((rolled) => withCardTexts(rolled)));
+  return { own: read.find((rolled) => rolled.team === own.team) ?? own, teams: read };
 }
 
 /** The decisions recorded on a register's tasks: by the lead in its own team, by its `<team>/<id>` in a team under it (`update web/T2 --note`). */
@@ -214,7 +225,7 @@ async function goalBoard(runtime: CliRuntime, mk: MeetingKit, { own, teams }: Ro
  * week's fit (as `plan` gives it).
  */
 async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit, phase: MeetingPhase): Promise<void> {
-  const rolled = await meetingRegisters(runtime, mk);
+  const rolled = await agendaRegisters(runtime, mk);
   const { own, teams } = rolled;
   const { snapshot } = own;
   const since = agendaSince(previousEnd(phase), mk.now);
