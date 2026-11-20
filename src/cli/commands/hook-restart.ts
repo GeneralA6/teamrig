@@ -3,6 +3,7 @@ import { stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV, type TeamPaths } from '../../core/home.ts';
 import { payloadEffortOf } from '../../hooks/model-check.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
+import { CARRY_TAIL_BYTES, carryOf, type CarriedCron } from '../../refresh/carry.ts';
 import { noticeOf, type NoticeDecision, type StopContext } from '../../refresh/decide.ts';
 import { claudeProcessOf, restartMayAct } from '../../refresh/restart.ts';
 import type { ParkedRestart, RestartRequest, RestartTab } from '../../refresh/state.ts';
@@ -10,6 +11,7 @@ import type { RefreshStore } from '../../refresh/store.ts';
 import { parkRulesOf } from '../../register/park.ts';
 import { startableTasks } from '../../wake/day-start.ts';
 import { teamZone } from '../kit.ts';
+import { isHandedOffJob, isLiveRunOwn, liveRunOf } from '../live-run.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
 
@@ -45,6 +47,26 @@ export interface RestartScope {
   readonly target: RestartTarget;
   /** The Claude Code process the hook runs under (`claudeProcessOf`); undefined when it was not found. */
   readonly claude: number | undefined;
+}
+
+/**
+ * Whether the Claude Code `claude` the hook runs under is a fork of session `id`'s conversation outside its tab's
+ * process tree (of a team whose sessions are `ids`): Claude Code runs a /clear in such a forked worker
+ * (`--fork-session --resume <the tab's session>`). A restart armed there would carry the worker's session and
+ * transcript, so the runner would judge quiet on the worker's transcript and post its /clear ask under a session the
+ * tab's mod never answers; signalling the worker's pid would end the worker and leave the tab. Nothing is armed or
+ * noticed there: the tab's own Stop hook gives the notice and arms its own restart. False for the background job the tab
+ * handed its conversation to (`isHandedOffJob`): the job runs the session itself.
+ */
+export async function forkedOutsideTab(runtime: CliRuntime, paths: Pick<TeamPaths, 'sessions'>, ids: readonly string[], id: string, claude: number | undefined): Promise<boolean> {
+  if (claude === undefined) {
+    return false;
+  }
+  const live = await liveRunOf(runtime, paths, ids, id, claude);
+  if (live === undefined || live.tree.has(claude) || (await isHandedOffJob(runtime, live, claude))) {
+    return false;
+  }
+  return isLiveRunOwn(runtime, live, claude);
 }
 
 /** Starts `restart` hidden for the request recorded at `at`, to wait until the session is idle; whether it started. */
@@ -100,8 +122,32 @@ export async function parkRestart(runtime: CliRuntime, store: RefreshStore, scop
 }
 
 /**
- * Arms the restart a notice announces when work follows the handover (`workFollows`) in the team at `register`; else
- * parks it for the wake that brings the session work (T1383).
+ * Whether the session's next turn comes whether or not a task wake brings it work: the lead, which the owner, its inbox
+ * and its own checks wake, or a session whose transcript (at `transcript`) still has a live recurring scheduled job
+ * (CronCreate, counting those an earlier /clear left in its process: `refresh/carry.ts`). A restart held back for a
+ * wake (T1383) never comes for such a session: the scheduled turn goes on from the full context, which drops the
+ * held-back restart, and every later fire reads that whole context again. Read only at a notice, not at every stop.
+ */
+export async function wokenAnyway(runtime: CliRuntime, store: RefreshStore, config: KitConfig, id: string, transcript: string | undefined): Promise<boolean> {
+  if (config.roles.lead === id) {
+    return true;
+  }
+  const text = transcript === undefined ? undefined : await runtime.files.readTail(transcript, CARRY_TAIL_BYTES);
+  if (text === undefined) {
+    return false;
+  }
+  return carryOf(text, runtime.clock.now(), await inheritedCrons(store, id, transcript)).crons.some((cron) => cron.recurring);
+}
+
+/** The jobs a /clear left live in the process of the session whose transcript is `transcript` (`CarriedJobs`). */
+export async function inheritedCrons(store: RefreshStore, id: string, transcript: string | undefined): Promise<readonly CarriedCron[]> {
+  const record = await store.carried(id);
+  return record !== undefined && transcript !== undefined && record.transcript === transcript ? record.crons : [];
+}
+
+/**
+ * Arms the restart a notice announces when work follows the handover (`workFollows`) in the team at `register`, or when
+ * the session is woken anyway (`wokenAnyway`); else parks it for the wake that brings the session work (T1383).
  */
 export async function restartOrPark(
   runtime: CliRuntime,
@@ -110,7 +156,9 @@ export async function restartOrPark(
   notice: NoticeDecision,
   register: { readonly paths: TeamPaths; readonly config: KitConfig },
 ): Promise<NoticeDecision> {
-  return (await workFollows(runtime, register.paths, register.config, scope.id)) ? armRestart(runtime, store, scope, notice) : parkRestart(runtime, store, scope, notice);
+  const arm =
+    (await workFollows(runtime, register.paths, register.config, scope.id)) || (await wokenAnyway(runtime, store, register.config, scope.id, scope.target.transcript));
+  return arm ? armRestart(runtime, store, scope, notice) : parkRestart(runtime, store, scope, notice);
 }
 
 /** The tab a dead or parked restart is armed from (`rearmDeadRestart`, `armParkedRestart`). */
@@ -123,6 +171,9 @@ export interface RearmScope {
   readonly refresh: { readonly enabled: boolean; readonly autoRestart: boolean };
   /** The tab's working folder, as Claude Code gave it; undefined when it gave none. */
   readonly cwd: string | undefined;
+  /** Where the team's session records are, and its sessions, to tell a forked worker outside the tab (`forkedOutsideTab`). */
+  readonly paths: Pick<TeamPaths, 'sessions'>;
+  readonly ids: readonly string[];
 }
 
 /**
@@ -132,7 +183,8 @@ export interface RearmScope {
 async function armFromTab(runtime: CliRuntime, store: RefreshStore, scope: RearmScope, tab: RestartTab): Promise<boolean> {
   const { team, id, cwd } = scope;
   // Looked up on this rare path only: each look at a process starts a PowerShell on Windows.
-  const claude = await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid);
+  const found = await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid);
+  const claude = (await forkedOutsideTab(runtime, scope.paths, scope.ids, id, found)) ? undefined : found;
   const project = runtime.env[ENV.claudeProjectDir] ?? tab.cwd ?? cwd;
   if (claude !== undefined && project !== undefined) {
     const at = new Date(runtime.clock.now()).toISOString();

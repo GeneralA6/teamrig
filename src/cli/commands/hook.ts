@@ -47,6 +47,7 @@ import {
 import { ownerTurnsLine, ownerTurnsText, type OwnerTurn } from '../../refresh/owner-turns.ts';
 import { carryLines, carryStartOf, readCarry, type CarriedCron, type Carry, type CarryPlaces, type CarryStart } from '../../refresh/carry.ts';
 import { claudeProcessOf } from '../../refresh/restart.ts';
+import { firedBySchedule } from '../../refresh/scheduled-prompt.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
@@ -67,7 +68,7 @@ import { droppedEditReasonOf } from './hook-dropped-edit.ts';
 import { handStepReasonOf } from './hook-hand-step.ts';
 import { effortWritebackOf, type EffortWritebackOutcome } from './hook-effort-writeback.ts';
 import { meetingHold } from './hook-meeting.ts';
-import { restartOrPark, restartTargetOf } from './hook-restart.ts';
+import { forkedOutsideTab, inheritedCrons, restartOrPark, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
 import { promptSecretBlock } from './hook-prompt-secret.ts';
 import { guardLoadOf, hookTeam } from './hook-guard-load.ts';
@@ -235,6 +236,14 @@ async function titleOutcome(runtime: CliRuntime, kit: Kit, config: KitConfig, pa
  * work (T1383), cancels it, so the session keeps its context; one line tells the model, with the context growth
  * (`growth` tokens) that asks again. None when no restart waits, or one is already ending the session.
  */
+/** Whether the prompt a UserPromptSubmit `payload` carries was fired by one of the session's live scheduled jobs. */
+async function scheduledPrompt(runtime: CliRuntime, kit: Kit, id: string, payload: unknown): Promise<boolean> {
+  const transcript = isRecord(payload) ? stringField(payload, 'transcript_path') : undefined;
+  const prompt = isRecord(payload) ? stringField(payload, 'prompt') : undefined;
+  const inherited = await inheritedCrons(new RefreshStore(runtime.files, kit.paths), id, transcript);
+  return firedBySchedule(runtime.files, { transcript, prompt }, inherited, runtime.clock.now());
+}
+
 async function cancelledRestartLine(runtime: CliRuntime, kit: Kit, id: string, refresh: Pick<RefreshSettings, 'contextTokens' | 'largeWindowContextTokens'>): Promise<string | undefined> {
   const store = new RefreshStore(runtime.files, kit.paths);
   const parked = (await store.parked(id)) !== undefined;
@@ -307,7 +316,9 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   if (session !== undefined) {
     await logPrompt(runtime, { config, paths: kit.paths, id: session }, payload).catch(() => undefined);
   }
-  const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session, sessionRefreshOf(config, session)).catch(() => undefined);
+  // A scheduled job's prompt is no one typing: it leaves the restart armed, which waits for the turn it starts to end.
+  const scheduled = session !== undefined && (await scheduledPrompt(runtime, kit, session, payload).catch(() => false));
+  const cancelled = session === undefined || scheduled ? undefined : await cancelledRestartLine(runtime, kit, session, sessionRefreshOf(config, session)).catch(() => undefined);
   const budgetLine = session === undefined ? undefined : await promptBudgetLine(runtime, { kit, config, roster: own.roster, id: session }).catch(() => undefined);
   // Like the inbox lines below, reading the digest moves its cursor, so it is read late; only a leader gets one.
   const digest = session === undefined ? undefined : await leaderDigestText(runtime, kit.paths, config, session).catch(() => undefined);
@@ -774,6 +785,11 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: SessionScope, paylo
   // Looked up once for the restart and the state: each look at a process starts a PowerShell on Windows, and a Stop
   // hook past Claude Code's timeout is killed with every process it started.
   const claude = decided.kind === 'notice' ? await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid) : undefined;
+  // A forked worker outside the tab (`forkedOutsideTab`) arms nothing and records no notice: the tab's own Stop hook
+  // gives the notice and arms the restart with the tab's process, session and transcript.
+  if (decided.kind === 'notice' && decided.restart && (await forkedOutsideTab(runtime, kit.paths, roster.ids, id, claude))) {
+    return { kind: 'none' };
+  }
   const decision =
     decided.kind === 'notice' && decided.restart && target !== undefined
       ? await restartOrPark(runtime, store, { team: kit.paths.team, id, context, target, claude }, decided, { paths: kit.paths, config })
