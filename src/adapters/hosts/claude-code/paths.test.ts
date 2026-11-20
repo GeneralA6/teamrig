@@ -14,10 +14,26 @@ describe("Claude Code's paths", () => {
     assert.equal(hostPaths({ CLAUDE_CONFIG_DIR: ' ' }).home(USER_HOME), join(USER_HOME, '.claude'), 'a blank one moves nothing');
   });
 
-  it("keeps its temporary files under the system's folder, unless CLAUDE_CODE_TMPDIR moves them", () => {
-    assert.equal(hostPaths({}).temp(SYSTEM_TEMP), SYSTEM_TEMP);
-    assert.equal(hostPaths({ CLAUDE_CODE_TMPDIR: join('/', 'scratch') }).temp(SYSTEM_TEMP), join('/', 'scratch'));
-    assert.equal(hostPaths({ CLAUDE_CODE_TMPDIR: ' ' }).temp(SYSTEM_TEMP), SYSTEM_TEMP, 'a blank one moves nothing');
+  it("keeps every session's scratchpad under the system's temporary folder, unless CLAUDE_CODE_TMPDIR moves them", () => {
+    assert.equal(hostPaths({}).scratchpads(SYSTEM_TEMP), join(SYSTEM_TEMP, 'claude', '*', '*', 'scratchpad'));
+    assert.equal(hostPaths({ CLAUDE_CODE_TMPDIR: join('/', 'scratch') }).scratchpads(SYSTEM_TEMP), join('/', 'scratch', 'claude', '*', '*', 'scratchpad'));
+    assert.equal(hostPaths({ CLAUDE_CODE_TMPDIR: ' ' }).scratchpads(SYSTEM_TEMP), join(SYSTEM_TEMP, 'claude', '*', '*', 'scratchpad'), 'a blank one moves nothing');
+  });
+
+  it("names a session's scratchpad by its transcript's project folder and file name, a folder its pattern matches", () => {
+    const transcript = join('/', 'cfg', 'projects', 'C--work-app', '6f1c2d3e.jsonl');
+    assert.equal(hostPaths({}).scratchpadOf(transcript, SYSTEM_TEMP), join(SYSTEM_TEMP, 'claude', 'C--work-app', '6f1c2d3e', 'scratchpad'));
+    assert.equal(hostPaths({ CLAUDE_CODE_TMPDIR: join('/', 'scratch') }).scratchpadOf(transcript, SYSTEM_TEMP), join('/', 'scratch', 'claude', 'C--work-app', '6f1c2d3e', 'scratchpad'));
+  });
+
+  it("keeps a project's memory, a session's plan and the shell snapshots in its own folder, wherever that one is", () => {
+    const moved = hostPaths({ CLAUDE_CONFIG_DIR: join('/', 'cfg') });
+    assert.equal(hostPaths({}).memoryFolders(USER_HOME), join(USER_HOME, '.claude', 'projects', '*', 'memory'));
+    assert.equal(moved.memoryFolders(USER_HOME), join('/', 'cfg', 'projects', '*', 'memory'));
+    assert.equal(hostPaths({}).planFile(USER_HOME, 'quiet-river-otter'), join(USER_HOME, '.claude', 'plans', 'quiet-river-otter.md'));
+    assert.equal(moved.planFile(USER_HOME, 'quiet-river-otter'), join('/', 'cfg', 'plans', 'quiet-river-otter.md'));
+    assert.equal(hostPaths({}).shellSnapshots(USER_HOME), join(USER_HOME, '.claude', 'shell-snapshots'));
+    assert.equal(moved.shellSnapshots(USER_HOME), join('/', 'cfg', 'shell-snapshots'));
   });
 
   it("loads a person's skills from the skills folder of its own folder, wherever that one is", () => {
