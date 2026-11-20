@@ -1,13 +1,14 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseTranscriptLine } from '../budget/line.ts';
+import { transcriptLineOf } from '../budget/line.ts';
 import { isRecord } from '../core/guards.ts';
 import { APP, CliHarness, KIT, TEAM, USER_HOME } from './cli-harness.ts';
 import { FolderNames, withStrings } from './folder-names.ts';
 import { MemoryTranscripts } from './memory-transcripts.ts';
 import { hookMatches, pluginHooks } from './plugin-hooks.ts';
 import { hookFile, loadRecording, type RecordedHost } from './recorded.ts';
+import { shippedTranscripts } from './shipped-transcripts.ts';
 
 /** The pinned file that holds what teamrig reads out of each recorded transcript. */
 export const TRANSCRIPT_LINES_FILE = 'transcript-lines.json';
@@ -108,10 +109,11 @@ export async function recordedPins(host: RecordedHost): Promise<Readonly<Record<
       });
     }
   }
+  const reader = shippedTranscripts();
   const lines = recording.transcripts.map(({ file, text }) => {
     const raw = text.split('\n').filter((line) => line !== '');
     const read = raw.flatMap((line, index) => {
-      const value = parseTranscriptLine(line);
+      const value = transcriptLineOf(reader, line);
       return value === undefined ? [] : [{ line: index + 1, value: withStrings(value, named) }];
     });
     return { file, lines: raw.length, read };
