@@ -1,4 +1,4 @@
-import { postToolUseReplace } from '../../hooks/post-tool-use.ts';
+import { isRecord } from '../../core/guards.ts';
 import { secretGuardOf, secretPatternsOf } from '../../hooks/secret-guard.ts';
 import { redactableResultOf, redactedLine, rotationText, rotatorOf } from '../../hooks/secret-redact.ts';
 import { EnvAssignments } from '../../secret-guard/env-assignments.ts';
@@ -7,7 +7,7 @@ import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { guardLoadOf } from './hook-guard-load.ts';
-import { parseJson } from './hook-input.ts';
+import { readHookInput, writeReply } from './hook-input.ts';
 import { fileRotations } from './secret-rotation.ts';
 
 /**
@@ -19,14 +19,14 @@ import { fileRotations } from './secret-rotation.ts';
  */
 export async function secretRedact(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
+  const { payload, event } = await readHookInput(runtime);
   const guard = await guardLoadOf(payload, runtime);
   if (guard === undefined) {
     return EXIT.ok;
   }
   const config = secretGuardOf(guard.load);
-  const result = redactableResultOf(payload);
-  if (!config.redact || result === undefined) {
+  const result = event === undefined ? undefined : redactableResultOf(event);
+  if (!config.redact || result === undefined || event === undefined || !isRecord(payload)) {
     return EXIT.ok;
   }
   const rules = secretRulesOf(config, runtime.userHome, runtime.platform, secretPatternsOf(guard.load));
@@ -34,7 +34,7 @@ export async function secretRedact(args: ParsedArgs, runtime: CliRuntime): Promi
   if (redaction.classes.length === 0) {
     return EXIT.ok;
   }
-  const rotations = await fileRotations(runtime, result.payload, { tool: result.tool, kinds: redaction.classes, accounts: redaction.accounts });
-  runtime.out.stdout(postToolUseReplace(redaction.response, redactedLine(redaction, rotationText(rotatorOf(guard.load), rotations))));
+  const rotations = await fileRotations(runtime, payload, event, { tool: result.tool, kinds: redaction.classes, accounts: redaction.accounts });
+  writeReply(runtime, 'tool-end', { toolOutput: redaction.response, context: redactedLine(redaction, rotationText(rotatorOf(guard.load), rotations)) });
   return EXIT.ok;
 }
