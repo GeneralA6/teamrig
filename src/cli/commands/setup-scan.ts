@@ -85,6 +85,7 @@ export async function scan(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const secrets = new SecretScanner(team?.config.register.secretPatterns);
   const doctor = claudeSkillDoctor({ env: runtime.env, platform: runtime.platform, probe: runtime.probe, files: runtime.files, node: runtime.self.node, hooks: runtime.hooks });
   const found = await scanSetup({ files: runtime.files, permissions: permissionsOf(runtime), probe: runtime.probe, transcripts: runtime.transcripts, reader: transcriptsOf(runtime), paths: host, doctor }, {
+    paths: host,
     claudeDir,
     userHome: runtime.userHome,
     project,

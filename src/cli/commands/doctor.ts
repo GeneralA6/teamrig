@@ -2,7 +2,7 @@ import { claudeProjectsDir } from '../../budget/discover.ts';
 import { launchOf } from '../../config/launch.ts';
 import { Roster } from '../../config/roster.ts';
 import type { ContextFilesConfig, KitConfig } from '../../config/types.ts';
-import { claudeConfigDir, KIT_NAME } from '../../core/home.ts';
+import { KIT_NAME } from '../../core/home.ts';
 import type { PathProbe } from '../../core/path-probe.ts';
 import { readContextFiles } from '../../doctor/context-files.ts';
 import { readSettingsDeny } from '../../doctor/deny-lines.ts';
@@ -26,14 +26,15 @@ import { loadTree } from '../tree.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /**
- * What the context findings weigh (`ContextInput`): the CLAUDE.md files, memory index and skill listing of `project`,
- * the user's Claude Code folder and the `skills` folder against `budgets`, and the lists of the project's newest
- * session, its transcript read in chunks. `doctor` and `check` read it.
+ * What the context findings weigh (`ContextInput`): the instruction files, memory index and skill listing of `project`
+ * against `budgets`, read from the places the run's host names, and the lists of the project's newest session, its
+ * transcript read in chunks. `doctor` and `check` read it, and both go on where teamrig does not know the host's
+ * folders: only the team's `skills` folder is weighed there.
  */
 export async function readContextInput(runtime: CliRuntime, project: string, skills: string, budgets: ContextFilesConfig): Promise<ContextInput> {
-  const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
+  const at ={ paths: pathsIfKnown(runtime), userHome: runtime.userHome, project, skills };
   return {
-    contextFiles: { read: await readContextFiles(runtime.files, { claudeDir, project, skills }), budgets },
+    contextFiles: { read: await readContextFiles(runtime.files, at), budgets },
     sessionLists: await readSessionLists(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), project),
   };
 }

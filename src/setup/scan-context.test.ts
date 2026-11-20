@@ -1,16 +1,28 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
-import { claudeMemoryDir } from '../doctor/context-files.ts';
+import { testPaths } from '../testing/host.ts';
 import { MemoryFiles, MemoryPathProbe } from '../testing/memory-files.ts';
-import { agentLineOf, importsOf, IMPORT_DEPTH, listingLineOf, MEMORY_INDEX_LINES, readSessionContext, type SessionContextLocations } from './scan-context.ts';
+import {
+  agentLineOf,
+  importsOf,
+  IMPORT_DEPTH,
+  listingLineOf,
+  MEMORY_INDEX_LINES,
+  readSessionContext,
+  type SessionContextLocations,
+  type SessionContextPaths,
+} from './scan-context.ts';
 
 const USER_HOME = resolve('/', 'u');
 const CLAUDE_DIR = join(USER_HOME, '.claude');
 const PROJECT = resolve('/', 'work', 'app');
 const TEAM_RULES = resolve('/', 'kit', 'teams', 'app', 'rules.md');
+/** The shipped host's paths: its own folder is `.claude` in the home folder. */
+const PATHS = testPaths();
+const MEMORY_INDEX = PATHS.memoryIndex(USER_HOME, PROJECT);
 const AT: SessionContextLocations = {
-  claudeDir: CLAUDE_DIR,
+  paths: PATHS,
   userHome: USER_HOME,
   project: PROJECT,
   skills: join(CLAUDE_DIR, 'skills'),
@@ -60,7 +72,7 @@ describe('readSessionContext', () => {
       [join(PROJECT, '.claude', 'rules', 'ts.md')]: '---\npaths: src/**/*.ts\n---\nOnly for TypeScript.\n',
       [join(PROJECT, '.claude', 'rules', 'deep', 'nested.md')]: 'Nested and loaded.\n',
       [join(CLAUDE_DIR, 'rules', 'mine.md')]: 'User rule.\n',
-      [join(claudeMemoryDir(CLAUDE_DIR, PROJECT), 'MEMORY.md')]: memory,
+      [MEMORY_INDEX]: memory,
       [TEAM_RULES]: 'Team rules.\n',
       [join(CLAUDE_DIR, 'skills', 'alpha-check', 'SKILL.md')]: skill('Checks alpha.'),
       [join(PROJECT, '.claude', 'skills', 'beta-run', 'SKILL.md')]: skill('Runs beta.'),
@@ -81,7 +93,7 @@ describe('readSessionContext', () => {
         ['rules', join(PROJECT, '.claude', 'rules', 'always.md')],
         ['rules', join(PROJECT, '.claude', 'rules', 'deep', 'nested.md')],
         ['rules', join(CLAUDE_DIR, 'rules', 'mine.md')],
-        ['memory', join(claudeMemoryDir(CLAUDE_DIR, PROJECT), 'MEMORY.md')],
+        ['memory', MEMORY_INDEX],
         ['team-rules', TEAM_RULES],
       ],
     );
@@ -124,6 +136,57 @@ describe('readSessionContext', () => {
     assert.deepEqual(
       context.agents.map((agent) => [agent.name, agent.scope]),
       [['runner', 'user']],
+    );
+  });
+
+  it("loads from the places the host's paths name, joining no folder or file name of the host's own", async () => {
+    const told = (...parts: string[]): string => resolve('/', 'agent', ...parts);
+    const paths: SessionContextPaths = {
+      userInstructions: () => told('me.md'),
+      folderInstructions: (folder) => [join(folder, 'AGENT.md')],
+      userRules: () => told('rules'),
+      projectRules: (project) => join(project, 'agent-rules'),
+      projectSkills: (project) => join(project, 'agent-skills'),
+      userAgents: () => told('helpers'),
+      projectAgents: (project) => join(project, 'agent-helpers'),
+      memoryIndex: () => told('memory', 'INDEX.md'),
+    };
+    // The world holds the shipped host's files too, and none of them is loaded here.
+    const { files, probe } = world({
+      [told('me.md')]: 'Mine.\n',
+      [join(PROJECT, 'AGENT.md')]: 'Project.\n',
+      [join(PROJECT, 'agent-rules', 'always.md')]: 'Project rule.\n',
+      [told('rules', 'mine.md')]: 'My rule.\n',
+      [told('memory', 'INDEX.md')]: 'Index.\n',
+      [join(PROJECT, 'agent-skills', 'gamma-ship', 'SKILL.md')]: skill('Ships gamma.'),
+      [told('helpers', 'reader.md')]: '---\ndescription: Reads.\n---\n',
+      [join(PROJECT, 'agent-helpers', 'runner.md')]: '---\ndescription: Runs.\n---\n',
+    });
+    const context = await readSessionContext(files, probe, { ...AT, paths });
+    assert.deepEqual(
+      context.files.map((file) => [file.kind, file.path]),
+      [
+        ['claude-md', told('me.md')],
+        ['claude-md', join(PROJECT, 'AGENT.md')],
+        ['rules', join(PROJECT, 'agent-rules', 'always.md')],
+        ['rules', told('rules', 'mine.md')],
+        ['memory', told('memory', 'INDEX.md')],
+        ['team-rules', TEAM_RULES],
+      ],
+    );
+    assert.deepEqual(
+      context.skills.map((listed) => [listed.name, listed.scope]),
+      [
+        ['alpha-check', 'user'],
+        ['gamma-ship', 'project'],
+      ],
+    );
+    assert.deepEqual(
+      context.agents.map((agent) => [agent.name, agent.scope]),
+      [
+        ['reader', 'user'],
+        ['runner', 'project'],
+      ],
     );
   });
 
