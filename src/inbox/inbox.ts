@@ -1,10 +1,9 @@
-import { isRecord, stringField } from '../core/guards.ts';
 import { formatUtcMinute, parseUtcDeadline } from '../core/time.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { SESSION_NAME } from '../register/model.ts';
 import { lineHash } from './line-hash.ts';
-import { CLAUDE_SESSION_ID, indexMarks, MARK_VERSION, type InboxMark, type MarkLogRead } from './marks.ts';
+import { indexMarks, MARK_VERSION, type InboxMark, type MarkLogRead } from './marks.ts';
 import { cutWhenShown, lastShownOf, newestShownOf, unshownOf } from './shown.ts';
 import { unreadOf, type Unread } from './unread.ts';
 
@@ -239,10 +238,4 @@ export async function postLines(
 /** The line `postLines` appends for `text` (trimmed), `- YYYY-MM-DD HH:MM <from>: <text>`, stamped with the UTC minute. */
 export function inboxLineOf(now: Date, from: string, text: string): string {
   return `- ${formatUtcMinute(now)} ${from}: ${text}`;
-}
-
-/** The `session_id` in a hook's parsed stdin JSON; null when absent or malformed. */
-export function sessionIdOf(payload: unknown): string | null {
-  const id = isRecord(payload) ? stringField(payload, 'session_id') : undefined;
-  return id !== undefined && CLAUDE_SESSION_ID.test(id) ? id : null;
 }
