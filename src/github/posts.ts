@@ -1,6 +1,7 @@
 import { isRecord, numberField, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import type { HostPost } from '../issues/post.ts';
-import { MENTION_LISTS, MENTION_PAGE_SIZE, MENTION_PAGES_MAX, mentionListArgs, reviewListArgs, type GhRunner, type MentionList } from './gh.ts';
+import { MENTION_PAGE_SIZE, MENTION_PAGES_MAX, REVIEW_READS_MAX } from '../issues/scan-caps.ts';
+import { MENTION_LISTS, mentionListArgs, reviewListArgs, type GhRunner, type MentionList } from './gh.ts';
 import { loginOf, runRead, timeField, WEB_URL, type ReadKind } from './issues.ts';
 import type { RepoAccess } from './tokens.ts';
 
@@ -17,9 +18,6 @@ const POST_READ: Readonly<Record<MentionList | 'reviews', ReadKind>> = {
   issues: { noun: 'issues', permission: 'Issues', command: 'gh api' },
   reviews: { noun: 'pull request reviews', permission: 'Pull requests', command: 'gh api' },
 };
-
-/** The most pull requests whose reviews one read takes; past it, the rest wait for the next read. */
-export const REVIEW_READS_MAX = 20;
 
 /** The posts of a repository changed since a time, oldest change first in each list, or the line saying why gh could not read them. */
 export type PostRead =
