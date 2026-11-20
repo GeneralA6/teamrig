@@ -1,0 +1,93 @@
+name: release merge
+
+on:
+  # Merges the release pull request once ci passed on its head (T4712), in place of a person's approval: the gate
+  # passes only a single commit holding the version raises and the notes, with every check green. The run always uses
+  # main's own copy of this file and of tools/release, never the release branch's.
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+
+permissions: {}
+
+# One merge at a time, and never one cancelled between its merge and its comment.
+concurrency:
+  group: release-merge
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: release merge gate
+    # ci also ends on fork pull requests, and every workflow_run job runs on main's ref, so the run is narrowed here,
+    # before any step: release.yml's own dispatch of ci on this repository's release branch, passed. Inert until the
+    # teamrig-release App's id is set. The gate re-checks all of it from the API.
+    if: >-
+      vars.RELEASE_APP_ID != '' &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'release-please--branches--main--components--teamrig'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Read-only: the gate reads the run, the pull request, main's rules, the checks and the commit status.
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      pull-requests: read
+      statuses: read
+    outputs:
+      pass: ${{ steps.gate.outputs.pass }}
+      pr: ${{ steps.gate.outputs.pr }}
+      sha: ${{ steps.gate.outputs.sha }}
+      checks: ${{ steps.gate.outputs.checks }}
+      paths: ${{ steps.gate.outputs.paths }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      # No package install and no Node cache, so the gate runs on Node alone and reads nothing the release branch wrote.
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+      # Values go in by env alone: a branch name is text anyone opening a pull request writes.
+      - id: gate
+        run: node tools/release/release-merge-cli.ts gate
+        env:
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          GITHUB_TOKEN: ${{ github.token }}
+
+  merge:
+    name: release merge
+    needs: gate
+    if: >-
+      needs.gate.outputs.pass == 'true' &&
+      vars.RELEASE_APP_ID != '' &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'release-please--branches--main--components--teamrig'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The environment's secret is the App's key, and the environment deploys from main alone. The job token reads
+    # only the code; the merge and the comment use the App's own token, minted for this repository in the step.
+    environment: release-merge
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+      - run: node tools/release/release-merge-cli.ts merge
+        env:
+          PR: ${{ needs.gate.outputs.pr }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          CHECKS: ${{ needs.gate.outputs.checks }}
+          PATHS: ${{ needs.gate.outputs.paths }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          APP_ID: ${{ vars.RELEASE_APP_ID }}
+          APP_KEY: ${{ secrets.RELEASE_APP_KEY }}
