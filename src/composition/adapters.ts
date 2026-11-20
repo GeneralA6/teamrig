@@ -11,5 +11,6 @@ export const HOST_ADAPTERS: AdapterTable = {
 
 export const CONNECTOR_ADAPTERS: AdapterTable = {
   github: '../adapters/connectors/github',
+  jira: '../adapters/connectors/jira',
   local: '../adapters/connectors/local',
 };
