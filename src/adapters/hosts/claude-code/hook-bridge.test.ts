@@ -23,6 +23,7 @@ const BARE: HookEvent = {
   lastReply: undefined,
   stopActive: false,
   source: undefined,
+  reason: undefined,
   trigger: undefined,
   model: undefined,
   effort: undefined,
@@ -144,6 +145,12 @@ describe("Claude Code's hook input", () => {
     assert.deepEqual(parse({ hook_event_name: 'UserPromptSubmit', prompt: 'go on' }), { ...BARE, name: 'prompt', hostName: 'UserPromptSubmit', prompt: 'go on' });
     assert.deepEqual(parse({ hook_event_name: 'SessionStart', source: 'clear', model: 'some-model' }), { ...BARE, name: 'session-start', hostName: 'SessionStart', source: 'clear', model: 'some-model' });
     assert.deepEqual(parse({ hook_event_name: 'PreCompact', trigger: 'auto' }), { ...BARE, name: 'compact-start', hostName: 'PreCompact', trigger: 'auto' });
+  });
+
+  it("reads a session's end with its reason, and none where the host names none", () => {
+    assert.deepEqual(parse({ hook_event_name: 'SessionEnd', reason: 'clear' }), { ...BARE, name: 'session-end', hostName: 'SessionEnd', reason: 'clear' });
+    assert.equal(parse({ hook_event_name: 'SessionEnd' })?.reason, undefined);
+    assert.equal(parse({ hook_event_name: 'SessionEnd', reason: 3 })?.reason, undefined);
   });
 
   it('reads a stop, one that follows a blocked stop, and one that failed', () => {

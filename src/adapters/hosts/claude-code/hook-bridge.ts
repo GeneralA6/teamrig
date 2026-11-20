@@ -115,6 +115,7 @@ function eventOf(payload: JsonRecord, shape: ToolCallShape): HookEvent {
     lastReply: stringField(payload, 'last_assistant_message'),
     stopActive: payload['stop_hook_active'] === true,
     source: stringField(payload, 'source'),
+    reason: stringField(payload, 'reason'),
     trigger: stringField(payload, 'trigger'),
     model: stringField(payload, 'model'),
     effort: effortOf(payload),
