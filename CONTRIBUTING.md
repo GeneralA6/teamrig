@@ -120,6 +120,11 @@ Every change ships tests, so the next change cannot break it unnoticed:
 - A change to a threshold, limit or trigger (a count, a timeout, a restart or retry limit, a wake condition) gets a
   spec of the trigger firing in the real flow, with whatever resets its count on the way (a compaction, a `/clear`,
   a restart): a unit test of the comparison alone passes even when the real flow resets the count before it fires.
+- A recorded Claude Code session (`src/testing/recorded/claude-code/`, recorded with `node tools/record/cli.ts`) holds
+  the hook inputs and transcripts a real session sent, and its `expected/` folder pins what teamrig prints for each;
+  `src/testing/recorded-pins.test.ts` fails when the code and the pins differ. A refactor leaves the pins as they are.
+  A change meant to alter what a hook prints, or a core rule's wording (the session-start pins hold the rules text),
+  runs `node tools/record/pins-cli.ts` from the repository's root and commits the diff with the change.
 
 `npm run check` runs every gate CI runs on the tree; the local gate also checks each pushed commit's sign-off and scrubs it,
 which the git hooks `npm ci` sets do before each commit. Its coverage gate (`npm run coverage`) fails when:
