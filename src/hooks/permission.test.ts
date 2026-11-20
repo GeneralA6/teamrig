@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_PROMPTS } from '../config/defaults.ts';
 import { testConfig } from '../testing/config.ts';
-import { ASK_REFUSED_NOTE, holdBack, holdBackOutput, hookAsksOf, refusalOutput } from './permission.ts';
+import { replyText } from '../testing/host.ts';
+import { ASK_REFUSED_NOTE, heldBack, holdBack, holdBackOutput, hookAsksOf, refusal, refusalOutput } from './permission.ts';
 
 describe('holdBack', () => {
   it('never asks a person: what a guard would ask about is refused with the note, a refusal keeps its reason (T3356)', () => {
@@ -23,6 +24,19 @@ describe('holdBackOutput', () => {
     assert.deepEqual(JSON.parse(holdBackOutput('ask', 'Why.')), {
       hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Why. ${ASK_REFUSED_NOTE}` },
     });
+  });
+});
+
+describe('refusal and heldBack', () => {
+  it('are a deny with the reason as given, and with the note when a guard would have asked', () => {
+    assert.deepEqual(refusal('Why.'), { verdict: { kind: 'deny', reason: 'Why.' } });
+    assert.deepEqual(heldBack('deny', 'Why.'), refusal('Why.'));
+    assert.deepEqual(heldBack('ask', 'Why.'), refusal(`Why. ${ASK_REFUSED_NOTE}`));
+  });
+
+  it('are worded by the shipped host as the output the guards wrote themselves', () => {
+    assert.equal(replyText('tool-start', refusal('Why.')), refusalOutput('Why.'));
+    assert.equal(replyText('tool-start', heldBack('ask', 'Why.')), holdBackOutput('ask', 'Why.'));
   });
 });
 
