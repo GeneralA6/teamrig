@@ -57,16 +57,33 @@ function helperOf(payload: JsonRecord): HookHelper | undefined {
   return helper.id === undefined && helper.type === undefined && helper.transcript === undefined ? undefined : helper;
 }
 
+/** The tools whose result shapes the probe saw replaced (T1369); any other tool's result stays as it is until probed. */
+const REPLACEABLE_TOOLS: ReadonlySet<string> = new Set(['Bash', 'PowerShell', 'Read', 'Grep']);
+
+/**
+ * The result a hook may replace: a probed tool's, and of a Read only a text file's, as an image's or a notebook's is
+ * not probed. Only a result object: the replacement must keep its shape, and the probe saw no tool hand its result as
+ * text.
+ */
+function replaceableOf(tool: string, response: unknown): JsonRecord | undefined {
+  if (!REPLACEABLE_TOOLS.has(tool) || !isRecord(response)) {
+    return undefined;
+  }
+  return tool === 'Read' && stringField(response, 'type') !== 'text' ? undefined : response;
+}
+
 function callOf(payload: JsonRecord, shape: ToolCallShape): ToolCall | undefined {
   const tool = stringField(payload, 'tool_name');
   if (tool === undefined) {
     return undefined;
   }
   const id = stringField(payload, 'tool_use_id');
+  const replaceable = replaceableOf(tool, payload['tool_response']);
   return {
     ...shape.normalize(tool, recordField(payload, 'tool_input') ?? {}),
     ...(id === undefined ? {} : { id }),
     ...(Object.hasOwn(payload, 'tool_response') ? { response: payload['tool_response'] } : {}),
+    ...(replaceable === undefined ? {} : { replaceable }),
   };
 }
 

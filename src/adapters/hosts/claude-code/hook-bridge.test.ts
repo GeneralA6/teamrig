@@ -32,6 +32,11 @@ function parse(payload: object): HookEvent | undefined {
   return bridge.parse(JSON.stringify(payload));
 }
 
+/** The answer a hook may replace, of a call of this tool that ended with this answer. */
+function replaceableOf(tool_name: string, tool_response: unknown): unknown {
+  return parse({ hook_event_name: 'PostToolUse', tool_name, tool_response })?.call?.replaceable;
+}
+
 describe("Claude Code's hook input", () => {
   it('is no event when it is not a JSON object', () => {
     assert.equal(bridge.parse(''), undefined);
@@ -76,6 +81,25 @@ describe("Claude Code's hook input", () => {
     const event = parse({ hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: '/repo/a.ts' }, tool_response });
     assert.equal(event?.name, 'tool-end');
     assert.deepEqual(event?.call, { kind: 'read', name: 'Read', input: { file_path: '/repo/a.ts' }, path: '/repo/a.ts', response: tool_response });
+  });
+
+  it('names the answer a hook may replace: a Bash, PowerShell or Grep result object, and a Read of a text file', () => {
+    const result = { stdout: 'ok', stderr: '', interrupted: false };
+    for (const tool of ['Bash', 'PowerShell', 'Grep']) {
+      assert.deepEqual(replaceableOf(tool, result), result, tool);
+    }
+    const text = { type: 'text', file: { filePath: 'a.txt', content: 'ok' } };
+    assert.deepEqual(replaceableOf('Read', text), text);
+  });
+
+  it('names none for a tool not probed, a Read of an image, a result that is no object and a call with no result', () => {
+    assert.equal(replaceableOf('WebFetch', { result: 'ok' }), undefined);
+    assert.equal(replaceableOf('Glob', { filenames: ['a.ts'] }), undefined);
+    assert.equal(replaceableOf('Read', { type: 'image', file: { base64: 'ok' } }), undefined);
+    assert.equal(replaceableOf('Bash', JSON.stringify({ stdout: 'ok' })), undefined);
+    assert.equal(replaceableOf('Bash', undefined), undefined);
+    const before = parse({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'ls' } });
+    assert.equal(before?.call !== undefined && Object.hasOwn(before.call, 'replaceable'), false);
   });
 
   it('reads a tool call with no input as one with an empty input', () => {
