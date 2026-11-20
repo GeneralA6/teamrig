@@ -19,7 +19,7 @@ export interface LabelEvent {
 }
 
 /**
- * A comment on an issue, as the issue list reads it for the response clock (src/github/clock.ts) and to find whose
+ * A comment on an issue, as the issue list reads it for the response clock (src/sync/clock.ts) and to find whose
  * comments the claim pass reads (issues/claim.ts): when, its author's login, kind and tie to the repository. Never its
  * text: the list never asks for it.
  */

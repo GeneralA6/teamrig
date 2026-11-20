@@ -3,7 +3,7 @@ import { ENV, type Env } from '../../core/home.ts';
 import { writableObject } from '../../core/jsonl.ts';
 import type { FileLock } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { activityLine, routesBySession } from '../../github/activity.ts';
+import { activityLine, routesBySession } from '../../sync/activity.ts';
 import {
   addedLines,
   failureNews,
@@ -14,13 +14,13 @@ import {
   SYNC_STATE_FORMAT,
   type SyncRun,
   type SyncState,
-} from '../../github/auto.ts';
-import { issueChangeLine, issueRoutesBySession } from '../../github/issue-marks.ts';
-import { issueRef } from '../../github/map.ts';
-import { mentionCutLine, mentionLine, wakeRoutes } from '../../github/mention-route.ts';
-import { pullNewsText } from '../../github/pull-news.ts';
-import { ourLogins } from '../../github/trust.ts';
-import { capAlerts, overCapLine, overCapPageText, securityLine, securityPageText, unpagedIssues, unpagedLine } from '../../github/security-alert.ts';
+} from '../../sync/auto.ts';
+import { issueChangeLine, issueRoutesBySession } from '../../sync/issue-marks.ts';
+import { issueRef } from '../../sync/map.ts';
+import { mentionCutLine, mentionLine, wakeRoutes } from '../../sync/mention-route.ts';
+import { pullNewsText } from '../../sync/pull-news.ts';
+import { ourLogins } from '../../sync/trust.ts';
+import { capAlerts, overCapLine, overCapPageText, securityLine, securityPageText, unpagedIssues, unpagedLine } from '../../sync/security-alert.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { sendOwnerPage } from '../login-page.ts';
 import { postLine } from '../../inbox/inbox.ts';
@@ -30,7 +30,7 @@ import type { CliRuntime } from '../runtime.ts';
 import { postUrgentLine } from '../urgent-line.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { fileLockOf } from '../file-locks.ts';
-import { githubWatcher } from '../../github/watcher.ts';
+import { githubWatcher } from '../../sync/watcher.ts';
 
 /**
  * The automatic GitHub sync's report: `issue watch` (issue-watch.ts) runs `issue sync --auto` when GitHub changed,
