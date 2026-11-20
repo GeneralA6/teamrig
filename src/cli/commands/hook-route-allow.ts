@@ -8,7 +8,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { guardLoadOf, type GuardLoad } from './hook-guard-load.ts';
-import { dbWriteGuardReplyOf, execGuardReplyOf, packageGuardReplyOf, pushGuardReplyOf, secretGuardReplyOf, serviceRoleGuardOutputOf } from './hook-guard-outputs.ts';
+import { dbWriteGuardReplyOf, execGuardReplyOf, packageGuardReplyOf, pushGuardReplyOf, secretGuardReplyOf, serviceRoleGuardReplyOf } from './hook-guard-outputs.ts';
 import { envSession, readHookInput, writeReply } from './hook-input.ts';
 import { roleAllowReplyOf } from './hook-role-allow.ts';
 import { callRouteOf } from './hook-route-context.ts';
@@ -22,13 +22,13 @@ export interface RouteAllowDeps {
 }
 
 /** True when every teamrig guard passed the call, with the same config load its own hook reads (Q7.1). */
-async function everyGuardPassed(runtime: CliRuntime, guard: GuardLoad, payload: JsonRecord, event: HookEvent): Promise<boolean> {
+async function everyGuardPassed(runtime: CliRuntime, guard: GuardLoad, event: HookEvent): Promise<boolean> {
   const answers = await Promise.all([
     pushGuardReplyOf(runtime, guard, event),
     packageGuardReplyOf(runtime, guard, event),
     execGuardReplyOf(runtime, guard, event),
     dbWriteGuardReplyOf(runtime, guard, event),
-    serviceRoleGuardOutputOf(runtime, guard, payload),
+    serviceRoleGuardReplyOf(runtime, guard, event),
   ]);
   return guardsPassed([...answers, secretGuardReplyOf(runtime, guard, event), passRecordGuardReply(event)]);
 }
@@ -44,7 +44,7 @@ async function routeAllowReplyOf(runtime: CliRuntime, payload: JsonRecord, event
   if (guard === undefined || kit === undefined || kit.load.status !== 'loaded') {
     return undefined;
   }
-  const passed = (): Promise<boolean> => everyGuardPassed(runtime, guard, payload, event);
+  const passed = (): Promise<boolean> => everyGuardPassed(runtime, guard, event);
   if (!routeAllowOn(kit.load.config.prompts)) {
     return roleAllowReplyOf(runtime, kit, event, deps.table, passed);
   }
