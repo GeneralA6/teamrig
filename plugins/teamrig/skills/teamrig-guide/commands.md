@@ -7105,8 +7105,8 @@ write and the count or dry run to show the owner first, and under `ask` (the def
 ### teamrig hook exec-guard
 
 Before a Bash or PowerShell call, refuses a `teamrig exec approve`, `refuse` or `escalate` run as anyone but the
-tab's own session, and any `exec` call while the installed teamrig client differs from what its build
-hashed. See [Hooks and permissions](hooks.md#before-a-shell-command-the-exec-guard).
+tab's own session, any `exec` call while the installed teamrig client differs from what its build
+hashed, and a raw `gh` write on a repository in `github.repos`, or one it cannot place. See [Hooks and permissions](hooks.md#before-a-shell-command-the-exec-guard).
 
 Flags: none.
 

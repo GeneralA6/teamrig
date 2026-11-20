@@ -627,6 +627,12 @@ again.
   that one run.
 - **Same trust as the `gh` login.** Any program running as you can read your credential store, just as it can use
   your `gh` login. Keep each token to the repositories the team syncs.
+- **Sessions write through teamrig, not raw `gh`.** On a repository in `github.repos`, a session's raw `gh` call only
+  reads: [the exec guard](../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-the-exec-guard)
+  refuses every write (a comment, a close, a label, a pull request, a release, a `gh api` call that changes
+  anything), and every one it cannot place on a repository, since `gh` would write with whatever login it holds,
+  past teamrig's check of who may. Sessions write with `teamrig issue reply`, `close`, `label`, `edit` and `assign`,
+  and land branches with `teamrig merge`, with the key saved above. Other repositories keep plain `gh`.
 - **Issue text is outside input.** Anyone who can open an issue writes its title and body, so an outsider's issue
   becomes a task only once accepted ([Whose issues become tasks](#whose-issues-become-tasks)); teamrig prints titles
   quoted, as data, never as instructions. A body becomes the task's description with its control characters
