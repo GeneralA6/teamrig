@@ -178,6 +178,7 @@
         "maxTitle": { "description": "The most characters a task title may have.", "type": "integer", "minimum": 20, "maximum": 1000, "default": 140 },
         "maxText": { "description": "The most characters of a task's other text, such as its ref and notes; the title and the description have their own limits.", "type": "integer", "minimum": 20, "maximum": 5000, "default": 300 },
         "secretPatterns": {
+          "x-teamrig-served": "value",
           "description": "Extra regular expressions, matched case-insensitively, that refuse secret-looking text on top of the built-in shapes (vendor tokens, private keys, JSON web tokens, credentials in URLs, password= assignments).",
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
@@ -406,6 +407,7 @@
           "default": []
         },
         "webhookEnv": {
+          "x-teamrig-served": "value",
           "description": "The name of the environment variable holding the webhook URL that every exec approval, refusal and run is posted to, never the URL itself. Only an https URL is posted to: any other warns instead. Absent: nothing is posted; named but unset: each would-be post warns.",
           "type": "string",
           "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
@@ -479,18 +481,21 @@
       "type": "object",
       "properties": {
         "secretReads": {
+          "x-teamrig-served": "value",
           "description": "A call that would print a secret: cat .env, Get-Content ~/.npmrc, the Read tool on a secret file, env, printenv, Get-ChildItem Env:, echo $GITHUB_TOKEN, kubectl get secret -o yaml, kubectl config view --raw, and a shell line that reads a saved credential out of the host's store, printed or not (gh auth token, git credential fill, CredRead): deny refuses it, ask refuses it too, its reason naming the route to take (no teamrig hook asks a person), allow lets it run, which is the owner's call: check flags it (SECRET-GUARD-OFF).",
           "type": "string",
           "enum": ["deny", "ask", "allow"],
           "default": "deny"
         },
         "writes": {
+          "x-teamrig-served": "value",
           "description": "A call that holds a secret as text: a command line with one in it (curl -H \"Authorization: Bearer <a token>\"), or a Write, Edit, MultiEdit or NotebookEdit whose written text holds one outside a secret file (a token written into src/): deny refuses it, ask refuses it too, its reason naming the route to take (no teamrig hook asks a person), allow lets it run, which is the owner's call: check flags it (SECRET-GUARD-OFF).",
           "type": "string",
           "enum": ["deny", "ask", "allow"],
           "default": "deny"
         },
         "paths": {
+          "x-teamrig-served": "location",
           "description": "The team's own secret files, read after the defaults (**/.env, **/.env.*, ~/.npmrc, ~/.ssh/**, ~/.aws/credentials, **/.kube/config, ~/.docker/config.json, **/.git-credentials, ~/.config/gh/hosts.yml, ~/AppData/Roaming/GitHub CLI/hosts.yml, ~/.claude/.credentials.json, ~/.claude/history.jsonl, **/.claude/settings.local.json, ~/.bash_history, ~/.zsh_history, **/PSReadLine/*_history.txt, **/*.pem, **/*.key, **/*.p12, **/*.pfx, **/*.jks, **/*.keystore, **/id_rsa, **/id_ecdsa, **/id_ed25519, **/*.tfstate, **/*.tfstate.backup; .env.example, .env.sample and ~/.ssh/*.pub stay readable). ~/ starts at home, a glob with no leading / or drive matches at any depth, and the last glob that matches a path decides: !glob keeps a path readable.",
           "type": "array",
           "maxItems": 32,
@@ -498,6 +503,7 @@
           "default": []
         },
         "envNames": {
+          "x-teamrig-served": "value",
           "description": "The team's own patterns for environment variables whose values are secrets, regular expressions over the name with case ignored, read after the defaults (TOKEN, SECRET, PASSW, PASS, CRED, AUTH except AUTHOR and an auth mechanism or source, PRIVATE, KEY, DSN, WEBHOOK, COOKIE, PAT, SALT, and a store's connection URL or string by its kind: DB_URL, DATABASE_URL, PG_URI, CACHE_URL, BROKER_URL, CONNECTION_STRING). A store named by its product is the team's to add. The last pattern that matches a name decides: !pattern keeps a variable printable.",
           "type": "array",
           "maxItems": 16,
@@ -505,6 +511,7 @@
           "default": []
         },
         "commands": {
+          "x-teamrig-served": "value",
           "description": "The team's own commands whose output is a secret whatever file or variable they name, regular expressions over a command's program and arguments with case ignored, read after the default (kubectl config view --raw). The last pattern that matches a command decides: !pattern lets it print.",
           "type": "array",
           "maxItems": 16,
@@ -512,6 +519,7 @@
           "default": []
         },
         "redact": {
+          "x-teamrig-served": "value",
           "description": "After a Bash, PowerShell, Read or Grep call runs, replace each secret its result holds (a token by its shape, a match of register.secretPatterns, the value of a secret variable) before the model and the transcript see it, and tell the session which kinds it held and the task filed to rotate each. false shows results whole; turning it off is the owner's call: check flags it (SECRET-GUARD-OFF).",
           "type": "boolean",
           "default": true
@@ -1587,16 +1595,19 @@
           "default": 24
         },
         "pageWebhookEnv": {
+          "x-teamrig-served": "value",
           "description": "The name of the environment variable holding the chat webhook URL that a page to the owner (an expired Claude login) is posted to, never the URL itself. Unset, with pageWebhookFile unset too: nothing pages.",
           "type": "string",
           "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
         },
         "pageWebhookFile": {
+          "x-teamrig-served": "location",
           "description": "The absolute path of a file holding that webhook URL as its first non-empty line, or as the value of pageWebhookKey's key, read at each page, so the URL never sits in an environment, a log or a session's read. Wins over pageWebhookEnv when both are set. A URL that is not https pages no one.",
           "type": "string",
           "pattern": "^(?:[A-Za-z]:)?[\\\\/][^\\r\\n]*$"
         },
         "pageWebhookKey": {
+          "x-teamrig-served": "location",
           "description": "With pageWebhookFile: the key whose value in that file is the webhook URL, on a line `<key>: <value>` or `<key>=<value>` (a YAML map such as a Kubernetes secret's stringData, or a .env file), the value bare or in quotes. So a secrets file holding many keys is read in place, and the URL keeps one home. Unset: the file's first non-empty line is the URL.",
           "type": "string",
           "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,63}$"
@@ -2047,6 +2058,7 @@
       "properties": {
         "enabled": { "description": "Off: no session is asked for a handover or refreshed.", "type": "boolean", "default": true },
         "contextTokens": {
+          "x-teamrig-served": "value",
           "description": "The context size, in tokens, that asks for a refresh: under the about 167k where Claude Code compacts a 200k window.",
           "type": "integer",
           "minimum": 10000,
@@ -2054,6 +2066,7 @@
           "default": 120000
         },
         "largeWindowContextTokens": {
+          "x-teamrig-served": "value",
           "description": "The context size, in tokens, that asks for a refresh of a session on a context window larger than 200k, when larger than contextTokens: its launch model ends in [1m], or its refresh state shows the window, since a model can run a 1M window without the suffix (the lead's plain opus) and no hook is told it: the window the plugin's mod reports, a context past 200k, or a fresh start measured over contextTokens. A fresh session on it starts at over 120k (its system prompt, rules and handover), and the window has room far past it. 0: contextTokens for every window.",
           "type": "integer",
           "minimum": 0,
@@ -2068,6 +2081,7 @@
           "default": 3
         },
         "everyTasksMinTokens": {
+          "x-teamrig-served": "value",
           "description": "The smallest context, in tokens, the task count refreshes at.",
           "type": "integer",
           "minimum": 10000,
@@ -2102,6 +2116,7 @@
           "default": 20
         },
         "compactCeilingTokens": {
+          "x-teamrig-served": "value",
           "description": "While a session's handover is asked for or written, the plugin's mod stops Claude Code's own compaction (trigger auto) of its main conversation as long as its context, as Claude Code estimates it, is under this many tokens: the /clear at the turn's end replaces it. Where a managed mod runs first and sends the compaction on past the plugin's mod, the classic PreCompact hook stops it instead, on the context it estimates from the transcript and a 200,000-token window. Past it a compaction goes through; /compact and a subagent's own compaction are never stopped. 0: never stopped. It also bounds an open owner meeting (the lead's daily one, or a booked one from its meeting start M<n>), which holds the refresh of each session in it only under it; 0 holds it until the meeting ends.",
           "type": "integer",
           "minimum": 0,
@@ -2135,7 +2150,7 @@
           "default": "owner"
         },
         "reviewDays": { "description": "Days from a hire to its review date, unless teamrig hire --review names one.", "type": "integer", "minimum": 1, "maximum": 90, "default": 7 },
-        "resumeMaxTokens": { "description": "The most context tokens a session's last Claude Code session may hold for teamrig open --resume to resume it (a rehired session's, or one whose tab ended outside teamrig); past it the session opens fresh.", "type": "integer", "minimum": 10000, "maximum": 1000000, "default": 250000 },
+        "resumeMaxTokens": { "x-teamrig-served": "value", "description": "The most context tokens a session's last Claude Code session may hold for teamrig open --resume to resume it (a rehired session's, or one whose tab ended outside teamrig); past it the session opens fresh.", "type": "integer", "minimum": 10000, "maximum": 1000000, "default": 250000 },
         "resumeMaxIdleDays": { "description": "The most days a session's last Claude Code session may have gone unwritten for teamrig open --resume to resume it (a rehired session's, or one whose tab ended outside teamrig); past it the session opens fresh.", "type": "integer", "minimum": 1, "maximum": 90, "default": 7 },
         "scaleOut": {
           "description": "How teamrig check measures an area against its dated work for a SCALE-OUT flag: its pace is the tasks it finished lately, and the dated tasks of the top priorities are what it must finish in time.",
