@@ -11,7 +11,7 @@ const TRACKER_ROWS: Readonly<Record<string, Support['kind']>> = {
   'tracker.issue-open': 'unsupported',
   'tracker.comment': 'partial',
   'tracker.edit-body': 'partial',
-  'tracker.close': 'unsupported',
+  'tracker.close': 'partial',
   'tracker.labels': 'partial',
   'tracker.status-push': 'partial',
   'tracker.assign': 'unsupported',
@@ -62,10 +62,18 @@ describe('the Jira declaration', () => {
 
   it('gives a method that is not built yet the line its row carries', () => {
     assert.equal(noticeOf('tracker.issue-open'), NOT_BUILT.open);
-    assert.equal(noticeOf('tracker.close'), NOT_BUILT.close);
     assert.equal(noticeOf('tracker.assign'), NOT_BUILT.assign);
     assert.equal(noticeOf('tracker.links'), NOT_BUILT.links);
     assert.equal(NOT_BUILT.open, 'the Jira connector does not open issues yet');
+  });
+
+  it('says a close keeps its reason only where the workflow names it, and links no duplicate (T4754)', () => {
+    assert.deepEqual(declaration.manifest['tracker.close'], {
+      kind: 'partial',
+      missing: "a link from a duplicate to its original, and a reason the project's workflow has no name for",
+      notice: 'a Jira issue closes by a transition to a closed status: its reason is kept when the workflow has a status or a resolution named for it, and a duplicate gets no link to its original',
+      proofs: [],
+    });
   });
 
   it('holds a label name with a space under a hyphen, so the status push lacks only the assignee (T4754)', () => {
