@@ -584,6 +584,106 @@ describe("Jira's own id of an issue (T4754)", () => {
   });
 });
 
+describe('who holds a Jira issue (T4754)', () => {
+  const ACCOUNT = '712020:0a1b2c3d';
+  const ASKED = 'accountId=712020%3A0a1b2c3d';
+  const IN_PROJECT = `${API}/user/assignable/search?project=ENG&${ASKED}`;
+  const ON_ISSUE = `${API}/user/assignable/search?issueKey=ENG-12&${ASKED}`;
+  const ASSIGNEE = `${ISSUE}/assignee`;
+  const HELD = `${ISSUE}?fields=assignee`;
+  const NOT_ACCOUNTS = failed("Jira's answer on who may be assigned on acme did not read as a list of accounts");
+
+  it('finds an account that may be assigned in the project, by its account id, and misses any other', async () => {
+    const { tracker, http } = kit();
+    http.answers('GET', IN_PROJECT, 200, JSON.stringify([{ accountId: ACCOUNT, accountType: 'atlassian' }])).answers('GET', IN_PROJECT, 200, '[]').answers('GET', IN_PROJECT, 200, '[{"accountId":"another"},7]');
+    assert.deepEqual(await tracker.assigneeExists(REPO, ACCOUNT), { kind: 'found', login: ACCOUNT });
+    assert.deepEqual(await tracker.assigneeExists(REPO, ACCOUNT), { kind: 'missing' });
+    assert.deepEqual(await tracker.assigneeExists(REPO, ACCOUNT), { kind: 'missing' });
+    assert.deepEqual(sent(http)[0], ['GET', `/user/assignable/search?project=ENG&${ASKED}`]);
+  });
+
+  it('asks nothing for an empty account id, and fails when the project does not show or the answer is no list', async () => {
+    const { tracker, http } = kit();
+    assert.deepEqual(await tracker.assigneeExists(REPO, ''), { kind: 'missing' });
+    assert.deepEqual(await tracker.assigneeExists('acme', ACCOUNT), failed(NOT_A_PROJECT));
+    assert.deepEqual(http.requests, []);
+    http.answers('GET', IN_PROJECT, 404).answers('GET', IN_PROJECT, 200, '{}').answers('GET', IN_PROJECT, 500);
+    assert.deepEqual(await tracker.assigneeExists(REPO, ACCOUNT), failed('Jira has no project ENG on acme, or the sign-in may not see it'));
+    assert.deepEqual(await tracker.assigneeExists(REPO, ACCOUNT), NOT_ACCOUNTS);
+    assert.deepEqual(await tracker.assigneeExists(REPO, ACCOUNT), failed('Jira answered 500'));
+  });
+
+  it('says whether an account may be assigned to one issue', async () => {
+    const { tracker, http } = kit();
+    http.answers('GET', ON_ISSUE, 200, JSON.stringify([{ accountId: ACCOUNT }])).answers('GET', ON_ISSUE, 200, '[]').answers('GET', ON_ISSUE, 404).answers('GET', ON_ISSUE, 200, '"no"');
+    assert.deepEqual(await tracker.assignableOn(TARGET, ACCOUNT), { kind: 'found', login: ACCOUNT });
+    assert.deepEqual(await tracker.assignableOn(TARGET, ACCOUNT), { kind: 'missing' });
+    assert.deepEqual(await tracker.assignableOn(TARGET, ACCOUNT), failed(NO_ISSUE));
+    assert.deepEqual(await tracker.assignableOn(TARGET, ACCOUNT), NOT_ACCOUNTS);
+    assert.deepEqual(await tracker.assignableOn(TARGET, ''), { kind: 'missing' });
+    assert.deepEqual(await tracker.assignableOn({ repo: 'acme', number: 12 }, ACCOUNT), failed(NOT_A_PROJECT));
+    assert.equal(http.requests.length, 4);
+  });
+
+  it('gives the issue to one account, which replaces who held it', async () => {
+    const { tracker, http } = kit();
+    http.answers('PUT', ASSIGNEE, 204);
+    assert.deepEqual(await tracker.assign(TARGET, [ACCOUNT]), { kind: 'done' });
+    assert.deepEqual(await tracker.assign(TARGET, [ACCOUNT, ACCOUNT]), { kind: 'done' });
+    assert.deepEqual(sent(http), [
+      ['PUT', '/issue/ENG-12/assignee', { accountId: ACCOUNT }],
+      ['PUT', '/issue/ENG-12/assignee', { accountId: ACCOUNT }],
+    ]);
+  });
+
+  it('sends nothing for no account, and refuses a second one or an empty id', async () => {
+    const { tracker, http } = kit();
+    assert.deepEqual(await tracker.assign(TARGET, []), { kind: 'done' });
+    assert.deepEqual(await tracker.assign({ repo: 'acme', number: 12 }, []), failed(NOT_A_PROJECT));
+    assert.deepEqual(await tracker.assign(TARGET, [ACCOUNT, 'another']), failed('a Jira issue holds one assignee, so it cannot take 2 at once: name one account'));
+    assert.deepEqual(await tracker.assign(TARGET, ['']), failed('an empty account id names no one to assign'));
+    assert.deepEqual(http.requests, []);
+  });
+
+  it('fails an assign on an issue Jira does not show, and passes on why Jira refused one', async () => {
+    const { tracker, http } = kit();
+    http.answers('PUT', ASSIGNEE, 404).answers('PUT', ASSIGNEE, 400, '{"errors":{"assignee":"The user cannot be assigned issues."}}');
+    assert.deepEqual(await tracker.assign(TARGET, [ACCOUNT]), failed(NO_ISSUE));
+    assert.deepEqual(await tracker.assign(TARGET, [ACCOUNT]), failed('Jira answered 400: assignee: The user cannot be assigned issues.'));
+    assert.deepEqual(await tracker.assign({ repo: 'acme', number: 12 }, [ACCOUNT]), failed(NOT_A_PROJECT));
+  });
+
+  it('takes an account off only when it holds the issue', async () => {
+    const { tracker, http } = kit();
+    http
+      .answers('GET', HELD, 200, JSON.stringify({ fields: { assignee: { accountId: ACCOUNT } } }))
+      .answers('GET', HELD, 200, '{"fields":{"assignee":{"accountId":"another"}}}')
+      .answers('GET', HELD, 200, '{"fields":{"assignee":null}}');
+    http.answers('PUT', ASSIGNEE, 204);
+    assert.deepEqual(await tracker.unassign(TARGET, ACCOUNT), { kind: 'done' });
+    assert.deepEqual(await tracker.unassign(TARGET, ACCOUNT), { kind: 'done' });
+    assert.deepEqual(await tracker.unassign(TARGET, ACCOUNT), { kind: 'done' });
+    assert.deepEqual(sent(http), [
+      ['GET', '/issue/ENG-12?fields=assignee'],
+      ['PUT', '/issue/ENG-12/assignee', { accountId: null }],
+      ['GET', '/issue/ENG-12?fields=assignee'],
+      ['GET', '/issue/ENG-12?fields=assignee'],
+    ]);
+  });
+
+  it('takes no one off for an empty id, and fails when the issue does not show or a request fails', async () => {
+    const { tracker, http } = kit();
+    assert.deepEqual(await tracker.unassign(TARGET, ''), { kind: 'done' });
+    assert.deepEqual(await tracker.unassign({ repo: 'acme', number: 12 }, ACCOUNT), failed(NOT_A_PROJECT));
+    assert.deepEqual(http.requests, []);
+    http.answers('GET', HELD, 404).answers('GET', HELD, 500).answers('GET', HELD, 200, JSON.stringify({ fields: { assignee: { accountId: ACCOUNT } } }));
+    http.answers('PUT', ASSIGNEE, 403, '{"errorMessages":["You may not assign issues."]}');
+    assert.deepEqual(await tracker.unassign(TARGET, ACCOUNT), failed(NO_ISSUE));
+    assert.deepEqual(await tracker.unassign(TARGET, ACCOUNT), failed('Jira answered 500'));
+    assert.deepEqual(await tracker.unassign(TARGET, ACCOUNT), failed('Jira answered 403: You may not assign issues.'));
+  });
+});
+
 describe('what the Jira tracker does not do yet', () => {
   it('answers each method of a later slice with its line, and sends nothing', async () => {
     const { tracker, http } = kit();
@@ -591,10 +691,6 @@ describe('what the Jira tracker does not do yet', () => {
     assert.deepEqual(await tracker.links(), failed(NOT_BUILT.links));
     assert.deepEqual(await tracker.addSubIssue(), failed(NOT_BUILT.links));
     assert.deepEqual(await tracker.addBlockedBy(), failed(NOT_BUILT.links));
-    assert.deepEqual(await tracker.assigneeExists(), failed(NOT_BUILT.assign));
-    assert.deepEqual(await tracker.assignableOn(), failed(NOT_BUILT.assign));
-    assert.deepEqual(await tracker.assign(), failed(NOT_BUILT.assign));
-    assert.deepEqual(await tracker.unassign(), failed(NOT_BUILT.assign));
     assert.equal('fields' in tracker, false);
     assert.deepEqual(http.requests, []);
   });

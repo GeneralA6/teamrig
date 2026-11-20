@@ -14,7 +14,7 @@ const TRACKER_ROWS: Readonly<Record<string, Support['kind']>> = {
   'tracker.close': 'partial',
   'tracker.labels': 'partial',
   'tracker.status-push': 'partial',
-  'tracker.assign': 'unsupported',
+  'tracker.assign': 'partial',
   'tracker.claims': 'unsupported',
   'tracker.clocks': 'partial',
   'tracker.mentions': 'unsupported',
@@ -62,7 +62,6 @@ describe('the Jira declaration', () => {
 
   it('gives a method that is not built yet the line its row carries', () => {
     assert.equal(noticeOf('tracker.issue-open'), NOT_BUILT.open);
-    assert.equal(noticeOf('tracker.assign'), NOT_BUILT.assign);
     assert.equal(noticeOf('tracker.links'), NOT_BUILT.links);
     assert.equal(NOT_BUILT.open, 'the Jira connector does not open issues yet');
   });
@@ -76,8 +75,14 @@ describe('the Jira declaration', () => {
     });
   });
 
-  it('holds a label name with a space under a hyphen, so the status push lacks only the assignee (T4754)', () => {
-    assert.deepEqual(declaration.manifest['tracker.status-push'], { kind: 'partial', missing: 'the assignee', notice: 'the Jira connector sets no assignee yet', proofs: [] });
+  it('says an assign replaces who held the issue, as Jira keeps one assignee, and that no claim line takes one (T4754)', () => {
+    const oneAssignee = { kind: 'partial', missing: 'a second assignee', notice: 'a Jira issue holds one assignee, named by its account id, so an assign replaces who held it', proofs: [] };
+    assert.deepEqual(declaration.manifest['tracker.assign'], oneAssignee);
+    assert.deepEqual(declaration.manifest['tracker.status-push'], oneAssignee);
+    assert.equal(noticeOf('tracker.claims'), 'a claim line takes only an issue that carries the accept label, and the Jira connector does not read who put a label on an issue yet');
+  });
+
+  it('holds a label name with a space under a hyphen (T4754)', () => {
     assert.equal(
       noticeOf('tracker.labels'),
       'a Jira label has no colour and no description and exists once an issue carries it; it holds no space, so a name with one is held with a hyphen in its place',
