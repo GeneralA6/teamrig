@@ -14,7 +14,7 @@ export interface SourceFile {
 
 export const BOUNDARY_RULES = [
   { id: 'core-imports', title: 'imports from src/core into another src folder' },
-  { id: 'adapter-reach', title: 'imports of an adapter from outside src/adapters and src/composition' },
+  { id: 'adapter-reach', title: 'imports of an adapter by shipped code outside src/adapters and src/composition' },
   { id: 'adapter-imports', title: 'imports by an adapter beyond its own folder and the plugin API' },
   { id: 'tool-names', title: 'lines naming a tool outside src/adapters and src/composition' },
 ] as const;
@@ -30,6 +30,7 @@ export interface BoundaryFinding {
   readonly detail: string;
 }
 
+const SRC = 'src/';
 const CORE = 'src/core/';
 const ADAPTERS = 'src/adapters/';
 const COMPOSITION = 'src/composition/';
@@ -72,10 +73,19 @@ function adapterAllows(file: SourceFile, target: string): boolean {
   return target.startsWith(adapterFolder(file.path)) || target === PLUGIN_API || (SPEC.test(file.path) && (target.startsWith(TESTING) || target === CONFORMANCE_KIT));
 }
 
+/**
+ * Who may import an adapter: the adapters, the composition, and what never ships, the specs and fakes of `src`.
+ * A command's spec drives the real adapter over a fake tool, so it needs the adapter's request shapes.
+ */
+function reachesAdapters(path: string): boolean {
+  const unshipped = path.startsWith(SRC) && (SPEC.test(path) || path.startsWith(TESTING));
+  return unshipped || [ADAPTERS, COMPOSITION].some((folder) => path.startsWith(folder));
+}
+
 function importFindings(file: SourceFile): readonly BoundaryFinding[] {
   const inCore = file.path.startsWith(CORE);
   const inAdapter = file.path.startsWith(ADAPTERS);
-  const mayReachAdapters = inAdapter || file.path.startsWith(COMPOSITION);
+  const mayReachAdapters = reachesAdapters(file.path);
   return importsOf(file).flatMap(({ line, target }) => {
     const found = (rule: BoundaryRule): BoundaryFinding => ({ rule, path: file.path, line, detail: target });
     return [
