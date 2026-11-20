@@ -12,12 +12,13 @@ import { RESTORE_CHECK_LAUNCHER_SCRIPT } from '../restore/launcher.ts';
 import { LAUNCHER_RECORD_FORMAT, launcherRecordPath } from '../restore/launcher-refresh.ts';
 import { AUTH_FAILED, loginMarkerPath, parseLoginMarker, type LoginMarker } from '../restore/login.ts';
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../restore/registry.ts';
-import { APP, CLAUDE_SESSION, CLI_PID, CliHarness, KIT, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CLI_PID, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { FakeWebhook } from '../testing/fake-webhook.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { holdFileLock } from '../testing/held-file-lock.ts';
 import { treeHarness } from '../testing/team-tree.ts';
+import { EXIT } from './runtime.ts';
 import { apiErrorLine, promptLine, transcript } from '../testing/transcript-lines.ts';
 
 const TRANSCRIPT = join(USER_HOME, '.claude', 'projects', 'work-app', `${CLAUDE_SESSION}.jsonl`);
@@ -88,6 +89,52 @@ describe('hook restore-track', () => {
     const entry = await entryOf(kit);
     assert.equal(entry?.projectDir, join(APP, 'sub'));
     assert.deepEqual([entry.team, entry.session, entry.entrypoint], [undefined, undefined, undefined]);
+  });
+
+  it('records the team and session of a tab opened by hand, as the tab title finds them, and none for a tab no session read its inbox from (#820)', async () => {
+    const kit = new CliHarness();
+    const byHand: Env = { CLAUDE_PROJECT_DIR: APP, CLAUDE_CODE_ENTRYPOINT: 'cli' };
+    await track(kit, payload('UserPromptSubmit'), byHand);
+    assert.deepEqual([(await entryOf(kit))?.team, (await entryOf(kit))?.session], [undefined, undefined], 'no session read its inbox from this tab yet');
+    const read = await kit.run(['inbox', 'read', '--session', 'lead'], { env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
+    assert.equal(read.code, EXIT.ok, read.stderr.join('\n'));
+    await track(kit, payload('Stop', { stop_hook_active: false }), byHand);
+    assert.deepEqual([(await entryOf(kit))?.team, (await entryOf(kit))?.session], ['app', 'lead']);
+    await track(kit, payload('Stop', { stop_hook_active: false }));
+    assert.deepEqual([(await entryOf(kit))?.team, (await entryOf(kit))?.session], ['app', 'alpha'], "a launched tab's environment wins");
+  });
+
+  it('still records a tab opened by hand, with no team or session, when finding them fails (#820)', async () => {
+    const kit = new CliHarness();
+    const files = new FaultyFiles(kit.files).fail('read', join(TEAM_HOME, 'state', 'inbox-marks.jsonl'), systemError('EACCES'));
+    const result = await kit.run(['hook', 'restore-track'], { stdin: payload('UserPromptSubmit'), env: { CLAUDE_PROJECT_DIR: APP, CLAUDE_CODE_ENTRYPOINT: 'cli' }, files });
+    assert.deepEqual([result.code, result.stdout, result.stderr], [0, [], []], 'a tracker never fails a turn');
+    const entry = await entryOf(kit);
+    assert.deepEqual([entry?.state, entry?.team, entry?.session], ['working', undefined, undefined]);
+  });
+
+  it("looks for a hand-opened tab's team only when its entry is written with none, never at a tool end that writes nothing (#820)", async () => {
+    const kit = new CliHarness();
+    const byHand: Env = { CLAUDE_PROJECT_DIR: APP, CLAUDE_CODE_ENTRYPOINT: 'cli' };
+    const marks = join(TEAM_HOME, 'state', 'inbox-marks.jsonl');
+    /** Whether a hook event read the inbox marks the lookup reads: a stalled read never lets the call end. */
+    const looks = async (stdin: string): Promise<boolean> => {
+      const files = new FaultyFiles(kit.files);
+      const looked = files.stall('read', marks).then(() => true);
+      const ended = kit.run(['hook', 'restore-track'], { stdin, env: byHand, files, sessionProcesses: new FakeSessionProcesses(7000) }).then(() => false);
+      return Promise.race([looked, ended]);
+    };
+    const toolEnd = payload('PostToolUse', { tool_name: 'Bash' });
+    assert.equal(await looks(payload('UserPromptSubmit')), true, 'a first entry of no team looks');
+    await track(kit, payload('UserPromptSubmit'), byHand);
+    assert.equal(await looks(toolEnd), false, 'a tool end inside TOOL_END_WRITE_MS writes nothing, and looks for nothing');
+    const read = await kit.run(['inbox', 'read', '--session', 'lead'], { env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
+    assert.equal(read.code, EXIT.ok, read.stderr.join('\n'));
+    await track(kit, payload('Stop', { stop_hook_active: false }), byHand);
+    assert.deepEqual([(await entryOf(kit))?.team, (await entryOf(kit))?.session], ['app', 'lead']);
+    kit.clock.advance(MS_PER_HOUR);
+    assert.equal(await looks(toolEnd), false, 'an entry that names its team keeps it, and looks for nothing');
+    assert.deepEqual([(await entryOf(kit))?.updatedAt, (await entryOf(kit))?.team], [kit.clock.now(), 'app']);
   });
 
   it("leaves a session in a turn as it was at a compaction's start, which comes mid-turn", async () => {
@@ -435,6 +482,15 @@ describe("hook restore-track: the owner's page", () => {
     await failTurn(kit, webhook, { env: { CLAUDE_PROJECT_DIR: APP, TEAMRIG_TEAM: 'ui', TEAMRIG_SESSION: 'pixel' }, timeZone: 'Asia/Jerusalem' });
     assert.deepEqual(webhook.posts.map((post) => post.content), ['Claude login expired: ui/pixel ended its turn on Login expired at 12:00 IST. Run /login in any tab; teamrig holds the day-start wakes and retries the stuck tabs once the login works.']);
     assert.equal((await loginLines(kit)).at(-1), PAGED_BY_FILE);
+  });
+
+  it('pages for a tab opened by hand, naming it by the session that read its inbox there (#820)', async () => {
+    const kit = await pagedHarness();
+    const read = await kit.run(['inbox', 'read', '--session', 'lead'], { env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
+    assert.equal(read.code, EXIT.ok, read.stderr.join('\n'));
+    const webhook = new FakeWebhook();
+    await failTurn(kit, webhook, { env: { CLAUDE_PROJECT_DIR: APP } });
+    assert.match(webhook.posts[0]?.content ?? '', /^Claude login expired: app\/lead ended its turn on Login expired/);
   });
 
   it('names a tab its launch gave no session as a tab of its team', async () => {
