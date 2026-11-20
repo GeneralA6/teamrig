@@ -15,6 +15,12 @@ export interface SnapshotExports {
 
 export const NO_SNAPSHOT: SnapshotExports = { names: new Set(), all: false };
 
+/**
+ * What a shell is taken to export when its snapshots cannot be looked for, on a host that tells none of its folders:
+ * every assignment, so no line that sets a name is proven to only read.
+ */
+export const UNREAD_SNAPSHOT: SnapshotExports = { names: new Set(), all: true };
+
 /** A snapshot's file name, capturing its creation time in milliseconds. */
 const SNAPSHOT_FILE = /^snapshot-\w+-(\d+)-\w+\.sh$/;
 /** A quoted string, single or double, whose separators end nothing. */
