@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { isRecord } from './guards.ts';
-import { STAMP_LINK, STAMP_MARKER, stampFooter, stampTrailer, withoutStampFooter, withStampFooter, withStampTrailer } from './stamp.ts';
+import { STAMP_LINK, STAMP_MARKER, stampCredit, stampFooter, stampTrailer, withoutStampFooter, withStampFooter, withStampTrailer } from './stamp.ts';
 import { KIT_VERSION } from './version.ts';
 
 /** How many times `part` is in `text`. */
@@ -59,6 +59,15 @@ describe('withStampFooter', () => {
   it('stamps an empty text with the footer alone', () => {
     assert.equal(withStampFooter('', '1.0.0'), stampFooter('1.0.0'));
     assert.equal(withStampFooter(stampFooter('0.1.0'), '1.0.0'), stampFooter('1.0.0'));
+  });
+});
+
+describe('stampCredit', () => {
+  it("gives the footer's name, link and version, each as the Markdown footer words it", () => {
+    assert.deepEqual(stampCredit('1.2.3'), { name: 'teamrig', link: STAMP_LINK, version: '1.2.3' });
+    const credit = stampCredit();
+    assert.equal(credit.version, KIT_VERSION);
+    assert.ok(stampFooter().includes(`[${credit.name}](${credit.link}) ${credit.version}`));
   });
 });
 
