@@ -2472,7 +2472,8 @@ rest), and `cuts`.
 `inbox` adds `session` (`{ "id", "name" }`), `unread` (how many lines the session has not read; `null` when it never
 ran `teamrig inbox read`, and then every line counts as unread), `lines` and `cuts`. `lines` holds every unread line
 and the read ones posted in the last 24 hours (`--since`), in file order, each `{ "key", "at", "from", "text",
-"unread" }`: `key` is stable for a line and unlike any other's, `at` its UTC minute, `from` the sender as the line
+"unread" }`: `key` is stable for a line and unlike any other's (a line whose text is cut has `cut-<n>`, its place in
+the file, which moves when old lines are trimmed), `at` its UTC minute, `from` the sender as the line
 names it (a session's id, `<team>/<id>` from another team, `github` for a line the issue import posted), both `null`
 for a line with no date. Reading it marks nothing read, unlike `teamrig inbox read`. The 24 hours are counted when
 you ask and are no part of `revision`: with an unchanged revision, drop the read lines that left the window

@@ -11,7 +11,9 @@ const LINE = /^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})(?: ([a-z][a-z0-9-]*(?:\/[a-z]
 export interface ServedLine {
   /**
    * Stable for a line while the file keeps it, and unlike any other served line's: the line's fingerprint, as the
-   * read marks hold it, with `-2`, `-3` and so on for a line the file holds again word for word.
+   * read marks hold it, with `-2`, `-3` and so on for a line the file holds again word for word. A line whose words
+   * are cut is `cut-<n>` instead, `n` its place in the file: a fingerprint of the words would let a reader confirm
+   * a guess of them. That key moves when the file is trimmed, which costs nothing, since every cut reads the same.
    */
   readonly key: string;
   /** When it was posted, to the minute; null for a line that carries no date. */
@@ -67,6 +69,11 @@ function parsedLine(line: string): ParsedLine {
   return { at, from: from ?? null, text: text ?? '' };
 }
 
+/** The key of a line that is served with its words: its fingerprint, numbered from the second copy on. */
+function fingerprintOf(hash: string, copy: number): string {
+  return copy === 1 ? hash : `${hash}-${copy}`;
+}
+
 /**
  * The `inbox` document's body: every unread line, and the read ones posted since `readSince`, in file order. It
  * makes its own `ServedText`, so `cuts` lists this document's cuts and no other's; a line left out is never scanned.
@@ -83,7 +90,7 @@ export function inboxBody(input: InboxInput): InboxBody {
     const unread = index >= firstUnread;
     const parsed = parsedLine(line);
     if (unread || (parsed.at !== null && Date.parse(parsed.at) >= input.readSince)) {
-      const key = copy === 1 ? input.keyOf(line) : `${input.keyOf(line)}-${copy}`;
+      const key = served.wouldCut(parsed.text) ? `cut-${index + 1}` : fingerprintOf(input.keyOf(line), copy);
       const wrote = input.connectors.some((connector) => connector.id === parsed.from) ? 'outside' : 'team';
       lines.push({ key, at: parsed.at, from: parsed.from, text: served.marked(key, 'text', parsed.text, wrote), unread });
     }
