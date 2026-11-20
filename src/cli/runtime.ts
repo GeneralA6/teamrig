@@ -1,4 +1,5 @@
 import type { TranscriptSource } from '../budget/discover.ts';
+import type { HostSource } from '../composition/host-ports.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
 import type { HostCpu } from '../delivery/cpu.ts';
 import type { HostMemory } from '../delivery/memory.ts';
@@ -68,6 +69,8 @@ export interface CliRuntime {
   readonly secretsGit: SecretsGit;
   readonly out: Output;
   readonly platform: NodeJS.Platform;
+  /** The ports of the AI CLI this run works in, built for an environment and platform: read them with `hostOf` (host.ts). */
+  readonly host: HostSource;
   /** Terminal launchers and Claude Code, for `teamrig open` and `teamrig launch`. */
   readonly processes: Processes;
   /** The running session's Claude Code process and its tab, which the automatic context refresh ends. */
