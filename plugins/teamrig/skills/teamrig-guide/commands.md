@@ -4550,8 +4550,8 @@ session's shell. It runs the entry script [ui.path] names (a UI build of your ow
 Without the key it runs the released UI this teamrig pins: the first start fetches its archive over https into
 `ui/<version>-<sha256>` under the kit home, refusing one whose sha256 is not the pinned one, and each start holds every
 installed file to the pin again, refusing a folder changed since; remove that folder to fetch it again. The released UI
-gets only PATH, HOME, USERPROFILE, SYSTEMROOT, TERM, COLORTERM, LANG, LANGUAGE and the `LC_*` and `TEAMRIG_*`
-variables of yours. While this teamrig pins no release, it is refused without [ui.path], and it is refused when the key
+gets only PATH, HOME, USERPROFILE, SYSTEMROOT, TERM, COLORTERM, LANG, LANGUAGE, TEAMRIG_HOME, TEAMRIG_TEAM,
+TEAMRIG_SESSION and the `LC_*` variables of yours. While this teamrig pins no release, it is refused without [ui.path], and it is refused when the key
 names no file. As it starts a program,
 `/teamrig ui` runs only when you type it in the tab, never from a session's line; and [ui.path] is the owner's key,
 which the config guard refuses a session changing. The script runs outside every Claude Code guard, so never point
