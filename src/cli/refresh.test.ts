@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { MeetingSchedule } from '../meeting/schedule.ts';
-import { HOOKS_ONLY_HOST } from '../testing/host.ts';
+import { HOOKS_ONLY_HOST, hostTelling, NO_SESSION_HOST } from '../testing/host.ts';
 import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { CONTEXT_MAX_CHARS } from '../rules/pack.ts';
@@ -322,6 +322,22 @@ describe('runCli: context refresh', () => {
     );
     assert.deepEqual(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(), sessionProcesses: UNDER_CLAUDE(), processes }), SILENT, 'announced once');
     assert.equal(processes.hidden.filter((run) => run.args[1] === 'restart').length, 1);
+  });
+
+  it('starts the restart in the folder the running host says the session started in, else in the folder of the turn end', async () => {
+    const started = join(APP, 'started');
+    const waiterOf = async (host: HostSource, projectVariable: string): Promise<readonly [string | undefined, readonly string[] | undefined]> => {
+      const kit = new CliHarness(AUTO_RESTART_TEAM);
+      await handoverWritten(kit);
+      await openTask(kit, 'alpha');
+      const processes = new FakeProcesses();
+      const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: projectVariable, TEAMRIG_LAUNCHED: 'alpha' };
+      await kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes, host });
+      const waiter = processes.hidden.find((run) => run.args[1] === 'restart');
+      return [waiter?.cwd, waiter?.args.slice(-2)];
+    };
+    assert.deepEqual(await waiterOf(hostTelling({ projectDir: started }), APP), [started, ['--project', started]]);
+    assert.deepEqual(await waiterOf(NO_SESSION_HOST, started), [APP, ['--project', APP]], 'a host telling no start folder');
   });
 
   it('records the level the turn ran at in the restart request, so the restart can tell a changed launch level (T2444)', async () => {

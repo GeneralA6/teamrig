@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { launchOf } from '../../config/launch.ts';
 import { SHIPPED_CONFIG_FORMAT } from '../../config/migrate.ts';
 import type { KitConfig } from '../../config/types.ts';
-import { ENV, KIT_NAME, resolveKitHome, teamConfigFile } from '../../core/home.ts';
+import { KIT_NAME, resolveKitHome, teamConfigFile } from '../../core/home.ts';
 import { describeRequirement } from '../../requirements/requirements.ts';
 import { applyIgnore, ignoreLines, ignoreStep, type IgnoreStep } from '../../setup/pointer-ignore.ts';
 import { applySetupTask, setupTaskDryLines, setupTaskLines, setupTaskStep } from '../../setup/setup-task.ts';
@@ -10,7 +10,7 @@ import { tabStatusLine } from '../../setup/tab-status-note.ts';
 import { applyTeamSetup, planTeamSetup, teamSpecOf, type FileStep, type SetupPlan, type TeamSpec } from '../../setup/team-create.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { pointerTeam, resolveTeam } from '../../core/team.ts';
-import { pathsIfKnown } from '../host.ts';
+import { identityOf, pathsIfKnown } from '../host.ts';
 import { openKit, requireConfig, teamFolders, teamProjectOf, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
@@ -20,9 +20,9 @@ import { titleLeftToHooks } from './hook-tab-status.ts';
 /** The session that leads a team created without `--lead`. */
 export const DEFAULT_LEAD = 'lead';
 
-/** The project a command sets up: `--project`, else the folder Claude Code started in, else the current folder. */
+/** The project a command sets up: `--project`, else the folder the host says the session started in, else the current folder. */
 export async function projectOf(runtime: CliRuntime, flag: string | undefined): Promise<string> {
-  const given = flag ?? runtime.env[ENV.claudeProjectDir]?.trim();
+  const given = flag ?? identityOf(runtime).projectDir;
   const project = resolve(runtime.cwd, given === undefined || given === '' ? '.' : given);
   if ((await runtime.probe.kind(project)) !== 'folder') {
     throw new RefusedError(`the project folder ${project} does not exist`);
