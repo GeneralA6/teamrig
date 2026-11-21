@@ -20,7 +20,7 @@ import {
   type SeenMention,
 } from '../../github/mention-route.ts';
 import { securityIssues, type SecurityIssue } from '../../github/security-alert.ts';
-import { eventsByRecipient, pullEvents, pullListeners, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from '../../github/pull-news.ts';
+import { eventsByRecipient, pullEvents, pullListeners, pullNewsText, pullRecipient, pullTasks, type PullEvent, type PullWatch } from '../../github/pull-news.ts';
 import { ourLogins } from '../../github/trust.ts';
 import { applySteps, closedSince, type StepOutcome } from '../../github/sync.ts';
 import { GITHUB_REPOS_HOST, type PullRequests, type ReviewPosts } from '../../issues/host.ts';
@@ -65,7 +65,9 @@ type RepoEnd = 'ok' | 'failed' | 'refused';
  * `--yes` does and tells each owner's inbox its new tasks, and the lead's when the failing repositories change or
  * an issue is newly left out. Each repository's pull requests are read too and compared with what the last
  * `--auto` read of them (pull-news.ts): a PULL NEWS line per session names what happened since, but only `--auto`
- * keeps what it read and tells each session's inbox, so a run by hand changes nothing there. `--auto` also reads each
+ * keeps what it read and tells each session's inbox, so a run by hand changes nothing there. A new pull request that
+ * news goes to the watcher for also gets a task of the watcher's, due at its answer target (pull-news.ts pullTasks),
+ * written as the import's tasks are and shown by the dry run. `--auto` also reads each
  * repository's posts changed since its last read and routes each new mention of one of ours to a session
  * (mention-route.ts); a run by hand reads none. Exit 1 when a repository could not be read (its tasks stay as they are,
  * and its pull request and mention watches), 2 when the register refused a step, else 0.
@@ -201,6 +203,20 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
       const ownerOf = (id: string): string | undefined => tasks.find((held) => held.id === id)?.owner;
       threads.push(...issueThreads, ...pullThreads(watch.open, (pull) => pullRecipient(pull, ours, ownerOf, watcher), ours));
       clocked.add(repo);
+    }
+    const pullSteps = pullTasks(watch.events, { ours, ownerOf: (id) => tasks.find((held) => held.id === id)?.owner, watcher, held: new Set(tasks.flatMap((task) => (task.ref === null ? [] : [task.ref]))), rules });
+    if (pullSteps.length > 0 && write) {
+      const outcomes = await applySteps(register, pullSteps);
+      pullTaskLines(repo, outcomes).forEach(say);
+      written += outcomes.filter((outcome) => outcome.result.ok).length;
+      added.push(...addedTasks(outcomes));
+      const refused = refusedReason(outcomes);
+      if (refused !== undefined && end === 'ok') {
+        failures.push({ repo, reason: refused });
+        end = 'refused';
+      }
+    } else if (pullSteps.length > 0) {
+      [`PULL TASKS ${repo}: ${pullSteps.length} to add`, ...shown(pullSteps.map((step) => stepLine(step, 'new')))].forEach(say);
     }
     if (auto) {
       const items = mentionItems(repo, { issues: read.issues, pulls: watch.pulls }, { ofRef: (ref) => holders.get(ref)?.owner, ofTask: (id) => tasks.find((held) => held.id === id)?.owner }, ours);
@@ -373,6 +389,17 @@ async function readMentions(
   };
 }
 
+/** What the watcher's tasks for a repository's new pull requests (pull-news.ts pullTasks) wrote. */
+function pullTaskLines(repo: string, outcomes: readonly StepOutcome[]): string[] {
+  const done = outcomes.filter((outcome) => outcome.result.ok);
+  const refused = outcomes.length - done.length;
+  return [
+    `PULL TASKS ${repo}: ${done.length} added${refused > 0 ? `, ${refused} refused` : ''}`,
+    ...shown(done.map((outcome) => stepLine(outcome.step, outcome.result.ok ? outcome.result.value : ''))),
+    ...outcomes.flatMap((outcome) => (outcome.result.ok ? [] : [`SKIPPED ${outcome.step.ref}: ${outcome.result.error}`])),
+  ];
+}
+
 /** Why the task list refused some of a repository's steps: how many, and the first one's error; undefined when none was. */
 function refusedReason(outcomes: readonly StepOutcome[]): string | undefined {
   const errors = outcomes.flatMap((outcome) => (outcome.result.ok ? [] : [outcome.result.error]));
@@ -424,7 +451,7 @@ export function shown(lines: readonly string[]): string[] {
 export function stepLine(step: SyncStep, id: string): string {
   switch (step.kind) {
     case 'add':
-      return `ADD ${id} ${step.ref} ${priorityText(step.input.priority)} ${step.input.owner}: ${JSON.stringify(step.input.title)}`;
+      return `ADD ${id} ${step.ref} ${priorityText(step.input.priority)} ${step.input.owner}: ${JSON.stringify(step.input.title)}${step.input.due === undefined ? '' : `, due ${step.input.due} UTC`}`;
     case 'update': {
       const { title, description, priority } = step.changes;
       const fields = [

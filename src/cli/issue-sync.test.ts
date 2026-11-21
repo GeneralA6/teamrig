@@ -305,6 +305,52 @@ describe('teamrig issue sync', () => {
     assert.equal(kit.files.get(join(TEAM_HOME, 'state', 'inbox', 'lead.md')), undefined);
   });
 
+  describe("an outside pull request's task for the watcher", () => {
+    const state = join(TEAM_HOME, 'state', 'github-sync.json');
+    const WATCHED = '{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":{"cursor":"2030-01-01T00:00:00Z","open":[]}}}\n';
+    const OPENED = { authorAssociation: 'NONE', author: 'stranger', fork: true, createdAt: '2030-01-02T00:00:00Z', updatedAt: '2030-01-02T00:00:00Z' };
+    const ADD_LINE = 'gh:acme/web#21 p2 lead: "Pull request acme/web#21 by stranger", due 2030-01-03 00:00 UTC';
+
+    it('is printed by the dry run, which writes nothing', async () => {
+      const kit = new CliHarness(GITHUB_TEAM);
+      await kit.files.write(state, WATCHED);
+      const gh = twoIssues().holdsPulls('acme/web', [ghPull('acme/web', 21, OPENED), ghPull('acme/web', 22, { head: 't9-own', createdAt: '2030-01-02T00:00:00Z', updatedAt: '2030-01-02T00:00:00Z' })]);
+      const lines = await expectRun(kit, ['issue', 'sync'], gh, EXIT.ok);
+      assert.deepEqual(lines.slice(3, 5), ['PULL TASKS acme/web: 2 to add', `ADD new ${ADD_LINE}`]);
+      assert.equal(lines[5], 'ADD new gh:acme/web#22 p2 lead: "Pull request: Change 22", due 2030-01-03 00:00 UTC');
+      assert.equal(kit.files.get(EVENTS_PATH), undefined);
+    });
+
+    it('is written as github with --yes, due at its answer target, and a second run adds no twin', async () => {
+      const kit = new CliHarness(GITHUB_TEAM);
+      await kit.files.write(state, WATCHED);
+      const gh = (): FakeGh => twoIssues().holdsPulls('acme/web', [ghPull('acme/web', 21, OPENED)]);
+      const lines = await expectRun(kit, ['issue', 'sync', '--yes'], gh(), EXIT.ok);
+      assert.deepEqual(lines.slice(3, 5), ['PULL TASKS acme/web: 1 added', `ADD T3 ${ADD_LINE}`]);
+      assert.equal(lines.at(-1), 'WROTE 3 change(s) to the task list as github; GitHub was only read');
+      const task = register(kit).tasks.get('T3');
+      assert.deepEqual([task?.source, task?.ref, task?.owner, task?.due, task?.status], ['github', 'gh:acme/web#21', 'lead', '2030-01-03 00:00', 'open']);
+      // By hand the watch is not kept, so the same pull request is new again: the task holding its ref keeps it single.
+      const again = await expectRun(kit, ['issue', 'sync', '--yes'], gh(), EXIT.ok);
+      assert.equal(again.some((line) => line.startsWith('PULL TASKS')), false, again.join('\n'));
+      assert.equal(register(kit).tasks.size, 3);
+    });
+
+    it('is never named unlisted by the push while its pull request is open', async () => {
+      const kit = new CliHarness(GITHUB_TEAM);
+      await kit.files.write(state, WATCHED);
+      await expectRun(kit, ['issue', 'sync', '--yes'], twoIssues().holdsPulls('acme/web', [ghPull('acme/web', 21, OPENED)]), EXIT.ok);
+      const open = await expectRun(kit, ['issue', 'sync', '--push', '--repo', 'acme/web'], twoIssues().holdsPulls('acme/web', [ghPull('acme/web', 21, OPENED)]), EXIT.ok);
+      assert.equal(open.some((line) => line.startsWith('UNLISTED')), false, open.join('\n'));
+      assert.ok(open.some((line) => line.startsWith('PULL acme/web#21 T3 open')), open.join('\n'));
+      const closed = await expectRun(kit, ['issue', 'sync', '--push', '--repo', 'acme/web'], twoIssues(), EXIT.ok);
+      assert.ok(closed.some((line) => line.startsWith('UNLISTED acme/web#21 T3 open')), closed.join('\n'));
+      const unread = await expectRun(kit, ['issue', 'sync', '--push', '--repo', 'acme/web'], twoIssues().failsPulls('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 502: Bad gateway\n' }), EXIT.ok);
+      assert.ok(unread.some((line) => /^NOTE acme\/web: its pull requests could not be read \(.*HTTP 502.*\), so a number below may be one$/.test(line)), unread.join('\n'));
+      assert.ok(unread.some((line) => line.startsWith('UNLISTED acme/web#21 T3 open')), unread.join('\n'));
+    });
+  });
+
   it("writes a repository's issues when its pull requests cannot be read, and fails the run for it", async () => {
     const kit = new CliHarness(GITHUB_TEAM);
     const gh = twoIssues().failsPulls('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 502: Bad gateway\n' });

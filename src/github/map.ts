@@ -89,7 +89,11 @@ export function issueTask(issue: HostIssue, rules: ImportRules): IssueTask {
  */
 export function taskTitle(issue: HostIssue, maxTitle: number): string {
   const title = plainLine(issue.title);
-  const text = title === '' ? `GitHub issue ${issue.repo}#${issue.number}` : title;
+  return cutTitle(title === '' ? `GitHub issue ${issue.repo}#${issue.number}` : title, maxTitle);
+}
+
+/** `text` cut to `maxTitle` characters. */
+export function cutTitle(text: string, maxTitle: number): string {
   // A cut between the two halves of a character leaves the first half alone: it goes too.
   return text.length <= maxTitle ? text : text.slice(0, maxTitle).replace(/[\uD800-\uDBFF]$/, '').trimEnd();
 }

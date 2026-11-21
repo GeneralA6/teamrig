@@ -77,7 +77,10 @@ export interface AddInput {
   readonly workClass?: string;
 }
 
-/** A task for a GitHub issue: its source is GITHUB_SOURCE and its ref the issue's (github/map.ts). */
+/**
+ * A task for a GitHub issue, or for an outside pull request the watcher answers (github/pull-news.ts): its source is
+ * GITHUB_SOURCE and its ref the issue's or the pull request's (github/map.ts).
+ */
 export interface ImportInput {
   readonly title: string;
   /** The issue's body, cleaned and cut to MAX_DESCRIPTION; null for an empty body. */
@@ -85,6 +88,8 @@ export interface ImportInput {
   readonly owner: string;
   readonly ref: string;
   readonly priority: number;
+  /** When it is due, `YYYY-MM-DD HH:MM` UTC: a pull request's answer target; absent for an issue, which has none. */
+  readonly due?: string;
 }
 
 /** The fields the import keeps in step with GitHub; the rest of a task is the team's. */
@@ -1272,7 +1277,7 @@ export class RegisterPolicy {
    * does not apply.
    */
   importAdd(input: ImportInput, state: RegisterState): Verdict<TaskFields> {
-    const fields: TaskFields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null };
+    const fields: TaskFields = { ...input, source: GITHUB_SOURCE, due: input.due ?? null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null };
     const holder = [...state.tasks.values()].find((task) => task.ref === input.ref);
     if (holder !== undefined) {
       return refuse(`${holder.id} already has ref ${input.ref}`);

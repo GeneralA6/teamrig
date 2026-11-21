@@ -188,6 +188,14 @@ while it lasts; the first run on a repository only notes what is there.
   `github.watcher` in the team config; unset, the session holding a service role with `issue close`, the one that
   answers on GitHub; else the lead. Who watches is staffing, not a permission: the lead sets it with
   `teamrig config set github.watcher <session>`, which refuses a name that is not one of the sessions.
+- Such a pull request that just opened also becomes a task of the watcher's, so it stays on a list until someone
+  answers it: source `github`, ref `gh:<owner>/<name>#<number>`, priority `p2`, due 24 hours after it opened (a
+  contributor's pull request's answer target, UTC). Its title is `Pull request: <title>` for an author inside the
+  repository (its owner, a member or a collaborator) whose title holds no secret shape, else
+  `Pull request <owner>/<name>#<number> by <author>`: an outsider's title stays on GitHub. Its description names the
+  pull request, its author and when to answer it by. A ref a task already holds gets no second task. A run with
+  `--yes` or `--auto` writes it (`PULL TASKS <repo>: 1 added`); the dry run prints the `ADD` line it would write. The
+  status push names such a task `PULL`, not `UNLISTED`, while its pull request is open; set it done once you answered.
 - With `github.activity` on, the same news also goes to the owner of the task holding the pull request or an issue
   of the same repository it closes (a `Fixes #12` link GitHub knows), whatever its branch or author, and to each
   session following it (`teamrig follow`). Such a copy never wakes.

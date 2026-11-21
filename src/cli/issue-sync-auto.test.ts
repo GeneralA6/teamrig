@@ -137,9 +137,11 @@ describe('teamrig issue sync --auto', () => {
         'GitHub sync added 1 task(s) for you: T1 gh:acme/web#7 "Fix login"',
         'GitHub pull requests: gh:acme/web#20 "Change 20": conflicts with its base',
       ]);
+      // The outsider's new pull request is on the watcher's list too, once (pull-news.ts pullTasks).
       assert.deepEqual(githubLines(kit, 'alpha'), [
         // The outsider's pull request waits on the watcher's answer from its opening (#1351): the response clock's unwoken reminder.
         'GitHub gh:acme/web#22 (pull) has waited 130 h for an answer of ours, since 01-03 00:00 UTC; answer it in words on GitHub by 01-04 00:00 UTC, its 24 h target, or GH-LATE goes to the lead',
+        'GitHub sync added 1 task(s) for you: T2 gh:acme/web#22 "Pull request acme/web#22 by stranger"',
         'GitHub pull requests: gh:acme/web#22 "Change 22": opened by stranger (outside, fork); gh:acme/web#21 "Change 21": merged',
       ]);
       assert.deepEqual(githubLines(kit, 'lead'), []);

@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { HostPull } from '../issues/pull.ts';
-import { eventsByRecipient, pullEvents, pullListeners, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from './pull-news.ts';
+import { SecretScanner } from '../core/secrets.ts';
+import { eventsByRecipient, pullEvents, pullListeners, pullNewsText, pullRecipient, pullTasks, type PullEvent, type PullTaskRules, type PullWatch } from './pull-news.ts';
 
 const T0 = '2030-01-01T00:00:00Z';
 const T1 = '2030-01-02T00:00:00Z';
@@ -216,5 +217,70 @@ describe('pullNewsText', () => {
     const events = Array.from({ length: 10 }, (_, index): PullEvent => ({ kind: 'merged', pull: pull(index + 1) }));
     const text = pullNewsText(events, OURS).text;
     assert.ok(text.endsWith('gh:acme/web#8 "Change 8": merged; and 2 more'), text);
+  });
+});
+
+describe('pullTasks', () => {
+  const ownerOf = (task: string): string | undefined => (task === 'T12' ? 'bravo' : undefined);
+  const RULES = { maxTitle: 50, priorities: [1, 2, 3], secrets: new SecretScanner(['tok_[a-z0-9]{8}']) };
+  const at = (held: readonly string[] = []): PullTaskRules => ({ ours: OURS, ownerOf, watcher: 'watch', held: new Set(held), rules: RULES });
+  const opened = (one: HostPull): PullEvent => ({ kind: 'opened', pull: one });
+  const OUTSIDE = 'Its title stays on GitHub: its author is outside the repository.';
+
+  it("adds a task for the watcher for a fork's new pull request, due at its answer target, its title an outsider's", () => {
+    const fork = pull(21, { authorAssociation: 'NONE', author: 'stranger', fork: true, head: 't12-fix', createdAt: T1 });
+    assert.deepEqual(pullTasks([opened(fork)], at()), [
+      {
+        kind: 'add',
+        ref: 'gh:acme/web#21',
+        input: {
+          title: 'Pull request acme/web#21 by stranger',
+          description: `Pull request https://github.com/acme/web/pull/21 opened by stranger (outside, fork) at 2030-01-02 00:00 UTC: answer it on GitHub by 2030-01-03 00:00 UTC, its 24 h target. ${OUTSIDE}`,
+          owner: 'watch',
+          ref: 'gh:acme/web#21',
+          priority: 2,
+          due: '2030-01-03 00:00',
+        },
+      },
+    ]);
+  });
+
+  it("adds one for an outside author's pull request on a branch of the repository, even one naming a task", () => {
+    const outside = pull(22, { authorAssociation: 'CONTRIBUTOR', author: '', head: 't12-fix' });
+    const [step] = pullTasks([opened(outside)], at());
+    assert.equal(step?.kind === 'add' ? step.input.title : undefined, 'Pull request acme/web#22 by a deleted account');
+    assert.equal(step?.kind === 'add' ? step.input.owner : undefined, 'watch');
+  });
+
+  it('adds none for our own branch naming a task with an owner, and one for our branch naming no task', () => {
+    assert.deepEqual(pullTasks([opened(pull(23, { head: 't12-fix' }))], at()), []);
+    const steps = pullTasks([opened(pull(24, { head: 'feature-x', title: 'Speed up \u0007the build' })), opened(pull(25, { head: 't99-gone' }))], at());
+    assert.deepEqual(steps.map((step) => (step.kind === 'add' ? [step.ref, step.input.title, step.input.owner] : [])), [
+      ['gh:acme/web#24', 'Pull request: Speed up the build', 'watch'],
+      ['gh:acme/web#25', 'Pull request: Change 25', 'watch'],
+    ]);
+    const [first] = steps;
+    assert.equal(first?.kind === 'add' ? first.input.description : undefined, 'Pull request https://github.com/acme/web/pull/24 opened by maintainer at 2030-01-01 00:00 UTC: answer it on GitHub by 2030-01-02 00:00 UTC, its 24 h target.');
+  });
+
+  it('never adds a second task for a ref a task holds, nor for a pull request named twice, nor for any other event', () => {
+    const outside = pull(26, { authorAssociation: 'NONE', author: 'stranger' });
+    assert.deepEqual(pullTasks([opened(outside)], at(['gh:acme/web#26'])), []);
+    assert.equal(pullTasks([opened(outside), opened(outside)], at()).length, 1);
+    for (const kind of ['merged', 'closed', 'conflict', 'checks-failing', 'approved', 'changes-requested'] as const) {
+      assert.deepEqual(pullTasks([{ kind, pull: outside }], at()), [], kind);
+    }
+  });
+
+  it("names the pull request instead of a trusted title that is empty, looks like it holds a secret, or is cut to the title's length", () => {
+    const titles = pullTasks(
+      [
+        opened(pull(27, { head: 'x', title: ' ​ ' })),
+        opened(pull(28, { head: 'x', title: `use tok_${'a1'.repeat(4)} here` })),
+        opened(pull(29, { head: 'x', authorAssociation: 'COLLABORATOR', author: 'helper', title: 'y'.repeat(60) })),
+      ],
+      at(),
+    ).map((step) => (step.kind === 'add' ? step.input.title : ''));
+    assert.deepEqual(titles, ['Pull request acme/web#27 by maintainer', 'Pull request acme/web#28 by maintainer', `Pull request: ${'y'.repeat(36)}`]);
   });
 });

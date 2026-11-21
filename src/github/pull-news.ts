@@ -1,8 +1,13 @@
+import { formatUtcMinute } from '../core/time.ts';
 import type { HostPull, PullChecks, PullMergeable, PullReview } from '../issues/pull.ts';
+import type { ImportInput } from '../register/policy.ts';
 import { cut } from '../register/views.ts';
 import { branchTaskOf } from '../worktree/owner.ts';
-import { issueRef } from './map.ts';
-import { isOurAuthor, type OurLogins } from './trust.ts';
+import { ANSWER_TARGET_HOURS, targetMs } from './clock.ts';
+import { plainLine } from './issues.ts';
+import { cutTitle, issuePriority, issueRef, type ImportRules } from './map.ts';
+import type { SyncStep } from './plan.ts';
+import { isInsideAuthor, isOurAuthor, type OurLogins } from './trust.ts';
 
 /**
  * The pull request monitor's decisions, kept pure: what happened to a repository's pull requests between two reads
@@ -129,8 +134,65 @@ function newest(times: readonly string[], cursor: string | undefined): string | 
  * branch name, or anyone else's, is theirs to choose, so it never routes news to a session.
  */
 export function pullRecipient(pull: HostPull, ours: OurLogins, ownerOf: (task: string) => string | undefined, watcher: string): string {
+  return branchOwner(pull, ours, ownerOf) ?? watcher;
+}
+
+/** The owner of the task one of our authors' own branch names (`ownBranchTask`); undefined when the pull request goes to the watcher. */
+function branchOwner(pull: HostPull, ours: OurLogins, ownerOf: (task: string) => string | undefined): string | undefined {
   const task = ownBranchTask(pull, ours);
-  return (task === undefined ? undefined : ownerOf(task)) ?? watcher;
+  return task === undefined ? undefined : ownerOf(task);
+}
+
+/** What `pullTasks` judges a new pull request by. */
+export interface PullTaskRules {
+  readonly ours: OurLogins;
+  readonly ownerOf: (task: string) => string | undefined;
+  readonly watcher: string;
+  /** Every ref a task of the register holds: a pull request one holds gets no second task. */
+  readonly held: ReadonlySet<string>;
+  readonly rules: Pick<ImportRules, 'maxTitle' | 'priorities' | 'secrets'>;
+}
+
+/**
+ * The import steps that give each new pull request going to the watcher (`pullRecipient`: a fork's, an outside
+ * author's, or one on a branch naming no task with an owner) a task of the watcher's, so it sits on a list until
+ * someone answers it, not only in an inbox line. Its ref is the pull request's and it is due at a contributor's pull
+ * request's answer target (clock.ts) after it opened. A ref a task holds gets none, so a second read adds no twin.
+ */
+export function pullTasks(events: readonly PullEvent[], at: PullTaskRules): SyncStep[] {
+  const steps: SyncStep[] = [];
+  const taken = new Set(at.held);
+  for (const { kind, pull } of events) {
+    const ref = issueRef(pull.repo, pull.number);
+    if (kind !== 'opened' || taken.has(ref) || branchOwner(pull, at.ours, at.ownerOf) !== undefined) {
+      continue;
+    }
+    taken.add(ref);
+    steps.push({ kind: 'add', ref, input: pullTaskInput(pull, ref, at) });
+  }
+  return steps;
+}
+
+/**
+ * The watcher's task for `pull`. Its title is outside input, read as the issue import reads an issue's: it carries
+ * the pull request's title only for an author inside the repository (trust.ts), on one plain line and only when no
+ * secret shape is in it; else it names the pull request and its author. Its description is written here, from the
+ * host's fields, as the pull request read carries no body.
+ */
+function pullTaskInput(pull: HostPull, ref: string, at: PullTaskRules): ImportInput {
+  const opened = Date.parse(pull.createdAt);
+  const due = formatUtcMinute(new Date(opened + targetMs('pull')));
+  const by = pull.author === '' ? 'a deleted account' : pull.author;
+  const inside = isInsideAuthor(pull.authorAssociation);
+  const title = plainLine(pull.title);
+  const shown = inside && title !== '' && at.rules.secrets.find(title) === undefined ? `Pull request: ${title}` : `Pull request ${pull.repo}#${pull.number} by ${by}`;
+  const where = [...(isOurAuthor(pull.authorAssociation, pull.author, at.ours) ? [] : ['outside']), ...(pull.fork ? ['fork'] : [])];
+  const description = [
+    `Pull request ${pull.url} opened by ${by}${where.length > 0 ? ` (${where.join(', ')})` : ''} at ${formatUtcMinute(new Date(opened))} UTC:`,
+    `answer it on GitHub by ${due} UTC, its ${ANSWER_TARGET_HOURS.pull} h target.`,
+    ...(inside ? [] : ['Its title stays on GitHub: its author is outside the repository.']),
+  ].join(' ');
+  return { title: cutTitle(shown, at.rules.maxTitle), description, owner: at.watcher, ref, priority: issuePriority([], at.rules.priorities), due };
 }
 
 /** One session that hears about a pull request, and whether it only follows it (its copy never wakes). */
