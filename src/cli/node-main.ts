@@ -116,7 +116,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     pluginStore: NODE_STORE_FOLDERS,
     transcripts: nodeTranscriptSource,
     self: { node: process.execPath, script: entry.script, execArgv: process.execArgv },
-    requirements: requirementsCheck({ env: process.env, platform: process.platform, probe: NODE_PATH_PROBE, nodeVersion: process.versions.node }),
+    requirements: requirementsCheck({ env: process.env, platform: process.platform, probe: NODE_PATH_PROBE, nodeVersion: process.versions.node, gitVersion: async () => GIT_MERGE.gitVersion(process.cwd()) }),
     worktrees: { git: GIT_WORKTREES, files: NODE_WORKTREE_FILES },
     restore: {
       shutdowns: systemShutdownLog(process.platform, nodeProgramRunner(SHUTDOWN_QUERY_TIMEOUT_MS)),

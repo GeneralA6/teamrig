@@ -189,7 +189,7 @@ describe('teamrig secrets pushed', () => {
     const outside = await new CliHarness().run(['secrets', 'pushed', 'origin'], { secretsGit: new FakeSecretsGit(undefined), stdin: line });
 
     assert.equal(unlisted.code, 1);
-    assert.match(output(unlisted), new RegExp(`git cannot list the commits ${TIP} --not --remotes=origin in .*needs git 2\\.36 or later`));
+    assert.match(output(unlisted), new RegExp(`git cannot list the commits ${TIP} --not --remotes=origin in .*needs git 2\\.36\\.0 or later`));
     assert.equal(untagged.code, 1);
     assert.match(output(untagged), new RegExp(`git cannot read the object ${TIP} in .*, or it is a tag of more than 8 tags`));
     assert.equal(garbled.code, 1);

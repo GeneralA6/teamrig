@@ -14,6 +14,13 @@ export const MIN_CLAUDE_CODE: Version = { major: 2, minor: 1, patch: 139 };
  */
 export const MIN_NODE: Version = { major: 22, minor: 18, patch: 0 };
 
+/**
+ * The oldest git teamrig runs on: the secret scan reads what a merge's resolution added with
+ * `git log --diff-merges=remerge` (git 2.36), and every checkout read runs `git rev-parse --path-format` (git 2.31).
+ * Below it each git read fails its own way, so the requirements check names it once, up front (#1566).
+ */
+export const MIN_GIT: Version = { major: 2, minor: 36, patch: 0 };
+
 /** Set by Claude Code 2.1.120 and later for the processes it starts, as `claude-code_2-1-300_harness`. */
 export const AI_AGENT = 'AI_AGENT';
 
@@ -49,19 +56,25 @@ export type Requirement = 'git' | 'Claude Code' | 'Node.js';
 
 /**
  * - `git-missing`: no git on PATH;
- * - `claude-code-old` / `node-old`: the running version, under the minimum;
+ * - `git-old` / `claude-code-old` / `node-old`: the running version, under the minimum;
  * - `check-failed`: the check itself failed, so it is unknown.
  */
 export type RequirementProblem =
   | { readonly kind: 'git-missing' }
+  | { readonly kind: 'git-old'; readonly running: string }
   | { readonly kind: 'claude-code-old'; readonly running: string }
   | { readonly kind: 'node-old'; readonly running: string }
   | { readonly kind: 'check-failed'; readonly requirement: Requirement; readonly reason: string };
 
-/** What the requirements check reads: the variables, the operating system, the files on PATH and the running Node.js. */
+/**
+ * What the requirements check reads: the variables, the operating system, the files on PATH, the running Node.js and
+ * the version of the git on PATH.
+ */
 export interface RequirementDeps extends PathSearchDeps {
   /** `process.versions.node` of the process running teamrig. */
   readonly nodeVersion: string;
+  /** The version `git version` names, such as `2.43.0` or `2.45.1.windows.1`; undefined when git could not tell. */
+  readonly gitVersion: () => Promise<string | undefined>;
 }
 
 /** The requirements check as a port. `problems` never rejects: a check that fails is a `check-failed` problem. */
@@ -75,14 +88,15 @@ function tooOld(running: Version | undefined, minimum: Version, problem: (runnin
 }
 
 const CHECKS: ReadonlyArray<readonly [Requirement, (deps: RequirementDeps) => Promise<RequirementProblem | undefined>]> = [
-  ['git', async (deps) => ((await findProgram('git', deps)) === undefined ? { kind: 'git-missing' } : undefined)],
+  ['git', async (deps) => ((await findProgram('git', deps)) === undefined ? { kind: 'git-missing' } : tooOld(parseVersion((await deps.gitVersion()) ?? ''), MIN_GIT, (running) => ({ kind: 'git-old', running })))],
   ['Claude Code', async (deps) => tooOld(claudeCodeVersion(deps.env), MIN_CLAUDE_CODE, (running) => ({ kind: 'claude-code-old', running }))],
   ['Node.js', async (deps) => tooOld(parseVersion(deps.nodeVersion), MIN_NODE, (running) => ({ kind: 'node-old', running }))],
 ];
 
 /**
  * What is missing or too old, each check on its own: one that throws is a `check-failed` problem and the
- * others still run. It reads variables and stats files on PATH; it starts no process.
+ * others still run. It reads variables and stats files on PATH; the only process it starts is `git version`, and
+ * only when git is on PATH.
  */
 export async function requirementProblems(deps: RequirementDeps): Promise<RequirementProblem[]> {
   const found = await Promise.all(
@@ -106,6 +120,8 @@ export function describeRequirement(problem: RequirementProblem, command: string
   switch (problem.kind) {
     case 'git-missing':
       return `git is not installed or not on PATH, and ${command} needs it: install it from git-scm.com, then restart Claude Code.`;
+    case 'git-old':
+      return `git ${problem.running} is older than ${command} needs (${versionText(MIN_GIT)} or later): install a newer git from git-scm.com, then restart Claude Code.`;
     case 'claude-code-old':
       return `Claude Code ${problem.running} is older than ${command} needs (${versionText(MIN_CLAUDE_CODE)} or later): run claude update, then restart Claude Code.`;
     case 'node-old':

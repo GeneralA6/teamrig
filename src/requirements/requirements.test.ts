@@ -9,6 +9,7 @@ import {
   describeRequirement,
   isOlder,
   MIN_CLAUDE_CODE,
+  MIN_GIT,
   MIN_NODE,
   parseVersion,
   requirementsCheck,
@@ -22,7 +23,7 @@ const PATH = '/usr/local/bin:/usr/bin';
 const CURRENT: Env = { PATH, AI_AGENT: 'claude-code_2-1-300_harness' };
 
 function deps(overrides: Partial<RequirementDeps> = {}): RequirementDeps {
-  return { env: CURRENT, platform: 'linux', probe: new FakePathProbe({ files: [GIT] }), nodeVersion: '22.19.0', ...overrides };
+  return { env: CURRENT, platform: 'linux', probe: new FakePathProbe({ files: [GIT] }), nodeVersion: '22.19.0', gitVersion: async () => '2.43.0', ...overrides };
 }
 
 function problems(overrides: Partial<RequirementDeps> = {}): Promise<readonly RequirementProblem[]> {
@@ -56,6 +57,10 @@ describe('versions', () => {
     assert.equal(isOlder({ major: 24, minor: 0, patch: 0 }, MIN_NODE), false);
   });
 
+  it('keeps the git minimum at the newest git feature teamrig runs: log --diff-merges=remerge, 2.36', () => {
+    assert.deepEqual(MIN_GIT, { major: 2, minor: 36, patch: 0 });
+  });
+
   it("keeps the Node.js minimum at package.json's engines.node", () => {
     const engines = /"node":\s*">=([\d.]+)"/.exec(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))?.[1];
     assert.ok(engines !== undefined, 'package.json gives engines.node as >=x.y');
@@ -75,6 +80,21 @@ describe('requirementsCheck', () => {
   it('finds git.exe on Windows', async () => {
     const probe = new FakePathProbe({ files: ['C:\\Program Files\\Git\\cmd\\git.exe'] });
     assert.deepEqual(await problems({ platform: 'win32', env: { Path: 'C:\\Program Files\\Git\\cmd', AI_AGENT: 'claude-code_2-1-300_agent' }, probe }), []);
+  });
+
+  it('finds a git older than teamrig needs, Windows builds too (#1566)', async () => {
+    assert.deepEqual(await problems({ gitVersion: async () => '2.30.2' }), [{ kind: 'git-old', running: '2.30.2' }]);
+    assert.deepEqual(await problems({ gitVersion: async () => '2.35.9.windows.1' }), [{ kind: 'git-old', running: '2.35.9' }]);
+    assert.deepEqual(await problems({ gitVersion: async () => '2.36.0' }), []);
+    assert.deepEqual(await problems({ gitVersion: async () => '2.45.1.windows.1' }), []);
+  });
+
+  it('says nothing of a git whose version it cannot read, and asks none of a git not on PATH', async () => {
+    assert.deepEqual(await problems({ gitVersion: async () => undefined }), []);
+    const unasked = async (): Promise<string> => {
+      throw new Error('git version was run');
+    };
+    assert.deepEqual(await problems({ probe: new FakePathProbe(), gitVersion: unasked }), [{ kind: 'git-missing' }]);
   });
 
   it('finds a Claude Code older than the hooks need', async () => {
@@ -118,6 +138,10 @@ describe('describeRequirement', () => {
     assert.equal(
       describeRequirement({ kind: 'node-old', running: '20.11.1' }, 'teamrig'),
       'Node.js 20.11.1 is older than teamrig supports (22.18.0 or later): install the current LTS from nodejs.org, then restart Claude Code.',
+    );
+    assert.equal(
+      describeRequirement({ kind: 'git-old', running: '2.30.2' }, 'teamrig'),
+      'git 2.30.2 is older than teamrig needs (2.36.0 or later): install a newer git from git-scm.com, then restart Claude Code.',
     );
     assert.equal(describeRequirement({ kind: 'check-failed', requirement: 'git', reason: 'EACCES' }, 'teamrig'), 'The teamrig check for git failed (EACCES).');
   });

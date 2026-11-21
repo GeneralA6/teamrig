@@ -279,6 +279,7 @@ Not refusals: `WARN` lines from `team create`, `requirement` findings from `doct
 | Output | Fix |
 | --- | --- |
 | `git is not installed or not on PATH, and teamrig needs it: install it from git-scm.com, then restart Claude Code.` | Install git, or put its folder on the PATH, then restart Claude Code. |
+| `git 2.30.2 is older than teamrig needs (2.36.0 or later): install a newer git from git-scm.com, then restart Claude Code.` | Install a newer git and make it the `git` on the PATH; below 2.36 the secret scan and checkout reads fail. |
 | `Claude Code 2.1.130 is older than teamrig needs (2.1.139 or later): run claude update, then restart Claude Code.` | Update Claude Code; the hooks do not run on an older one. |
 | `Node.js 20.11.1 is older than teamrig supports (22.18.0 or later): install the current LTS from nodejs.org, then restart Claude Code.` | Install a newer Node.js and make it the `node` on the PATH. |
 | `The teamrig check for git failed (<reason>).` | The check itself failed; the rest still ran. Run `teamrig doctor` again, and report the reason to the lead if it stays. |

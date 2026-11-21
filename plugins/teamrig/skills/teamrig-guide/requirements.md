@@ -7,7 +7,7 @@ What teamrig needs on the machine, from its code and its CI.
 | Claude Code | 2.1.139 or later | It loads the plugin, runs its hooks and puts `teamrig` on the PATH. Every hook uses the exec form (`args`), which Claude Code added in 2.1.139. CI does not run Claude Code; hand tests ran on 2.1.299 and 2.1.300. The automatic refresh's `/clear` comes from the plugin's mod (Claude Code's function hooks, tried on 2.1.299); a Claude Code that does not load it gets the restart instead. |
 | Node.js | 22.18 or later (`engines` in `package.json`) | `teamrig` and every hook run `node <plugin>/dist/cli/main.js`, so `node` must be on the PATH. 22.18 is the floor `package.json` sets; no older Node.js is tested. |
 | Operating system | Linux, Windows or macOS | CI runs the tests on ubuntu, windows and macos, each on Node 22; a newer Node.js is not tested. |
-| git | any | The push guard reads git config and aliases; `teamrig commits check` runs git. Not needed for tasks or inboxes. |
+| git | 2.36 or later | The push guard reads git config and aliases; `teamrig commits check` runs git. The secret scan reads what a merge's resolution added with `git log --diff-merges=remerge` (2.36), and every checkout read runs `git rev-parse --path-format` (2.31). Not needed for tasks or inboxes. |
 | A terminal for `teamrig open` | see below | Only `open` uses one; every other command works in any shell. |
 
 ## The requirements check
@@ -20,7 +20,7 @@ teamrig checks git, Claude Code and Node.js itself, and says what is missing in 
 - in `teamrig doctor`, as `requirement` findings.
 
 It reads `$AI_AGENT` for the running Claude Code (set since Claude Code 2.1.120), the running Node.js, and the PATH
-for git, and starts no program. Below Claude Code 2.1.139 the hooks cannot run, so only `team create` and `doctor`
+for git; the only program it starts is `git version`, when git is on the PATH. Below Claude Code 2.1.139 the hooks cannot run, so only `team create` and `doctor`
 can say so; below 2.1.120 the version is unknown and nothing is said. Outside a team's projects the hooks say nothing.
 
 No Claude Code setting has to be turned on for teamrig in auto mode. In default mode, the allow rule

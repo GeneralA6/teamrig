@@ -3,6 +3,7 @@ import { secretGuardOf, secretPatternsOf } from '../../hooks/secret-guard.ts';
 import { CommitScanner, type CommitFinding } from '../../secret-guard/commit-scan.ts';
 import { messageLines, type CommitAdds, type TagMessage } from '../../secret-guard/git-adds.ts';
 import { pushRanges, rangeArgs } from '../../secret-guard/push-range.ts';
+import { MIN_GIT, versionText } from '../../requirements/requirements.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { MAX_TAG_DEPTH } from '../../secret-guard/secrets-git.ts';
 import { UsageError, noPositionals, onePositional, type ParsedArgs } from '../args.ts';
@@ -65,7 +66,7 @@ export async function pushed(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   for (const range of ranges) {
     const listed = git.commits(runtime.cwd, range);
     if (listed === undefined) {
-      throw new Error(`git cannot list the commits ${rangeArgs(range).join(' ')} in ${runtime.cwd} (the scan needs git 2.36 or later, to read what a merge's resolution added)`);
+      throw new Error(`git cannot list the commits ${rangeArgs(range).join(' ')} in ${runtime.cwd} (the scan needs git ${versionText(MIN_GIT)} or later, to read what a merge's resolution added)`);
     }
     for (const commit of listed) {
       commits.set(commit.sha, commit);

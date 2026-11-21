@@ -9,6 +9,7 @@ import { FALLBACK_BRANCH, ORIGIN, pathInCheckout, type GitRead, type MergeGit } 
 import { taskBranchOf } from '../permissions/route-git.ts';
 import type { ShipRun } from '../permissions/ship-role-call.ts';
 import { JsonlEventLog } from '../register/store.ts';
+import { isOlder, MIN_GIT, parseVersion, versionText } from '../requirements/requirements.ts';
 import { moduleSpecifiersOf } from './module-specifiers.ts';
 import type { Kit } from './kit.ts';
 import type { CliRuntime } from './runtime.ts';
@@ -69,20 +70,14 @@ interface ToolState {
   readonly head: string | undefined;
   /** C5: that checkout's HEAD makes the default branch's tree, main's current code, where any past main's has another tree. */
   readonly landed: boolean;
-  /** The host's git when it is too old for `rev-parse --path-format`, so "in no checkout" is only its exit 128 (#1472). */
+  /** The host's git when it is older than teamrig needs, so "in no checkout" may be only its exit 128 (#1472, #1566). */
   readonly oldGit?: string;
 }
 
-/** The first git whose `rev-parse` takes `--path-format`, which every checkout read of the check runs. */
-const PATH_FORMAT_GIT = { major: 2, minor: 31 } as const;
-
-/** Whether `version`, such as `2.30.2`, is a git older than {@link PATH_FORMAT_GIT}; false when git could not tell. */
-function predatesPathFormat(version: string | undefined): version is string {
-  if (version === undefined) {
-    return false;
-  }
-  const [major = 0, minor = 0] = version.split('.').map(Number);
-  return major < PATH_FORMAT_GIT.major || (major === PATH_FORMAT_GIT.major && minor < PATH_FORMAT_GIT.minor);
+/** Whether `version`, such as `2.30.2`, is a git older than {@link MIN_GIT}; false when git could not tell. */
+function isOldGit(version: string | undefined): version is string {
+  const parsed = version === undefined ? undefined : parseVersion(version);
+  return parsed !== undefined && isOlder(parsed, MIN_GIT);
 }
 
 /** The state of a tool in no checkout, or none of a configured repository: never main's current code. */
@@ -106,7 +101,7 @@ function toolStateOf(git: MergeGit, tool: string, mainDir: string): GitRead<Tool
   const checkout = read.value;
   if (checkout === undefined) {
     const version = git.gitVersion(mainDir);
-    return { ok: true, value: predatesPathFormat(version) ? { ...toolInNoCheckout(tool), oldGit: version } : toolInNoCheckout(tool) };
+    return { ok: true, value: isOldGit(version) ? { ...toolInNoCheckout(tool), oldGit: version } : toolInNoCheckout(tool) };
   }
   const ours = repository.value !== undefined && samePath(checkout.commonDir, repository.value);
   const head = ours && checkout.clean && checkout.tracked ? checkout.head : undefined;
@@ -384,7 +379,7 @@ function moveHint(state: ToolState): string {
 /** A stale or changed ship tool's refusal: what it is not, and how to move its checkout to the newest main. */
 function staleToolReason(tool: string, state: ToolState, since: string): string {
   if (state.oldGit !== undefined) {
-    return `the ship tool check reads ${tool}'s checkout with git rev-parse --path-format=absolute, which needs git ${PATH_FORMAT_GIT.major}.${PATH_FORMAT_GIT.minor} or newer, and this host runs git ${state.oldGit}: upgrade git, then queue the step again`;
+    return `the ship tool check reads ${tool}'s checkout with git rev-parse --path-format=absolute, and this host runs git ${state.oldGit}, older than teamrig needs (${versionText(MIN_GIT)} or later): upgrade git, then queue the step again`;
   }
   return `the ship tool ${tool}${since} is not ${state.mainRef}'s current code in a checkout with no change: ${moveHint(state)}`;
 }
