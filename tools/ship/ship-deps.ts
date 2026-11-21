@@ -10,6 +10,7 @@ import { buildScriptOf, buildSteps } from './build-steps.ts';
 import { proveTree, realGateDeps } from './local-gate.ts';
 import { mergeBranch } from './merge.ts';
 import { pushOwnBranch } from './push.ts';
+import { holdHead } from './hold.ts';
 import { profileFor, readProfiles, slugOf } from './repos.ts';
 import { takeBackEarlierRun } from './rerun.ts';
 import { DIST, type ShipDeps } from './ship-commits.ts';
@@ -38,6 +39,7 @@ export function realShipDeps(repo: string, noteFile: string | null): ShipDeps {
     takeBack: (chunks, base) => {
       takeBackEarlierRun({ git: gitLine, log }, chunks, base);
     },
+    holdHead: () => holdHead({ git: gitLine, log }),
     sync: () =>
       syncToMain(
         { git: gitLine, readText: (path) => readFileSync(join(repo, path), 'utf8'), writeText: (path, text) => writeFileSync(join(repo, path), text), log },

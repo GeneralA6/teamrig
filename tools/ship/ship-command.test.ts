@@ -25,6 +25,7 @@ function shipDeps(verdict: GateVerdict, mergeExit: number): ShipDeps {
     git: (args) => (args[0] === 'status' ? ' M src/a.ts\n' : ''),
     log: () => undefined,
     takeBack: () => undefined,
+    holdHead: () => ({ head: '', restore: () => undefined }),
     sync: () => ({ kind: 'current', sets: '0.1.0' }),
     buildSteps: () => [],
     proveTree: () => verdict,

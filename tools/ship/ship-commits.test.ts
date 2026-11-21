@@ -87,6 +87,10 @@ function fake(options: FakeOptions = {}): Fake {
       events.push(`take back ${chunks.length} chunk(s) since ${base}`);
       takenBack.push(chunks.map((chunk) => chunk.subject));
     },
+    holdHead: () => {
+      events.push('hold head');
+      return { head: HEAD_SHA, restore: () => events.push('put back') };
+    },
     sync: () => {
       events.push('sync');
       return options.sync ?? { kind: 'current', sets: '0.134.0' };
@@ -135,6 +139,7 @@ test('takes back an earlier run first, then syncs, commits each chunk, builds an
   const { deps, events } = fake();
   assert.equal(await shipCommits(ARGS, CHUNKS, deps), 0);
   assert.deepEqual(events, [
+    'hold head',
     'take back 2 chunk(s) since origin/main',
     'sync',
     'git status --porcelain -- src/a.ts',
@@ -331,6 +336,7 @@ test("an empty plan ships the branch's own commits as they are: no take back, no
   const { deps, events } = fake({ answers: { 'rev-list --count origin/main..HEAD': '1\n' } });
   assert.equal(await shipCommits(ARGS, [], deps), 0);
   assert.deepEqual(events, [
+    'hold head',
     'take back 0 chunk(s) since origin/main',
     'sync',
     'git rev-list --count origin/main..HEAD',
@@ -363,6 +369,23 @@ test('a plan with chunks never asks how many commits the branch carries (T4116)'
   const { deps, events } = fake();
   await shipCommits(ARGS, CHUNKS, deps);
   assert.ok(!events.some((event) => event.startsWith('git rev-list')));
+});
+
+test('a refusal or a failed step before the plan is committed again puts the branch back on the head it started from (#1240)', async () => {
+  const empty = fake({ answers: { 'status --porcelain -- src/a.ts': '' } });
+  await assert.rejects(shipCommits(ARGS, CHUNKS, empty.deps), /^Error: REFUSED the plan's chunk "core: a" commits nothing/);
+  assert.equal(empty.events.at(-1), 'put back');
+  const commitFails = fake({ failOn: 'git commit -q -s -m release' });
+  await assert.rejects(shipCommits(ARGS, CHUNKS, commitFails.deps), /^Error: git commit -q -s -m release/);
+  assert.equal(commitFails.events.at(-1), 'put back');
+});
+
+test('once the plan is committed again, a failed build or gate leaves the commits, for the rerun to take back (#1240)', async () => {
+  for (const options of [{ failOn: 'node tools/build/bundle.ts' }, { verdict: { passed: false, reason: 'tools/ci/local.ts failed' } as const }]) {
+    const { deps, events } = fake(options);
+    await assert.rejects(shipCommits(ARGS, CHUNKS, deps));
+    assert.ok(!events.includes('put back'));
+  }
 });
 
 test('runs no typecheck or coverage suite of its own: the gate runs each once on the committed tree (T4064)', async () => {
@@ -411,11 +434,12 @@ test('with the switch on, a run without --merge still proves the tree with the w
 test('with --merge, clears the merge of the branch at its head and fingerprints its change before anything changes (T2788)', async () => {
   const { deps, events, logs } = fake();
   assert.equal(await shipCommits({ ...ARGS, merge: true, approved: '5efae2e91' }, CHUNKS, deps), 0);
-  assert.deepEqual(events.slice(0, 5), [
+  assert.deepEqual(events.slice(0, 6), [
     'git rev-parse --abbrev-ref HEAD',
     'git rev-parse HEAD',
     `clear t827-ship-tool ${HEAD_SHA} 5efae2e91`,
     `patch ${HEAD_SHA}`,
+    'hold head',
     'take back 2 chunk(s) since origin/main',
   ]);
   assert.ok(logs.includes('merge of t827-ship-tool 5efae2e91: approved by lead'));
@@ -434,7 +458,7 @@ const rebased = (headWork: readonly WorkCommit[]): FakeOptions => ({
 test('with --merge on a rebase of the approved head, the same work commits patch for patch clear the approved head, no new approval (T2913)', async () => {
   const { deps, events, logs } = fake(rebased([workOf(HEAD_SHA, 'ship: a', 'pa'), workOf('8888888888', 'docs: a', 'pd')]));
   assert.equal(await shipCommits({ ...ARGS, merge: true, approved: '61854f9e1' }, CHUNKS, deps), 0);
-  assert.deepEqual(events.slice(0, 8), [
+  assert.deepEqual(events.slice(0, 9), [
     'git rev-parse --abbrev-ref HEAD',
     'git rev-parse HEAD',
     'git rev-parse --verify --quiet 61854f9e1^{commit}',
@@ -442,6 +466,7 @@ test('with --merge on a rebase of the approved head, the same work commits patch
     `work ${HEAD_SHA}`,
     `clear t827-ship-tool ${APPROVED_SHA} 61854f9e1`,
     `patch ${APPROVED_SHA}`,
+    'hold head',
     'take back 2 chunk(s) since origin/main',
   ]);
   assert.ok(logs.includes("head 5efae2e91 carries the approved 61854f9e1's 2 work commit(s), patch for patch"));
@@ -523,7 +548,8 @@ test('when main moved past the branch touching other files, renames the branch a
   const rename = events.indexOf('git branch -m t827-ship-tool-2');
   assert.ok(rename > events.indexOf('merge t827-ship-tool'));
   const again = events.slice(rename + 1);
-  assert.deepEqual(again.slice(0, 5), [
+  assert.deepEqual(again.slice(0, 6), [
+    'hold head',
     'take back 2 chunk(s) since origin/main',
     'sync',
     'git status --porcelain -- src/a.ts',

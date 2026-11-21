@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { TempRepo } from '../lib/temp-repo.ts';
 import { profileFor, readProfiles } from './repos.ts';
+import { shipCommits } from './ship-commits.ts';
 import { realShipDeps } from './ship-deps.ts';
 
 const ORIGIN = 'https://github.com/GeneralA6/teamrig.git';
@@ -77,6 +78,41 @@ describe('realShipDeps', () => {
     repo.git('push', '-q', 'origin', 'HEAD:refs/heads/main');
     repo.git('reset', '-q', '--hard', 'HEAD~1');
     assert.match(deps.mainMove()?.reason ?? '', /^origin\/main moved to [0-9a-f]{7}, which the branch does not contain$/);
+  });
+
+  it('a refusal after the take back and the rebase leaves the branch on the head the run started from, the tree clean (#1240)', async () => {
+    repo.write('plugins/teamrig/.claude-plugin/plugin.json', '{ "version": "0.1.0" }\n');
+    repo.write('src/core/version.ts', "export const KIT_VERSION = '0.1.0';\n");
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '-m', 'version');
+    const deps = realShipDeps(repo.dir, null);
+    const origin = join(repo.outside, 'origin.git');
+    repo.git('init', '-q', '--bare', origin);
+    repo.git('config', 'core.hooksPath', join(repo.outside, 'no-hooks'));
+    repo.git('config', 'commit.gpgsign', 'false');
+    repo.git('remote', 'set-url', 'origin', origin);
+    repo.git('push', '-q', 'origin', 'HEAD:refs/heads/main');
+    repo.write('m.txt', 'm\n');
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '-m', 'main moves');
+    repo.git('push', '-q', 'origin', 'HEAD:refs/heads/main');
+    repo.git('reset', '-q', '--hard', 'HEAD~1');
+    repo.git('checkout', '-q', '-b', 'feat/change');
+    // The earlier run's commit of the plan's first chunk, the head an approver reviewed; the second chunk has nothing
+    // left to commit, so this run is refused after it took that commit back and rebased onto the moved main.
+    repo.write('b.txt', 'b\n');
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '-m', 'core: b');
+    const start = repo.git('rev-parse', 'HEAD').trim();
+    const plan = [
+      { files: ['b.txt'], subject: 'core: b', body: 'why b' },
+      { files: ['c.txt'], subject: 'core: c', body: 'why c' },
+    ];
+    const args = { repo: repo.dir, plan: 'plan.json', base: 'origin/main', merge: false, noteFile: null, approved: null };
+
+    await assert.rejects(shipCommits(args, plan, deps), /^Error: REFUSED the plan's chunk "core: c" commits nothing/);
+    assert.equal(repo.git('rev-parse', 'HEAD').trim(), start);
+    assert.equal(repo.git('status', '--porcelain'), '');
   });
 
   it("reads a head's work commits and its patch against origin's main", () => {

@@ -3,6 +3,7 @@ import { stampTrailer } from '../../src/core/stamp.ts';
 import { pathMatcher, weighCommit, type CommitWeight, type FileChange } from '../../src/push-guard/commit-size.ts';
 import { approvedRebase, type ClearMerge, type WorkCommit } from './approval.ts';
 import { freeBranch } from './branch-names.ts';
+import type { HeldHead } from './hold.ts';
 import type { BuildStep } from './build-steps.ts';
 import type { CheckScope } from '../ci/check-scope.ts';
 import type { GateVerdict } from './local-gate.ts';
@@ -35,6 +36,8 @@ export interface ShipDeps {
   log: (line: string) => void;
   /** Takes back the commits an earlier run of this plan made since `base` (rerun.ts), so the plan commits them again. */
   takeBack: (chunks: readonly Chunk[], base: string) => void;
+  /** Notes the branch head before the take back, to put the branch back on it if the run stops before its commits (hold.ts). */
+  holdHead: () => HeldHead;
   /** Rebases onto main when it moved past the branch (sync.ts). */
   sync: () => SyncResult;
   /** The steps of the repo's `npm run build`, read when the build runs (a chunk may change them). */
@@ -110,7 +113,10 @@ function commit(deps: ShipDeps, files: readonly string[], subject: string, body:
  *   2. no check of its own: the gate in step 5 runs the typecheck and the coverage suite on the committed tree, and a
  *      run before the commits ran both twice per ship, the heaviest part of every queued ship step (T4064). A failed
  *      gate leaves the commits, which the rerun takes back (step 0);
- *   3. one signed-off commit per chunk of the plan, in order, the chunks that commit only version files last;
+ *   3. one signed-off commit per chunk of the plan, in order, the chunks that commit only version files last. A
+ *      refusal or a failed step from step 0 until the last chunk is in puts the branch back on the head the run started
+ *      from, with the plan uncommitted (hold.ts): it would otherwise sit on main with the change as loose edits, which a
+ *      --merge rerun refuses, its approved head gone (#1240);
  *   4. the steps of the repo's `npm run build` (build-steps.ts) and, while the tree tracks the dist, a `build: rebuild
  *      the plugin dist` commit (with a Large-commit line when the generated files go over the size rule);
  *   5. the local gate (local-gate.ts) on the new HEAD: every local check repos.json's runner lists for the repo, the
@@ -264,19 +270,34 @@ function commitDist(deps: ShipDeps): boolean {
   return true;
 }
 
+/**
+ * Steps 0 to 3: the plan's chunks committed again on the synced branch. Until the last one is in, the branch may sit on
+ * main with the change as loose edits, so a refusal or a failed step in between puts it back on the head the run
+ * started from (hold.ts, #1240).
+ */
+function commitPlan(args: ShipArgs, written: readonly Chunk[], deps: ShipDeps, raisePaths: RaisePaths): readonly Chunk[] {
+  const held = deps.holdHead();
+  try {
+    deps.takeBack(withRaiseLast(written, raisePaths), args.base);
+    const chunks = withRaiseLast(withRaisedVersion(written, raisePaths.versions, deps.sync().sets), raisePaths);
+    refuseEmptyChunks(deps, chunks, raisePaths.versions);
+    if (chunks.length === 0) refuseNothingCarried(deps, args.base);
+    for (const chunk of chunks) commit(deps, chunk.files, chunk.subject, chunk.body);
+    return chunks;
+  } catch (error) {
+    held.restore();
+    throw error;
+  }
+}
+
 /** One run of steps 0 to 6. */
 async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDeps, approved: ApprovedChange | null): Promise<MergeExit> {
   const raisePaths = raisePathsOf(TEAMRIG_VERSION_FILES, TEAMRIG_RELEASE_STAMPS);
-  const versionPaths = raisePaths.versions;
-  deps.takeBack(withRaiseLast(written, raisePaths), args.base);
-  const chunks = withRaiseLast(withRaisedVersion(written, versionPaths, deps.sync().sets), raisePaths);
-  refuseEmptyChunks(deps, chunks, versionPaths);
-  if (chunks.length === 0) refuseNothingCarried(deps, args.base);
+  const chunks = commitPlan(args, written, deps, raisePaths);
 
   // A merge of a repo whose main requires CI checks only what the change touched: required CI runs the whole suite
   // on the pull request, so a second full run here would hold the ship slot for nothing (T3414).
   const scope: CheckScope = args.merge && deps.mergeChecks === 'changed' ? 'short' : 'full';
-  for (const chunk of chunks) commit(deps, chunk.files, chunk.subject, chunk.body);
 
   for (const step of deps.buildSteps()) deps.node(step);
   const distCommitted = distTracked(deps) && commitDist(deps);
@@ -293,7 +314,10 @@ async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDep
     // A check can fail on what another ship merged meanwhile, such as the same version raise in teamrig-pane's
     // plugin version gate (T2725); a run on the moved main tells, and a failure of the change's own fails it too.
     const move = args.merge ? deps.mainMove() : null;
-    if (move === null) throw new Error(`REFUSED ${verdict.reason}`);
+    if (move === null) {
+      deps.log('\nthe branch is left on the commits listed above, which a rerun takes back (#1240)');
+      throw new Error(`REFUSED ${verdict.reason}`);
+    }
     deps.log(`\nlocal checks: ${verdict.reason}, and ${move.reason}`);
     return { kind: 'moved', ...move };
   }
