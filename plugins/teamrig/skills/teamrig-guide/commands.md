@@ -2451,14 +2451,15 @@ The read side of teamrig's public interface, for a program such as a pane, a das
 Nothing else is written to stdout, so every line there parses; a refusal is one `REFUSED` line on stderr with exit 2
 and no document, where other commands print it to stdout. It writes no file, marks nothing read and takes no lock.
 
-The five documents of interface 1 are served. `tasks` is the register's working set, the active tasks and the
-finished ones not yet archived. `inbox` is the asking session's own inbox. `sessions` is every session of your tree
-of teams. `meetings` is the team's meetings still scheduled or started. `config` is the team's config key by key,
-and the one document a run with no team is answered.
+The five documents of interface 1.0 are served, and `plan`, which 1.1 added. `tasks` is the register's working set,
+the active tasks and the finished ones not yet archived. `plan` is the team's active tasks in plan order, each as
+teamrig's own lists place it. `inbox` is the asking session's own inbox. `sessions` is every session of your tree of
+teams. `meetings` is the team's meetings still scheduled or started. `config` is the team's config key by key, and
+the one document a run with no team is answered.
 
 Every document carries:
 
-- `interface`: the interface version that wrote it (`1.0`). Ignore fields you do not know: a minor version adds some.
+- `interface`: the interface version that wrote it (`1.1`). Ignore fields you do not know: a minor version adds some.
 - `document`: its name.
 - `revision`: 16 characters that stay the same while the files the document is read from, what you asked and the
   teamrig version stay the same. Compare it with the one you hold to know whether to draw again; it has no other
@@ -2473,6 +2474,54 @@ Every document carries:
 `tasks` adds `tasks`, each with the task's fields as the register holds them (`id`, `title`, `description`, `owner`,
 `priority`, `status`, `due`, `note`, `proof`, `evidence`, `source`, `ref`, `waits`, `after`, its times and the
 rest), and `cuts`.
+
+`plan` (since interface 1.1) adds `at`, `validUntil`, `week`, `tasks` and `finished`: where each task stands in the
+team's plan, as `teamrig list` orders it, so a program ranks nothing itself. It holds ids, numbers, statuses and
+tags, and no words of a task: join `tasks[].id` to the `tasks` document for those.
+
+- `at`: when the plan was judged, a UTC instant.
+- `validUntil`: the first moment after `at` an answer here may change with no file moving: a due passing or coming
+  within `focus.score.dueSoonDays`, the time a task waits until, an open task reaching `focus.parkAfterDays`. `null`
+  when none is ahead. The clock is no part of `revision`: once `validUntil` has passed, ask again without `--unless`.
+- `week`: the week plan in force, `null` with none.
+- `tasks`: the active tasks in plan order, so a task's place in the list is its rank. `--owner` keeps one session's,
+  still in the team's order.
+- `finished`: the finished tasks the register still holds, by number, each `{ "id", "workClass" }`, under `--owner`
+  that session's only. A plan places none of them; the class is the one a list shows beside a finished task.
+
+Each of `tasks` holds:
+
+- `id`, and `parked`: `true` when the park rule takes it out of the lists (open, quiet for `focus.parkAfterDays`, of
+  a parking class, and needed by no active task of your tree).
+- The keys of plan order, in that order: `pinned`, `band` (0 is expedite, 1 near-term prep, then the team's class
+  bands; the lowest first), `ready` (no wait of it is pending and every task it is planned after is finished),
+  `score` (the highest first), `started`, `due`, `unblocks`, `inWeek` (tagged with the week plan in force), `size`
+  (percent of the weekly limit; `null` when not sized), then the number of its id. A program showing several teams'
+  tasks together sorts by these to order them as teamrig does.
+- `due`: the date it works to, `{ "due", "at", "from" }` or `null`. `due` is the date as stored, `at` the same moment
+  as a UTC instant, and `from` the task needing it whose earlier due this is, `null` for its own.
+- `unblocks`: `{ "first", "priority", "count" }`, the most urgent active task that needs it, that task's priority
+  and how many need it; `null` when none does.
+- What the score was read from: `costOfDelay`, `sizePct` (the work left, in percent of the weekly limit),
+  `workClass`, `goal` (`{ "tag", "rank" }` of its ranked goal, or `null`) and `prep`.
+- `needs`: each task it is planned after or waits on, as `{ "id", "team", "owner", "status" }`. `team` is `null` for
+  a task of the same team, else the team of your tree whose register holds it; `owner` and `status` are `null` for
+  an id no register of the tree holds any more, which was retired, so finished.
+- `neededBy`: the active tasks of other sessions that need it, each `{ "id", "owner", "due" }`, the earliest date
+  first. They are tasks of the same team: a plan knows no needer in another team's register.
+- `next`: who moves first so it can finish, `{ "kind", "who", "task", "behind" }`: the kind is `work` (its owner's),
+  `decision` or `approval` (asked of `who`), `task` is the task moved on, and `behind` an in-progress task the same
+  session works first, or `null`. The kind `time` adds `at`, the UTC instant the owner moves again at, whatever zone
+  the wait was written in. The kind `elsewhere` is `{ "kind", "who", "task", "team", "need" }`: the owner of `need`,
+  an unfinished task `team`'s register holds. `next` is `null` when its needs run in a loop. A minor version may add
+  a kind: pass over one you do not know.
+
+`plan` reads what `teamrig list` reads: the register of every team of your tree (a need may be held there), the goals
+of the team and of the teams above it, and the metered spend a score's size comes from. Of another team's task it
+serves the id, the team, the owner and the status, and nothing else. When a register of the tree cannot be read (an
+archive segment is gone), `tasks` and `finished` are empty and `problems` names the segment: a plan judged without
+it would call a task ready whose need there is unfinished. Its `revision` moves with each of those files, so on a
+working team it moves at nearly every turn, as the scores do: `--unless` saves this document little there.
 
 `inbox` adds `session` (`{ "id", "name" }`), `unread` (how many lines the session has not read; `null` when it never
 ran `teamrig inbox read`, and then every line counts as unread), `lines` and `cuts`. `lines` holds every unread line
@@ -2565,9 +2614,9 @@ Flags:
   `.`, `:` or `-`), for a program that knows its conversation but not its session. `sessions` then answers `self`,
   and `inbox` serves the session of your team holding it when no `--session` is given (a usage error when none
   does). Like `--session` it is a label and proves nothing.
-- `--team <id>`: reads a team above yours in your tree instead of your own, for `tasks`, `meetings` and `config`. A
-  team beside or below yours is refused.
-- `--owner <id|name>`: keeps the tasks one session owns.
+- `--team <id>`: reads a team above yours in your tree instead of your own, for `tasks`, `plan`, `meetings` and
+  `config`. A team beside or below yours is refused.
+- `--owner <id|name>`: keeps the tasks one session owns, of `tasks` and of `plan`.
 - `--since <hours>`: how far back `inbox` serves the lines already read, in whole hours; 24 when left out, and 0
   serves the unread ones only.
 - `--unless <document>=<revision>[,<document>=<revision>...]`: the revision you already hold of a document this run
@@ -2587,7 +2636,7 @@ teamrig read tasks --json --owner api
 Output:
 
 ```text
-{"interface":"1.0","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
+{"interface":"1.1","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
 ```
 
 ### teamrig sessions

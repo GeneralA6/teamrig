@@ -93,8 +93,9 @@ A read returns a versioned JSON document built from parsed data, never a file's 
 
 ### What version 1 ships
 
-`teamrig read <document>... --json` serves the five documents; [the commands page](../commands.md) has its usage and
-the plugin's guide describes every field. What the design above left open is settled this way:
+`teamrig read <document>... --json` serves the five documents of 1.0 and each one a minor version added since (1.1:
+`plan`); [the commands page](../commands.md) has its usage and the plugin's guide describes every field. What the
+design above left open is settled this way:
 
 - **One line a document.** Each document asked is one JSON object on one line of stdout, in the order asked, and
   nothing else is written there: a refusal is one line on stderr. A run answers every document asked or none. With
@@ -124,6 +125,15 @@ the plugin's guide describes every field. What the design above left open is set
 - **`config`.** Each key of the schema is a row, as `teamrig config get --json` prints it. The schema marks a key
   that names where a secret is kept (`x-teamrig-served: location`): its value is never served, only a fixed note,
   and a key of that kind with no mark is read as marked. A value comes less every key the schema does not name.
+- **`plan` (1.1).** A reader must not rank tasks itself: plan order needs every register of the tree, the goals and
+  the metered spend, and a second copy of that rule would drift. So `plan` serves the answers of teamrig's own task
+  tree, the tree `teamrig list` prints from: the team's active tasks in plan order, each with the keys of that
+  order, its needs, who needs it and who moves next. `tasks` stays the stored facts, whose revision moves only with
+  the team's own register. No tree of tasks is served: of another team's task `plan` names the id, the team, the
+  owner and the status, and no text. Its revision covers every file the plan reads, so it moves at nearly every
+  metered turn of a working team; what turns with the clock alone (a due coming near, a wait ending, the park rule)
+  is told ahead in `validUntil`, after which a reader asks again without `--unless`. When a register of the tree
+  cannot be read, no task is served and a problem says why.
 
 ## Act
 
