@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { isUnsupported, unsupported, type HostDeps, type ProgramRunner } from '../plugin-api/index.ts';
 import { HOST_PORT_NAMES } from '../ports/host/index.ts';
 import { hostDeclarationData } from '../testing/manifests.ts';
-import { DEFAULT_HOST } from './adapters.ts';
-import { loadHostPorts } from './host-ports.ts';
+import { DEFAULT_HOST, HOST_ADAPTERS } from './adapters.ts';
+import { loadHostPorts, loadShippedHosts } from './host-ports.ts';
 import type { ModuleImporter } from './loader.ts';
 
 const run: ProgramRunner = () => Promise.reject(new Error('no program runs here'));
@@ -77,5 +77,35 @@ describe('loadHostPorts', () => {
   it('refuses an adapter whose create builds nothing', async () => {
     const source = await loadHostPorts(run, building(undefined));
     assert.throws(() => source({ env: {}, platform: 'linux' }), { message: `the host adapter ${DEFAULT_HOST} cannot be used: its create function built no ports` });
+  });
+});
+
+describe('loadShippedHosts', () => {
+  it('gives the way to build the ports of every host adapter teamrig ships with, the one it runs in among them', async () => {
+    const asked: string[] = [];
+    const importer: ModuleImporter = (specifier) => {
+      asked.push(specifier);
+      const id = specifier.split('/').at(-2) ?? '';
+      return Promise.resolve({ default: { declaration: hostDeclarationData({ id }), create: () => ({ ...everyPortUnsupported(), paths: unsupported(`${id} tells no folder`) }) } });
+    };
+    const sources = await loadShippedHosts(run, importer);
+    const ids = Object.keys(HOST_ADAPTERS);
+    assert.equal(ids.includes(DEFAULT_HOST), true);
+    assert.deepEqual(asked, ids.map((id) => `../adapters/hosts/${id}/index.ts`));
+    assert.deepEqual(
+      sources.map((source) => source({ env: {}, platform: 'linux' }).paths),
+      ids.map((id) => unsupported(`${id} tells no folder`)),
+    );
+  });
+
+  it('loads the shipped adapters as they are, each with its paths', async () => {
+    const sources = await loadShippedHosts(run);
+    assert.equal(sources.length, Object.keys(HOST_ADAPTERS).length);
+    assert.deepEqual(sources.map((source) => isUnsupported(source({ env: {}, platform: 'linux' }).paths)), sources.map(() => false));
+  });
+
+  it('throws when one of them does not load, as the running one does: none is left out in silence', async () => {
+    const missing: ModuleImporter = (specifier) => Promise.reject(new Error(`Cannot find module ${specifier}`));
+    await assert.rejects(loadShippedHosts(run, missing), { message: /^the host adapter [a-z-]+ did not load: its index\.ts did not load: Cannot find module / });
   });
 });

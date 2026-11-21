@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import type { Writable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 import { nodeTranscriptSource } from '../budget/discover.ts';
-import { HOST_PROGRAM_TIMEOUT_MS, loadHostPorts } from '../composition/host-ports.ts';
+import { HOST_PROGRAM_TIMEOUT_MS, loadHostPorts, loadShippedHosts } from '../composition/host-ports.ts';
 import { nodeFileBytes } from '../core/file-bytes.ts';
 import { nodeFiles } from '../core/files.ts';
 import { GIT_TREES } from '../delivery/git-tree.ts';
@@ -85,6 +85,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
   const cmdShimLine = process.env[CMD_SHIM_LINE_ENV];
   delete process.env[CMD_SHIM_LINE_ENV];
   const sessionProcesses = nodeSessionProcesses();
+  const hostPrograms = nodeProgramRunner(HOST_PROGRAM_TIMEOUT_MS);
   return runCli(argv, {
     env: process.env,
     userHome: homedir(),
@@ -101,7 +102,8 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     secretsGit: gitSecrets(process.env),
     out: entry.out,
     platform: process.platform,
-    host: await loadHostPorts(nodeProgramRunner(HOST_PROGRAM_TIMEOUT_MS)),
+    host: await loadHostPorts(hostPrograms),
+    shippedHosts: await loadShippedHosts(hostPrograms),
     processes: nodeProcesses(),
     sessionProcesses,
     starters: starterWatch(sessionProcesses, { pid: process.pid, shells: launchingShellsOf(process.env, process.ppid) }, nodeEvery),
