@@ -71,6 +71,8 @@ export function planSource(scope: ReadScope): DocumentSource {
         owner: scope.owner,
         now,
         turns: { dueSoonDays: config.focus.score.dueSoonDays, parkAfterDays: config.focus.parkAfterDays },
+        ownerMarker: config.register.ownerSource,
+        requireGate: config.register.requireDecisionCard,
       });
       return { body, problems: [...register.problems, ...(elsewhere.problem === null ? [] : [elsewhere.problem])] };
     },

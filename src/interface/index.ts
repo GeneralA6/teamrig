@@ -40,9 +40,11 @@ export {
   type PlanTurns,
   type ServedDue,
   type ServedGoalRank,
+  type ServedLaterCard,
   type ServedMove,
   type ServedNeed,
   type ServedNeeder,
+  type ServedOwnerCards,
   type ServedUnblocks,
 } from './plan.ts';
 export { refOf, type ServedRef } from './ref.ts';

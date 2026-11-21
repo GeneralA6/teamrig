@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { NO_TASKS_ELSEWHERE, TaskTree, type TaskElsewhere, type TasksElsewhere } from '../register/tree.ts';
+import type { WaitReason } from '../register/waits.ts';
+import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { parkedFacts, TEST_FOCUS, testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import { planBody, type PlanBody, type PlannedTask } from './plan.ts';
@@ -12,13 +14,20 @@ const STARTED = '2030-01-07T09:00:00.000Z';
 /** A text one of teamrig's own secret shapes matches, built from parts so this file holds none. */
 const TOKEN = ['pass', 'word', '=', 'hunter2'].join('');
 const TURNS = { dueSoonDays: TEST_FOCUS.score.dueSoonDays, parkAfterDays: TEST_FOCUS.parkAfterDays };
+const SETTINGS = { ownerMarker: 'owner', requireGate: true };
+
+/** A card on the owner's decision, with its gate, owned by `owner`, put off until each of `times`. */
+function cardOf(id: string, owner: string, times: readonly string[] = [], overrides: Partial<Task> = {}): Task {
+  const waits: WaitReason[] = [{ kind: 'decision', who: 'owner' }, ...times.map((at): WaitReason => ({ kind: 'time', at }))];
+  return testTask({ id, owner, status: 'waiting', startedAt: STARTED, waits, card: TEST_OWNER_CARD, ...overrides });
+}
 
 function treeOf(tasks: readonly Task[], elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): TaskTree {
   return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC, null, elsewhere, testRanking());
 }
 
 function planOf(tasks: readonly Task[], owner: string | null = null, elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): PlanBody {
-  return planBody({ tree: treeOf(tasks, elsewhere), tasks, owner, now: NOW.getTime(), turns: TURNS });
+  return planBody({ tree: treeOf(tasks, elsewhere), tasks, owner, now: NOW.getTime(), turns: TURNS, ...SETTINGS });
 }
 
 function planned(body: PlanBody, id: string): PlannedTask {
@@ -66,7 +75,7 @@ describe('planBody', () => {
       testTask({ id: 'T3', after: ['T1'] }),
     ];
     const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC, '2030-01-07', NO_TASKS_ELSEWHERE, testRanking({ goals: { T1: { tag: 'G2', rank: 2 } } }));
-    const body = planBody({ tree, tasks, owner: null, now: NOW.getTime(), turns: TURNS });
+    const body = planBody({ tree, tasks, owner: null, now: NOW.getTime(), turns: TURNS, ...SETTINGS });
     const ranked = tree.placeOf(tasks[0] ?? testTask()).ranked;
     assert.ok(ranked !== undefined);
     assert.equal(body.week, '2030-01-07');
@@ -134,7 +143,7 @@ describe('planBody', () => {
       testTask({ id: 'T4', status: 'done' }),
     ];
     const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC, null, NO_TASKS_ELSEWHERE, testRanking({ classes: { T10: 'Roadmap' } }));
-    const input = { tree, tasks, now: NOW.getTime(), turns: TURNS };
+    const input = { tree, tasks, now: NOW.getTime(), turns: TURNS, ...SETTINGS };
     assert.deepEqual(planBody({ ...input, owner: null }).finished, [
       { id: 'T2', workClass: 'Improvements' },
       { id: 'T4', workClass: 'Improvements' },
@@ -199,7 +208,51 @@ describe('planBody', () => {
   it('refuses a tree built with no ranking, which could place nothing', () => {
     const tasks = [testTask()];
     const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC);
-    assert.throws(() => planBody({ tree, tasks, owner: null, now: NOW.getTime(), turns: TURNS }), /needs a tree built with its ranking/);
+    assert.throws(() => planBody({ tree, tasks, owner: null, now: NOW.getTime(), turns: TURNS, ...SETTINGS }), /needs a tree built with its ranking/);
+  });
+});
+
+describe('planBody ownerCards', () => {
+  it("serves each session's cards on the owner: those asked now in plan order, those put off soonest back first", () => {
+    const tasks = [
+      cardOf('T1', 'alpha'),
+      cardOf('T2', 'alpha', ['2030-01-10']),
+      cardOf('T3', 'alpha', ['2030-01-09 12:00']),
+      cardOf('T4', 'alpha', [], { pin: 'lead' }),
+      cardOf('T5', 'bravo'),
+      testTask({ id: 'T6', owner: 'carol', status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }] }),
+      working({ id: 'T7', owner: 'dave' }),
+    ];
+    assert.deepEqual(planOf(tasks).ownerCards, [
+      {
+        session: 'alpha',
+        due: ['T4', 'T1'],
+        later: [
+          { id: 'T3', until: '2030-01-09 12:00', at: '2030-01-09T12:00:00.000Z' },
+          { id: 'T2', until: '2030-01-10', at: '2030-01-10T23:59:59.999Z' },
+        ],
+      },
+      { session: 'bravo', due: ['T5'], later: [] },
+    ]);
+  });
+
+  it('keeps plan order among cards back at the same time', () => {
+    const tasks = [cardOf('T1', 'alpha', ['2030-01-09 12:00']), cardOf('T2', 'alpha', ['2030-01-09 12:00'], { pin: 'lead' })];
+    assert.deepEqual(planOf(tasks).ownerCards[0]?.later.map((card) => card.id), ['T2', 'T1']);
+  });
+
+  it("serves only the asked session's cards under the owner filter", () => {
+    const tasks = [cardOf('T1', 'alpha'), cardOf('T2', 'bravo')];
+    assert.deepEqual(planOf(tasks, 'bravo').ownerCards, [{ session: 'bravo', due: ['T2'], later: [] }]);
+    assert.deepEqual(planOf(tasks, 'carol').ownerCards, []);
+  });
+
+  it("leaves out a card with no gate while the owner's cards need one, and serves it when they do not", () => {
+    const tasks = [cardOf('T1', 'alpha', [], { card: TEST_CARD })];
+    assert.deepEqual(planOf(tasks).ownerCards, []);
+    const input = { tree: treeOf(tasks), tasks, owner: null, now: NOW.getTime(), turns: TURNS };
+    assert.deepEqual(planBody({ ...input, ownerMarker: 'owner', requireGate: false }).ownerCards, [{ session: 'alpha', due: ['T1'], later: [] }]);
+    assert.deepEqual(planBody({ ...input, ownerMarker: 'boss', requireGate: false }).ownerCards, [], 'another owner marker');
   });
 });
 

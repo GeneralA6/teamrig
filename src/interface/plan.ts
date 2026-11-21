@@ -1,6 +1,7 @@
 import { MS_PER_DAY, parseDeadline } from '../core/time.ts';
 import { taskNumber, type Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES } from '../register/model.ts';
+import { ownerCardsBySession } from '../register/owner-waits.ts';
 import { planBand, type NextMove, type PlanPlace, type TaskTree } from '../register/tree.ts';
 
 /** The date a task works to: its own due, or the earlier one of a task that needs it. */
@@ -104,6 +105,26 @@ export interface PlannedTask {
   readonly next: ServedMove | null;
 }
 
+/**
+ * A card the owner put off (Later): the task, and when the lead asks it again, as stored (`until`: a bare day of the
+ * team's zone or `YYYY-MM-DD HH:MM` in UTC) and as ISO in UTC (`at`, null for a stored text that reads as no time).
+ */
+export interface ServedLaterCard {
+  readonly id: string;
+  readonly until: string;
+  readonly at: string | null;
+}
+
+/**
+ * One session's cards on the owner, as `teamrig meet` asks them: `due` the tasks the lead asks the owner now, in plan
+ * order; `later` those the owner put off, the soonest back first, plan order among the same time.
+ */
+export interface ServedOwnerCards {
+  readonly session: string;
+  readonly due: readonly string[];
+  readonly later: readonly ServedLaterCard[];
+}
+
 /** The `plan` document's own fields. */
 export interface PlanBody {
   /** When the plan was judged, ISO in UTC. */
@@ -120,6 +141,8 @@ export interface PlanBody {
   readonly tasks: readonly PlannedTask[];
   /** The finished tasks the register still holds, by number: a plan places none of them, a reader still shows their class. */
   readonly finished: readonly FinishedTask[];
+  /** Each session with a card on the owner, in the plan order of its first card; a session with none is absent. */
+  readonly ownerCards: readonly ServedOwnerCards[];
 }
 
 /** The settings whose days turn an answer of the plan with no file moving. */
@@ -140,6 +163,10 @@ export interface PlanInput {
   readonly owner: string | null;
   readonly now: number;
   readonly turns: PlanTurns;
+  /** The text that marks the human owner in a wait (`register.ownerSource`). */
+  readonly ownerMarker: string;
+  /** Whether a wait on the owner needs its decision card to be the owner's (`register.requireDecisionCard`). */
+  readonly requireGate: boolean;
 }
 
 /** The `plan` document's body. */
@@ -159,7 +186,23 @@ export function planBody(input: PlanInput): PlanBody {
       .filter((task) => !isActive(task) && asked(task))
       .sort((a, b) => taskNumber(a.id) - taskNumber(b.id))
       .map((task) => ({ id: task.id, workClass: rankedOf(tree.placeOf(task)).workClass })),
+    ownerCards: servedOwnerCards(tasks, input).filter((cards) => input.owner === null || cards.session === input.owner),
   };
+}
+
+/** Each session's cards on the owner (ownerCardsBySession), a Later card soonest back first; one that reads as no time last. */
+function servedOwnerCards(tasks: readonly Task[], input: PlanInput): ServedOwnerCards[] {
+  const { tree } = input;
+  const served: ServedOwnerCards[] = [];
+  for (const [session, cards] of ownerCardsBySession(tasks, tree, input.ownerMarker, input.requireGate)) {
+    const later = cards.later.map(({ task, until }) => ({ id: task.id, until, back: parseDeadline(until, tree.zone)?.getTime() ?? Number.POSITIVE_INFINITY }));
+    served.push({
+      session,
+      due: cards.due.map((task) => task.id),
+      later: later.sort((a, b) => a.back - b.back).map(({ id, until, back }) => ({ id, until, at: Number.isFinite(back) ? new Date(back).toISOString() : null })),
+    });
+  }
+  return served;
 }
 
 function plannedTask(task: Task, tree: TaskTree): PlannedTask {

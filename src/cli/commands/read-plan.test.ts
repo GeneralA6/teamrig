@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { JsonRecord } from '../../core/guards.ts';
 import { INTERFACE_VERSION } from '../../interface/index.ts';
 import { layoutPaths } from '../../register/layout.ts';
+import { TEST_OWNER_CARD_FLAGS } from '../../testing/card.ts';
 import { CliHarness, TEAM_HOME, type RunOptions } from '../../testing/cli-harness.ts';
 import { normalisePath } from '../../testing/memory-files.ts';
 import { problemsOf, rowsOf, served } from '../../testing/read-answers.ts';
@@ -106,6 +107,19 @@ describe('teamrig read plan', () => {
     for (const title of ['Ship the gate', 'Write the guide', 'Drop the old flag']) {
       assert.equal(result.stdout.join('\n').includes(title), false, `no title is served: ${title}`);
     }
+  });
+
+  it("serves each session's cards on the owner as teamrig meet asks them, and one session's with --owner", async () => {
+    const kit = new CliHarness();
+    await add(kit, 'Pick the tier', 'alpha');
+    await add(kit, 'Pick the region', 'alpha');
+    await add(kit, 'Pick the name', 'bravo');
+    await ok(kit, ['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'the tier', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha']);
+    await ok(kit, ['set', 'T2', '--status', 'waiting', '--waits', 'decision:owner,time:2030-01-09 12:00', '--note', 'the region', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha']);
+    await ok(kit, ['set', 'T3', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'the name', ...TEST_OWNER_CARD_FLAGS, '--session', 'bravo']);
+    const alpha = { session: 'alpha', due: ['T1'], later: [{ id: 'T2', until: '2030-01-09 12:00', at: '2030-01-09T12:00:00.000Z' }] };
+    assert.deepEqual(served(await kit.run(READ_PLAN))['ownerCards'], [alpha, { session: 'bravo', due: ['T3'], later: [] }]);
+    assert.deepEqual(served(await kit.run([...READ_PLAN, '--owner', 'alpha']))['ownerCards'], [alpha]);
   });
 
   it('names a need another team of the tree holds by its id, team, owner and status, and nothing else of it', async () => {
