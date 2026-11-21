@@ -190,6 +190,7 @@ describe('ci.yml', () => {
       { does: 'node tools/docs/configuration-cli.ts --check', when: NOT_DESIGN },
       { does: 'node tools/docs/parity-cli.ts --check', when: NOT_DESIGN },
       { does: 'node tools/ci/boundaries-cli.ts', when: CODE },
+      { does: 'node tools/ci/provider-words-cli.ts', when: CODE },
       { does: 'node tools/docs/doc-check-cli.ts', when: undefined },
     ]);
   });
