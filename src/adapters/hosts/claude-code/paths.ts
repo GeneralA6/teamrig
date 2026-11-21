@@ -21,9 +21,16 @@ const MEMORY_INDEX = 'MEMORY.md';
 const OWN_FOLDER_SECRETS = ['.credentials.json', 'history.jsonl'] as const;
 /**
  * Claude Code's files whose content is a secret, as the secret guard's globs: those of its own folder where it is
- * by default, and a folder's local settings, whose allow rules keep a command allowed once, a credential in it too.
+ * by default, a folder's local settings, whose allow rules keep a command allowed once, a credential in it too, and
+ * its login in any folder named like its own (`.claude-work`, `.claude2`): a second account's folder, or one this
+ * run's environment does not name. The login is not named in every folder: the guard would then read each search
+ * of `*.json` files as one of a login.
  */
-const SECRET_FILES: readonly string[] = [...OWN_FOLDER_SECRETS.map((name) => `~/.claude/${name}`), `**/${PROJECT_DIR}/settings.local.json`];
+const SECRET_FILES: readonly string[] = [
+  ...OWN_FOLDER_SECRETS.map((name) => `~/.claude/${name}`),
+  `**/${PROJECT_DIR}/settings.local.json`,
+  `**/${PROJECT_DIR}*/.credentials.json`,
+];
 
 /**
  * `folder`, an absolute path on `platform`, as a glob of the secret guard that fits that folder: forward slashes, `.`
