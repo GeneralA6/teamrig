@@ -10,10 +10,11 @@ import {
   isCold,
   JsonlColdSendLog,
   RESEND_WINDOW_MS,
-  sendTargetOf,
-  sendTextOf,
+  sentMessageOf,
   type ColdSendFacts,
+  type SentMessage,
 } from './cold-send.ts';
+import { hookEventOf } from '../testing/host.ts';
 
 const LOG = join('/', 'state', 'cold-sends.jsonl');
 const TAB = '0123abcd-0000-4000-8000-00000000000a';
@@ -25,26 +26,24 @@ function factsAt(now: Date, overrides: Partial<ColdSendFacts> = {}): ColdSendFac
   return { claudeSession: TAB, to: 'alpha', name: 'app-alpha', idleMs: 2 * HOUR, coldAfterMinutes: 60, now, command: 'teamrig', wakeNow: true, ...overrides };
 }
 
-describe('sendTargetOf', () => {
-  it("reads a SendMessage call's receiver", () => {
-    assert.equal(sendTargetOf({ tool_name: 'SendMessage', tool_input: { to: ' app-alpha ', message: 'x' } }), 'app-alpha');
-    assert.equal(sendTargetOf({ tool_name: 'SendMessage', tool_input: { to: 'app-alpha [uds:4f2a]' } }), 'app-alpha');
+describe('sentMessageOf', () => {
+  const sent = (tool: string, input: unknown): SentMessage | undefined => sentMessageOf(hookEventOf({ tool_name: tool, tool_input: input }));
+
+  it("reads a message call's receiver, without the [ref] its host adds, and its text", () => {
+    assert.deepEqual(sent('SendMessage', { to: ' app-alpha ', message: 'CRITICAL: the API is down' }), { to: 'app-alpha', text: 'CRITICAL: the API is down' });
+    assert.deepEqual(sent('SendMessage', { to: 'app-alpha [uds:4f2a]', message: 'x' }), { to: 'app-alpha', text: 'x' });
   });
 
-  it('ignores other tools and calls naming no receiver', () => {
-    assert.equal(sendTargetOf({ tool_name: 'Bash', tool_input: { to: 'app-alpha' } }), undefined);
-    assert.equal(sendTargetOf({ tool_name: 'SendMessage', tool_input: { to: ' ' } }), undefined);
-    assert.equal(sendTargetOf({ tool_name: 'SendMessage', tool_input: 'app-alpha' }), undefined);
-    assert.equal(sendTargetOf({ tool_name: 'SendMessage' }), undefined);
-    assert.equal(sendTargetOf('SendMessage'), undefined);
+  it('reads an empty text for a call that sends none', () => {
+    assert.deepEqual(sent('SendMessage', { to: 'lead', notify_when_idle: true }), { to: 'lead', text: '' });
   });
 
-  it("reads a SendMessage call's text, empty for none or another tool", () => {
-    assert.equal(sendTextOf({ tool_name: 'SendMessage', tool_input: { to: 'lead', message: 'CRITICAL: the API is down' } }), 'CRITICAL: the API is down');
-    assert.equal(sendTextOf({ tool_name: 'SendMessage', tool_input: { to: 'lead', notify_when_idle: true } }), '');
-    assert.equal(sendTextOf({ tool_name: 'SendMessage', tool_input: 'lead' }), '');
-    assert.equal(sendTextOf({ tool_name: 'Bash', tool_input: { message: 'x' } }), '');
-    assert.equal(sendTextOf(null), '');
+  it('ignores other tools, calls naming no receiver and an event with no call', () => {
+    assert.equal(sent('Bash', { to: 'app-alpha', message: 'x' }), undefined);
+    assert.equal(sent('SendMessage', { to: ' ' }), undefined);
+    assert.equal(sent('SendMessage', 'app-alpha'), undefined);
+    assert.equal(sentMessageOf(hookEventOf({ tool_name: 'SendMessage' })), undefined);
+    assert.equal(sentMessageOf(hookEventOf({ prompt: 'send it to app-alpha' })), undefined);
   });
 });
 

@@ -6,7 +6,8 @@ import { gitSyncIn } from '../lib/git.ts';
 import { type ClearMerge, clearMergeFrom } from './approval.ts';
 import { type Gh, ghWithToken } from './github.ts';
 import { type Credential, SHIP_TOKEN_TARGET, readCredential, windowsPowerShell } from './keychain.ts';
-import { lackingSections, missingSections, pullBody, pullTitle } from './merge.ts';
+import { lackingSections, missingSections, pullBody } from './merge.ts';
+import { type PullTaskRead, labelPull, pullFaceOf, pullTaskFrom } from './pull-task.ts';
 import { findOpenPull, openPull } from './pulls.ts';
 import { type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
 import { APPROVED_SHA } from './ship-plan.ts';
@@ -19,6 +20,7 @@ import { describeCredential } from './token-check.ts';
  * gh login, since only the ship token may create one, so the owner opened it by hand. This runs no gate and merges
  * nothing: origin's head must be the approved sha and clear on that approval as a merge would (approval.ts), and the
  * note must hold the template's sections (missingSections); an open pull request of that head is found, not opened again.
+ * Either way it is dressed from the branch's task as a merge dresses it (pull-task.ts, T4796).
  */
 
 export interface OpenPullArgs {
@@ -59,6 +61,8 @@ export interface OpenPullDeps {
   ghFor: (token: string) => Gh;
   /** Whether the caller may merge the branch at its head on the approval it names (approval.ts, T2788). */
   clearMerge: ClearMerge;
+  /** The register's task of a head branch, which dresses its pull request (pull-task.ts, T4796). */
+  pullTask: PullTaskRead;
   /** A file's text, or null when there is none. */
   readText: (path: string) => string | null;
   out: (line: string) => void;
@@ -96,19 +100,24 @@ export async function runOpenPull(args: OpenPullArgs, deps: OpenPullDeps): Promi
   const gh = deps.ghFor(credential.secret);
   // The earlier pushes' pull requests of this change, which the one found or opened replaces (T4780).
   const supersede = supersedeFrom(gh, repo, profile.main, pullCommitsOf(git, profile.main, profile.regenerated), deps.out);
+  const face = pullFaceOf(gh, { repo, head, subjects, note, task: await deps.pullTask(head) }, deps.out);
   const found = findOpenPull(gh, repo, head, profile.main);
   if (found !== null) {
     if (found.headSha !== sha) return refuse(deps, `pull request #${found.number} ${found.url} is at ${found.headSha.slice(0, 9)}, not ${sha.slice(0, 9)}`);
     deps.out(`found pull request #${found.number} ${found.url}`);
+    if (face.unlinked !== null) deps.out(`warning: pull request #${found.number}: ${face.unlinked}`);
+    labelPull(gh, repo, found.number, face.labels, deps.out);
     supersede(found);
     return 0;
   }
   const lacks = missingSections(note, profile.pullSections);
   if (lacks !== null) return refuse(deps, lackingSections(lacks));
-  const pull = openPull(gh, repo, head, profile.main, pullTitle(head, profile.main, subjects.length), pullBody(subjects, note));
+  if (face.unlinked !== null) return refuse(deps, face.unlinked);
+  const pull = openPull(gh, repo, head, profile.main, face.title, pullBody(subjects, face.note));
   // A push between the read above and the call would open the pull request at a head nobody approved.
   if (pull.headSha !== sha) return refuse(deps, `pull request #${pull.number} ${pull.url} opened at ${pull.headSha.slice(0, 9)}, not the approved ${sha.slice(0, 9)}: ${head} moved, so close it`);
   deps.out(`opened pull request #${pull.number} ${pull.url}`);
+  labelPull(gh, repo, pull.number, face.labels, deps.out);
   supersede(pull);
   return 0;
 }
@@ -116,12 +125,14 @@ export async function runOpenPull(args: OpenPullArgs, deps: OpenPullDeps): Promi
 /** The real git, keychain, gh and approval reads for a repo dir. */
 export function realOpenPullDeps(dir: string): OpenPullDeps {
   const runGit = gitSyncIn(dir);
+  const kitReader = { env: process.env, userHome: homedir(), files: nodeFiles(realSleep), clock: systemClock };
   return {
     git: (...gitArgs) => runGit(gitArgs).trim(),
     profiles: readProfiles(),
     credential: () => readCredential(SHIP_TOKEN_TARGET, windowsPowerShell),
     ghFor: ghWithToken,
-    clearMerge: clearMergeFrom(process.env, { env: process.env, userHome: homedir(), files: nodeFiles(realSleep), clock: systemClock }),
+    clearMerge: clearMergeFrom(process.env, kitReader),
+    pullTask: pullTaskFrom(process.env, kitReader),
     readText: path => (existsSync(path) ? readFileSync(path, 'utf8') : null),
     out: line => console.log(line),
     err: line => console.error(line),

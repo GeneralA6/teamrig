@@ -1,4 +1,3 @@
-import { toolCommandReadings } from "../core/bash-tool-readings.js";
 import { parseIssueTarget, targetText } from "../issues/host.js";
 import { readable } from "../slash/plan.js";
 import { ABSOLUTE, matchesKit } from "./route-kit.js";
@@ -101,11 +100,10 @@ async function migrateCallOf(words, parsed, context) {
     return (await matchesKit(MIGRATE_SHAPE, words, context)) ? { command: MIGRATE_COMMAND, target: file, session } : undefined;
 }
 /**
- * The role call a Bash tool call runs; undefined for any other tool or line. A call only when its shell may run one
- * text (`toolCommandReadings`): a second reading comes only from a backslash run, which no role call holds.
+ * The role call a bash call runs; undefined for any other shell or line. A call only when its shell may run one text
+ * (the call's `readings`): a second reading comes only from a backslash run, which no role call holds.
  */
-export async function toolRoleCallOf(tool, line, platform, context) {
-    const readings = toolCommandReadings(tool, line, platform);
-    const [only] = readings;
-    return tool !== 'Bash' || readings.length !== 1 || only === undefined ? undefined : roleCallOf(only, context);
+export async function shellRoleCallOf(call, context) {
+    const [only] = call.readings;
+    return call.dialect !== 'bash' || call.readings.length !== 1 || only === undefined ? undefined : roleCallOf(only, context);
 }

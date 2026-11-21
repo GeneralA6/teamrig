@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { CLAUDE_SESSION, CliHarness, TEAM } from '../testing/cli-harness.ts';
 import { FakeWorktreeFiles, FakeWorktreeGit, type FakeGitAnswers } from '../testing/fake-worktrees.ts';
+import { NO_PATHS_HOST } from '../testing/host.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
 import { EXIT } from './runtime.ts';
 
@@ -237,6 +238,21 @@ describe('runCli: worktree remove clears the leftover of a removal git stopped p
     assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
     assert.equal(result.stdout.at(-1), `OK cleared the leftover ${resolve('/w/wt/t4')}`);
     assert.equal(await files.kindOf('/w/wt/t4'), 'missing');
+  });
+
+  it('on a host whose folders teamrig does not know, clears one only in a folder the repository sets: it guesses no default folder', async () => {
+    const husk = '/w/main/.claude/worktrees/t4';
+    const guessed = leftover(husk, '/w/main');
+    const refused = await new CliHarness(null, null).run(['worktree', 'remove', husk], { worktrees: guessed.ports, host: NO_PATHS_HOST });
+    assert.equal(refused.code, EXIT.refused);
+    // The refusal a folder inside the main checkout gets when it is no leftover: no worktree folder is known there.
+    assert.deepEqual(refused.stdout, [`REFUSED ${resolve(husk)} is inside the worktree /w/main: give its top folder`]);
+    assert.deepEqual(guessed.files.unlinked, []);
+    const kit = new CliHarness({ ...TEAM, delivery: { repos: { app: { mainCheckout: '/w/main', worktreeFolder: '../wt' } } } });
+    const set = leftover('/w/wt/t4', undefined);
+    const env = { TEAMRIG_SESSION: 'bravo', CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION };
+    const cleared = await kit.run(['worktree', 'remove', '/w/wt/t4'], { worktrees: set.ports, env, host: NO_PATHS_HOST });
+    assert.equal(cleared.stdout.at(-1), `OK cleared the leftover ${resolve('/w/wt/t4')}`);
   });
 
   it('refuses one in no folder worktrees are made in, as before', async () => {

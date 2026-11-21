@@ -1,6 +1,6 @@
 import { roleHolderOf } from "../../config/roster.js";
 import { formatAddress } from "../../core/address.js";
-import { errorMessage, stringField } from "../../core/guards.js";
+import { errorMessage } from "../../core/guards.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { filedToday, SecretIncidentLog } from "../../secret-guard/incidents.js";
 import { taskRefOf } from "../inputs.js";
@@ -22,24 +22,24 @@ const every = (leak, problem) => leak.kinds.map((kind) => ({ kind, problem }));
  * task, so a real leak later that day is never folded into a task no one works (T1545). Nothing here throws: a filing
  * that fails is that kind's problem, and the redaction is sent either way.
  */
-export async function fileRotations(runtime, payload, leak) {
+export async function fileRotations(runtime, event, leak) {
     try {
-        const team = await teamScopeOf(runtime, payload);
+        const team = await teamScopeOf(runtime, event.cwd);
         if (team === undefined) {
             return every(leak, "the tab's team has no loaded config");
         }
-        const session = (await sessionScopeOf(runtime, team, payload))?.id;
+        const session = (await sessionScopeOf(runtime, team, event.session))?.id;
         const lock = fileLockOf(runtime, team.kit.paths.secretIncidentsLock, { ...team.config.lock, waitMs: LOCK_WAIT_MS });
-        return await lock.run(() => rotateEach(runtime, team, session, callOf(payload), leak));
+        return await lock.run(() => rotateEach(runtime, team, session, callOf(event), leak));
     }
     catch (error) {
         return every(leak, errorMessage(error));
     }
 }
-function callOf(payload) {
-    const toolUseId = stringField(payload, 'tool_use_id');
-    const transcript = stringField(payload, 'transcript_path');
-    const agent = stringField(payload, 'agent_id');
+function callOf(event) {
+    const toolUseId = event.call?.id;
+    const { transcript } = event;
+    const agent = event.helper?.id;
     return { ...(toolUseId === undefined ? {} : { toolUseId }), ...(transcript === undefined ? {} : { transcript }), ...(agent === undefined ? {} : { agent }) };
 }
 async function rotateEach(runtime, team, session, call, leak) {

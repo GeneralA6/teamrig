@@ -1,4 +1,5 @@
 import { join, resolve } from 'node:path';
+import type { ConfigLoad } from '../config/load.ts';
 import type { Roster } from '../config/roster.ts';
 import { TeamTree, teamNodeOf } from '../config/tree.ts';
 import type { KitConfig } from '../config/types.ts';
@@ -14,29 +15,45 @@ export interface TreeTeam {
   readonly roster: Roster;
 }
 
+/** A team folder's config that did not load: there is none, or it cannot be read. */
+export type LeftOutLoad = Exclude<ConfigLoad, { readonly status: 'loaded' }>;
+
 /** Every team of the kit home with a config, linked by their `team.parent`. */
 export interface KitTree {
   readonly tree: TeamTree;
   readonly teams: ReadonlyMap<string, TreeTeam>;
+  /**
+   * The team folders the tree holds no node for, each with how its config read. Such a team's parent is unknown, so
+   * which tree it belongs to is too: a caller that must say what it could not read names every one of them.
+   */
+  readonly leftOut: ReadonlyMap<string, LeftOutLoad>;
+}
+
+/** The folder holding every team's folder, `<kit home>/teams`. */
+export function teamsFolderOf(runtime: Pick<KitReader, 'env' | 'userHome'>): string {
+  return join(resolveKitHome(runtime.env, runtime.userHome), 'teams');
 }
 
 /**
  * Reads every team config under `<kit home>/teams/`, read-only. A folder with no config or one that
- * cannot be read is left out: that team's own commands report it, and `doctor` names a parent left
- * out this way as missing.
+ * cannot be read is left out of the tree and kept in `leftOut`: that team's own commands report it, and
+ * `doctor` names a parent left out this way as missing.
  */
 export async function loadTree(runtime: KitReader): Promise<KitTree> {
-  const folders = await runtime.files.list(join(resolveKitHome(runtime.env, runtime.userHome), 'teams'));
+  const folders = await runtime.files.list(teamsFolderOf(runtime));
   const teams = new Map<string, TreeTeam>();
+  const leftOut = new Map<string, LeftOutLoad>();
   for (const team of folders.filter((folder) => ID_PATTERN.test(folder)).sort()) {
     const kit = await openKit(runtime, team);
     if (kit.load.status === 'loaded') {
       const { config } = kit.load;
       teams.set(team, { kit, config, roster: await rosterOf(runtime, kit, config) });
+    } else {
+      leftOut.set(team, kit.load);
     }
   }
   const nodes = [...teams].map(([team, { config, roster }]) => teamNodeOf(team, config, roster));
-  return { tree: new TeamTree(nodes), teams };
+  return { tree: new TeamTree(nodes), teams, leftOut };
 }
 
 /**

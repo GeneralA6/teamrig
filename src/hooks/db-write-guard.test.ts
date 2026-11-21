@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { DEFAULT_DB_WRITE_GUARD } from '../config/defaults.ts';
 import type { DbWriteGuardConfig } from '../config/types.ts';
-import { isRecord, stringField } from '../core/guards.ts';
+import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { testConfig } from '../testing/config.ts';
+import { hookEventOf, replyText } from '../testing/host.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import type { DbWrite } from '../db-write-guard/writes.ts';
-import { dbWriteGuardOf, dbWriteGuardOutput, dbWriteReason, type DbWriteGuardEnv } from './db-write-guard.ts';
+import { dbWriteGuardOf, dbWriteGuardReply, dbWriteReason, type DbWriteGuardEnv } from './db-write-guard.ts';
 import { ASK_REFUSED_NOTE } from './permission.ts';
 
 const APP = resolve('/', 'work', 'app');
@@ -22,12 +23,20 @@ const TEAM: Pick<DbWriteGuardConfig, 'programs' | 'nodeClients'> = {
   nodeClients: [{ module: 'docstore', vocabulary: 'document' }],
 };
 
-function env(overrides: Partial<DbWriteGuardEnv> = {}): DbWriteGuardEnv {
-  return { ...DEFAULT_DB_WRITE_GUARD, ...TEAM, cwd: APP, home: resolve('/', 'u'), files: new MemoryFiles(), platform: 'linux', ...overrides };
+/** The guard's env, with the platform the host reads the call on: Linux when a spec names none. */
+type SpecEnv = DbWriteGuardEnv & { readonly platform?: NodeJS.Platform };
+
+function env(overrides: Partial<SpecEnv> = {}): SpecEnv {
+  return { ...DEFAULT_DB_WRITE_GUARD, ...TEAM, cwd: APP, home: resolve('/', 'u'), files: new MemoryFiles(), ...overrides };
 }
 
-function payload(command: string, extra: Readonly<Record<string, string>> = {}): unknown {
+function payload(command: string, extra: Readonly<Record<string, string>> = {}): JsonRecord {
   return { tool_name: 'Bash', tool_input: { command }, ...extra };
+}
+
+/** What the shipped host is handed for the guard's reply to this hook input. */
+async function dbWriteGuardOutput(input: JsonRecord, guardEnv: SpecEnv): Promise<string> {
+  return replyText('tool-start', await dbWriteGuardReply(hookEventOf(input, guardEnv.platform), guardEnv));
 }
 
 /** The decision and reason the output carries, or undefined for no output. */
@@ -42,7 +51,7 @@ function verdictOf(output: string): { readonly decision: string | undefined; rea
   return { decision: stringField(hook, 'permissionDecision'), reason: stringField(hook, 'permissionDecisionReason') };
 }
 
-describe('dbWriteGuardOutput', () => {
+describe('dbWriteGuardReply', () => {
   it('refuses a hand-run write, naming it, the count to show the owner first and the route (T3356)', async () => {
     const verdict = verdictOf(await dbWriteGuardOutput(payload(`docsh app --eval 'db.orders.deleteMany({})'`), env()));
     assert.equal(verdict?.decision, 'deny');
@@ -105,22 +114,22 @@ describe('dbWriteGuardOutput', () => {
     const powershell = { tool_name: 'PowerShell', tool_input: { command: 'kvcli DEL "cache:x"' } };
     assert.match(verdictOf(await dbWriteGuardOutput(powershell, env()))?.reason ?? '', /kvcli runs DEL/);
     // bash drops the backslashes, so the echo hands docsh `db.a.drop()`; PowerShell keeps them, so docsh gets no call.
-    const piped = (tool: string): unknown => ({ tool_name: tool, tool_input: { command: String.raw`echo db.a.drop\(\) | docsh` } });
+    const piped = (tool: string): JsonRecord => ({ tool_name: tool, tool_input: { command: String.raw`echo db.a.drop\(\) | docsh` } });
     assert.match(verdictOf(await dbWriteGuardOutput(piped('Bash'), env()))?.reason ?? '', /docsh runs drop/);
     assert.equal(await dbWriteGuardOutput(piped('PowerShell'), env()), '');
   });
 
-  it('prints nothing for a payload that is not a shell call', async () => {
-    for (const input of [undefined, 'text', { tool_name: 'Read', tool_input: { file_path: join(APP, 'a.js') } }]) {
+  it('says nothing to a call that is no shell call, or a shell call with no line', async () => {
+    for (const input of [{ tool_name: 'Read', tool_input: { file_path: join(APP, 'a.js') } }, { tool_name: 'Bash', tool_input: {} }, {}]) {
       assert.equal(await dbWriteGuardOutput(input, env()), '');
     }
   });
 });
 
-describe('dbWriteGuardOutput: a Bash line on Windows', () => {
+describe('dbWriteGuardReply: a Bash line on Windows', () => {
   /** A run of n backslashes; on Windows bash receives each run not before a double quote halved, rounded up. */
   const bs = (n: number): string => '\\'.repeat(n);
-  const windows = (overrides: Partial<DbWriteGuardEnv> = {}): DbWriteGuardEnv => env({ platform: 'win32', ...overrides });
+  const windows = (overrides: Partial<SpecEnv> = {}): SpecEnv => env({ platform: 'win32', ...overrides });
   const hiddenSeparator = (command: string): string => `echo a${bs(3)}; ${command}`;
   const hiddenBacktick = (command: string): string => `echo "p${bs(3)}\`${command}; echo ${bs(3)}\`q"`;
   const write = (program: string, what: string): DbWrite => ({ program, writes: [what], entrypoint: false, elsewhere: false });

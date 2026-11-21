@@ -1,6 +1,6 @@
 import * as nodePath from 'node:path';
-import { recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { KIT_NAME } from '../core/home.ts';
+import type { HookEvent } from '../ports/host/index.ts';
 import { bashDrivePath, resolveDir } from '../push-guard/location.ts';
 import { isStaticWord, parseShell, type ShellCommand } from '../push-guard/tokenizer.ts';
 import { rerunOf } from './rerun-forms.ts';
@@ -30,9 +30,10 @@ export interface SessionPlace {
   readonly host?: nodePath.PlatformPath;
 }
 
-/** Whether the guard looks at this payload: the switch is on and it is a PreToolUse call of Bash. */
-export function guardsCdCompound(enabled: boolean, payload: JsonRecord): boolean {
-  return enabled && stringField(payload, 'hook_event_name') === 'PreToolUse' && stringField(payload, 'tool_name') === 'Bash';
+/** Whether the guard looks at this event: the switch is on and it is a bash call about to run. */
+export function guardsCdCompound(enabled: boolean, event: HookEvent): boolean {
+  const { call } = event;
+  return enabled && event.name === 'tool-start' && call?.kind === 'shell' && call.dialect === 'bash';
 }
 
 /**
@@ -40,7 +41,7 @@ export function guardsCdCompound(enabled: boolean, payload: JsonRecord): boolean
  * outside `place.cwd`. Undefined for any other line, and for one with no rerun form.
  */
 export function cdCompoundForm(command: string, place: SessionPlace): string | undefined {
-  const rerun = rerunOf('Bash', command);
+  const rerun = rerunOf('bash', command);
   if (rerun?.folder === undefined) {
     return undefined;
   }
@@ -66,10 +67,10 @@ export function cdCompoundOf(command: string, place: SessionPlace): CdCompound |
   return after.some((each) => programOf(each) === 'git') || movesOut(after, place) ? { kind: 'drop-cd' } : undefined;
 }
 
-/** What the guard holds against the Bash command of a hook `payload`, as {@link cdCompoundOf} gives it. */
-export function cdCompoundOfPayload(payload: JsonRecord, place: SessionPlace): CdCompound | undefined {
-  const command = stringField(recordField(payload, 'tool_input') ?? {}, 'command');
-  return command === undefined ? undefined : cdCompoundOf(command, place);
+/** What the guard holds against the line of a hook event's shell call, as {@link cdCompoundOf} gives it. */
+export function cdCompoundOfEvent(event: HookEvent, place: SessionPlace): CdCompound | undefined {
+  const { call } = event;
+  return call?.kind !== 'shell' || call.command === undefined ? undefined : cdCompoundOf(call.command, place);
 }
 
 /** Why the line is refused: the rerun form to run instead, or the ways to run it with no `cd`. */

@@ -10,7 +10,7 @@ export { connectorAdapterProblems, connectorDeclarationProblems, defineConnector
 export { PANE_STATES, TERMINAL_REQUESTS, isPaneState, isTerminalRequest, } from "./terminal.js";
 export { defineTerminal, isTerminalAdapter, isTerminalDeclaration, terminalAdapterProblems, terminalDeclarationProblems, } from "./terminal-adapter.js";
 export { CONNECTOR_FEATURES, CONNECTOR_KINDS, HOST_FEATURES, TERMINAL_FEATURES, featuresOf, isConnectorFeatureId, isConnectorKind, isHostFeatureId, isTerminalFeatureId, } from "../features/registry.js";
-export { INPUT_ORIGINS, isUnsupported, unsupported, } from "../ports/host/index.js";
+export { HOOK_EVENTS, INPUT_ORIGINS, SHELL_DIALECTS, TOOL_KINDS, isHookEventName, isToolKind, isUnsupported, unsupported, } from "../ports/host/index.js";
 // What an adapter reads outside JSON with, an API's answer or a host's own line: it is narrowed, never cast.
 export { instantField, isNonNegativeInteger, isRecord, isStringArray, recordField, stringField } from "../core/guards.js";
 // The footer of a text a connector posts: taken off a text already stamped, and its parts for a tool with no Markdown.

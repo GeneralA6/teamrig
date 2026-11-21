@@ -6,7 +6,10 @@ export function tabStatusLine(facts) {
         ...(facts.titleLeft
             ? []
             : [
-                `add "${ENV.claudeTitleOff}": "1" to "env" in ${facts.settingsPath} and restart Claude Code, so it stops writing its own title over the circle (tabs of projects outside teamrig then keep the terminal's title)`,
+                // With no settings file known, the note names the switch alone: a file teamrig only guessed would send the user to the wrong place.
+                facts.settingsPath === undefined
+                    ? `set ${ENV.claudeTitleOff}=1 in the environment the team's sessions start in and restart them, so the host stops writing its own title over the circle`
+                    : `add "${ENV.claudeTitleOff}": "1" to "env" in ${facts.settingsPath} and restart Claude Code, so it stops writing its own title over the circle (tabs of projects outside teamrig then keep the terminal's title)`,
             ]),
     ];
     if (missing.length === 0) {

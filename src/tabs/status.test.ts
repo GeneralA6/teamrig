@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
+import type { HookEvent } from '../ports/host/index.ts';
+import { hookEventOf } from '../testing/host.ts';
 import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import {
   asksDecision,
@@ -20,8 +22,9 @@ import {
 
 const reader = shippedTranscripts();
 
-function event(name: string, fields: JsonRecord = {}): JsonRecord {
-  return { hook_event_name: name, ...fields };
+/** The hook event the shipped host's bridge reads from the host's event `name` with these payload `fields`. */
+function event(name: string, fields: JsonRecord = {}): HookEvent {
+  return hookEventOf({ hook_event_name: name, ...fields });
 }
 
 function entries(...lines: readonly object[]): string {
@@ -75,7 +78,7 @@ describe('asksDecision', () => {
 
 describe('tabChangeOf', () => {
   it('maps each event the plugin wires to the state it shows', () => {
-    const cases: readonly [JsonRecord, TabChange][] = [
+    const cases: readonly [HookEvent, TabChange][] = [
       [event('SessionStart', { source: 'startup' }), 'ready'],
       [event('SessionStart', { source: 'resume' }), 'ready'],
       [event('SessionStart', { source: 'clear' }), 'ready'],
@@ -98,8 +101,8 @@ describe('tabChangeOf', () => {
       [event('PostCompact', { trigger: 'auto' }), 'working'],
       [event('SessionEnd'), 'reset'],
     ];
-    for (const [payload, change] of cases) {
-      assert.equal(tabChangeOf(payload), change, JSON.stringify(payload));
+    for (const [given, change] of cases) {
+      assert.equal(tabChangeOf(given), change, `${given.hostName} ${JSON.stringify(given)}`);
     }
   });
 
@@ -113,7 +116,7 @@ describe('tabChangeOf', () => {
     assert.equal(tabChangeOf(event('SessionStart', { source: 'compact' })), undefined);
     assert.equal(tabChangeOf(event('PreToolUse', { tool_name: 'Bash' })), undefined);
     assert.equal(tabChangeOf(event('Notification')), undefined);
-    assert.equal(tabChangeOf({}), undefined);
+    assert.equal(tabChangeOf(hookEventOf({})), undefined);
   });
 });
 
@@ -185,31 +188,31 @@ describe('firstPromptOf', () => {
 describe('topicOf', () => {
   const titled = entries({ type: 'ai-title', aiTitle: 'Fixing the build' }, { type: 'custom-title', customTitle: 'scout' });
 
-  it("takes the payload's session title first", () => {
-    assert.equal(topicOf(reader, { session_title: ' ranger ' }, { text: titled, whole: true }), 'ranger');
+  it("takes the event's session title first", () => {
+    assert.equal(topicOf(reader, hookEventOf({ session_title: ' ranger ' }), { text: titled, whole: true }), 'ranger');
   });
 
   it("takes the user's title before Claude Code's in the transcript", () => {
-    assert.equal(topicOf(reader, {}, { text: titled, whole: true }), 'scout');
-    assert.equal(topicOf(reader, {}, { text: entries({ type: 'ai-title', aiTitle: 'Fixing the build' }), whole: false }), 'Fixing the build');
+    assert.equal(topicOf(reader, hookEventOf({}), { text: titled, whole: true }), 'scout');
+    assert.equal(topicOf(reader, hookEventOf({}), { text: entries({ type: 'ai-title', aiTitle: 'Fixing the build' }), whole: false }), 'Fixing the build');
   });
 
   it('skips the transcript on a host that keeps none it can read', () => {
-    assert.equal(topicOf(undefined, { prompt: 'third ask' }, { text: `${titled}${entries(typed('first ask'))}`, whole: true }), 'third ask');
-    assert.equal(topicOf(undefined, { session_title: 'ranger' }, { text: titled, whole: true }), 'ranger');
+    assert.equal(topicOf(undefined, hookEventOf({ prompt: 'third ask' }), { text: `${titled}${entries(typed('first ask'))}`, whole: true }), 'third ask');
+    assert.equal(topicOf(undefined, hookEventOf({ session_title: 'ranger' }), { text: titled, whole: true }), 'ranger');
   });
 
   it("takes the first prompt from a whole transcript only, else this event's prompt", () => {
     const prompts = entries(typed('first ask'), typed('second ask'));
-    assert.equal(topicOf(reader, { prompt: 'third ask' }, { text: prompts, whole: true }), 'first ask');
-    assert.equal(topicOf(reader, { prompt: 'third ask' }, { text: prompts, whole: false }), 'third ask');
-    assert.equal(topicOf(reader, { prompt: '/compact' }, undefined), FALLBACK_TOPIC);
+    assert.equal(topicOf(reader, hookEventOf({ prompt: 'third ask' }), { text: prompts, whole: true }), 'first ask');
+    assert.equal(topicOf(reader, hookEventOf({ prompt: 'third ask' }), { text: prompts, whole: false }), 'third ask');
+    assert.equal(topicOf(reader, hookEventOf({ prompt: '/compact' }), undefined), FALLBACK_TOPIC);
   });
 
   it("falls back to the folder's name, by either separator, then to the fallback", () => {
-    assert.equal(topicOf(reader, { cwd: 'D:\\work\\app' }, undefined), 'app');
-    assert.equal(topicOf(reader, { cwd: '/srv/work/app/' }, undefined), 'app');
-    assert.equal(topicOf(reader, { cwd: '/' }, undefined), FALLBACK_TOPIC);
-    assert.equal(topicOf(reader, { session_title: '\u0007 ' }, undefined), FALLBACK_TOPIC);
+    assert.equal(topicOf(reader, hookEventOf({ cwd: 'D:\\work\\app' }), undefined), 'app');
+    assert.equal(topicOf(reader, hookEventOf({ cwd: '/srv/work/app/' }), undefined), 'app');
+    assert.equal(topicOf(reader, hookEventOf({ cwd: '/' }), undefined), FALLBACK_TOPIC);
+    assert.equal(topicOf(reader, hookEventOf({ session_title: '\u0007 ' }), undefined), FALLBACK_TOPIC);
   });
 });

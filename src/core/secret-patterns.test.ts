@@ -56,6 +56,51 @@ const CASES: ReadonlyArray<{ readonly id: string; readonly hits: readonly string
     misses: [join('eyJ', 'hbGciOiJIUzI1NiJ9', '.eyJ', 'zdWIiOiIxMjM0In0'), 'eyJ is the start of base64 JSON', join('abc', 'defghijk', '.eyJ', 'zdWIiOiIxMjM0In0', '.', 'signature')],
   },
   {
+    id: 'npm-token',
+    hits: [join('npm', '_', 'a1B2'.repeat(9)), join('token ', 'npm', '_', 'Zz09'.repeat(9), ' expires soon')],
+    misses: [
+      join('npm', '_', 'a1B2'.repeat(9).slice(1)),
+      join('npm', '_', 'a1B2'.repeat(9), 'c'),
+      join('xnpm', '_', 'a1B2'.repeat(9)),
+      'npm_config_user_agent',
+      join('npm', '_package_', 'config_registry_mirror_for_installs'),
+      'a token starts with npm_',
+    ],
+  },
+  {
+    id: 'discord-webhook',
+    hits: [
+      join('https://discord', '.com/api/webhooks/', '1'.repeat(18), '/', 'aB3_-x'.repeat(11)),
+      join('https://discordapp', '.com/api/v10/webhooks/', '2'.repeat(19), '/', 'Qw9-_z'.repeat(11)),
+      join('HTTPS://CANARY.DISCORD', '.COM/API/WEBHOOKS/', '3'.repeat(17), '/', 'k4'.repeat(10)),
+    ],
+    misses: [
+      join('https://discord', '.com/api/webhooks/', '1'.repeat(18)),
+      join('https://discord', '.com/api/webhooks/', '<id>/<token>'),
+      join('https://discord', '.com/api/webhooks/', '1'.repeat(18), '/', 'short'),
+      join('https://mydiscord', '.com/api/webhooks/', '1'.repeat(18), '/', 'aB3_-x'.repeat(11)),
+      join('https://discord', '.com/channels/', '1'.repeat(18), '/', '4'.repeat(24)),
+      'post the page to the Discord webhook',
+    ],
+  },
+  {
+    id: 'slack-webhook',
+    hits: [
+      join('https://hooks.slack', '.com/services/', 'T0AB12CD3', '/', 'B0EF45GH6', '/', 'a1B2c3'.repeat(4)),
+      join('https://hooks.slack', '.com/workflows/', 'T0AB12CD3', '/', 'A0EF45GH6', '/', '5'.repeat(18), '/', 'd4E5f6'.repeat(4)),
+      join('HOOKS.SLACK', '.COM/triggers/', 'T0AB12CD3', '/', '6'.repeat(13), '/', '7f'.repeat(16)),
+    ],
+    misses: [
+      join('https://hooks.slack', '.com/services/', 'T0AB12CD3', '/', 'B0EF45GH6'),
+      join('https://hooks.slack', '.com/services/', '<team>/<channel>/<token>'),
+      join('https://hooks.slack', '.com/services/', 'T0AB12CD3', '/', 'B0EF45GH6', '/', 'short'),
+      join('https://hooks.slack', '.com/services/', 'a1B2c3'.repeat(4)),
+      join('https://api.slack', '.com/services/', 'T0AB12CD3', '/', 'B0EF45GH6', '/', 'a1B2c3'.repeat(4)),
+      join('https://hooks.slack', '.com/docs/', 'T0AB12CD3', '/', 'a1B2c3'.repeat(4)),
+      'the page goes to a Slack webhook',
+    ],
+  },
+  {
     id: 'url-credentials',
     hits: [join('amqp://', 'app', ':', 's3cret', '@', 'queue.local:5672'), join('HTTPS://', 'u', ':', 'p', '@', 'host'), join('cache://', ':', 's3cret', '@', 'kv.local:6379')],
     misses: ['https://example.test/path?a=1', 'mail me at someone@example.com', 'ssh://git@github.com/o/r', 'tcp://:8080/health'],

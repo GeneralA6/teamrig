@@ -6,6 +6,7 @@ import { SecretScanner } from "../../core/secrets.js";
 import { inboxLineOf, postLines } from "../../inbox/inbox.js";
 import { lineHash } from "../../inbox/line-hash.js";
 import { ABOUT_MAX, byTime, DEFAULT_MEETING_MINUTES, isMeetingId, isMissed, isOpenMeeting, meetingInTabOf, MeetingSchedule, nextMeetingId, } from "../../meeting/schedule.js";
+import { meetingRows } from "../../meeting/rows.js";
 import { SPOTLIGHT_LOG, spotlightHolderPath, spotlightLine, startSpotlight } from "../../meeting/spotlight.js";
 import { SpotlitStore, spotlitUntil } from "../../meeting/spotlit.js";
 import { MeetingStore, phaseOf } from "../../meeting/state.js";
@@ -222,25 +223,14 @@ export async function meetingList(args, runtime) {
     noPositionals(args);
     const mk = await meetingsKit(args, runtime, 'read');
     const { meetings } = await mk.schedule.read();
-    const shown = byTime(args.switches.has('all') ? meetings : meetings.filter(isOpenMeeting));
+    const all = args.switches.has('all');
     if (args.switches.has('json')) {
-        const rows = shown.map((meeting) => ({
-            id: meeting.id,
-            at: new Date(meeting.at).toISOString(),
-            atText: mk.zone.weekdayMinute(new Date(meeting.at)),
-            minutes: meeting.minutes,
-            session: meeting.session,
-            with: meeting.with,
-            tasks: meeting.tasks,
-            about: meeting.about,
-            brief: meeting.brief,
-            status: meeting.status,
-            missed: isMissed(meeting, mk.now),
-        }));
+        const rows = meetingRows({ meetings, all, now: mk.now, atText: (at) => mk.zone.weekdayMinute(at) });
         runtime.out.stdout(JSON.stringify({ meetings: rows }));
         return EXIT.ok;
     }
-    runtime.out.stdout(`MEETINGS ${shown.length} ${args.switches.has('all') ? 'of the last week and ahead' : 'scheduled or started'}`);
+    const shown = byTime(all ? meetings : meetings.filter(isOpenMeeting));
+    runtime.out.stdout(`MEETINGS ${shown.length} ${all ? 'of the last week and ahead' : 'scheduled or started'}`);
     for (const meeting of shown) {
         runtime.out.stdout(`  ${meetingLine(meeting, mk.zone, mk.now)}`);
         detailLines(meeting).forEach((line) => runtime.out.stdout(line));

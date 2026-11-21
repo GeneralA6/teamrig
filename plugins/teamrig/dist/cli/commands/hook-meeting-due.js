@@ -6,7 +6,7 @@ import { noticeOf, showNotice } from "../../meeting/notify.js";
 import { MeetingSchedule } from "../../meeting/schedule.js";
 import { noPositionals } from "../args.js";
 import { EXIT } from "../runtime.js";
-import { parseJson } from "./hook-input.js";
+import { readHookInput } from "./hook-input.js";
 import { inboxDepsOf } from "./inbox.js";
 import { wakeScopeOf } from "./hook-wake.js";
 import { fileLockOf } from "../file-locks.js";
@@ -52,7 +52,7 @@ async function tellLead(runtime, kit, config, from, notice, now) {
  */
 export async function meetingDue(args, runtime) {
     noPositionals(args);
-    const scope = await wakeScopeOf(runtime, parseJson(await runtime.readStdin()), false);
+    const scope = await wakeScopeOf(runtime, (await readHookInput(runtime)).event, false);
     if (scope.kind === 'off') {
         return answer(runtime, scope);
     }

@@ -1,4 +1,4 @@
-import { isRecord, stringField } from "../core/guards.js";
+import { stringField } from "../core/guards.js";
 import { hostSessionOf } from "../core/host-session.js";
 import { parseJsonl, toJsonlLine } from "../core/jsonl.js";
 /**
@@ -11,28 +11,14 @@ import { parseJsonl, toJsonlLine } from "../core/jsonl.js";
  * for a live back-and-forth; with them off it carries every ask for that session.
  */
 export const COLD_SEND_VERSION = 1;
-export const SEND_TOOL = 'SendMessage';
 /** How long after a hold the same tab's send to the same session goes through. */
 export const RESEND_WINDOW_MS = 15 * 60 * 1000;
 /** How much of the hold log is read: far more than one resend window's holds, never the whole log. */
 export const COLD_SEND_TAIL_BYTES = 64 * 1024;
-/** The receiver a SendMessage call names, without a ` [ref]`; undefined for any other tool or a call naming none. */
-export function sendTargetOf(payload) {
-    if (!isRecord(payload) || stringField(payload, 'tool_name') !== SEND_TOOL) {
-        return undefined;
-    }
-    const input = payload['tool_input'];
-    // A name may carry a ` [ref]` that picks one of two sessions sharing it.
-    const to = isRecord(input) ? stringField(input, 'to')?.replace(/\s*\[[^\]]*\]$/, '').trim() : undefined;
-    return to === '' ? undefined : to;
-}
-/** The text a SendMessage call sends; empty for a call with none (a pure idle subscription) or another tool. */
-export function sendTextOf(payload) {
-    if (!isRecord(payload) || stringField(payload, 'tool_name') !== SEND_TOOL) {
-        return '';
-    }
-    const input = payload['tool_input'];
-    return (isRecord(input) ? stringField(input, 'message') : undefined) ?? '';
+/** The message this event's call sends; undefined for a call of any other kind or one naming no receiver. */
+export function sentMessageOf(event) {
+    const { call } = event;
+    return call?.kind !== 'message' || call.to === undefined ? undefined : { to: call.to, text: call.text ?? '' };
 }
 /** Whether a session idle `idleMs` wakes cold; `coldAfterMinutes` 0 never does. */
 export function isCold(idleMs, coldAfterMinutes) {

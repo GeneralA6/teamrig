@@ -1,53 +1,51 @@
-import { isRecord } from "../../core/guards.js";
 import { toJsonlLine } from "../../core/jsonl.js";
-import { passRecordGuardOutput } from "../../hooks/pass-record-guard.js";
-import { guardsPassed, preToolUseRouteOf, routeAllowOn, routeAllowOutput, routeAllowRecord } from "../../hooks/route-allow.js";
-import { sessionIdOf } from "../../inbox/inbox.js";
+import { passRecordGuardReply } from "../../hooks/pass-record-guard.js";
+import { guardsPassed, preToolUseRouteOf, routeAllowOn, routeAllowRecord, routeAllowReply } from "../../hooks/route-allow.js";
 import { noPositionals } from "../args.js";
 import { hookLogOf } from "../hook-logs.js";
 import { EXIT } from "../runtime.js";
 import { guardLoadOf } from "./hook-guard-load.js";
-import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf, serviceRoleGuardOutputOf } from "./hook-guard-outputs.js";
-import { envSession, parseJson } from "./hook-input.js";
-import { roleAllowOutputOf } from "./hook-role-allow.js";
+import { dbWriteGuardReplyOf, execGuardReplyOf, packageGuardReplyOf, pushGuardReplyOf, secretGuardReplyOf, serviceRoleGuardReplyOf } from "./hook-guard-outputs.js";
+import { envSession, readHookInput, writeReply } from "./hook-input.js";
+import { roleAllowReplyOf } from "./hook-role-allow.js";
 import { callRouteOf } from "./hook-route-context.js";
 /** True when every teamrig guard passed the call, with the same config load its own hook reads (Q7.1). */
-async function everyGuardPassed(runtime, guard, payload) {
+async function everyGuardPassed(runtime, guard, event) {
     const answers = await Promise.all([
-        pushGuardOutputOf(runtime, guard, payload),
-        packageGuardOutputOf(runtime, guard, payload),
-        execGuardOutputOf(runtime, guard, payload),
-        dbWriteGuardOutputOf(runtime, guard, payload),
-        serviceRoleGuardOutputOf(runtime, guard, payload),
+        pushGuardReplyOf(runtime, guard, event),
+        packageGuardReplyOf(runtime, guard, event),
+        execGuardReplyOf(runtime, guard, event),
+        dbWriteGuardReplyOf(runtime, guard, event),
+        serviceRoleGuardReplyOf(runtime, guard, event),
     ]);
-    return guardsPassed([...answers, secretGuardOutputOf(runtime, guard, payload), passRecordGuardOutput(payload)]);
+    return guardsPassed([...answers, secretGuardReplyOf(runtime, guard, event), passRecordGuardReply(event)]);
 }
 /**
- * What the hook prints for this payload: an allow for a line that runs a route marked for PreToolUse, or for a service
- * role's call (hook-role-allow.ts), once every teamrig guard passed the same call; else ''. Each allow is logged by its
- * route or its role.
+ * The hook's reply to this call: an allow for a line that runs a route marked for the allow before a tool runs, or for
+ * a service role's call (hook-role-allow.ts), once every teamrig guard passed the same call; else none. Each allow is
+ * logged by its route or its role.
  */
-async function routeAllowOutputOf(runtime, payload, deps) {
-    const guard = await guardLoadOf(payload, runtime);
+async function routeAllowReplyOf(runtime, event, deps) {
+    const guard = await guardLoadOf(event.cwd, runtime);
     const kit = guard?.kit;
     if (guard === undefined || kit === undefined || kit.load.status !== 'loaded') {
-        return '';
+        return undefined;
     }
-    const passed = () => everyGuardPassed(runtime, guard, payload);
+    const passed = () => everyGuardPassed(runtime, guard, event);
     if (!routeAllowOn(kit.load.config.prompts)) {
-        return roleAllowOutputOf(runtime, kit, payload, deps.table, passed);
+        return roleAllowReplyOf(runtime, kit, event, deps.table, passed);
     }
-    const route = preToolUseRouteOf(await callRouteOf(runtime, kit, kit.load.config, payload, deps.table));
+    const route = preToolUseRouteOf(await callRouteOf(runtime, kit, kit.load.config, event, deps.table));
     if (route === undefined) {
-        return roleAllowOutputOf(runtime, kit, payload, deps.table, passed);
+        return roleAllowReplyOf(runtime, kit, event, deps.table, passed);
     }
     if (!(await passed())) {
-        return '';
+        return undefined;
     }
-    const record = routeAllowRecord({ at: new Date(runtime.clock.now()), session: envSession(runtime), claudeSession: sessionIdOf(payload), route: route.id });
+    const record = routeAllowRecord({ at: new Date(runtime.clock.now()), session: envSession(runtime), claudeSession: event.session ?? null, route: route.id });
     // Best effort, like the prompt answers: a full disk or a held lock must not take the allow away.
     await hookLogOf(runtime, kit.paths, 'prompt-answers').append(toJsonlLine(record)).catch(() => undefined);
-    return routeAllowOutput(route);
+    return routeAllowReply(route);
 }
 /**
  * PreToolUse on Bash: under `prompts.hookAsks: refuse` with `prompts.routeAllow` on (its default), lets a line that runs
@@ -62,11 +60,9 @@ async function routeAllowOutputOf(runtime, payload, deps) {
 export function routeAllow(deps) {
     return async (args, runtime) => {
         noPositionals(args);
-        const payload = parseJson(await runtime.readStdin());
-        const output = isRecord(payload) ? await routeAllowOutputOf(runtime, payload, deps).catch(() => '') : '';
-        if (output !== '') {
-            runtime.out.stdout(output);
-        }
+        const { event } = await readHookInput(runtime);
+        const reply = event === undefined ? undefined : await routeAllowReplyOf(runtime, event, deps).catch(() => undefined);
+        writeReply(runtime, 'tool-start', reply);
         return EXIT.ok;
     };
 }

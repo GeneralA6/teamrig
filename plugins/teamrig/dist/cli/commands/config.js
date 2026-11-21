@@ -7,7 +7,7 @@ import { isRecord } from "../../core/guards.js";
 import { clientRootOf } from "../../exec/client-integrity.js";
 import { noPositionals, UsageError } from "../args.js";
 import { callerOf } from "../inputs.js";
-import { checkedNextConfig, configFileJson, configLockOf, issueText, leadOnly, openTeamKit, reloadTeamConfig, requireConfig, rosterOf } from "../kit.js";
+import { checkedNextConfig, configFileJson, configLockOf, issueText, leadOnly, openTeamKit, reloadTeamConfig, requireConfig, rosterOf, } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 /**
  * The config schema beside this CLI: the plugin's own copy for the installed CLI (`<plugin>/dist/cli/main.js`), the
@@ -45,17 +45,28 @@ export async function get(args, runtime) {
     rows.forEach((row) => runtime.out.stdout(settingLine(row)));
     return EXIT.ok;
 }
-/** Every key the schema beside this CLI describes, read against the team's file. */
-async function settingRowsOf(runtime, load) {
-    const schemaPath = configSchemaPathOf(runtime.self.script);
-    const schema = parsedRecord(await runtime.files.read(schemaPath));
+/**
+ * The schema and its rows for a loaded config; undefined when the schema file is missing or holds no JSON object.
+ * It names no path and refuses nothing, so a caller that must never serve a place on the disk (`teamrig read`) tells
+ * the lack in its own words.
+ */
+export async function schemaSettingsOf(runtime, load) {
+    const schema = parsedRecord(await runtime.files.read(configSchemaPathOf(runtime.self.script)));
     if (schema === undefined) {
-        throw new RefusedError(`no config schema at ${schemaPath}; reinstall teamrig`);
+        return undefined;
     }
     // The file as written, so a row shows what the team set, not the parsed value; an older format is read migrated, as
     // every command reads it.
     const raw = load.pending?.migrated ?? parsedRecord(await runtime.files.read(load.path)) ?? {};
-    return settingRows(schema, raw, load.issues);
+    return { schema, rows: settingRows(schema, raw, load.issues) };
+}
+/** The rows of {@link schemaSettingsOf} for `config get` and `config set`, which refuse without a schema. */
+async function settingRowsOf(runtime, load) {
+    const settings = await schemaSettingsOf(runtime, load);
+    if (settings === undefined) {
+        throw new RefusedError(`no config schema at ${configSchemaPathOf(runtime.self.script)}; reinstall teamrig`);
+    }
+    return settings.rows;
 }
 export const SET_BACKUP_NAME = 'config.set';
 /**

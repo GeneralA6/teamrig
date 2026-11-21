@@ -4,6 +4,7 @@ import { homeRelative } from '../core/paths.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import type { PlaceKind } from '../rules/places.ts';
 import type { Candidate } from '../rules/scan.ts';
+import { testPaths } from '../testing/host.ts';
 import { agentLineOf, listingLineOf, type ListedAgent, type ListedSkill } from './scan-context.ts';
 import { scanReport, type ScanReportContext } from './scan-report.ts';
 import type { SettingsFinding } from './scan-settings.ts';
@@ -20,7 +21,7 @@ const SECRETS = new SecretScanner(['hunter2-']);
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const NOW = Date.parse('2030-01-08T10:00:00Z');
-const AT: ScanReportContext = { project: '/work/app', team: 'app', days: 30, now: NOW, maxMb: 1024, userHome: '/u', secrets: SECRETS, backup: undefined };
+const AT: ScanReportContext = { project: '/work/app', paths: testPaths(), team: 'app', days: 30, now: NOW, maxMb: 1024, userHome: '/u', secrets: SECRETS, backup: undefined };
 
 /** A path outside the home folder, as this machine's paths print it. */
 function shown(path: string): string {

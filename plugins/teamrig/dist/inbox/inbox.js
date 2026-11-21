@@ -1,8 +1,7 @@
-import { isRecord, stringField } from "../core/guards.js";
 import { formatUtcMinute, parseUtcDeadline } from "../core/time.js";
 import { SESSION_NAME } from "../register/model.js";
 import { lineHash } from "./line-hash.js";
-import { CLAUDE_SESSION_ID, indexMarks, MARK_VERSION } from "./marks.js";
+import { indexMarks, MARK_VERSION } from "./marks.js";
 import { cutWhenShown, lastShownOf, newestShownOf, unshownOf } from "./shown.js";
 import { unreadOf } from "./unread.js";
 const LINE_DATE = /^- (\d{4}-\d{2}-\d{2} \d{2}:\d{2})/;
@@ -158,9 +157,4 @@ export async function postLines(targets, secrets, input) {
 /** The line `postLines` appends for `text` (trimmed), `- YYYY-MM-DD HH:MM <from>: <text>`, stamped with the UTC minute. */
 export function inboxLineOf(now, from, text) {
     return `- ${formatUtcMinute(now)} ${from}: ${text}`;
-}
-/** The `session_id` in a hook's parsed stdin JSON; null when absent or malformed. */
-export function sessionIdOf(payload) {
-    const id = isRecord(payload) ? stringField(payload, 'session_id') : undefined;
-    return id !== undefined && CLAUDE_SESSION_ID.test(id) ? id : null;
 }

@@ -1,12 +1,11 @@
 import { resolveKitHome } from '../../core/home.ts';
-import { sessionIdOf } from '../../inbox/inbox.ts';
 import { CLAIM_END, CLAIM_HELD, CLAIM_TAKEN, END_SWITCH, HOLD_SWITCH, isClaudeSessionId, WHY_FLAG } from '../../mod/clear-hand.ts';
 import { ClearAsks, clearAskDir, type ClearAsk } from '../../refresh/clear-asks.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { parseJson } from './hook-input.ts';
+import { readHookInput } from './hook-input.ts';
 
 function asksOf(runtime: CliRuntime): ClearAsks {
   return new ClearAsks(runtime.files, clearAskDir(resolveKitHome(runtime.env, runtime.userHome)));
@@ -101,9 +100,9 @@ function tabAnswerOf(args: ParsedArgs): TabAnswer {
 export async function clearClaim(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const answer = tabAnswerOf(args);
-  const claudeSession = sessionIdOf(parseJson(await runtime.readStdin()));
+  const claudeSession = (await readHookInput(runtime)).event?.session;
   const result =
-    claudeSession === null || !isClaudeSessionId(claudeSession)
+    claudeSession === undefined || !isClaudeSessionId(claudeSession)
       ? { problem: 'no Claude Code session id on stdin' }
       : await claimOf(runtime, asksOf(runtime), claudeSession, answer);
   runtime.out.stdout('problem' in result ? `declined: ${result.problem}` : result.claimed);

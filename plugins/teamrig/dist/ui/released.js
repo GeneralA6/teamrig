@@ -1,0 +1,41 @@
+import { readArchive } from "./archive.js";
+import { fetchArchive } from "./fetch.js";
+import { installArchive, installedEntry, stagingFolder, uiFolder } from "./install.js";
+function changed(folder, pin, reason) {
+    return { ok: false, reason: `the installed UI ${pin.version} in ${folder} was changed after its install (${reason}); remove that folder to fetch it again` };
+}
+/**
+ * The entry script of the UI `pin` names, under the kit home `home`. An installed one that still holds the pinned
+ * files is answered with no request; one changed since is refused. Otherwise the archive is fetched, read against the
+ * pin and installed. An archive of another version than the pin's is refused even when its hash is right: the folder
+ * it is written into is named by the pin's version.
+ */
+export async function releasedEntry(deps, home, pin) {
+    const folder = uiFolder(home, pin.version, pin.sha256);
+    const installed = await installedEntry(deps.files, folder, pin.sha256);
+    if (installed.state === 'ok')
+        return { ok: true, entry: installed.entry, fetched: false };
+    if (installed.state === 'changed')
+        return changed(folder, pin, installed.reason);
+    const fetched = await fetchArchive(deps.http, pin.url);
+    if (!fetched.ok)
+        return { ok: false, reason: `the UI ${pin.version} could not be fetched: ${fetched.reason}` };
+    const read = readArchive(fetched.bytes, pin.sha256);
+    if (!read.ok)
+        return { ok: false, reason: `the fetched UI ${pin.version} was refused: ${read.reason}` };
+    if (read.archive.version !== pin.version) {
+        return { ok: false, reason: `the fetched UI was refused: it is version ${read.archive.version}, not the pinned ${pin.version}` };
+    }
+    // readArchive took these bytes as UTF-8, so this text writes back as the very bytes the pin names.
+    const source = new TextDecoder().decode(fetched.bytes);
+    try {
+        return { ok: true, entry: await installArchive(deps.files, folder, stagingFolder(home, deps.nonce()), read.archive, source), fetched: true };
+    }
+    catch (error) {
+        // Another start that moved its folder in first leaves the same pinned files: that one is used. Anything else fails.
+        const now = await installedEntry(deps.files, folder, pin.sha256);
+        if (now.state === 'ok')
+            return { ok: true, entry: now.entry, fetched: true };
+        throw error;
+    }
+}

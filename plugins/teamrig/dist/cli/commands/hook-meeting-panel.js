@@ -6,7 +6,7 @@ import { noPositionals } from "../args.js";
 import { subtreeOf } from "../roll-up.js";
 import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
-import { parseJson } from "./hook-input.js";
+import { readHookInput } from "./hook-input.js";
 import { wakeScopeOf } from "./hook-wake.js";
 import { agendaRegisterOf, decidedByOf, decisionAgendaOf } from "./meeting-registers.js";
 function answer(runtime, value) {
@@ -52,7 +52,7 @@ async function bookedPanel(runtime, { kit, config, roster, id }, booked) {
  */
 export async function meetingPanel(args, runtime) {
     noPositionals(args);
-    const scope = await wakeScopeOf(runtime, parseJson(await runtime.readStdin()), false);
+    const scope = await wakeScopeOf(runtime, (await readHookInput(runtime)).event, false);
     if (scope.kind === 'off') {
         return answer(runtime, { ...scope, watch: [] });
     }

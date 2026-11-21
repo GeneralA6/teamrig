@@ -1,7 +1,7 @@
 import { extname, isAbsolute, join, resolve } from 'node:path';
 import { expandHome, pathKey } from "../core/paths.js";
 import { CLAUDE_MD_FILES, claudeMdPaths, claudeMemoryDir, skillFolders } from "../doctor/context-files.js";
-import { claudeSettingsFiles, jsonObjectOf } from "../doctor/settings-env.js";
+import { jsonObjectOf } from "../doctor/settings-env.js";
 import { hookCommandsOf } from "../doctor/settings-hooks.js";
 import { SkillDir } from "../skills/store.js";
 /**
@@ -115,7 +115,7 @@ async function existing(probe, paths) {
  */
 export async function findRulePlaces(files, probe, at) {
     const nested = await nestedClaudeMd(files, probe, at.project);
-    const settings = await existing(probe, claudeSettingsFiles(at.claudeDir, at.project));
+    const settings = await existing(probe, at.sessionSettings);
     const skillPaths = (await Promise.all(skillFolders(at.skills, at.project).map(async (folder) => {
         const dir = new SkillDir(files, folder);
         return (await dir.readAll()).map((skill) => dir.pathOf(skill.name));

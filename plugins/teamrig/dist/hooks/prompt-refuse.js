@@ -1,6 +1,6 @@
-import { recordField, stringField } from "../core/guards.js";
+import { stringField } from "../core/guards.js";
 import { maskCommand } from "./log-mask.js";
-import { ASK_REFUSED_NOTE } from "./permission.js";
+import { ASK_REFUSED_NOTE, refusal } from "./permission.js";
 import { rerunForm } from "./rerun-forms.js";
 /**
  * The prompt refusal: under `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise on
@@ -10,31 +10,31 @@ import { rerunForm } from "./rerun-forms.js";
  * form; anything else is refused with what to do instead. The question picker and plan mode's exit are questions to
  * the person, not permissions: the picker guard and the person decide those, so they open.
  */
-/** Tools whose prompt is a question to the person, not a permission: this hook leaves them to open. */
-const QUESTION_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode']);
 /** How many characters of a call's command a logged answer keeps. */
 export const LOGGED_COMMAND_CHARS = 200;
-/** The tool whose prompt the hook answers: asks are off and it is a PermissionRequest of a tool that is no question; else undefined. */
-export function refusedTool(asks, payload) {
-    const tool = stringField(payload, 'tool_name');
-    const refuses = asks === 'refuse' && stringField(payload, 'hook_event_name') === 'PermissionRequest' && tool !== undefined && !QUESTION_TOOLS.has(tool);
-    return refuses ? tool : undefined;
+/**
+ * The call whose prompt the hook answers: asks are off and the event is the permission prompt of a call that is no
+ * question to the person (the `ask` kind, which this hook leaves to open); else undefined.
+ */
+export function refusedCall(asks, event) {
+    const { call } = event;
+    const refuses = asks === 'refuse' && event.name === 'permission-prompt' && call !== undefined && call.kind !== 'ask';
+    return refuses ? call : undefined;
 }
 /**
- * The answer for the prompt of a `tool` call: a line the caller found runs a sanctioned route (`route`,
+ * The answer for the prompt of `call`: a line the caller found runs a sanctioned route (`route`,
  * permissions/sanctioned.ts) runs first; a line `reads` proves only reads and prints no secret runs, as the read-only
- * allow would have let it; a line with a rerun form (hooks/rerun-forms.ts) is refused quoting it; anything else is
- * refused.
+ * allow would have let it; a shell line with a rerun form (hooks/rerun-forms.ts) is refused quoting it; anything else
+ * is refused. `reads` is asked only when no route answers.
  */
-export function promptAnswerOf(tool, payload, reads, route) {
+export function promptAnswerOf(call, reads, route) {
     if (route !== undefined) {
         return { kind: 'route', route };
     }
-    if (reads(payload)) {
+    if (reads()) {
         return { kind: 'readonly' };
     }
-    const command = commandOf(payload);
-    const form = command === undefined ? undefined : rerunForm(tool, command);
+    const form = call.kind === 'shell' && call.command !== undefined ? rerunForm(call.dialect, call.command) : undefined;
     return form === undefined ? { kind: 'refused' } : { kind: 'rerun', form };
 }
 /** Why the prompt for a `tool` call is refused, and what to do instead. */
@@ -45,20 +45,19 @@ export function promptRefusedReason(tool) {
 export function rerunReason(tool, form) {
     return `Claude Code would ask a person to allow this ${tool} call, and teamrig's rules give it a form that needs no prompt. Do not retry this line; rerun it as: ${form}`;
 }
-/** The hook's stdout for a refusal: a PermissionRequest deny whose message Claude reads; the turn goes on. */
-export function promptRefuseOutput(reason) {
-    return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: reason } } });
-}
-/** The hook's stdout for an answer: an allow for a route or a read-only line, which runs it with no prompt, else its refusal. */
-export function promptAnswerOutput(tool, answer) {
+/**
+ * The hook's reply for an answer to the prompt of a `tool` call: an allow for a route or a read-only line, which runs
+ * it with no prompt, else a refusal whose reason the model reads; the turn goes on.
+ */
+export function promptAnswerReply(tool, answer) {
     switch (answer.kind) {
         case 'route':
         case 'readonly':
-            return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } });
+            return { verdict: { kind: 'allow' } };
         case 'rerun':
-            return promptRefuseOutput(rerunReason(tool, answer.form));
+            return refusal(rerunReason(tool, answer.form));
         case 'refused':
-            return promptRefuseOutput(promptRefusedReason(tool));
+            return refusal(promptRefusedReason(tool));
     }
 }
 /**
@@ -71,18 +70,19 @@ export function promptAnswerOutput(tool, answer) {
  */
 export function promptAnswerRecord(facts, scanner) {
     const { answer } = facts;
-    const command = answer.kind === 'route' ? undefined : commandOf(facts.payload);
+    const command = answer.kind === 'route' ? undefined : commandOf(facts.call);
     return {
         v: 1,
         at: facts.at.toISOString(),
         session: facts.session ?? null,
         claudeSession: facts.claudeSession,
-        tool: facts.tool,
+        tool: facts.call.name,
         answer: answer.kind,
         ...(answer.kind === 'route' ? { route: answer.route } : {}),
         command: command === undefined ? null : maskCommand(command, scanner).slice(0, LOGGED_COMMAND_CHARS),
     };
 }
-function commandOf(payload) {
-    return stringField(recordField(payload, 'tool_input') ?? {}, 'command');
+/** The command a call carries: a shell call's line, else the `command` its input names, which a tool of no shell kind may hold. */
+function commandOf(call) {
+    return call.kind === 'shell' ? call.command : stringField(call.input, 'command');
 }

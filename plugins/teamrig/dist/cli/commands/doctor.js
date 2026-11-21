@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import { claudeProjectsDir } from "../../budget/discover.js";
 import { launchOf } from "../../config/launch.js";
 import { Roster } from "../../config/roster.js";
@@ -7,7 +6,7 @@ import { readContextFiles } from "../../doctor/context-files.js";
 import { readSettingsDeny, secretDenyLines } from "../../doctor/deny-lines.js";
 import { doctorFindings, formatFinding } from "../../doctor/doctor.js";
 import { readSessionLists } from "../../doctor/session-lists.js";
-import { claudeSettingsFiles, readSettingsEnv } from "../../doctor/settings-env.js";
+import { readSettingsEnv, sessionSettingsFiles } from "../../doctor/settings-env.js";
 import { readShellHistory } from "../../doctor/shell-history.js";
 import { HiringLog } from "../../hiring/log.js";
 import { retiredSessions } from "../../hiring/record.js";
@@ -15,6 +14,7 @@ import { inboxStatus } from "../../inbox/inbox.js";
 import { JsonlRenameLog } from "../../names/log.js";
 import { readWideAllow } from "../allow-scope.js";
 import { noPositionals } from "../args.js";
+import { pathsIfKnown } from "../host.js";
 import { openTeamKit, projectFolder, requireConfig, teamZone } from "../kit.js";
 import { readLeadStart } from "../lead-start.js";
 import { pageCheckOf } from "../login-page.js";
@@ -46,14 +46,23 @@ async function configuredProjects(probe, config, ids) {
     ];
     return Promise.all(named.map(async (entry) => ({ ...entry, kind: await probe.kind(entry.path) })));
 }
+/** The settings files a session started in `project` reads; none on a host whose folders teamrig does not know. */
+function sessionSettingsOf(runtime, project) {
+    const host = pathsIfKnown(runtime);
+    return host === undefined ? [] : sessionSettingsFiles({ paths: host, userHome: runtime.userHome }, project);
+}
 /**
- * The `permissions.deny` lines of the Claude Code settings a session in `project` reads (the user's, then the
- * project's shared and local ones), and the user's file, where the missing secret deny lines go. `doctor` and `check` read it.
+ * The `permissions.deny` lines of the settings files a session in `project` reads (`sessionSettingsFiles`), and the
+ * person's own file, where the missing secret deny lines go. `doctor` and `check` read it, and both go on where the
+ * host's folders are not known: it is undefined there, with no file to read or to name.
  */
 export async function readSecretDeny(runtime, project) {
-    const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
-    const paths = claudeSettingsFiles(claudeDir, project);
-    return { files: await readSettingsDeny(runtime.files, paths), lines: secretDenyLines(runtime.platform), pasteInto: join(claudeDir, 'settings.json') };
+    const host = pathsIfKnown(runtime);
+    if (host === undefined) {
+        return undefined;
+    }
+    const paths = sessionSettingsFiles({ paths: host, userHome: runtime.userHome }, project);
+    return { files: await readSettingsDeny(runtime.files, paths), lines: secretDenyLines(runtime.platform), pasteInto: host.userSettings(runtime.userHome) };
 }
 /** The doctor's view of a page check: only a page webhook that gives no URL is a finding. */
 function pageProblemOf(check) {
@@ -83,7 +92,6 @@ export async function doctor(args, runtime) {
     const renameLog = await new JsonlRenameLog(runtime.files, paths.renames).read();
     const kitTree = await loadTree(runtime);
     const { tree } = kitTree;
-    const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
     const project = await projectFolder(runtime, config);
     const roster = new Roster(config, paths.team, renameLog.renames);
     const { records } = await new HiringLog(runtime.files, paths.hires).read();
@@ -99,7 +107,7 @@ export async function doctor(args, runtime) {
         ...(await readContextInput(runtime, project, paths.skills, config.contextFiles)),
         tree: { problems: tree.problemsOf(paths.team), clashes: tree.nameClashesOf(paths.team) },
         env: runtime.env,
-        settingsEnv: await readSettingsEnv(runtime.files, claudeSettingsFiles(claudeDir, project)),
+        settingsEnv: await readSettingsEnv(runtime.files, sessionSettingsOf(runtime, project)),
         settingsDeny: await readSecretDeny(runtime, project),
         wideAllow: await readWideAllow(runtime, { paths, config, project }),
         launches: roster.ids.map((id) => ({ id, launch: launchOf(config, id) })),

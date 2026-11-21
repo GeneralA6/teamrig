@@ -2444,6 +2444,261 @@ api shop-api
 web shop-site, formerly shop-web
 ```
 
+### teamrig read
+
+The read side of teamrig's public interface, for a program such as a pane, a dashboard or a script: `teamrig read
+<document>... --json` answers each document asked as one JSON object on one line of stdout, in the order asked.
+Nothing else is written to stdout, so every line there parses; a refusal is one `REFUSED` line on stderr with exit 2
+and no document, where other commands print it to stdout. It writes no file, marks nothing read and takes no lock.
+
+The five documents of interface 1.0 are served, and `plan`, which 1.1 added, `goals`, which 1.2 added, and
+`history`, which 1.3 added. `tasks` is the register's working set, the active tasks and the finished ones not yet
+archived. `plan` is the team's active tasks in plan order, each as teamrig's own lists place it. `goals` is the
+goals a task of the team may serve. `history` is every event of the one task `--task` names. `inbox` is the asking
+session's own inbox. `sessions` is every session of your tree of teams. `meetings` is the team's meetings still
+scheduled or started. `config` is the team's config key by key, and the one document a run with no team is
+answered.
+
+Every document carries:
+
+- `interface`: the interface version that wrote it (`1.3`). Ignore fields you do not know: a minor version adds some.
+- `document`: its name.
+- `revision`: 16 characters that stay the same while the files the document is read from, what you asked and the
+  teamrig version stay the same. Compare it with the one you hold to know whether to draw again; it has no other
+  meaning. Give it back with `--unless` and a document that has not changed is answered `"unchanged": true` with
+  no body and no `problems`: keep what you hold. `unchanged` speaks of the files only, so what moves with the clock
+  (the read lines leaving the inbox's `--since` window, a meeting's `missed`) is yours to work out again.
+- `problems`: what could only partly be served, as text for a person: a config value read as its default, damaged
+  register lines left out, an archive segment that is gone (then `tasks` is empty). The exit is still 0. A file is
+  named from its team's folder down, never by its place on the disk, and the texts are fixed ones with counts;
+  `failures[].reason` of `sessions` is one fixed text too.
+
+`tasks` adds `tasks`, each with the task's fields as the register holds them (`id`, `title`, `description`, `owner`,
+`priority`, `status`, `due`, `note`, `proof`, `evidence`, `source`, `ref`, `waits`, `after`, its times and the
+rest), and `cuts`.
+
+`plan` (since interface 1.1) adds `at`, `validUntil`, `week`, `tasks` and `finished`: where each task stands in the
+team's plan, as `teamrig list` orders it, so a program ranks nothing itself. It holds ids, numbers, statuses and
+tags, and no words of a task: join `tasks[].id` to the `tasks` document for those.
+
+- `at`: when the plan was judged, a UTC instant.
+- `validUntil`: the first moment after `at` an answer here may change with no file moving: a due passing or coming
+  within `focus.score.dueSoonDays`, the time a task waits until, an open task reaching `focus.parkAfterDays`. `null`
+  when none is ahead. The clock is no part of `revision`: once `validUntil` has passed, ask again without `--unless`.
+- `week`: the week plan in force, `null` with none.
+- `tasks`: the active tasks in plan order, so a task's place in the list is its rank. `--owner` keeps one session's,
+  still in the team's order.
+- `finished`: the finished tasks the register still holds, by number, each `{ "id", "workClass" }`, under `--owner`
+  that session's only. A plan places none of them; the class is the one a list shows beside a finished task.
+
+Each of `tasks` holds:
+
+- `id`, and `parked`: `true` when the park rule takes it out of the lists (open, quiet for `focus.parkAfterDays`, of
+  a parking class, and needed by no active task of your tree).
+- The keys of plan order, in that order: `pinned`, `band` (0 is expedite, 1 near-term prep, then the team's class
+  bands; the lowest first), `ready` (no wait of it is pending and every task it is planned after is finished),
+  `score` (the highest first), `started`, `due`, `unblocks`, `inWeek` (tagged with the week plan in force), `size`
+  (percent of the weekly limit; `null` when not sized), then the number of its id. A program showing several teams'
+  tasks together sorts by these to order them as teamrig does.
+- `due`: the date it works to, `{ "due", "at", "from" }` or `null`. `due` is the date as stored, `at` the same moment
+  as a UTC instant, and `from` the task needing it whose earlier due this is, `null` for its own.
+- `unblocks`: `{ "first", "priority", "count" }`, the most urgent active task that needs it, that task's priority
+  and how many need it; `null` when none does.
+- What the score was read from: `costOfDelay`, `sizePct` (the work left, in percent of the weekly limit),
+  `workClass`, `goal` (`{ "tag", "rank" }` of its ranked goal, or `null`) and `prep`.
+- `needs`: each task it is planned after or waits on, as `{ "id", "team", "owner", "status" }`. `team` is `null` for
+  a task of the same team, else the team of your tree whose register holds it; `owner` and `status` are `null` for
+  an id no register of the tree holds any more, which was retired, so finished.
+- `neededBy`: the active tasks of other sessions that need it, each `{ "id", "owner", "due" }`, the earliest date
+  first. They are tasks of the same team: a plan knows no needer in another team's register.
+- `next`: who moves first so it can finish, `{ "kind", "who", "task", "behind" }`: the kind is `work` (its owner's),
+  `decision` or `approval` (asked of `who`), `task` is the task moved on, and `behind` an in-progress task the same
+  session works first, or `null`. The kind `time` adds `at`, the UTC instant the owner moves again at, whatever zone
+  the wait was written in, or `null` for a stored time that reads as none. The kind `elsewhere` is `{ "kind", "who", "task", "team", "need" }`: the owner of `need`,
+  an unfinished task `team`'s register holds. `next` is `null` when its needs run in a loop. A minor version may add
+  a kind: pass over one you do not know.
+
+`plan` reads what `teamrig list` reads: the register of every team of your tree (a need may be held there), the goals
+of the team and of the teams above it, and the metered spend a score's size comes from. Of another team's task it
+serves the id, the team, the owner and the status, and nothing else. When a register of the tree cannot be read (an
+archive segment is gone), `tasks` and `finished` are empty and `problems` names the segment: a plan judged without
+it would call a task ready whose need there is unfinished. Its `revision` moves with each of those files, so on a
+working team it moves at nearly every turn, as the scores do: `--unless` saves this document little there.
+
+`goals` (since interface 1.2) adds `goals` and `cuts`: the goals a task of the team may serve, which are the team's
+own and those of every team above it in your tree, as `teamrig add --goals` and the plan's ranking read them. A tag
+two of those teams hold is served once, as the nearer team's goal. A team beside or below the asked one is never
+read, and `--owner` does not narrow the document: a goal is no session's.
+
+- `goals`: the ranked goals first, by rank and then by tag, then the unranked ones by tag. Each holds:
+  - `tag`, and `team`: the team whose goals file holds it, the asked team or one above it.
+  - `title`: its title, plain text the team's lead wrote.
+  - `parent`: the tag of the goal it is a part of, or `null`.
+  - `rank`: its place in its team's ranking, 1 first; `null` for a goal the lead has not ranked.
+  - `slice`: the number of the slice now open, 1 first; `null` while none is.
+  - `start` and `target`: the first and the target day of its window, each `YYYY-MM-DD`.
+  - `slips`: every move of its target day, the oldest first, each `{ "at", "by", "from", "to", "note" }`: when it
+    was moved (a UTC instant), who moved it, the target day before and after, and why.
+- `cuts`: each text cut for matching a secret shape, as `{ "id", "field", "shape" }`: `id` is the goal's tag and
+  `field` is `title` or `slips.<n>.note`, the slip counted from 0.
+
+It serves what is stored of a goal and judges nothing: a goal's done counts, pace and forecast are no part of it.
+`plan[].goal` names a goal by `tag`: join it here for the title and the window. A goals file's lines that could not
+be served are counted in `problems`, the file named from its team's folder down: unreadable lines, lines a newer
+teamrig wrote, and records of no goal. Its `revision` moves with those goals files and the configs of your tree, so
+`--unless` holds it for days on a team whose goals stand still.
+
+`history` (since interface 1.3) adds `task`, `events` and `cuts`: every event the team's register holds of one
+task, the oldest first, which is what `teamrig show <id> --history` reads. It is one task's, so the run names it
+with `--task T<id>`; `--owner` does not narrow it.
+
+- `task`: the id asked.
+- `events`: each starts with `kind`, `at` (when it was written, a UTC instant) and `by` (the session that wrote
+  it). The rest goes by `kind`; a minor version may add a kind, so pass over one you do not know.
+  - `create`: the task was added. `task` holds the fields it was added with, named and formed as the `tasks`
+    document serves them: `title`, `description`, `owner`, `priority`, `type`, `critical`, `due`, `source`, `ref`,
+    `goals`, `week`, `size`, `pin`, `workClass` and `after`.
+  - `status`: its status was set. It holds `status`, `note`, `evidence`, `skill`, `proof`, `watch`, `met`,
+    `oneCommit`, `waits` and `followups`. What the event did not write is `null`: `waits` and `followups` are then
+    `null` and not empty, since an empty list is itself something a change can say.
+  - `update`: fields were changed, or a leader answered what it waits on. `changes` holds only the fields the event
+    gave, under the names of `create`, each with its new value: a field left out stayed as it was, and one that is
+    `null` was cleared. Beside it are `note`, `verdict` (the answer to the task's approval wait, else `null`),
+    `waits` (what a put-off or a decision left it waiting on, else `null`) and `decided` (`true` when the update
+    records the owner's decision on the task's card).
+  - `moved`: the task went to the team `to` names; its later events are in that team's register.
+- `cuts`: each text cut for matching a secret shape, as `{ "id", "field", "shape" }`: `id` is the event, as the
+  task's id, `#` and the event's place in `events` counted from 0 (`T12#3`), and `field` the text within it, such
+  as `note`, `task.title` or `changes.description`.
+
+A title or a description is marked by the source the task had once the event was written, so a tracker's import is
+`outside` in every event that carries it. The fields named above are the ones served: what else the register
+keeps of a task is no part of this document yet. An id the register holds no event of is answered with no event
+and no problem, and is not refused. A task that moved to another team ends here at its move.
+
+A task whose older events have left the working set is read from the register's archive, every segment of it, so
+its history costs more than a recent task's: ask it when a person opens the task, not in a loop. When an archive
+segment is gone, `events` is empty and `problems` names the segment. Its `revision` moves with the team's register
+(an event of any task), its archive, the renames and the config, and differs for each task.
+
+`inbox` adds `session` (`{ "id", "name" }`), `unread` (how many lines the session has not read; `null` when it never
+ran `teamrig inbox read`, and then every line counts as unread), `lines` and `cuts`. `lines` holds every unread line
+and the read ones posted in the last 24 hours (`--since`), in file order, each `{ "key", "at", "from", "text",
+"unread" }`: `key` is stable for a line and unlike any other's (a line whose text is cut has `cut-<n>`, its place in
+the file, which moves when old lines are trimmed), `at` its UTC minute, `from` the sender as the line
+names it (a session's id, `<team>/<id>` from another team, `github` for a line the issue import posted), both `null`
+for a line with no date. Reading it marks nothing read, unlike `teamrig inbox read`. The 24 hours are counted when
+you ask and are no part of `revision`: with an unchanged revision, drop the read lines that left the window
+yourself. `inbox` needs `--session` (or `$TEAMRIG_SESSION`, or a `--conversation` one of your team's sessions holds)
+and takes no `--team`; a session your team does not have now is refused.
+
+`sessions` adds `self`, `teams`, `sessions`, `failures` and `cuts`, and is the same whatever `--team` names: the tree
+is your own.
+
+- `teams`: every team of the tree, the root first, each `{ "id", "parent", "active", "retired" }` (`parent` is `null`
+  for the root; the two counts are its sessions and its retired ones).
+- `sessions`: each team's sessions in its config's order, then its retired ones. A row holds `team`, `id`, `name`,
+  `formerNames`, `roles`, `leader` (its direct leader's id; `null` for the team's lead and for a retired session),
+  `ledBy` (the leaders above it, nearest first), `leads` (how many it leads directly), `active` (`false` once it is
+  retired and not hired again), `launch` (`{ "model", "effort", "text" }`, the first two `null` for the default),
+  `hire` (`{ "at", "by", "scope", "reason", "reviewBy", "approvedBy", "burst" }`; `null` for a session the config
+  named with no hire), `rehiredFrom` and `retire` (each `{ "at", "by", "reason", "heir" }` or `null`), `unread` (as
+  in `inbox`), `state` (`busy`, `idle` or `asking`; `null` with no tab open), `ask` (`{ "kind", "task" }` while it
+  asks a person something: the kind is `permission`, `question`, `elicitation`, `decision` or `error`, the task is
+  `null` unless the ask names a task id, and the ask's words are never served), `since` (when its tab took the
+  state), `host` (`{ "id", "name" }` of the program it runs in; `null` on a retired row) and `conversation` (the
+  host's id of the conversation it last started in).
+- `self`: `{ "team", "session" }` of the session holding the conversation `--conversation` names, the newest start
+  when two hold it; `null` when you gave none or no session of the tree holds it.
+- `failures`: each team folder of the kit home whose config cannot be read, as `{ "team", "reason" }`; the rest is
+  still served.
+
+What a team wrote for itself is served only to that team and the teams below it. For your own team and the teams
+above it every field is served; for a team beside or below yours, `hire.scope`, `hire.reason`, a retirement's
+`reason` and `launch.text` are `null`. `conversation` is served for your own team's sessions only, and is `null` for
+every other team's.
+
+`meetings` adds `meetings` and `cuts`: the team's meetings still scheduled or started, by time, the rows `teamrig
+meeting list --json` prints. Each is `{ "id", "at", "atText", "minutes", "session", "with", "tasks", "about",
+"brief", "status", "missed" }`: `id` is `M<n>`, `at` the start as a UTC instant and `atText` the same moment in the
+team's zone (a change of the zone changes `revision`), `session` the session met, `with` the others joining and
+`tasks` the tasks it settles, by id, `about` the team's own words, `status` `scheduled` or `started`.
+
+- `brief` names the brief's file, `null` when the meeting has none: a path typed with no root is served as typed, a
+  file inside the team's folder is named from that folder down, and any other by its file name alone, so no place on
+  someone's disk is served.
+- `missed` is `true` for a meeting still scheduled when its slot was over. It moves with the clock, which is no part
+  of `revision`: with an unchanged revision, work it out yourself from `status`, `at` and `minutes`.
+
+`config` adds `team`, `teams`, `timeZone`, `priorities`, `settings` and `cuts`: what a settings screen reads. `team`
+is the team read and `teams` is empty; `timeZone` is the team's zone (the config's `timeZone`, else the machine's; a
+change of it changes `revision`); `priorities` holds the names of its priority levels, most urgent first, without
+teamrig's own p0. `settings` holds every key of the team config the schema describes, the rows `teamrig config get
+--json` prints, each `{ "path", "group", "type", "items", "enum", "min", "max", "value", "default", "isDefault",
+"meaning", "editable", "gatedBy", "readOnly", "problem", "kept" }`. Every field is always there, `null` where the
+key has none.
+
+- `value` is what the team's file holds, else the default, less every key the schema does not name. Each text of it
+  is looked at for a secret's shape by itself (an element of a list, a text inside an object), and a map entry whose
+  key matches one is left out, the cut listed under the field `key`. A cut's `id` is the setting's `path`.
+- `kept` is one fixed note, and `value` is `null`, for a key that names where a secret is kept
+  (`alerts.pageWebhookFile`, `alerts.pageWebhookKey`, `secretGuard.paths`); `teamrig config get` shows such a value
+  on the machine.
+- `problem` is one fixed text for a value the config check finds wrong and reads as its default; `teamrig config
+  validate` says why.
+- With the schema beside teamrig missing, `settings` is empty and `problems` says so.
+
+A run with no team (no `$TEAMRIG_TEAM` and no pointer file) that asks `config` alone, with no `--team`, is still
+answered, so a setup screen has something to read: `team` is `null`, `teams` lists the teams of this machine by id
+(each team folder of the kit home whose config can be read), `timeZone` is the machine's, and `priorities` and
+`settings` are empty. Any other document asked in that run, or a `--team`, is refused as every command with no team
+is.
+
+Two rules hold for a document's text:
+
+- A text that can come from outside the team (a title, a description, a ref's label, an inbox line's text) is
+  `{ "text", "source" }`, the source `team` or `outside`. Outside text has its control characters and
+  bidirectional marks escaped (`\x1b`,
+  `‮`): show it as quoted data, and never put it into a prompt as an instruction.
+- A text matching a secret shape (`register.secretPatterns`) is not served: the field holds `[cut: <shape>]` and
+  `cuts` lists `{ "id", "field", "shape" }`, so a tool can say what was held back.
+
+Flags:
+
+- `--json`: required; interface 1 has no text form.
+- `--session <id|name>`: who is asking, which picks whose `inbox` is served; `$TEAMRIG_SESSION` when left out. It is
+  a label, as `teamrig inbox status --session` takes it, and proves nothing.
+- `--conversation <id>`: the host's own id of the conversation your program runs in (1 to 128 letters, digits, `_`,
+  `.`, `:` or `-`), for a program that knows its conversation but not its session. `sessions` then answers `self`,
+  and `inbox` serves the session of your team holding it when no `--session` is given (a usage error when none
+  does). Like `--session` it is a label and proves nothing.
+- `--team <id>`: reads a team above yours in your tree instead of your own, for `tasks`, `plan`, `goals`,
+  `history`, `meetings` and `config`. A team beside or below yours is refused.
+- `--owner <id|name>`: keeps the tasks one session owns, of `tasks` and of `plan`.
+- `--task T<id>`: the one task `history` is asked of. A run asking `history` without it, or giving it without
+  asking `history`, is a usage error, as is a text that is no task id.
+- `--since <hours>`: how far back `inbox` serves the lines already read, in whole hours; 24 when left out, and 0
+  serves the unread ones only.
+- `--unless <document>=<revision>[,<document>=<revision>...]`: the revision you already hold of a document this run
+  asks, one entry a document, in one flag. A document still at that revision is answered `{ "interface", "document",
+  "revision", "unchanged": true }` and nothing more, from the stamps of its files alone: nothing is folded, so
+  asking again costs little. Any other is answered in full. A revision is the 16 characters `read` served; an entry
+  of another shape, for a document not asked or named twice, is a usage error.
+- `--interface <major.minor>`: the version your program speaks. A major other than 1, or a minor above the one this
+  teamrig serves, is refused, so a program fails at its first read instead of misreading a document.
+
+Example:
+
+```sh
+teamrig read tasks --json --owner api
+```
+
+Output:
+
+```text
+{"interface":"1.3","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
+```
+
 ### teamrig sessions
 
 Prints each session: running, with the memory its Claude Code's process tree holds (its helpers, shells and MCP
@@ -4322,6 +4577,41 @@ run [teamrig page test](#teamrig-page-test) to see a page arrive.
 ```text
 WARN page-webhook team shop's alerts.pageWebhookFile gives no page URL (the webhook URL alerts.pageWebhookFile gives is not an https URL), so an expired Claude login pages nobody: fix alerts.pageWebhookFile or what it names, then run teamrig page test
 ```
+
+### teamrig ui
+
+Starts the dedicated UI in the terminal it is run in, with its input and output on that terminal, and ends when the
+UI does. Run it yourself in a terminal tab: it draws the whole screen, so it shows nothing through `/teamrig` or a
+session's shell. It runs the entry script [ui.path] names (a UI build of your own), with your whole environment.
+Without the key it runs the released UI this teamrig pins: the first start fetches its archive over https into
+`ui/<version>-<sha256>` under the kit home, refusing one whose sha256 is not the pinned one, and each start holds every
+installed file to the pin again, refusing a folder changed since; remove that folder to fetch it again. The released UI
+gets only PATH, HOME, USERPROFILE, SYSTEMROOT, TERM, COLORTERM, LANG, LANGUAGE, TEAMRIG_HOME, TEAMRIG_TEAM,
+TEAMRIG_SESSION and the `LC_*` variables of yours. While this teamrig pins no release, it is refused without [ui.path], and it is refused when the key
+names no file. As it starts a program,
+`/teamrig ui` runs only when you type it in the tab, never from a session's line; and [ui.path] is the owner's key,
+which the config guard refuses a session changing. The script runs outside every Claude Code guard, so never point
+[ui.path] at a working tree a session edits: its edits would run in your terminal unchecked.
+
+Flags:
+
+- `--session <id|name>`: the session whose view it opens on. Without it: the team's.
+- `--team <team>`: the team to show. Without it: the team of this folder.
+
+Example:
+
+```sh
+teamrig ui --session web
+```
+
+Output (none of its own while the UI runs, and exit 0 when you quit it; this is the refusal while [ui.path] is
+unset):
+
+```text
+REFUSED no released UI is pinned in this teamrig yet; set ui.path in the team config to a UI entry script of your own build
+```
+
+`FAILED the UI exited with code <n>` and exit 1 when the UI ended any other way.
 
 ### teamrig page test
 

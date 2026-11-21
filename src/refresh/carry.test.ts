@@ -6,7 +6,7 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { VERSION_FIELD } from '../core/jsonl.ts';
-import { carryLines, carryOf, carryStartOf, formatCarriedJobs, parseCarriedJobs, readCarry, RECURRING_MAX_AGE_MS, scratchpadOf, toldScratchpadOf, type Carry } from './carry.ts';
+import { carryLines, carryOf, carryStartOf, formatCarriedJobs, parseCarriedJobs, readCarry, RECURRING_MAX_AGE_MS, toldScratchpadOf, type Carry, type CarryPlaces } from './carry.ts';
 import { REFRESH_FORMAT } from './state.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00.000Z');
@@ -148,11 +148,15 @@ describe('readCarry', () => {
   const TEMP = join('/', 'tmp');
   const CLAUDE = join('/', 'cfg');
   const TRANSCRIPT = join(CLAUDE, 'projects', 'C--work-app', '6f1c2d3e.jsonl');
-  const PLACES = { tempDir: TEMP, claudeDir: CLAUDE };
+  /** The scratchpad the host gives the session of TRANSCRIPT, which no line of the transcript names. */
+  const GUESSED = join(TEMP, 'claude', 'C--work-app', '6f1c2d3e', 'scratchpad');
+  const PLACES: CarryPlaces = {
+    scratchpadOf: (transcript) => (transcript === TRANSCRIPT ? GUESSED : join(TEMP, 'another')),
+    planFile: (slug) => join(CLAUDE, 'plans', `${slug}.md`),
+  };
 
   it('names the old scratchpad, when it holds anything, and the plan file, when there is one', async () => {
-    const scratchpad = join(TEMP, 'claude', 'C--work-app', '6f1c2d3e', 'scratchpad');
-    assert.equal(scratchpadOf(TRANSCRIPT, TEMP), scratchpad);
+    const scratchpad = GUESSED;
     const files = new MemoryFiles({
       [TRANSCRIPT]: lines({ type: 'assistant', slug: 'quiet-river-otter' }),
       [join(scratchpad, 'notes.md')]: 'n',
@@ -183,6 +187,17 @@ describe('readCarry', () => {
     });
     const carry = await readCarry(reader, files,TRANSCRIPT, NOW, PLACES, []);
     assert.deepEqual(carry?.scratchpad, { path: told, entries: 1 });
+  });
+
+  it('with no place of the host known, carries the scratchpad the transcript names, guesses none and looks for no plan', async () => {
+    const told = join(TEMP, 'claude', 'C--work-first', '6f1c2d3e', 'scratchpad');
+    const kept = { [join(GUESSED, 'notes.md')]: 'n', [join(CLAUDE, 'plans', 'quiet-river-otter.md')]: '# plan' };
+    const untold = new MemoryFiles({ ...kept, [TRANSCRIPT]: lines({ type: 'assistant', slug: 'quiet-river-otter' }) });
+    assert.deepEqual(await readCarry(reader, untold, TRANSCRIPT, NOW, undefined, []), { crons: [], wake: undefined, planSlug: 'quiet-river-otter', scratchpad: undefined, plan: undefined });
+    const named = new MemoryFiles({ ...kept, [TRANSCRIPT]: lines(environment({ scratchpadDirectory: told }), { type: 'assistant', slug: 'quiet-river-otter' }), [join(told, 'notes.md')]: 'n' });
+    const carry = await readCarry(reader, named, TRANSCRIPT, NOW, undefined, []);
+    assert.deepEqual(carry?.scratchpad, { path: told, entries: 1 });
+    assert.equal(carry?.plan, undefined);
   });
 });
 

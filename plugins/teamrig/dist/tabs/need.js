@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { isNonNegativeInteger, isRecord, recordField, stringField } from "../core/guards.js";
+import { isNonNegativeInteger, stringField } from "../core/guards.js";
 import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 import { isNeedKind } from "./need-kind.js";
 import { DECISION_MARKER, decisionLineOf, TAB_CIRCLES } from "./status.js";
@@ -12,8 +12,8 @@ import { DECISION_MARKER, decisionLineOf, TAB_CIRCLES } from "./status.js";
 export const TAB_NEED_FORMAT = 1;
 /** The most characters (code points) an ask's text keeps: enough for a band line, small enough for every tab to read. */
 export const NEED_TEXT_MAX_CHARS = 200;
-/** The tools that stop a turn to ask the user, and the text each ask shows when its input names no question. */
-const ASKING_TOOL_TEXTS = { AskUserQuestion: 'a question', ExitPlanMode: 'a plan to approve' };
+/** The text a call that stops a turn to ask the user shows when it names no question. */
+const ASK_TEXTS = { question: 'a question', plan: 'a plan to approve' };
 /** The tool input fields that say most about a permission prompt, the first one present shown after the tool's name. */
 const PERMISSION_FIELDS = ['command', 'file_path', 'url', 'path', 'pattern', 'description'];
 /** C0 and C1 controls and DEL: kept out of a text another tab prints in its band. */
@@ -31,42 +31,40 @@ export function needText(text) {
     return chars.length > NEED_TEXT_MAX_CHARS ? `${chars.slice(0, NEED_TEXT_MAX_CHARS - 1).join('').trimEnd()}…` : flat;
 }
 /** A permission prompt's text: the tool's name, then the input field that says most about the call. */
-function permissionText(payload) {
-    const tool = stringField(payload, 'tool_name') ?? 'a tool';
-    const input = recordField(payload, 'tool_input') ?? {};
-    const detail = PERMISSION_FIELDS.map((field) => stringField(input, field)).find((value) => value !== undefined && value.trim() !== '');
-    return detail === undefined ? tool : `${tool}: ${detail}`;
+function permissionText(call) {
+    if (call === undefined) {
+        return 'a tool';
+    }
+    const detail = PERMISSION_FIELDS.map((field) => stringField(call.input, field)).find((value) => value !== undefined && value.trim() !== '');
+    return detail === undefined ? call.name : `${call.name}: ${detail}`;
 }
-/** An asking tool's text: AskUserQuestion's first question, else the tool's plain name. */
-function questionText(tool, payload) {
-    const questions = recordField(payload, 'tool_input')?.['questions'];
-    const first = Array.isArray(questions) ? questions.find(isRecord) : undefined;
-    const question = first === undefined ? undefined : stringField(first, 'question');
-    return question === undefined || question.trim() === '' ? (ASKING_TOOL_TEXTS[tool] ?? tool) : question;
+/** An asking call's text: its first question, else the plain words for what it asks. */
+function questionText(call) {
+    return call.question === undefined || call.question.trim() === '' ? ASK_TEXTS[call.asks] : call.question;
 }
 /** A decision line without its bold or heading markup. */
 function decisionText(line) {
     return line.replace(/^#{1,6} +/, '').replaceAll('**', '');
 }
 /** What this hook event asks the user, from the fields it carries; undefined for an event that asks nothing. */
-export function askOf(payload) {
-    const event = stringField(payload, 'hook_event_name');
-    const tool = stringField(payload, 'tool_name') ?? '';
-    if (event === 'PermissionRequest') {
-        return { kind: 'permission', text: needText(permissionText(payload)) };
+export function askOf(event) {
+    const { name, call } = event;
+    if (name === 'permission-prompt') {
+        return { kind: 'permission', text: needText(permissionText(call)) };
     }
-    if (event === 'PreToolUse' && Object.hasOwn(ASKING_TOOL_TEXTS, tool)) {
-        return { kind: 'question', text: needText(questionText(tool, payload)) };
+    if (name === 'tool-start' && call?.kind === 'ask') {
+        return { kind: 'question', text: needText(questionText(call)) };
     }
-    if (event === 'Elicitation') {
-        return { kind: 'elicitation', text: needText(stringField(payload, 'message') ?? stringField(payload, 'mcp_server_name') ?? 'a form') };
+    if (name === 'form-start') {
+        // A form with no text of its own carries the name of the server that asks as its message.
+        return { kind: 'elicitation', text: needText(event.message ?? 'a form') };
     }
-    if (event === 'Stop') {
-        const line = decisionLineOf(stringField(payload, 'last_assistant_message'));
+    if (name === 'stop') {
+        const line = decisionLineOf(event.lastReply);
         return line === undefined ? undefined : { kind: 'decision', text: needText(decisionText(line)) || DECISION_MARKER };
     }
-    if (event === 'StopFailure') {
-        return { kind: 'error', text: needText(stringField(payload, 'error') ?? 'an API error') };
+    if (name === 'stop-failed') {
+        return { kind: 'error', text: needText(event.error ?? 'an API error') };
     }
     return undefined;
 }
@@ -81,12 +79,12 @@ export function taskOf(...texts) {
     return null;
 }
 /** The tab record of `session` in `state` after this hook event, which asked `ask` (undefined: nothing). */
-export function tabNeedOf(session, state, payload, pid, since) {
-    const ask = askOf(payload);
+export function tabNeedOf(session, state, event, pid, since) {
+    const ask = askOf(event);
     if (ask === undefined) {
         return { session, state, kind: null, text: null, task: null, pid, since };
     }
-    return { session, state, kind: ask.kind, text: ask.text, task: taskOf(ask.text, stringField(payload, 'last_assistant_message')), pid, since };
+    return { session, state, kind: ask.kind, text: ask.text, task: taskOf(ask.text, event.lastReply), pid, since };
 }
 /** Whether two records show the same tab: a rewrite that changes only `since` is skipped, so each tool's end stays cheap. */
 export function sameTab(left, right) {
@@ -155,6 +153,7 @@ export class TabNeedStore {
     remove(id) {
         return this.files.remove(this.pathOf(id));
     }
+    /** The session's tab file, for a reader that stamps it without reading it. */
     pathOf(id) {
         return join(this.folder, `${id}.json`);
     }

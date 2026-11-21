@@ -1,5 +1,3 @@
-import { toolCommandReadings } from "../core/bash-tool-readings.js";
-import { isRecord, recordField, stringField } from "../core/guards.js";
 import { ENV } from "../core/home.js";
 import { SETTINGS_WRITERS, settingsWriteRefusal, WRITE_SWITCH } from "../core/settings-writers.js";
 import { placeProgram, placeScript } from "../exec/client-launch.js";
@@ -7,7 +5,7 @@ import { PACKAGE_STARTERS } from "../package-guard/packaged.js";
 import { runsOf } from "../package-guard/programs.js";
 import { programName } from "../push-guard/launchers.js";
 import { ghWriteRefusals } from "./gh-write-refusals.js";
-import { holdBackOutput } from "./permission.js";
+import { heldBack } from "./permission.js";
 import { changesVariable } from "./variable-change.js";
 /**
  * The exec guard (T755, spec §7): an agent tab may run a `teamrig exec` review (approve, refuse, escalate) only as
@@ -439,25 +437,17 @@ export function runsOfReadings(readings, context) {
  * from a pipe the guard cannot read, or a package runner hands its line to a shell the line names that the guard
  * cannot read; and for each raw `gh` write on the team's GitHub repositories (`ghWriteRefusals`). Else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec`
  * calls start once, and reads the tab's session only for a line that holds a review, or a bind that names a session
- * or runs where the line changes one. A Bash line on Windows is read in each reading bash may run
- * (`toolCommandReadings`), so a call the line as written escapes is still refused. It reads only the line's own words:
- * a script the line runs is not covered, so these are checks against mistakes.
+ * or runs where the line changes one. The line is read in each text its shell may run (the call's `readings`), so a
+ * call the line as written escapes is still refused. It reads only the line's own words: a script the line runs is
+ * not covered, so these are checks against mistakes.
  */
-export async function execGuardOutput(payload, env) {
-    if (!isRecord(payload)) {
-        return '';
+export async function execGuardReply(event, env) {
+    const { call } = event;
+    if (call?.kind !== 'shell' || call.command === undefined) {
+        return undefined;
     }
-    const command = stringField(recordField(payload, 'tool_input') ?? {}, 'command');
-    if (command === undefined) {
-        return '';
-    }
-    const tool = stringField(payload, 'tool_name');
-    const context = {
-        cwd: stringField(payload, 'cwd') ?? env.cwd,
-        home: env.home,
-        dialect: tool === 'PowerShell' ? 'powershell' : 'bash',
-    };
-    const runs = runsOfReadings(toolCommandReadings(tool, command, env.platform), context);
+    const context = { cwd: event.cwd ?? env.cwd, home: env.home, dialect: call.dialect };
+    const runs = runsOfReadings(call.readings, context);
     const calls = runs.programs.flatMap((run) => {
         const launch = teamrigLaunchOf(run, startsGuarded);
         const call = launch === undefined ? undefined : guardedCallOf(launch.words);
@@ -501,7 +491,7 @@ export async function execGuardOutput(payload, env) {
         checkedBinds.length === 0 &&
         ghRefusals.length === 0;
     if (quiet && !unread && !fed && !foreign && !cleared) {
-        return '';
+        return undefined;
     }
     const reasons = [...(unread ? [UNREADABLE] : []), ...(fed ? [FED_SHELL] : []), ...(foreign ? [FOREIGN_SHELL] : []), ...(cleared ? [CLAUDE_CODE_CHANGED] : [])];
     reasons.push(...ghRefusals);
@@ -535,5 +525,5 @@ export async function execGuardOutput(payload, env) {
         reasons.push(...reviews.map((call) => reviewRefusalOf(call, identity)).filter((reason) => reason !== undefined));
         reasons.push(...checkedBinds.map((call) => bindRefusalOf(call, identity, steered)).filter((reason) => reason !== undefined));
     }
-    return reasons.length === 0 ? '' : holdBackOutput('deny', `teamrig exec guard: ${[...new Set(reasons)].join(' ')}`);
+    return reasons.length === 0 ? undefined : heldBack('deny', `teamrig exec guard: ${[...new Set(reasons)].join(' ')}`);
 }

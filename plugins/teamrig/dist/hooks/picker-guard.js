@@ -1,5 +1,4 @@
 import { formatAddress } from "../core/address.js";
-import { stringField } from "../core/guards.js";
 import { DECISION_MARKER } from "../tabs/status.js";
 /**
  * The picker guard: with `pickerGuard.enabled`, refuses Claude Code's question picker (AskUserQuestion) in every
@@ -16,11 +15,12 @@ import { DECISION_MARKER } from "../tabs/status.js";
  *
  * The same switch refuses a Bash `cd` compound Claude Code would hold on a permission prompt (hooks/cd-compound.ts).
  */
-/** The tool the guard refuses: the question picker. */
-export const PICKER_TOOL = 'AskUserQuestion';
-/** Whether the guard looks at this payload: the switch is on and it is a PreToolUse call of the picker. */
-export function guardsPicker(enabled, payload) {
-    return enabled && stringField(payload, 'hook_event_name') === 'PreToolUse' && stringField(payload, 'tool_name') === PICKER_TOOL;
+/**
+ * Whether the guard looks at this hook event: the switch is on and it is the start of a call that asks the human a
+ * question, the picker's. A call that asks a yes to a plan is left alone.
+ */
+export function guardsPicker(enabled, event) {
+    return enabled && event.name === 'tool-start' && event.call?.kind === 'ask' && event.call.asks === 'question';
 }
 /**
  * Who calls the picker in `session`, from a helper or not; `parentLead` is the team's parent lead when the team hangs

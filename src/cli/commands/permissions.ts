@@ -6,12 +6,14 @@ import { planLine, totalLine, writeLine } from '../../permissions/report.ts';
 import { applyTrim, backupStamp, ownerStateDir, planScope, rewritesOf } from '../../permissions/trim.ts';
 import { teamSettingsScope } from '../allow-scope.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
+import { pathsOf } from '../host.ts';
 import { openTeamKit, projectFolder, requireConfig } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /**
  * `permissions trim [--all] [--yes]`: remove the local allow rules off the team's `permissions.keepAllow` from the
- * Claude Code settings the team's sessions run under (src/cli/allow-scope.ts). By default only the rules that approve
+ * host's settings the team's sessions run under (src/cli/allow-scope.ts; a host whose folders teamrig does not know
+ * refuses with its own reason, as there is no file to trim). By default only the rules that approve
  * a whole tool or a program with any arguments, or hold a credential (one of the team's secret shapes), go; `--all`
  * removes every rule off the list. It names each file and
  * counts its rules by class, never printing a rule. Without --yes it writes nothing; with it, each old file goes first
@@ -27,7 +29,7 @@ export async function trim(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
   const mode: TrimMode = args.switches.has('all') ? 'all' : 'wide';
-  const scope = await teamSettingsScope(runtime, { paths: kit.paths, config, project: await projectFolder(runtime, config) });
+  const scope = await teamSettingsScope(runtime, pathsOf(runtime), { paths: kit.paths, config, project: await projectFolder(runtime, config) });
   const plans = await planScope(runtime.files, scope, new KeepList(config.permissions.keepAllow), mode, new SecretScanner(config.register.secretPatterns));
   const lines = plans.flatMap((plan) => planLine(plan) ?? []);
   const what = mode === 'all' ? 'every allow rule' : 'the allow rules that approve a whole tool or program or hold a credential';

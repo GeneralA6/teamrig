@@ -30,7 +30,7 @@ import { noProgressFlag } from "../../register/progress.js";
 import { sliceLateFlags } from "../../register/slice-late.js";
 import { overSizeFlags } from "../../register/over-size.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
-import { windowOpensAfter } from "../../register/snapshot.js";
+import { lacksEventsOf } from "../../register/snapshot.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, watchQueue } from "../../register/verify.js";
 import { readAs, TaskTree } from "../../register/tree.js";
@@ -41,7 +41,7 @@ import { lintSkills } from "../../skills/lint.js";
 import { skillsToLint } from "../../skills/run-scripts.js";
 import { SKILL_FILE } from "../../skills/store.js";
 import { weekUseOnAccount } from "../account-teams.js";
-import { readWideAllow, teamSettingsScope } from "../allow-scope.js";
+import { knownSettingsScope, readWideAllow } from "../allow-scope.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
 import { handStepPin, readRunFiles } from "../hand-step-file.js";
 import { KitTreeGoals } from "../tree-goals.js";
@@ -787,10 +787,7 @@ function weekMayBeRetired(week) {
  * line only once its create event is before the window, so `show` prints such a description from the history.
  */
 function showNeedsHistory(id) {
-    return (snapshot) => {
-        const task = snapshot.state.tasks.get(id);
-        return task === undefined ? snapshot.retired !== null : windowOpensAfter(snapshot, Date.parse(task.createdAt));
-    };
+    return (snapshot) => lacksEventsOf(snapshot, id);
 }
 /** The filter with `list`'s switches read for one team, as `--untriaged` asks for that team's own leaders. */
 function switchedFilter(args, filter, { config, above }) {
@@ -1056,7 +1053,7 @@ export async function checkReport(args, runtime) {
     const { skills, unowned } = splitUnowned([...context, ...allow, ...deny], lint, new Set(own.config.sessions), own.paths.skills);
     const idle = await idlePassWarnings(runtime.files, own.paths, own.config.open.idle.mode, now.getTime());
     const hooks = await secretHookWarnings(runtime.files, runtime.secretsGit, own.paths, own.config.delivery.repos);
-    const settings = await teamSettingsScope(runtime, { paths: own.paths, config: own.config, project });
+    const settings = await knownSettingsScope(runtime, { paths: own.paths, config: own.config, project });
     const off = await secretGuardOffWarnings(runtime.files, own.config.secretGuard, settings);
     const fiveHour = await fiveHourWarnings(runtime.files, snapshotDirOf(own.config.budget, own.paths), own.config.budget, zone, now.getTime());
     const resets = resetExpiryWarnings(own.config.budget, zone, now.getTime());

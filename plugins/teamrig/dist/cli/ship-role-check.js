@@ -1,5 +1,4 @@
 import { dirname, isAbsolute, posix, resolve } from 'node:path';
-import { DEFAULT_WORKTREE_FOLDER } from "../config/defaults.js";
 import { taskFolder } from "../core/home.js";
 import { isAtOrBelow, samePath } from "../core/paths.js";
 import { teamPlace } from "../delivery/places.js";
@@ -8,6 +7,7 @@ import { FALLBACK_BRANCH, ORIGIN, pathInCheckout } from "../merge/git.js";
 import { taskBranchOf } from "../permissions/route-git.js";
 import { JsonlEventLog } from "../register/store.js";
 import { moduleSpecifiersOf } from "./module-specifiers.js";
+import { worktreeFolderOf } from "./worktree-folder.js";
 /** The repository whose configured ship tool `tool` names; undefined when none does. */
 function shipRepoOf(kit, config, tool) {
     for (const repo of Object.values(config.delivery.repos)) {
@@ -411,7 +411,9 @@ export async function shipBranchOf(runtime, kit, config, holder, run) {
     if (repo !== undefined && run.release !== undefined) {
         return releaseTargetOf(runtime, kit, repo, holder, run, run.release);
     }
-    if (repo === undefined || !isInside(run.worktree, resolve(repo.mainDir, repo.config.worktreeFolder ?? DEFAULT_WORKTREE_FOLDER))) {
+    // With no folder set the worktree must sit where the host makes its own; where the host names none, nothing proves the place, so the permission check decides.
+    const worktrees = repo === undefined ? undefined : worktreeFolderOf(runtime, repo.mainDir, repo.config.worktreeFolder);
+    if (repo === undefined || worktrees === undefined || !isInside(run.worktree, worktrees)) {
         return undefined;
     }
     const git = runtime.mergeGit;

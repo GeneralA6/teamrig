@@ -15,19 +15,15 @@ export const ASK_REFUSED_NOTE = 'teamrig guards never ask a person, so this is r
 export function hookAsksOf(load) {
     return load?.status === 'loaded' ? load.config.prompts.hookAsks : DEFAULT_PROMPTS.hookAsks;
 }
+/** A hook's reply refusing a call with its reason as given. */
+export function refusal(reason) {
+    return { verdict: { kind: 'deny', reason } };
+}
 /**
- * The permission fields for a call a hook holds back. A guard never asks a person: a prompt holds the session's tab
- * until someone answers it (T3356). What it would have asked about is refused instead, its reason followed by what to
- * do (`ASK_REFUSED_NOTE`); a refusal stays a refusal with its own reason.
+ * A hook's reply holding a call back. A guard never asks a person: a prompt holds the session's tab until someone
+ * answers it (T3356). What it would have asked about is refused instead, its reason followed by what to do
+ * (`ASK_REFUSED_NOTE`); a refusal stays a refusal with its own reason.
  */
-export function holdBack(decision, reason) {
-    return { permissionDecision: 'deny', permissionDecisionReason: decision === 'ask' ? `${reason} ${ASK_REFUSED_NOTE}` : reason };
-}
-/** The PreToolUse output of a call a hook refuses with its reason as given. */
-export function refusalOutput(reason) {
-    return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } });
-}
-/** The PreToolUse output of a call a hook holds back (see `holdBack`). */
-export function holdBackOutput(decision, reason) {
-    return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', ...holdBack(decision, reason) } });
+export function heldBack(decision, reason) {
+    return refusal(decision === 'ask' ? `${reason} ${ASK_REFUSED_NOTE}` : reason);
 }

@@ -6,7 +6,8 @@ import { CONFIG_MIGRATIONS, type ConfigFormat } from '../config/migrate.ts';
 import { CONFIG_VERSION } from '../config/types.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { CliHarness, CONFIG_PATH, TEAM } from '../testing/cli-harness.ts';
-import { configSchemaPathOf } from './commands/config.ts';
+import { configSchemaPathOf, schemaSettingsOf, type SchemaSettings } from './commands/config.ts';
+import { loadedConfig, openTeamKit } from './kit.ts';
 import type { SelfLocation } from './runtime.ts';
 import { EXIT } from './runtime.ts';
 
@@ -44,6 +45,13 @@ describe('config get', () => {
     assert.ok(result.stdout.includes('messages.coldAfterMinutes 60'));
     assert.ok(result.stdout.includes('sessions ["lead","alpha","bravo"]  (read-only: the roster: changed only by teamrig hire, retire, rename, promote and demote)'));
     assert.ok(result.stdout.some((line) => /^budget\.targetPct .*\(.*read-only: owner gate: budget\)$/.test(line)));
+  });
+
+  it('shows ui.path as the owner gate the config guard holds it to, as teamrig ui runs the script it names', async () => {
+    const result = await (await teamWithSchema()).run(['config', 'get', 'ui', '--json'], { self: SELF });
+    assert.equal(result.code, EXIT.ok);
+    const rows = rowsOf(result.stdout);
+    assert.deepEqual(rows.map((row) => [row['path'], row['editable']]), [['ui.path', false]]);
   });
 
   it('gives a settings screen one JSON document of the rows under a key', async () => {
@@ -84,5 +92,28 @@ describe('config get', () => {
     const noSchema = await new CliHarness(CURRENT_TEAM).run(['config', 'get'], { self: SELF });
     assert.equal(noSchema.code, EXIT.refused);
     assert.match(noSchema.stdout[0] ?? '', /no config schema at .*config\.schema\.json; reinstall teamrig$/);
+  });
+});
+
+describe('schemaSettingsOf', () => {
+  async function settingsOf(kit: CliHarness): Promise<SchemaSettings | undefined> {
+    const runtime = kit.runtime({ self: SELF });
+    return schemaSettingsOf(runtime, loadedConfig(await openTeamKit(runtime)));
+  }
+
+  it('gives the schema beside the CLI with its rows read against the team file', async () => {
+    const settings = await settingsOf(await teamWithSchema());
+    assert.deepEqual(settings?.schema, JSON.parse(SCHEMA_TEXT));
+    assert.equal(settings?.rows.find((row) => row.path === 'messages.maxLines')?.value, 12);
+    assert.equal(settings?.rows.find((row) => row.path === 'messages.coldAfterMinutes')?.isDefault, true);
+  });
+
+  it('gives nothing, and refuses nothing, where the schema file is missing or holds no JSON object', async () => {
+    const kit = new CliHarness(CURRENT_TEAM);
+    assert.equal(await settingsOf(kit), undefined);
+    for (const text of ['[1]', '{ not json']) {
+      await kit.files.write(configSchemaPathOf(SELF.script), text);
+      assert.equal(await settingsOf(kit), undefined);
+    }
   });
 });

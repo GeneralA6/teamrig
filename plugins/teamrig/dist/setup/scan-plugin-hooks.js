@@ -7,15 +7,13 @@ async function jsonAt(files, path) {
     const text = await files.read(path);
     return text === undefined ? undefined : jsonObjectOf(text);
 }
-/** The settings files whose `enabledPlugins` turn a plugin on or off for the project, the one that wins last. */
-function enablingFiles(at) {
-    const project = join(at.project, '.claude');
-    return [join(at.claudeDir, 'settings.json'), join(project, 'settings.json'), join(project, 'settings.local.json')];
-}
-/** Each plugin the settings files turn on (true) or off (false), as the last file to name it says. */
+/**
+ * Each plugin the session's settings files turn on (true) or off (false) for the project in their `enabledPlugins`,
+ * as the last file to name it says: the one the host reads last wins.
+ */
 async function enabledPlugins(files, at) {
     const enabled = new Map();
-    for (const path of enablingFiles(at)) {
+    for (const path of at.sessionSettings) {
         const listed = (await jsonAt(files, path))?.['enabledPlugins'];
         for (const [key, on] of isRecord(listed) ? Object.entries(listed) : []) {
             if (typeof on === 'boolean') {

@@ -1,8 +1,7 @@
 import { DEFAULT_COMMIT_GUARD, DEFAULT_COMMITS, DEFAULT_PUSH_GUARD } from '../config/defaults.ts';
 import type { ConfigLoad } from '../config/load.ts';
 import type { CommitsConfig, PushToProtected, SkipHooks } from '../config/types.ts';
-import { toolCommandReadings } from '../core/bash-tool-readings.ts';
-import { isRecord, recordField, stringField } from '../core/guards.ts';
+import type { HookEvent, HookReply } from '../ports/host/index.ts';
 import { describeLargeCommits, largeCommits, type CommitLog, type CommitStat, type LargeCommit } from '../push-guard/commit-size.ts';
 import { hookSkips, type HookSkip } from '../push-guard/hook-skips.ts';
 import { findGitInvocations } from '../push-guard/invocations.ts';
@@ -18,7 +17,7 @@ import {
   type PushVerdict,
   type RepoState,
 } from '../push-guard/push.ts';
-import { holdBackOutput } from './permission.ts';
+import { heldBack } from './permission.ts';
 
 export interface PushGuardEnv {
   /** The folder to judge from when the payload names none. */
@@ -36,8 +35,6 @@ export interface PushGuardEnv {
   /** Whether a push the guard would ask about raises the prompt or is refused with what to do instead. */
   /** Under `pushToProtected: lead` or `gated`, what lets this session's normal push to a protected branch through; read only for such a push. */
   readonly clearance: () => Promise<PushClearance>;
-  /** The host's platform: on Windows a Bash line is judged as written and as bash receives it (core/bash-tool-readings.ts). */
-  readonly platform: NodeJS.Platform;
 }
 
 /** The choices under which a normal push to a protected branch goes through only when cleared (`PushClearance`). */
@@ -130,10 +127,10 @@ export function unclearedPushReason(clearance: Extract<PushClearance, { readonly
 }
 
 /** Under `pushToProtected: lead` or `gated`: the note when the push is cleared, else a refusal, whatever `hookAsks` says. */
-function clearedPushOutput(clearance: PushClearance, listing: string, env: PushGuardEnv, choice: ClearedChoice): string {
+function clearedPushReply(clearance: PushClearance, listing: string, env: PushGuardEnv, choice: ClearedChoice): HookReply {
   return clearance.kind === 'none'
-    ? holdBackOutput('deny', `${unclearedPushReason(clearance, env.protectedBranches, choice)}${listing}`)
-    : JSON.stringify({ systemMessage: `${clearedPushNote(clearance, env.protectedBranches, choice)}${listing}` });
+    ? heldBack('deny', `${unclearedPushReason(clearance, env.protectedBranches, choice)}${listing}`)
+    : { notice: `${clearedPushNote(clearance, env.protectedBranches, choice)}${listing}` };
 }
 
 /**
@@ -163,7 +160,7 @@ function strictness(verdict: PushVerdict): number {
 }
 
 /**
- * The strictest of the readings' verdicts (`toolCommandReadings` gives at least one), the command as written on a tie.
+ * The strictest of the readings' verdicts (a shell call with a command has at least one), the command as written on a tie.
  * Each reading is judged alone, never their git commands joined: the judge follows each line's checkouts in order, so
  * another reading's checkout would move the branch a push is read against.
  */
@@ -172,36 +169,32 @@ function strictestVerdict(verdicts: readonly PushVerdict[]): PushVerdict {
 }
 
 /**
- * The PreToolUse hook's stdout for one Bash or PowerShell call: a permission decision when the
- * command pushes to a protected branch, else nothing, so the normal permission flow decides.
- * Under `pushToProtected: allow` a normal push to a protected branch gets a note (`systemMessage`)
+ * The guard's reply to one shell call about to run: a refusal when the
+ * command pushes to a protected branch, else none, so the normal permission flow decides.
+ * Under `pushToProtected: allow` a normal push to a protected branch gets a note for the human
  * instead of a question, and the normal permission flow still decides; under `lead` and `gated` it gets that note only
  * when cleared (`PushClearance`), else a refusal saying what to do instead. Under the commits gate, an
  * asked or allowed push also lists the large commits it sends (`warn`) or is refused for them
  * (`refuse`). A command the guard cannot read with confidence is asked about, with a reason that
  * says what it could not read. A line that runs git without the repository's hooks (see `hookSkips`) is refused or
  * asked about first, as `skipHooks` says; a refused push stays refused under `ask`. Under `hookAsks: refuse`
- * every such question is a refusal instead, its reason saying what to do (see `holdBack`). A Bash line on Windows is
- * judged in each reading bash may run (`toolCommandReadings`), keeping the strictest verdict and every hook skip.
+ * every such question is a refusal instead, its reason saying what to do (see `heldBack`). A line is judged in
+ * each reading its shell may run (the call's `readings`), keeping the strictest verdict and every hook skip.
  */
-export async function pushGuardOutput(payload: unknown, env: PushGuardEnv): Promise<string> {
-  if (!isRecord(payload)) {
-    return '';
+export async function pushGuardReply(event: HookEvent, env: PushGuardEnv): Promise<HookReply | undefined> {
+  const { call } = event;
+  if (call?.kind !== 'shell' || call.command === undefined) {
+    return undefined;
   }
-  const command = stringField(recordField(payload, 'tool_input') ?? {}, 'command');
-  if (command === undefined) {
-    return '';
-  }
-  const tool = stringField(payload, 'tool_name');
   const context: GuardContext = {
-    cwd: stringField(payload, 'cwd') ?? env.cwd,
+    cwd: event.cwd ?? env.cwd,
     home: env.home,
-    dialect: tool === 'PowerShell' ? 'powershell' : 'bash',
+    dialect: call.dialect,
     protectedBranches: env.protectedBranches,
     pushToProtected: env.pushToProtected,
     repo: env.repo,
   };
-  const readings = toolCommandReadings(tool, command, env.platform).map((text) => {
+  const readings = call.readings.map((text) => {
     const found = findGitInvocations(text, finderContextOf(context));
     return { found, verdict: judgePushes(found, context) };
   });
@@ -209,22 +202,22 @@ export async function pushGuardOutput(payload: unknown, env: PushGuardEnv): Prom
   if (env.skipHooks !== 'allow') {
     const skips = readings.flatMap(({ found }) => hookSkips(found.invocations));
     if (skips.length > 0 && (env.skipHooks === 'deny' || verdict.decision !== 'deny')) {
-      return holdBackOutput(env.skipHooks, skipHooksReason(skips));
+      return heldBack(env.skipHooks, skipHooksReason(skips));
     }
   }
   if (verdict.decision === 'allow' && verdict.protectedPush === undefined) {
-    return '';
+    return undefined;
   }
   const large = verdict.decision === 'deny' ? [] : largeCommitsIn(verdict.updates, env);
   const listing = large.length === 0 ? '' : ` ${describeLargeCommits(large, env.commits)}`;
   if (large.length > 0 && env.commits.gate === 'refuse') {
-    return holdBackOutput('deny', `This push to a protected branch (${env.protectedBranches.join(', ')}) is refused: ${describeLargeCommits(large, env.commits)}`);
+    return heldBack('deny', `This push to a protected branch (${env.protectedBranches.join(', ')}) is refused: ${describeLargeCommits(large, env.commits)}`);
   }
   if (verdict.decision === 'allow') {
     const choice = env.pushToProtected;
     return choice === 'lead' || choice === 'gated'
-      ? clearedPushOutput(await env.clearance(), listing, env, choice)
-      : JSON.stringify({ systemMessage: `${allowedPushNote(env.protectedBranches)}${listing}` });
+      ? clearedPushReply(await env.clearance(), listing, env, choice)
+      : { notice: `${allowedPushNote(env.protectedBranches)}${listing}` };
   }
-  return holdBackOutput(verdict.decision, `${stopReason(verdict, verdict.decision, env.protectedBranches)}${listing}`);
+  return heldBack(verdict.decision, `${stopReason(verdict, verdict.decision, env.protectedBranches)}${listing}`);
 }

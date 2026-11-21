@@ -1,10 +1,12 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
-import { isNonNegativeInteger, isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
+import { isNonNegativeInteger, stringField, type JsonRecord } from '../core/guards.ts';
 import type { TeamPaths } from '../core/home.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
+import type { AskCall, HookEvent, ToolCall } from '../ports/host/index.ts';
 import { isNeedKind, type NeedKind } from './need-kind.ts';
-import { DECISION_MARKER, decisionLineOf, TAB_CIRCLES, type TabState } from './status.ts';
+import type { TabState } from './state.ts';
+import { DECISION_MARKER, decisionLineOf, TAB_CIRCLES } from './status.ts';
 
 /**
  * What each session's tab shows and what it asks the user (T2511), `<team>/state/tabs/<id>.json` each: the tab-status,
@@ -39,8 +41,8 @@ export interface TabNeed {
   readonly since: string;
 }
 
-/** The tools that stop a turn to ask the user, and the text each ask shows when its input names no question. */
-const ASKING_TOOL_TEXTS: Readonly<Record<string, string>> = { AskUserQuestion: 'a question', ExitPlanMode: 'a plan to approve' };
+/** The text a call that stops a turn to ask the user shows when it names no question. */
+const ASK_TEXTS: Readonly<Record<AskCall['asks'], string>> = { question: 'a question', plan: 'a plan to approve' };
 
 /** The tool input fields that say most about a permission prompt, the first one present shown after the tool's name. */
 const PERMISSION_FIELDS = ['command', 'file_path', 'url', 'path', 'pattern', 'description'] as const;
@@ -64,19 +66,17 @@ export function needText(text: string): string {
 }
 
 /** A permission prompt's text: the tool's name, then the input field that says most about the call. */
-function permissionText(payload: JsonRecord): string {
-  const tool = stringField(payload, 'tool_name') ?? 'a tool';
-  const input = recordField(payload, 'tool_input') ?? {};
-  const detail = PERMISSION_FIELDS.map((field) => stringField(input, field)).find((value) => value !== undefined && value.trim() !== '');
-  return detail === undefined ? tool : `${tool}: ${detail}`;
+function permissionText(call: ToolCall | undefined): string {
+  if (call === undefined) {
+    return 'a tool';
+  }
+  const detail = PERMISSION_FIELDS.map((field) => stringField(call.input, field)).find((value) => value !== undefined && value.trim() !== '');
+  return detail === undefined ? call.name : `${call.name}: ${detail}`;
 }
 
-/** An asking tool's text: AskUserQuestion's first question, else the tool's plain name. */
-function questionText(tool: string, payload: JsonRecord): string {
-  const questions = recordField(payload, 'tool_input')?.['questions'];
-  const first = Array.isArray(questions) ? questions.find(isRecord) : undefined;
-  const question = first === undefined ? undefined : stringField(first, 'question');
-  return question === undefined || question.trim() === '' ? (ASKING_TOOL_TEXTS[tool] ?? tool) : question;
+/** An asking call's text: its first question, else the plain words for what it asks. */
+function questionText(call: AskCall): string {
+  return call.question === undefined || call.question.trim() === '' ? ASK_TEXTS[call.asks] : call.question;
 }
 
 /** A decision line without its bold or heading markup. */
@@ -84,25 +84,28 @@ function decisionText(line: string): string {
   return line.replace(/^#{1,6} +/, '').replaceAll('**', '');
 }
 
+/** What an ask reads of a hook event. */
+export type AskEvent = Pick<HookEvent, 'name' | 'call' | 'message' | 'lastReply' | 'error'>;
+
 /** What this hook event asks the user, from the fields it carries; undefined for an event that asks nothing. */
-export function askOf(payload: JsonRecord): Ask | undefined {
-  const event = stringField(payload, 'hook_event_name');
-  const tool = stringField(payload, 'tool_name') ?? '';
-  if (event === 'PermissionRequest') {
-    return { kind: 'permission', text: needText(permissionText(payload)) };
+export function askOf(event: AskEvent): Ask | undefined {
+  const { name, call } = event;
+  if (name === 'permission-prompt') {
+    return { kind: 'permission', text: needText(permissionText(call)) };
   }
-  if (event === 'PreToolUse' && Object.hasOwn(ASKING_TOOL_TEXTS, tool)) {
-    return { kind: 'question', text: needText(questionText(tool, payload)) };
+  if (name === 'tool-start' && call?.kind === 'ask') {
+    return { kind: 'question', text: needText(questionText(call)) };
   }
-  if (event === 'Elicitation') {
-    return { kind: 'elicitation', text: needText(stringField(payload, 'message') ?? stringField(payload, 'mcp_server_name') ?? 'a form') };
+  if (name === 'form-start') {
+    // A form with no text of its own carries the name of the server that asks as its message.
+    return { kind: 'elicitation', text: needText(event.message ?? 'a form') };
   }
-  if (event === 'Stop') {
-    const line = decisionLineOf(stringField(payload, 'last_assistant_message'));
+  if (name === 'stop') {
+    const line = decisionLineOf(event.lastReply);
     return line === undefined ? undefined : { kind: 'decision', text: needText(decisionText(line)) || DECISION_MARKER };
   }
-  if (event === 'StopFailure') {
-    return { kind: 'error', text: needText(stringField(payload, 'error') ?? 'an API error') };
+  if (name === 'stop-failed') {
+    return { kind: 'error', text: needText(event.error ?? 'an API error') };
   }
   return undefined;
 }
@@ -119,12 +122,12 @@ export function taskOf(...texts: readonly (string | undefined)[]): string | null
 }
 
 /** The tab record of `session` in `state` after this hook event, which asked `ask` (undefined: nothing). */
-export function tabNeedOf(session: string, state: TabState, payload: JsonRecord, pid: number | null, since: string): TabNeed {
-  const ask = askOf(payload);
+export function tabNeedOf(session: string, state: TabState, event: AskEvent, pid: number | null, since: string): TabNeed {
+  const ask = askOf(event);
   if (ask === undefined) {
     return { session, state, kind: null, text: null, task: null, pid, since };
   }
-  return { session, state, kind: ask.kind, text: ask.text, task: taskOf(ask.text, stringField(payload, 'last_assistant_message')), pid, since };
+  return { session, state, kind: ask.kind, text: ask.text, task: taskOf(ask.text, event.lastReply), pid, since };
 }
 
 /** Whether two records show the same tab: a rewrite that changes only `since` is skipped, so each tool's end stays cheap. */
@@ -204,7 +207,8 @@ export class TabNeedStore {
     return this.files.remove(this.pathOf(id));
   }
 
-  private pathOf(id: string): string {
+  /** The session's tab file, for a reader that stamps it without reading it. */
+  pathOf(id: string): string {
     return join(this.folder, `${id}.json`);
   }
 }

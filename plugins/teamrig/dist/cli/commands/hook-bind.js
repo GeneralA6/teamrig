@@ -12,11 +12,11 @@ import { loadTree } from "../tree.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
  * Reads the title once for everything a hook does with it; it never throws. On a host that keeps no transcript
- * teamrig can read, only the payload's own title counts.
+ * teamrig can read, only the event's own title counts.
  */
-export async function readTitle(runtime, payload) {
+export async function readTitle(runtime, source) {
     try {
-        return { kind: 'read', title: await sessionTitleOf(transcriptsIfKept(runtime), payload, runtime.files) };
+        return { kind: 'read', title: await sessionTitleOf(transcriptsIfKept(runtime), source, runtime.files) };
     }
     catch (error) {
         return { kind: 'failed', error: errorMessage(error) };

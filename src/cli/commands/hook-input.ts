@@ -1,16 +1,16 @@
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { ToolUse } from '../../budget/line.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress } from '../../core/address.ts';
-import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
-import { claudeConfigDir, claudeTempDir, ENV } from '../../core/home.ts';
+import { isRecord, type JsonRecord } from '../../core/guards.ts';
+import { ENV } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import { OwnPaths, tasksSearched, TeamFolders, type LeadPaths, type SubTeamPlace } from '../../hooks/lead-boundary.ts';
-import { sessionIdOf } from '../../inbox/inbox.ts';
 import { indexMarks } from '../../inbox/marks.ts';
+import type { HookEvent, HookEventName, HookReply } from '../../ports/host/index.ts';
 import { JsonlEventLog } from '../../register/store.ts';
+import { hooksOf, pathsIfKnown } from '../host.ts';
 import { openKit, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import type { KitTree } from '../tree.ts';
@@ -25,15 +25,53 @@ export function parseJson(text: string): unknown {
   }
 }
 
+/** One hook call off standard input: the event the host's bridge reads out of it, undefined when it is no hook input at all. */
+export interface HookInput {
+  readonly event: HookEvent | undefined;
+}
+
+export async function readHookInput(runtime: Pick<CliRuntime, 'readStdin' | 'host' | 'env' | 'platform'>): Promise<HookInput> {
+  return { event: hooksOf(runtime).parse(await runtime.readStdin()) };
+}
+
+/**
+ * One request of the plugin's mod off standard input. The mod writes it as a hook input with fields of its own beside
+ * the host's: `event` is what the host's bridge reads out of it, which says the tab and the folder that ask, and
+ * `fields` the whole record, for the fields the command names itself and no host does.
+ */
+export interface ModRequest {
+  readonly event: HookEvent;
+  readonly fields: JsonRecord;
+}
+
+/** The mod's request on standard input; undefined when it is no JSON record, which every command treats as nothing asked. */
+export async function readModRequest(runtime: Pick<CliRuntime, 'readStdin' | 'host' | 'env' | 'platform'>): Promise<ModRequest | undefined> {
+  const raw = await runtime.readStdin();
+  const fields = parseJson(raw);
+  const event = hooksOf(runtime).parse(raw);
+  return isRecord(fields) && event !== undefined ? { event, fields } : undefined;
+}
+
+/** Prints what the host reads for a hook's `reply` to the event `on`; nothing when the hook has nothing to say. */
+export function writeReply(runtime: Pick<CliRuntime, 'out' | 'host' | 'env' | 'platform'>, on: HookEventName, reply: HookReply | undefined): void {
+  const text = reply === undefined ? '' : hooksOf(runtime).reply(on, reply);
+  if (text !== '') {
+    runtime.out.stdout(text);
+  }
+}
+
+/** Where a hook's call comes from, as its event names it: the folder it runs in and the host's session it runs for. */
+export type HookOrigin = Pick<HookEvent, 'cwd' | 'session'>;
+
 /**
  * The team a session's hooks run for: `$TEAMRIG_TEAM`, else the nearest pointer above the folder the
- * session started in (`$CLAUDE_PROJECT_DIR`), then the payload's folder. The payload's `cwd` follows
+ * session started in (the project folder the host names in the environment), then above `folder`, the one the hook
+ * event names, undefined when the input named none. That folder follows
  * a `cd`, so walking it first would let a tab that moved into another team's project read, and bind
  * to, that team's sessions. The push guard keeps `hookTeam`: a push belongs to the folder it runs in.
  */
-export function sessionTeam(payload: unknown, runtime: CliRuntime): Promise<TeamResolution> {
-  const cwd = isRecord(payload) ? stringField(payload, 'cwd') : undefined;
-  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.env[ENV.claudeProjectDir], cwd, runtime.cwd]));
+export function sessionTeam(folder: string | undefined, runtime: CliRuntime): Promise<TeamResolution> {
+  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.env[ENV.claudeProjectDir], folder, runtime.cwd]));
 }
 
 /** `$TEAMRIG_SESSION` as Claude Code passed it to the hook; undefined when unset or blank. */
@@ -71,11 +109,12 @@ export async function markedSessionOf(runtime: CliRuntime, kit: Kit, roster: Ros
 
 /**
  * `markedSessionOf` for a start's context (a session's or its helper's), which must always load: a failed
- * read means no session. A helper's hooks carry the session id of the session that started it.
+ * read means no session. A helper's hooks carry the session id of the session that started it (`hostSession`, as
+ * the hook event names it).
  */
-export async function startSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, payload: unknown): Promise<string | undefined> {
+export async function startSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, hostSession: string | undefined): Promise<string | undefined> {
   try {
-    return await markedSessionOf(runtime, kit, roster, sessionIdOf(payload));
+    return await markedSessionOf(runtime, kit, roster, hostSession ?? null);
   } catch {
     return undefined;
   }
@@ -93,9 +132,9 @@ export interface SessionScope extends TeamScope {
   readonly id: string;
 }
 
-/** The hook payload's team; undefined outside a team or without a loaded config. */
-export async function teamScopeOf(runtime: CliRuntime, payload: JsonRecord): Promise<TeamScope | undefined> {
-  const found = await sessionTeam(payload, runtime);
+/** The team of a hook call in `folder` (see `sessionTeam`); undefined outside a team or without a loaded config. */
+export async function teamScopeOf(runtime: CliRuntime, folder: string | undefined): Promise<TeamScope | undefined> {
+  const found = await sessionTeam(folder, runtime);
   if (found.kind !== 'team') {
     return undefined;
   }
@@ -103,17 +142,17 @@ export async function teamScopeOf(runtime: CliRuntime, payload: JsonRecord): Pro
   return kit.load.status === 'loaded' ? { kit, config: kit.load.config } : undefined;
 }
 
-/** The team session of a payload in `team`; undefined when the tab is no session of it. */
-export async function sessionScopeOf(runtime: CliRuntime, team: TeamScope, payload: JsonRecord): Promise<SessionScope | undefined> {
+/** The team session in `team` of the host session a hook event names; undefined when the tab is no session of it. */
+export async function sessionScopeOf(runtime: CliRuntime, team: TeamScope, hostSession: string | undefined): Promise<SessionScope | undefined> {
   const roster = await rosterOf(runtime, team.kit, team.config);
-  const id = await teamSessionOf(runtime, team.kit, roster, sessionIdOf(payload));
+  const id = await teamSessionOf(runtime, team.kit, roster, hostSession ?? null);
   return id === undefined ? undefined : { ...team, roster, id };
 }
 
-/** The hook payload's team session (Stop, helper gate, the mod's refresh checks); undefined outside a team, without a loaded config or without a session. */
-export async function hookScopeOf(runtime: CliRuntime, payload: JsonRecord): Promise<SessionScope | undefined> {
-  const team = await teamScopeOf(runtime, payload);
-  return team === undefined ? undefined : sessionScopeOf(runtime, team, payload);
+/** The team session a hook call comes from (Stop, helper gate, the mod's refresh checks); undefined outside a team, without a loaded config or without a session. */
+export async function hookScopeOf(runtime: CliRuntime, origin: HookOrigin): Promise<SessionScope | undefined> {
+  const team = await teamScopeOf(runtime, origin.cwd);
+  return team === undefined ? undefined : sessionScopeOf(runtime, team, origin.session);
 }
 
 /**
@@ -138,20 +177,21 @@ export function subTeamPlacesOf({ tree, teams }: KitTree, team: string): SubTeam
 }
 
 /**
- * Where the lead's calls land in this team. Its own paths: its teamrig folder, Claude Code's memory folders, its
- * session scratchpads (notes and command input it keeps for itself, never work to hand off), its sub-teams' configs,
+ * Where the lead's calls land in this team. Its own paths: its teamrig folder, the memory folders and the session
+ * scratchpads its host keeps (notes and command input it keeps for itself, never work to hand off; neither counts on
+ * a host that tells none of its folders), its sub-teams' configs,
  * rules and states, and `leadBoundary.ownPaths`. In the teamrig folder, a search outside the config, the rules, the register's state,
  * the places named for the lead and the folders of the tasks `taskOwners` gives the lead is research (T736, T1467),
  * and so is one in a sub-team's folder outside its config, rules and state, read from `tree` (T1019).
  */
 export function leadPathsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, tree: KitTree, taskOwners: ReadonlyMap<string, string> = new Map()): LeadPaths {
-  const memory = join(claudeConfigDir(runtime.env, runtime.userHome), 'projects', '*', 'memory');
-  const scratchpads = join(claudeTempDir(runtime.env, tmpdir()), 'claude', '*', '*', 'scratchpad');
+  const hostPaths = pathsIfKnown(runtime);
+  const ofHost = hostPaths === undefined ? [] : [hostPaths.memoryFolders(runtime.userHome), hostPaths.scratchpads(tmpdir())];
   const { home, config: configFile, teamRules, state, tasks } = kit.paths;
   const subTeams = subTeamPlacesOf(tree, kit.paths.team);
   const places = { home, own: [configFile, teamRules, state], lead: config.roles.lead, sessions: config.sessions, subTeams, tasks, taskOwners };
   return {
-    own: new OwnPaths([home, memory, scratchpads, ...subTeams.flatMap((sub) => sub.own), ...config.leadBoundary.ownPaths], runtime.userHome),
+    own: new OwnPaths([home, ...ofHost, ...subTeams.flatMap((sub) => sub.own), ...config.leadBoundary.ownPaths], runtime.userHome),
     team: new TeamFolders(places, runtime.userHome),
   };
 }

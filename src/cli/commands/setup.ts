@@ -1,8 +1,8 @@
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { launchOf } from '../../config/launch.ts';
 import { SHIPPED_CONFIG_FORMAT } from '../../config/migrate.ts';
 import type { KitConfig } from '../../config/types.ts';
-import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths } from '../../core/home.ts';
+import { ENV, KIT_NAME, resolveKitHome, teamConfigFile } from '../../core/home.ts';
 import { describeRequirement } from '../../requirements/requirements.ts';
 import { applyIgnore, ignoreLines, ignoreStep, type IgnoreStep } from '../../setup/pointer-ignore.ts';
 import { applySetupTask, setupTaskDryLines, setupTaskLines, setupTaskStep } from '../../setup/setup-task.ts';
@@ -10,6 +10,7 @@ import { tabStatusLine } from '../../setup/tab-status-note.ts';
 import { applyTeamSetup, planTeamSetup, teamSpecOf, type FileStep, type SetupPlan, type TeamSpec } from '../../setup/team-create.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { pointerTeam, resolveTeam } from '../../core/team.ts';
+import { pathsIfKnown } from '../host.ts';
 import { openKit, requireConfig, teamFolders, teamProjectOf, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
@@ -140,7 +141,7 @@ export async function teamCreate(args: ParsedArgs, runtime: CliRuntime): Promise
   }
   (await runtime.requirements.problems()).forEach((problem) => runtime.out.stdout(`WARN ${describeRequirement(problem, KIT_NAME)}`));
   const project = await projectOf(runtime, args.flags.get('project'));
-  const configPath = teamPaths(resolveKitHome(runtime.env, runtime.userHome), team, claudeConfigDir(runtime.env, runtime.userHome)).config;
+  const configPath = teamConfigFile(resolveKitHome(runtime.env, runtime.userHome), team);
   const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;
   const { tree } = await loadTree(runtime);
   const planned = await planTeamSetup(runtime.files, format, spec.value, configPath, project, tree);
@@ -161,7 +162,8 @@ export async function teamCreate(args: ParsedArgs, runtime: CliRuntime): Promise
     configOn: done.value.tabStatus,
     configPath,
     titleLeft: titleLeftToHooks(runtime.env),
-    settingsPath: join(claudeConfigDir(runtime.env, runtime.userHome), 'settings.json'),
+    // Creating a team needs no file of the host, so a host whose folders are not known still gets its team: the note then names no file.
+    settingsPath: pathsIfKnown(runtime)?.userSettings(runtime.userHome),
   });
   const setupTask = await setupTaskOf(runtime, spec.value, dryRun);
   summaryLines(done.value, ignore, tabStatus, setupTask, dryRun).forEach((line) => runtime.out.stdout(line));

@@ -1,5 +1,4 @@
 import { resolve } from 'node:path';
-import { DEFAULT_WORKTREE_FOLDER } from "../../config/defaults.js";
 import { LeadTree } from "../../config/lead-tree.js";
 import { teamPlace } from "../../delivery/places.js";
 import { ENV } from "../../core/home.js";
@@ -17,6 +16,7 @@ import { onePositional, UsageError } from "../args.js";
 import { taskIdOf } from "../inputs.js";
 import { openKit, requireConfig, rosterOf, teamFolders } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { worktreeFolderOf } from "../worktree-folder.js";
 import { tabSessionOf } from "./tab-session.js";
 /**
  * `worktree add <branch> | --task <T id> [--type <branch type>] [--repo <name>]`: makes a session's worktree the same
@@ -87,18 +87,25 @@ function addPlace(repo, runtime, team) {
             const names = repos.map((entry) => entry.name);
             throw new RefusedError(`team ${team.name} has no delivery.repos.${repo}${names.length === 0 ? '' : `: it lists ${names.join(', ')}`}`);
         }
-        return placeOf(listed.mainDir, listed.config);
+        return placeOf(runtime, listed.mainDir, listed.config);
     }
     const [main] = runtime.worktrees.git.worktrees(runtime.cwd) ?? [];
     if (main === undefined) {
         throw new RefusedError(`${runtime.cwd} is in no git repository: run it in one, or give --repo <name>`);
     }
-    return placeOf(main.path, repos.find((entry) => samePath(entry.mainDir, main.path, runtime.platform))?.config);
+    return placeOf(runtime, main.path, repos.find((entry) => samePath(entry.mainDir, main.path, runtime.platform))?.config);
 }
-/** A repository's place by its main checkout, with its delivery.repos entry's folder and setup; the default folder and no setup without one. */
-function placeOf(mainCheckout, config) {
+/**
+ * A repository's place by its main checkout, with its delivery.repos entry's folder and setup; without one, the folder
+ * the host makes its own worktrees in and no setup. Refused where neither names a folder, before any change.
+ */
+function placeOf(runtime, mainCheckout, config) {
     const mainDir = resolve(mainCheckout);
-    return { mainDir, folder: resolve(mainDir, config?.worktreeFolder ?? DEFAULT_WORKTREE_FOLDER), setup: config?.worktreeSetup };
+    const folder = worktreeFolderOf(runtime, mainDir, config?.worktreeFolder);
+    if (folder === undefined) {
+        throw new RefusedError(`no worktree folder is set for ${mainDir} and the host names none: set worktreeFolder in its delivery.repos entry`);
+    }
+    return { mainDir, folder, setup: config?.worktreeSetup };
 }
 /**
  * `worktree remove <path> [--delete-branch [--base <ref>]] [--dry-run] [--session <id|name>]`: removes a linked git
@@ -170,15 +177,22 @@ async function callerRefusal(args, runtime, team, { onBranch, mergedInto }) {
     const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
     return removalRefusal({ caller, branch: onBranch, mergedInto, ownerOf: (task) => state.tasks.get(task)?.owner, tree: new LeadTree(config) });
 }
-/** The folders worktrees are made in: each of the team's delivery.repos, and the one of the repository the command runs in. */
+/**
+ * The folders worktrees are made in: each of the team's delivery.repos, and the one of the repository the command runs
+ * in. A repository with no folder set, on a host that names none, has no such folder: nothing there is cleared as a
+ * leftover, and the removal of a worktree git lists goes on as ever.
+ */
 function worktreeFolders(runtime, team) {
     const repos = reposOf(team);
-    const places = repos.map((entry) => placeOf(entry.mainDir, entry.config));
+    const checkouts = repos.map((entry) => ({ mainDir: resolve(entry.mainDir), configured: entry.config.worktreeFolder }));
     const [main] = runtime.worktrees.git.worktrees(runtime.cwd) ?? [];
     if (main !== undefined) {
-        places.push(placeOf(main.path, repos.find((entry) => samePath(entry.mainDir, main.path, runtime.platform))?.config));
+        checkouts.push({ mainDir: resolve(main.path), configured: repos.find((entry) => samePath(entry.mainDir, main.path, runtime.platform))?.config.worktreeFolder });
     }
-    return places.map(({ folder, mainDir }) => ({ folder, mainDir }));
+    return checkouts.flatMap(({ mainDir, configured }) => {
+        const folder = worktreeFolderOf(runtime, mainDir, configured);
+        return folder === undefined ? [] : [{ folder, mainDir }];
+    });
 }
 /** The team's delivery.repos entries, each with its main checkout resolved; none outside a team. */
 function reposOf(team) {

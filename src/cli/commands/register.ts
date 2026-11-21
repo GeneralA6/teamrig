@@ -38,7 +38,7 @@ import { overSizeFlags } from '../../register/over-size.ts';
 import type { AddInput, AskInput, StatusInput, Verdict } from '../../register/policy.ts';
 import type { GoalTagsReader, Register, RotationOutcome, WriteResult } from '../../register/register.ts';
 import { ACTIVE_STATUSES, type TaskStatus } from '../../register/model.ts';
-import { windowOpensAfter, type RegisterSnapshot } from '../../register/snapshot.ts';
+import { lacksEventsOf, type RegisterSnapshot } from '../../register/snapshot.ts';
 import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopgap.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, watchQueue, type DueVerify } from '../../register/verify.ts';
 import { readAs, TaskTree, type TaskElsewhere } from '../../register/tree.ts';
@@ -49,7 +49,7 @@ import { lintSkills } from '../../skills/lint.ts';
 import { skillsToLint } from '../../skills/run-scripts.ts';
 import { SKILL_FILE } from '../../skills/store.ts';
 import { weekUseOnAccount } from '../account-teams.ts';
-import { readWideAllow, teamSettingsScope } from '../allow-scope.ts';
+import { knownSettingsScope, readWideAllow } from '../allow-scope.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { handStepPin, readRunFiles } from '../hand-step-file.ts';
 import { KitTreeGoals } from '../tree-goals.ts';
@@ -884,10 +884,7 @@ function weekMayBeRetired(week: string): HistoryNeed {
  * line only once its create event is before the window, so `show` prints such a description from the history.
  */
 function showNeedsHistory(id: string): HistoryNeed {
-  return (snapshot) => {
-    const task = snapshot.state.tasks.get(id);
-    return task === undefined ? snapshot.retired !== null : windowOpensAfter(snapshot, Date.parse(task.createdAt));
-  };
+  return (snapshot) => lacksEventsOf(snapshot, id);
 }
 
 /** The filter with `list`'s switches read for one team, as `--untriaged` asks for that team's own leaders. */
@@ -1185,7 +1182,7 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const { skills, unowned } = splitUnowned([...context, ...allow, ...deny], lint, new Set(own.config.sessions), own.paths.skills);
   const idle = await idlePassWarnings(runtime.files, own.paths, own.config.open.idle.mode, now.getTime());
   const hooks = await secretHookWarnings(runtime.files, runtime.secretsGit, own.paths, own.config.delivery.repos);
-  const settings = await teamSettingsScope(runtime, { paths: own.paths, config: own.config, project });
+  const settings = await knownSettingsScope(runtime, { paths: own.paths, config: own.config, project });
   const off = await secretGuardOffWarnings(runtime.files, own.config.secretGuard, settings);
   const fiveHour = await fiveHourWarnings(runtime.files, snapshotDirOf(own.config.budget, own.paths), own.config.budget, zone, now.getTime());
   const resets = resetExpiryWarnings(own.config.budget, zone, now.getTime());

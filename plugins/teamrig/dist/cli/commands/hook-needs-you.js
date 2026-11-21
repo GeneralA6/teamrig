@@ -1,4 +1,4 @@
-import { isRecord, stringField } from "../../core/guards.js";
+import { stringField } from "../../core/guards.js";
 import { sessionDisplay } from "../../core/ids.js";
 import { LockBusyError } from "../../core/lock.js";
 import { showNotice } from "../../meeting/notify.js";
@@ -11,15 +11,15 @@ import { noPositionals } from "../args.js";
 import { fileLockOf } from "../file-locks.js";
 import { EXIT } from "../runtime.js";
 import { teamRegister } from "../team-register.js";
-import { parseJson } from "./hook-input.js";
+import { readHookInput, readModRequest } from "./hook-input.js";
 import { wakeScopeOf } from "./hook-wake.js";
 function answer(runtime, value) {
     runtime.out.stdout(JSON.stringify(value));
     return EXIT.ok;
 }
 /** The scope of a needs-you hook: a team tab whose team has needsYou on. */
-async function scopeOf(runtime, payload) {
-    const scope = await wakeScopeOf(runtime, payload, false);
+async function scopeOf(runtime, origin) {
+    const scope = await wakeScopeOf(runtime, origin, false);
     if (scope.kind === 'found' && !scope.config.needsYou.enabled) {
         return { kind: 'off', why: 'needsYou.enabled is false' };
     }
@@ -83,7 +83,7 @@ async function notifyNew(runtime, scope) {
  */
 export async function needsYou(args, runtime) {
     noPositionals(args);
-    const scope = await scopeOf(runtime, parseJson(await runtime.readStdin()));
+    const scope = await scopeOf(runtime, (await readHookInput(runtime)).event);
     if (scope.kind === 'off') {
         return answer(runtime, scope);
     }
@@ -121,12 +121,12 @@ function focusText(outcome, title) {
  */
 export async function needsYouFocus(args, runtime) {
     noPositionals(args);
-    const payload = parseJson(await runtime.readStdin());
-    const scope = await scopeOf(runtime, payload);
+    const request = await readModRequest(runtime);
+    const scope = await scopeOf(runtime, request?.event);
     if (scope.kind === 'off') {
         return answer(runtime, scope);
     }
-    const target = isRecord(payload) ? stringField(payload, 'session') : undefined;
+    const target = request === undefined ? undefined : stringField(request.fields, 'session');
     if (target === undefined) {
         return answer(runtime, { kind: 'refused', why: 'stdin names no session' });
     }

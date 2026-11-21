@@ -1,23 +1,22 @@
 import { claudeProjectsDir, lastWriteOf } from "../../budget/discover.js";
 import { KIT_NAME } from "../../core/home.js";
-import { decideColdSend, JsonlColdSendLog, sendTargetOf } from "../../hooks/cold-send.js";
-import { refusalOutput } from "../../hooks/permission.js";
+import { decideColdSend, JsonlColdSendLog } from "../../hooks/cold-send.js";
+import { refusal } from "../../hooks/permission.js";
 import { RECEIVER_TABS, tabsOf } from "../../inbox/marks.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
- * The cold-send hold for a SendMessage call, as the hook's stdout; undefined lets the message go: a
+ * The cold-send hold for a message a call sends, as the hook's reply; undefined lets the message go: a
  * receiver that is not a team session (a helper, a pipe), the sender's own session, a receiver with
  * no transcript yet, or one active within `messages.coldAfterMinutes`. Idle time runs from the
  * receiver's last write to its own transcript, never its subagents': their work does not keep the
  * receiver's context cached.
  */
-export async function coldSendHold(runtime, kit, config, roster, payload, claudeSession) {
-    const to = sendTargetOf(payload);
+export async function coldSendHold(runtime, kit, config, roster, message, claudeSession) {
     const { coldAfterMinutes } = config.messages;
-    if (to === undefined || coldAfterMinutes === 0) {
+    if (coldAfterMinutes === 0) {
         return undefined;
     }
-    const receiver = roster.lookup(to);
+    const receiver = roster.lookup(message.to);
     if (!receiver.ok) {
         return undefined;
     }
@@ -41,5 +40,5 @@ export async function coldSendHold(runtime, kit, config, roster, payload, claude
         command: KIT_NAME,
         wakeNow: config.wake.enabled,
     });
-    return verdict.kind === 'hold' ? refusalOutput(verdict.reason) : undefined;
+    return verdict.kind === 'hold' ? refusal(verdict.reason) : undefined;
 }

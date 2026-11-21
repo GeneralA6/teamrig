@@ -1,6 +1,6 @@
 import { isRecord } from "../core/guards.js";
 import { ID_PATTERN } from "../core/ids.js";
-import { parseUtcDeadline } from "../core/time.js";
+import { parseIsoStamp, parseUtcDeadline } from "../core/time.js";
 import { isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID, WAIT_STATUSES, WORK_CLASS_NAME } from "./model.js";
 import { parseCard } from "./card.js";
 import { GOAL_TAG, isSlice } from "./goals.js";
@@ -233,7 +233,9 @@ function parseBase(record, v) {
     if (typeof id !== 'string' || !TASK_ID.test(id)) {
         return `bad task id ${JSON.stringify(id)}`;
     }
-    if (typeof at !== 'string' || Number.isNaN(Date.parse(at))) {
+    // Only the stamp the register writes: a time any other reader took, such as words in parentheses, would be
+    // served on as an event's time by every document built from the events.
+    if (typeof at !== 'string' || parseIsoStamp(at) === undefined) {
         return `bad time ${JSON.stringify(at)}`;
     }
     if (typeof by !== 'string' || by === '') {

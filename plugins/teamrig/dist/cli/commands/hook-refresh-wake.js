@@ -1,11 +1,9 @@
-import { isRecord, stringField } from "../../core/guards.js";
-import { sessionIdOf } from "../../inbox/inbox.js";
 import { wakePromptOf } from "../../refresh/decide.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { noPositionals } from "../args.js";
 import { openKit, rosterOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
-import { parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
+import { readHookInput, sessionTeam, teamSessionOf } from "./hook-input.js";
 /** How long the wake waits for the SessionStart hook beside it to bind the tab and take the refresh. */
 export const WAKE_WAIT_MS = 10_000;
 /** How often it looks in that time. */
@@ -19,12 +17,12 @@ export const WAKE_POLL_MS = 500;
  */
 export async function refreshWake(args, runtime) {
     noPositionals(args);
-    const payload = parseJson(await runtime.readStdin());
-    const claudeSession = sessionIdOf(payload);
-    if (!isRecord(payload) || stringField(payload, 'source') !== 'clear' || claudeSession === null) {
+    const { event } = await readHookInput(runtime);
+    const hostSession = event?.session;
+    if (event === undefined || event.source !== 'clear' || hostSession === undefined) {
         return EXIT.ok;
     }
-    const found = await sessionTeam(payload, runtime);
+    const found = await sessionTeam(event.cwd, runtime);
     if (found.kind !== 'team') {
         return EXIT.ok;
     }
@@ -36,7 +34,7 @@ export async function refreshWake(args, runtime) {
     const store = new RefreshStore(runtime.files, kit.paths);
     const until = runtime.clock.now() + WAKE_WAIT_MS;
     for (;;) {
-        const id = await teamSessionOf(runtime, kit, roster, claudeSession);
+        const id = await teamSessionOf(runtime, kit, roster, hostSession);
         const prompt = id === undefined ? undefined : wakePromptOf(await store.state(id), store.handoverPath(id), new Date(runtime.clock.now()).toISOString());
         if (prompt !== undefined) {
             runtime.out.stderr(prompt);

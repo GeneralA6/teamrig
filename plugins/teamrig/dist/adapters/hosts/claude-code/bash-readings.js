@@ -11,18 +11,11 @@ const BACKSLASH_RUN = /\\+/g;
 export function halvedBackslashRuns(command) {
     return command.replace(BACKSLASH_RUN, (run, at) => command[at + run.length] === '"' ? run : '\\'.repeat(Math.ceil(run.length / 2)));
 }
-/** The command as written and, on Windows when it differs, the halved text bash receives: a guard weighs each. */
-export function bashToolReadings(command, platform) {
+/** The command as written and, on Windows when it differs, the halved text bash receives. */
+export function bashReadings(command, platform) {
     if (platform !== 'win32') {
         return [command];
     }
     const halved = halvedBackslashRuns(command);
     return halved === command ? [command] : [command, halved];
-}
-/**
- * The texts a shell tool call may run: a Bash call's {@link bashToolReadings}; any other tool's command as written,
- * since only the Bash tool's line passes through the Windows command line that halves backslash runs.
- */
-export function toolCommandReadings(tool, command, platform) {
-    return tool === 'Bash' ? bashToolReadings(command, platform) : [command];
 }

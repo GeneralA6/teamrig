@@ -9,6 +9,14 @@ const ADD_SWITCH =
   'add "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1" to "env" in /u/.claude/settings.json and restart Claude Code, so it stops writing its own title over the circle (tabs of projects outside teamrig then keep the terminal\'s title)';
 
 describe('tabStatusLine', () => {
+  it('names the switch alone, and no settings file, where none of the host is known', () => {
+    assert.equal(
+      tabStatusLine({ ...ON, titleLeft: false, settingsPath: undefined }),
+      `NOTE ${CIRCLE} once you set CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 in the environment the team's sessions start in and restart them, so the host stops writing its own title over the circle`,
+    );
+    assert.equal(tabStatusLine({ ...ON, settingsPath: undefined }), `TAB STATUS on: ${CIRCLE}: green ready, yellow working, orange waiting on you`);
+  });
+
   it('says tab status is on when the config turns it on and Claude Code leaves the title to hooks', () => {
     assert.equal(tabStatusLine(ON), `TAB STATUS on: ${CIRCLE}: green ready, yellow working, orange waiting on you`);
   });

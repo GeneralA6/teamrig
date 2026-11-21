@@ -1,5 +1,6 @@
 import { holdsDescription } from "../register/description-cut.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, isIssueRef } from "../register/model.js";
+import { issuePage } from "./connector.js";
 import { issueTask } from "./map.js";
 import { issueTrust } from "./trust.js";
 /** How GitHub closed an issue, in the note the sync writes; any other reason is left out. */
@@ -130,7 +131,7 @@ function statusChange(task, wanted, issue) {
         case 'open':
             return ACTIVE_STATUSES.includes(task.status) || !changedSince(issue, task.statusAt) ? undefined : { status: 'open', note: 'open on GitHub, changed there since this task closed' };
         case 'done':
-            return task.status === 'done' ? undefined : { status: 'done', note: closedNote(issue.stateReason), evidence: wanted.url };
+            return task.status === 'done' ? undefined : { status: 'done', note: closedNote(issue.stateReason), evidence: issuePage(issue.repo, issue.number) };
         case 'dropped':
             return task.status === 'dropped' ? undefined : { status: 'dropped', note: closedNote(issue.stateReason) };
     }

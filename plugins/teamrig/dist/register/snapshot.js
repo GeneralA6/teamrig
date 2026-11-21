@@ -55,6 +55,15 @@ export function isWritable(read) {
 export function windowOpensAfter({ window }, at) {
     return window !== null && at < Date.parse(window.from);
 }
+/**
+ * True when the read may lack events of task `id`, so a reader of the task's whole history reads the history: the
+ * working set lacks the task and left some to the archive (retired), or the task was created before the event window
+ * opened, and its older events are only there.
+ */
+export function lacksEventsOf(snapshot, id) {
+    const task = snapshot.state.tasks.get(id);
+    return task === undefined ? snapshot.retired !== null : windowOpensAfter(snapshot, Date.parse(task.createdAt));
+}
 /** Replays a read log: every task as its events leave it, plus the counts `teamrig list` warns about. */
 export function snapshotOf(read) {
     return { state: foldEvents(read.events, read.seenIds), read, retired: null, window: null };

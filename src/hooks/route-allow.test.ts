@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { DEFAULT_PROMPTS } from '../config/defaults.ts';
 import { toJsonlLine } from '../core/jsonl.ts';
 import { SANCTIONED_ROUTES, type RouteId, type SanctionedRoute } from '../permissions/sanctioned.ts';
-import { guardsPassed, preToolUseRouteOf, routeAllowOn, routeAllowOutput, routeAllowRecord } from './route-allow.ts';
+import { replyText } from '../testing/host.ts';
+import { guardsPassed, preToolUseRouteOf, routeAllowOn, routeAllowRecord, routeAllowReply } from './route-allow.ts';
 
 function routeOf(id: RouteId): SanctionedRoute {
   const found = SANCTIONED_ROUTES.find((route) => route.id === id);
@@ -26,15 +27,16 @@ describe('route allow', () => {
     assert.equal(preToolUseRouteOf(undefined), undefined);
   });
 
-  it('passes only when no guard asked or refused', () => {
+  it('takes a guard with no reply as passed, and one with a refusal or only a note as not', () => {
     assert.equal(guardsPassed([]), true);
-    assert.equal(guardsPassed(['', '']), true);
-    assert.equal(guardsPassed(['', '{"hookSpecificOutput":{}}']), false);
+    assert.equal(guardsPassed([undefined, undefined]), true);
+    assert.equal(guardsPassed([undefined, { verdict: { kind: 'deny', reason: 'Why.' } }]), false);
+    assert.equal(guardsPassed([{ notice: 'a push went through' }]), false);
   });
 
   it('prints a PreToolUse allow naming the route and what it is for', () => {
     const merge = routeOf('merge');
-    assert.deepEqual(JSON.parse(routeAllowOutput(merge)), {
+    assert.deepEqual(JSON.parse(replyText('tool-start', routeAllowReply(merge))), {
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         permissionDecision: 'allow',

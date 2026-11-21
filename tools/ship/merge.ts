@@ -20,6 +20,7 @@ import { queueLanding } from './merge-queue.ts';
 import { realRenamedCallersDeps, renamedCallersRefusal } from './renamed-callers.ts';
 import { type LocalChecks, type ReleasePull, type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
 import { APPROVED_SHA } from './ship-plan.ts';
+import { type PullTaskRead, labelPull, pullFaceOf, pullTaskFrom } from './pull-task.ts';
 import { type Supersede, pullCommitsOf, supersedeFrom } from './superseded.ts';
 import { describeCredential } from './token-check.ts';
 
@@ -152,6 +153,13 @@ export interface MergeRequest {
    * release tool opens, from the head it wrote (T4645).
    */
   opens: boolean;
+  /** The labels the pull request gets once it is found or opened at the head (pull-task.ts, T4796). */
+  labels: readonly string[];
+  /**
+   * Why the pull request may not open, as its task links no issue (pull-task.ts, T4796); null when it may. One already
+   * open merges with a warning line, as with `lacks`.
+   */
+  unlinked: string | null;
 }
 
 /** What proves a pull request's head before it merges: the repo's gate. */
@@ -377,10 +385,13 @@ export async function mergeThroughPull(
   const found = findOpenPull(gh, repo, head, base);
   if (found === null && !request.opens) return { kind: 'refused', pull: null, reason: `no open pull request from ${head} into ${base}: the release tool opens it, never a merge` };
   if (found === null && request.lacks !== null) return { kind: 'refused', pull: null, reason: lackingSections(request.lacks) };
+  if (found === null && request.unlinked !== null) return { kind: 'refused', pull: null, reason: request.unlinked };
   const pull = found ?? openPull(gh, repo, head, base, request.title, request.body);
   log(`${found === null ? 'opened' : 'found'} pull request #${pull.number} ${pull.url}`);
   if (found !== null && request.lacks !== null) log(`warning: pull request #${pull.number} lacks ${request.lacks}, which this repo's template asks for: add it to its text`);
+  if (found !== null && request.unlinked !== null) log(`warning: pull request #${pull.number}: ${request.unlinked}`);
   if (pull.headSha !== sha) return { kind: 'refused', pull, reason: `the pull request head ${pull.headSha.slice(0, 7)} is not ${head} ${sha.slice(0, 7)}: push ${head} first` };
+  labelPull(gh, repo, pull.number, request.labels, log);
   // Before the checks, which may run long: the earlier pushes' pull requests stop asking for review now (T4780). The
   // release pull request has no earlier pushes: its tool rewrites one head.
   if (request.opens) supersede(pull);
@@ -451,9 +462,6 @@ export function parseArgs(argv: readonly string[]): MergeArgs {
   if (parsed.release !== null && parsed.noteFile !== null) throw new Error(`${usage} (--release opens no pull request, so it takes no --note-file)`);
   return parsed;
 }
-
-/** The title of the pull request a ship opens from `head` into `main` for `commits` work commits. */
-export const pullTitle = (head: string, main: string, commits: number): string => `Merge ${head} into ${main}: ${commits} commit(s)`;
 
 /** Why no pull request opens on a note lacking the template's `lacks` sections (missingSections). */
 export const lackingSections = (lacks: string): string => `the pull request would lack ${lacks}, which this repo's template asks for: write it in a --note-file and ship again`;
@@ -575,6 +583,8 @@ export interface MergeDeps {
   catchUp: (request: CatchUpRequest) => CatchUp;
   /** The work commits `rev` carries over origin's main, with their patch ids (approval.ts `workCommitsOf`). */
   workOf: (rev: string) => readonly WorkCommit[];
+  /** The register's task of a head branch, which dresses its pull request (pull-task.ts, T4796). */
+  pullTask: PullTaskRead;
   /** The queued step's host share, set aside while the merge waits on GitHub (T3336). */
   share: StepShare;
   /** This merge's place in the repo's line: once its checks pass, it waits for older merges to land (landing-turn.ts, T4196). */
@@ -780,8 +790,10 @@ export async function mergeRun(args: MergeArgs, deps: MergeDeps, gate: MergeGate
     : profile.gate === 'ci'
       ? awayDuring(inTurn(checks(), deps.turn), deps.share)
       : { proof: localProof(args.dir, profile.local, deps.gate), away: () => false };
+  // The release pull request is never opened here, so nothing dresses it: its tool wrote its title.
+  const face = opens ? pullFaceOf(gh, { repo, head, subjects, note, task: await deps.pullTask(head) }, deps.out) : { title: head, note, labels: [], unlinked: null };
   const result = await mergeThroughPull(
-    { repo, head, base: profile.main, sha, title: pullTitle(head, profile.main, subjects.length), body: pullBody(subjects, note), lacks: missingSections(note, profile.pullSections), opens },
+    { repo, head, base: profile.main, sha, title: face.title, body: pullBody(subjects, face.note), lacks: missingSections(note, profile.pullSections), opens, labels: face.labels, unlinked: face.unlinked },
     gh,
     main,
     proof.proof,
@@ -855,6 +867,7 @@ export function realMergeDeps(dir: string): MergeDeps {
       const profile = profileFor(readProfiles(), slugOf(git('remote', 'get-url', 'origin')));
       return workCommitsOf(runGit, rev, `refs/remotes/origin/${profile.main}`, teamrigShipWritesOf(profile.regenerated));
     },
+    pullTask: pullTaskFrom(process.env, kitReader),
     share: stepShareOf(process.env, runOwnCli),
     turn: processLandingTurn(dir, git),
     out,

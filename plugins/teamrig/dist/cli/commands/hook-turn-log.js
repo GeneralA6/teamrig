@@ -1,12 +1,10 @@
-import { isRecord, stringField } from "../../core/guards.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { sessionIdOf } from "../../inbox/inbox.js";
 import { cappedText } from "../../turn-log/entry.js";
 import { REPLY_TAIL_BYTES, replyOf } from "../../turn-log/reply.js";
 import { TurnLog } from "../../turn-log/store.js";
 import { WakePrompts } from "../../wake/prompts.js";
 import { transcriptsIfKept } from "../host.js";
-/** What SessionStart's `source` logs: a /clear or a compaction, which wipe what the tab showed. */
+/** What a session start's `source` logs: a /clear or a compaction, which wipe what the tab showed. */
 const WIPES = { clear: 'context cleared (/clear)', compact: 'context compacted' };
 function entryOf(runtime, scope, said) {
     const { text, cut } = cappedText(new SecretScanner(scope.config.register.secretPatterns).redact(said.text));
@@ -27,19 +25,17 @@ function logOf(runtime, scope) {
  * UserPromptSubmit: the prompt the person sent, or the wake teamrig submitted in that tab, marked `from: teamrig`;
  * nothing with the log off or an empty prompt.
  */
-export async function logPrompt(runtime, scope, payload) {
-    const claude = sessionIdOf(payload);
-    const prompt = isRecord(payload) ? stringField(payload, 'prompt') : undefined;
-    if (!scope.config.turnLog.enabled || claude === null || prompt === undefined || prompt.trim() === '') {
+export async function logPrompt(runtime, scope, { session, prompt }) {
+    if (!scope.config.turnLog.enabled || session === undefined || prompt === undefined || prompt.trim() === '') {
         return;
     }
-    const woke = await new WakePrompts(runtime.files, scope.paths.wake).take(scope.id, { tab: claude, text: prompt });
-    const said = { kind: 'prompt', claude, text: prompt, ...(woke ? { from: 'teamrig' } : {}) };
+    const woke = await new WakePrompts(runtime.files, scope.paths.wake).take(scope.id, { tab: session, text: prompt });
+    const said = { kind: 'prompt', claude: session, text: prompt, ...(woke ? { from: 'teamrig' } : {}) };
     await logOf(runtime, scope).append(scope.id, entryOf(runtime, scope, said));
 }
 /**
- * The turn's reply from the transcript, ending with the message Claude Code gives the Stop hook
- * (`last_assistant_message`) when the transcript does not hold it yet; undefined when the turn wrote no text.
+ * The turn's reply from the transcript, ending with the last reply the turn end's hook event names when the
+ * transcript does not hold it yet; undefined when the turn wrote no text.
  * A reply of that message alone keeps `after`, the last entry an earlier reply took.
  */
 function replyWithLast(reply, last, after) {
@@ -51,23 +47,21 @@ function replyWithLast(reply, last, after) {
     return base === undefined ? { text: message, cut: false, upTo: after } : { ...base, text: `${base.text}\n\n${message}` };
 }
 /**
- * Stop: the reply the person saw since the last one logged. A stop that a hook sent back (`stop_hook_active`)
- * ends part of a turn, so a later stop of the same turn starts after the last entry this one took (`upTo`). On a
- * host whose transcript teamrig cannot read, the reply is the Stop hook's last message alone.
+ * A turn's end: the reply the person saw since the last one logged. A stop that a hook sent back ends part of
+ * a turn, so a later stop of the same turn starts after the last entry this one took (`upTo`). On a host whose
+ * transcript teamrig cannot read, the reply is the last reply the event names alone.
  */
-export async function logReply(runtime, scope, payload) {
-    const claude = sessionIdOf(payload);
-    if (!scope.config.turnLog.enabled || claude === null) {
+export async function logReply(runtime, scope, { session: claude, transcript, lastReply }) {
+    if (!scope.config.turnLog.enabled || claude === undefined) {
         return;
     }
     const log = logOf(runtime, scope);
     const last = await log.last(scope.id);
     const after = last?.kind === 'reply' && last.claude === claude ? last.upTo : undefined;
     const reader = transcriptsIfKept(runtime);
-    const transcript = reader === undefined ? undefined : stringField(payload, 'transcript_path');
-    const tail = transcript === undefined ? undefined : await runtime.files.readTail(transcript, REPLY_TAIL_BYTES);
+    const tail = reader === undefined || transcript === undefined ? undefined : await runtime.files.readTail(transcript, REPLY_TAIL_BYTES);
     const fromTranscript = reader === undefined || tail === undefined ? undefined : replyOf(reader, tail, after, Buffer.byteLength(tail, 'utf8') < REPLY_TAIL_BYTES);
-    const reply = replyWithLast(fromTranscript, stringField(payload, 'last_assistant_message'), after);
+    const reply = replyWithLast(fromTranscript, lastReply, after);
     if (reply === undefined) {
         return;
     }
@@ -78,16 +72,14 @@ export async function logReply(runtime, scope, payload) {
  * SessionStart: marks a /clear or a compaction, which wipe what the tab showed, and removes every session's
  * hours past `turnLog.keepHours` (folder listings only).
  */
-export async function logStart(runtime, scope, payload) {
+export async function logStart(runtime, scope, { session, source }) {
     if (!scope.config.turnLog.enabled) {
         return;
     }
     const log = logOf(runtime, scope);
-    const claude = sessionIdOf(payload);
-    const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
     const wipe = source === undefined ? undefined : WIPES[source];
-    if (claude !== null && wipe !== undefined) {
-        await log.append(scope.id, entryOf(runtime, scope, { kind: 'clear', claude, text: wipe }));
+    if (session !== undefined && wipe !== undefined) {
+        await log.append(scope.id, entryOf(runtime, scope, { kind: 'clear', claude: session, text: wipe }));
     }
     await log.prune(runtime.clock.now(), scope.config.turnLog.keepHours);
 }

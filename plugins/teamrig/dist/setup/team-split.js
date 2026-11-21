@@ -58,6 +58,7 @@ const CHILD_TAKES = {
     pickerGuard: 'copy',
     meeting: 'copy',
     turnLog: 'copy',
+    ui: 'copy',
     meetingNotices: 'copy',
     readonlyShell: 'copy',
     permissions: 'copy',

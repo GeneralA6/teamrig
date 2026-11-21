@@ -1,23 +1,11 @@
-import { isRecord, stringField } from "../core/guards.js";
 import { KIT_NAME } from "../core/home.js";
 /**
- * The secret redactor (T1369 R7): after a tool runs, each secret its result holds is replaced before the model and the
- * transcript see it, and the model is told which kinds were found, never a value, and who rotates them (R8: in which
- * register task).
+ * The result to redact: the answer of the event's call where its host takes a replacement for it (T1369), since the
+ * replacement must keep the answer's shape; undefined for any other call's, which stays as it is.
  */
-/** The tools whose result shapes the probe saw replaced (T1369); any other tool's result stays as it is until probed. */
-const REDACTED_TOOLS = new Set(['Bash', 'PowerShell', 'Read', 'Grep']);
-/**
- * The result to redact: a probed tool's, and of a Read only a text file's, as an image's or a notebook's is not probed.
- * Only a result object: the replacement must keep its shape, and the probe saw no tool hand its result as text.
- */
-export function redactableResultOf(payload) {
-    const tool = isRecord(payload) ? stringField(payload, 'tool_name') : undefined;
-    if (!isRecord(payload) || tool === undefined || !REDACTED_TOOLS.has(tool)) {
-        return undefined;
-    }
-    const response = payload['tool_response'];
-    return !isRecord(response) || (tool === 'Read' && stringField(response, 'type') !== 'text') ? undefined : { payload, tool, response };
+export function redactableResultOf(event) {
+    const { call } = event;
+    return call?.replaceable === undefined ? undefined : { tool: call.name, response: call.replaceable };
 }
 /** Who rotates a leaked secret: the team's security reviewer, else its lead; "the lead" when the config did not load. */
 export function rotatorOf(load) {

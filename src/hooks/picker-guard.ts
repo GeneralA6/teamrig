@@ -1,6 +1,6 @@
 import type { TreePlace } from '../config/tree.ts';
 import { formatAddress } from '../core/address.ts';
-import { stringField, type JsonRecord } from '../core/guards.ts';
+import type { HookEvent } from '../ports/host/index.ts';
 import { DECISION_MARKER } from '../tabs/status.ts';
 
 /**
@@ -19,12 +19,12 @@ import { DECISION_MARKER } from '../tabs/status.ts';
  * The same switch refuses a Bash `cd` compound Claude Code would hold on a permission prompt (hooks/cd-compound.ts).
  */
 
-/** The tool the guard refuses: the question picker. */
-export const PICKER_TOOL = 'AskUserQuestion';
-
-/** Whether the guard looks at this payload: the switch is on and it is a PreToolUse call of the picker. */
-export function guardsPicker(enabled: boolean, payload: JsonRecord): boolean {
-  return enabled && stringField(payload, 'hook_event_name') === 'PreToolUse' && stringField(payload, 'tool_name') === PICKER_TOOL;
+/**
+ * Whether the guard looks at this hook event: the switch is on and it is the start of a call that asks the human a
+ * question, the picker's. A call that asks a yes to a plan is left alone.
+ */
+export function guardsPicker(enabled: boolean, event: Pick<HookEvent, 'name' | 'call'>): boolean {
+  return enabled && event.name === 'tool-start' && event.call?.kind === 'ask' && event.call.asks === 'question';
 }
 
 /** A sub-team's parent lead and the name to message it by (config/tree.ts). */

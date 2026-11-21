@@ -1,6 +1,6 @@
 import { relative } from 'node:path';
 import { formatConfig } from "../../config/load.js";
-import { claudeConfigDir, resolveKitHome, teamPaths } from "../../core/home.js";
+import { resolveKitHome, teamPaths } from "../../core/home.js";
 import { InboxDir } from "../../inbox/store.js";
 import { JsonlRenameLog } from "../../names/log.js";
 import { TASK_STATUSES } from "../../register/model.js";
@@ -8,6 +8,7 @@ import { sessionFilesOf } from "../../setup/session-files.js";
 import { teamSpecOf } from "../../setup/team-create.js";
 import { planTeamSplit } from "../../setup/team-split.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
+import { pathsIfKnown } from "../host.js";
 import { callerOf, listOf } from "../inputs.js";
 import { configFileJson, leadOnly, openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -86,7 +87,7 @@ export async function teamSplit(args, runtime) {
     if (!spec.ok) {
         throw new UsageError(spec.problem);
     }
-    const childPaths = teamPaths(resolveKitHome(runtime.env, runtime.userHome), child, claudeConfigDir(runtime.env, runtime.userHome));
+    const childPaths = teamPaths(resolveKitHome(runtime.env, runtime.userHome), child, pathsIfKnown(runtime)?.skills(runtime.userHome));
     if ((await runtime.probe.kind(childPaths.home)) !== 'none') {
         throw new RefusedError(`${childPaths.home} exists already; a split makes a new team`);
     }

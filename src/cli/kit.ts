@@ -10,15 +10,16 @@ import { Roster } from '../config/roster.ts';
 import { parseConfigText } from '../config/text.ts';
 import type { KitConfig } from '../config/types.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
-import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths, type Env, type PathOverrides, type TeamPaths } from '../core/home.ts';
+import { ENV, KIT_NAME, resolveKitHome, teamConfigFile, teamPaths, type Env, type PathOverrides, type TeamPaths } from '../core/home.ts';
 import { ID_PATTERN } from '../core/ids.ts';
-import { resolveTeam, TEAM_POINTER } from '../core/team.ts';
+import { resolveTeam, TEAM_POINTER, type TeamResolution } from '../core/team.ts';
 import { TimeZone } from '../core/zone.ts';
 import { JsonlRenameLog } from '../names/log.ts';
 import type { RenameDeps } from '../names/record.ts';
 import type { RulesClock } from '../rules/pack.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 import { fileLockOf } from './file-locks.ts';
+import { pathsIfKnown } from './host.ts';
 
 export interface Kit {
   readonly paths: TeamPaths;
@@ -30,9 +31,17 @@ export interface Kit {
 
 /**
  * What reading a team's config, roster and register takes, with the clock that tells whether a rush runs: a tool
- * outside the CLI (tools/ship) builds one from its own process without a whole `CliRuntime`.
+ * outside the CLI (tools/ship) builds one from its own process without a whole `CliRuntime`. A reader that names its
+ * host opens a team with that host's skills folder as the default one; one that names none, as that tool does since
+ * it reads no skill, opens it with the team's own (`teamPaths`).
  */
-export type KitReader = Pick<CliRuntime, 'env' | 'userHome' | 'files' | 'configFormat' | 'clock'>;
+export type KitReader = Pick<CliRuntime, 'env' | 'userHome' | 'files' | 'configFormat' | 'clock'> & Partial<Pick<CliRuntime, 'host' | 'platform'>>;
+
+/** The folder the reader's host loads a person's skills from: none for a reader with no host, or a host that tells no folder. */
+function hostSkillsOf(reader: KitReader): string | undefined {
+  const { host, platform, env, userHome } = reader;
+  return host === undefined || platform === undefined ? undefined : pathsIfKnown({ host, platform, env })?.skills(userHome);
+}
 
 /** The lock every change to the team's config is read and written under (config-lock.ts). */
 export function configLockOf(runtime: CliRuntime, kit: Kit, config: KitConfig): ConfigLock {
@@ -124,9 +133,8 @@ function overridesOf(config: KitConfig): PathOverrides {
  */
 export async function openKit(runtime: KitReader, team: string): Promise<Kit> {
   const kitHome = resolveKitHome(runtime.env, runtime.userHome);
-  const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
   const load = await teamConfigOf(runtime, team, []);
-  const paths = teamPaths(kitHome, team, claudeDir, load.status === 'loaded' ? overridesOf(load.config) : {});
+  const paths = teamPaths(kitHome, team, hostSkillsOf(runtime), load.status === 'loaded' ? overridesOf(load.config) : {});
   if (load.status !== 'loaded') {
     return { load, paths };
   }
@@ -147,7 +155,7 @@ export function reloadTeamConfig(runtime: KitReader, kit: Kit): Promise<ConfigLo
  */
 async function teamConfigOf(runtime: KitReader, team: string, below: readonly string[]): Promise<ConfigLoad> {
   const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;
-  const path = teamPaths(resolveKitHome(runtime.env, runtime.userHome), team, claudeConfigDir(runtime.env, runtime.userHome)).config;
+  const path = teamConfigFile(resolveKitHome(runtime.env, runtime.userHome), team);
   const chain = [...below, team];
   return loadConfig(runtime.files, path, format.migrations, format.version, async (own) => {
     const parent = own.team?.parent;
@@ -175,7 +183,16 @@ export interface FoundTeam {
 
 /** A command's team: `$TEAMRIG_TEAM`, else the nearest pointer. Without one the command refuses. */
 export async function findTeam(runtime: CliRuntime): Promise<FoundTeam> {
-  const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
+  return foundTeamOf(await lookForTeam(runtime));
+}
+
+/** Where {@link findTeam} looks, refusing nothing: for a command that also answers a run with no team. */
+export function lookForTeam(runtime: Pick<CliRuntime, 'files' | 'env' | 'cwd'>): Promise<TeamResolution> {
+  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
+}
+
+/** The team a look found; with none, or with a pointer that names none, the command refuses. */
+export function foundTeamOf(found: TeamResolution): FoundTeam {
   switch (found.kind) {
     case 'none':
       throw new RefusedError(
@@ -249,17 +266,9 @@ export function rulesClockOf(runtime: Pick<CliRuntime, 'clock' | 'timeZone'>): R
  * best-effort and never written through.
  */
 export function requireConfig(kit: Kit, runtime: CliRuntime, access: Access): KitConfig {
-  const { load } = kit;
-  switch (load.status) {
-    case 'missing':
-      throw new RefusedError(`no team config at ${load.path}; create it with: ${KIT_NAME} team create ${kit.paths.team} --sessions <id,id>`);
-    case 'unreadable':
-      throw new RefusedError(`the team config at ${load.path} cannot be read: ${issueText(load.issue)}`);
-    case 'loaded':
-      break;
-  }
+  const load = loadedConfig(kit);
   const [first] = load.issues;
-  const newer = load.newerVersion === undefined ? undefined : `${load.path} is config version ${load.newerVersion}, from a newer teamrig; update teamrig`;
+  const newer = newerConfigText(load);
   if (access === 'write') {
     if (newer !== undefined) {
       throw new RefusedError(`${newer} before writing`);
@@ -268,13 +277,45 @@ export function requireConfig(kit: Kit, runtime: CliRuntime, access: Access): Ki
       throw new RefusedError(`the team config has ${load.issues.length} problem(s) (first: ${issueText(first)}); run: teamrig config validate`);
     }
   }
-  if (newer !== undefined) {
-    runtime.out.stderr(`WARN ${newer}; reading it best-effort`);
-  }
-  if (first !== undefined) {
-    runtime.out.stderr(`WARN config: ${load.issues.length} problem(s), defaults used (first: ${issueText(first)}); run: teamrig config validate`);
+  for (const warning of configWarnings(load)) {
+    runtime.out.stderr(`WARN ${warning}`);
   }
   return load.config;
+}
+
+/** A team config that could be read, with the path it was read from. */
+export type LoadedConfig = Extract<ConfigLoad, { readonly status: 'loaded' }>;
+
+/** The kit's config as it loaded; refused when the team has none, or it cannot be read at all. */
+export function loadedConfig(kit: Kit): LoadedConfig {
+  const { load } = kit;
+  switch (load.status) {
+    case 'missing':
+      throw new RefusedError(`no team config at ${load.path}; create it with: ${KIT_NAME} team create ${kit.paths.team} --sessions <id,id>`);
+    case 'unreadable':
+      throw new RefusedError(`the team config at ${load.path} cannot be read: ${issueText(load.issue)}`);
+    case 'loaded':
+      return load;
+  }
+}
+
+/**
+ * What a read through `load` must tell its reader, one line each: the file is from a newer teamrig, some fields are
+ * on their defaults. A command printing for a person writes them as `WARN` lines (`requireConfig`); one answering
+ * as data carries them in its answer, so its output stays data.
+ */
+export function configWarnings(load: LoadedConfig): string[] {
+  const [first] = load.issues;
+  const newer = newerConfigText(load);
+  return [
+    ...(newer === undefined ? [] : [`${newer}; reading it best-effort`]),
+    ...(first === undefined ? [] : [`config: ${load.issues.length} problem(s), defaults used (first: ${issueText(first)}); run: teamrig config validate`]),
+  ];
+}
+
+/** What to say of a config a newer teamrig wrote, or undefined for one this teamrig knows whole. */
+function newerConfigText(load: LoadedConfig): string | undefined {
+  return load.newerVersion === undefined ? undefined : `${load.path} is config version ${load.newerVersion}, from a newer teamrig; update teamrig`;
 }
 
 /** The config file's own JSON, not the copy migrated in memory, so nothing else in it changes, its version included. */

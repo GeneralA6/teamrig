@@ -282,9 +282,14 @@ export function allowFindings(wide) {
 }
 /**
  * One finding while a secret deny line is in no settings file a session reads, with the missing lines as a JSON list to
- * paste; `check` shows it the lead too. A file that is not a JSON object counts as holding none, and is named.
+ * paste; `check` shows it the lead too. A file that is not a JSON object counts as holding none, and is named. None
+ * where the host's settings files are not known (`deny` undefined): there is no file to read, or to name for the paste.
  */
-export function denyFindings({ files, lines, pasteInto }) {
+export function denyFindings(deny) {
+    if (deny === undefined) {
+        return [];
+    }
+    const { files, lines, pasteInto } = deny;
     const missing = missingDenyLines(files, lines);
     if (missing.length === 0) {
         return [];

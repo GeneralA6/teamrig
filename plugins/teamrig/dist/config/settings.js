@@ -49,12 +49,30 @@ const SKIPPED_KEYS = new Set(['$schema']);
  * editable only when it is on `leadKeys` and no gate, roster, folder or structure rule holds it.
  */
 export function settingRows(schema, raw, issues, leadKeys = LEAD_KEYS) {
-    const definitions = isRecord(schema['$defs']) ? schema['$defs'] : {};
     const rows = [];
+    eachSetting(schema, raw, (path, group, node, written) => rows.push(rowOf(path, group, node, written, issues, leadKeys)));
+    return rows;
+}
+/**
+ * Each row's own schema node by the row's path, a `$ref` resolved: where a caller reads what a row does not carry,
+ * such as a keyword only it knows or the shape of the value's own keys.
+ */
+export function settingNodes(schema) {
+    const nodes = new Map();
+    eachSetting(schema, {}, (path, _group, node) => nodes.set(path, node));
+    return nodes;
+}
+/** The schema's shared types, which a `$ref` names one of. */
+export function definitionsOf(schema) {
+    return isRecord(schema['$defs']) ? schema['$defs'] : {};
+}
+/** Every key the schema describes, in its order, with the value `raw` holds at it: objects that list keys are walked into. */
+function eachSetting(schema, raw, visit) {
+    const definitions = definitionsOf(schema);
     const walk = (properties, parent, group, values) => {
         for (const [key, child] of Object.entries(properties)) {
             const path = parent === '' ? key : `${parent}.${key}`;
-            const node = resolve(child, definitions);
+            const node = resolvedNode(child, definitions);
             if (node === undefined || SKIPPED_KEYS.has(path)) {
                 continue;
             }
@@ -65,13 +83,12 @@ export function settingRows(schema, raw, issues, leadKeys = LEAD_KEYS) {
                 walk(nested, path, top, isRecord(below) ? below : {});
                 continue;
             }
-            rows.push(rowOf(path, top, node, values[key], issues, leadKeys));
+            visit(path, top, node, values[key]);
         }
     };
     if (isRecord(schema['properties'])) {
         walk(schema['properties'], '', undefined, raw);
     }
-    return rows;
 }
 /** The rows at `path` or under it; empty when the schema has no such key. */
 export function rowsUnder(rows, path) {
@@ -136,7 +153,7 @@ function gateOf(path) {
     return OWNER_GATED_KEYS.some((keyPath) => keyPath.every((part, index) => parts[index] === part)) ? 'permissions' : undefined;
 }
 /** A node, or the `$defs` entry its `$ref` names, its own description kept over the definition's. */
-function resolve(node, definitions) {
+export function resolvedNode(node, definitions) {
     if (!isRecord(node)) {
         return undefined;
     }

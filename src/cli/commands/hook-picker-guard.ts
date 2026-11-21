@@ -1,18 +1,17 @@
 import type { KitConfig } from '../../config/types.ts';
-import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
-import { cdCompoundOfPayload, cdCompoundReason, guardsCdCompound, type CdCompound } from '../../hooks/cd-compound.ts';
+import { cdCompoundOfEvent, cdCompoundReason, guardsCdCompound, type CdCompound } from '../../hooks/cd-compound.ts';
 import { helperOf } from '../../hooks/helper-start.ts';
-import { refusalOutput } from '../../hooks/permission.ts';
+import { refusal } from '../../hooks/permission.ts';
 import { askerOf, guardsPicker, pickerReason, type LeadMeeting, type ParentLead } from '../../hooks/picker-guard.ts';
-import { sessionIdOf } from '../../inbox/inbox.ts';
 import { MeetingSchedule, meetingInTabOf } from '../../meeting/schedule.ts';
 import { MeetingStore, phaseOf } from '../../meeting/state.ts';
+import type { HookEvent, HookReply } from '../../ports/host/index.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit, rosterOf, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
-import { parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
+import { readHookInput, sessionTeam, teamSessionOf, writeReply } from './hook-input.ts';
 
 /**
  * Whether the owner's daily meeting is open now (src/meeting/state.ts). An unreadable meeting file reads as closed:
@@ -50,18 +49,21 @@ async function parentLeadOf(runtime: CliRuntime, kit: Kit, config: KitConfig): P
   return tree.placeOf(kit.paths.team)?.parentLead;
 }
 
+/** What the guard reads of a hook event: whether it calls the picker, whose session it is, and whether a helper calls. */
+export type PickerCaller = Pick<HookEvent, 'name' | 'call' | 'session' | 'helper'>;
+
 /**
- * Why the guard refuses this payload's question picker (hooks/picker-guard.ts); undefined lets the call go: the
+ * Why the guard refuses this hook event's question picker (hooks/picker-guard.ts); undefined lets the call go: the
  * switch is off, it is no picker call or no team session asks. The session is read only for a picker call with the
  * switch on, so the tab-status hook's other events read no file, and the team tree and the meeting, which only pick
  * the reason, only for the lead's own thread.
  */
-export async function pickerRefusal(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: JsonRecord): Promise<string | undefined> {
-  if (!guardsPicker(config.pickerGuard.enabled, payload)) {
+export async function pickerRefusal(runtime: CliRuntime, kit: Kit, config: KitConfig, caller: PickerCaller): Promise<string | undefined> {
+  if (!guardsPicker(config.pickerGuard.enabled, caller)) {
     return undefined;
   }
-  const session = await teamSessionOf(runtime, kit, await rosterOf(runtime, kit, config), sessionIdOf(payload));
-  const helper = helperOf(payload) !== undefined;
+  const session = await teamSessionOf(runtime, kit, await rosterOf(runtime, kit, config), caller.session ?? null);
+  const helper = helperOf(caller.helper) !== undefined;
   const lead = config.roles.lead;
   const asker = askerOf(session, helper, lead, !helper && session === lead ? await parentLeadOf(runtime, kit, config) : undefined);
   if (asker === undefined) {
@@ -73,33 +75,33 @@ export async function pickerRefusal(runtime: CliRuntime, kit: Kit, config: KitCo
 }
 
 /**
- * Why the guard refuses this payload's Bash `cd` compound (hooks/cd-compound.ts); undefined lets the line go: the
+ * Why the guard refuses this event's Bash `cd` compound (hooks/cd-compound.ts); undefined lets the line go: the
  * switch is off, the line has no cd compound Claude Code asks about, or no team session runs it.
  */
-async function cdCompoundRefusal(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: JsonRecord, compound: CdCompound): Promise<string | undefined> {
+async function cdCompoundRefusal(runtime: CliRuntime, kit: Kit, config: KitConfig, event: HookEvent, compound: CdCompound): Promise<string | undefined> {
   if (!config.pickerGuard.enabled) {
     return undefined;
   }
-  const session = await teamSessionOf(runtime, kit, await rosterOf(runtime, kit, config), sessionIdOf(payload));
+  const session = await teamSessionOf(runtime, kit, await rosterOf(runtime, kit, config), event.session ?? null);
   return session === undefined ? undefined : cdCompoundReason(compound);
 }
 
-/** What the hook prints for this payload: the refusal with its reason, or '' when the call goes on. */
-async function pickerGuardOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<string> {
+/** The hook's reply to this call: the refusal with its reason, or none when the call goes on. */
+async function pickerGuardReplyOf(runtime: CliRuntime, event: HookEvent): Promise<HookReply | undefined> {
   // Every Bash line reaches this hook, so a line with no cd compound to refuse returns before any file is read.
-  const bash = guardsCdCompound(true, payload);
-  const compound = bash ? cdCompoundOfPayload(payload, { cwd: stringField(payload, 'cwd') ?? runtime.cwd, home: runtime.userHome }) : undefined;
+  const bash = guardsCdCompound(true, event);
+  const compound = bash ? cdCompoundOfEvent(event, { cwd: event.cwd ?? runtime.cwd, home: runtime.userHome }) : undefined;
   if (bash && compound === undefined) {
-    return '';
+    return undefined;
   }
-  const found = await sessionTeam(payload, runtime);
+  const found = await sessionTeam(event.cwd, runtime);
   const kit = found.kind === 'team' ? await openKit(runtime, found.team) : undefined;
   if (kit?.load.status !== 'loaded') {
-    return '';
+    return undefined;
   }
   const config = kit.load.config;
-  const reason = compound === undefined ? await pickerRefusal(runtime, kit, config, payload) : await cdCompoundRefusal(runtime, kit, config, payload, compound);
-  return reason === undefined ? '' : refusalOutput(reason);
+  const reason = compound === undefined ? await pickerRefusal(runtime, kit, config, event) : await cdCompoundRefusal(runtime, kit, config, event, compound);
+  return reason === undefined ? undefined : refusal(reason);
 }
 
 /**
@@ -115,10 +117,8 @@ async function pickerGuardOutputOf(runtime: CliRuntime, payload: JsonRecord): Pr
  */
 export async function pickerGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
-  const output = isRecord(payload) ? await pickerGuardOutputOf(runtime, payload).catch(() => '') : '';
-  if (output !== '') {
-    runtime.out.stdout(output);
-  }
+  const { event } = await readHookInput(runtime);
+  const reply = event === undefined ? undefined : await pickerGuardReplyOf(runtime, event).catch(() => undefined);
+  writeReply(runtime, 'tool-start', reply);
   return EXIT.ok;
 }

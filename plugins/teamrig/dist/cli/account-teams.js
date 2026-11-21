@@ -4,22 +4,30 @@ import { LiftLog } from "../budget/lift.js";
 import { budgetSplitOf } from "../budget/parts.js";
 import { pausableOf } from "../budget/pause.js";
 import { snapshotDirOf, weekUseAt } from "../budget/snapshot.js";
-import { claudeConfigDir } from "../core/home.js";
 import { PlainLogFile } from "../core/log-file.js";
 import { indexMarks } from "../inbox/marks.js";
 import { JsonlMarkLog } from "../inbox/store.js";
+import { hostHomeIfKnown } from "./host.js";
 import { loadTree } from "./tree.js";
+/**
+ * The folder that stands for the login this run is on: its host's own, which one account signs in. A host that tells
+ * none of its folders gives the person's home folder, so its teams, which record none, read as one login, and a team
+ * recorded in another host's folder as another.
+ */
+function loginFolderOf(runtime) {
+    return hostHomeIfKnown(runtime) ?? runtime.userHome;
+}
 /**
  * The asking team's Claude account and each team's of the kit home (`accountsOf`), read-only: each team's from its config
  * and the config dir its sessions last started in (budget/config-dir.ts), the asking team's from the one this process
- * runs in, so two logins with no `budget.account` read as two accounts, and teams on one login as one.
+ * runs in (`loginFolderOf`), so two logins with no `budget.account` read as two accounts, and teams on one login as one.
  */
 export async function kitHomeAccountsOf(runtime, teams, asker) {
     const facts = new Map();
     for (const [team, { kit, config }] of teams) {
         facts.set(team, { account: config.budget.account, configDir: await readConfigDir(runtime.files, kit.paths.configDirRecord) });
     }
-    return accountsOf({ team: asker.team, account: asker.budget.account }, facts, claudeConfigDir(runtime.env, runtime.userHome));
+    return accountsOf({ team: asker.team, account: asker.budget.account }, facts, loginFolderOf(runtime));
 }
 /**
  * The other teams of the kit home on the asking team's Claude account (`accountTeamsOf`), each split by its roster,

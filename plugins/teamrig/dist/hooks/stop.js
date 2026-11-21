@@ -1,35 +1,27 @@
-/** The xterm sequence that sets the terminal tab's title (OSC 0, ended by BEL). */
-export function tabTitleSequence(title) {
-    return `\u001b]0;${title}\u0007`;
+/** The lines for the human as one notice, a line each, or none when there are none. */
+function noticeOf(lines) {
+    return lines.length === 0 ? undefined : lines.join('\n');
 }
-/** The user-facing lines as one `systemMessage`, or nothing when there are none. */
-function messageOf(lines) {
-    return lines.length === 0 ? {} : { systemMessage: lines.join('\n') };
-}
-/** A block that keeps the session going with `reason` as its next instruction, the `notices` shown to the user with it. */
-export function blockOutput(reason, notices = []) {
-    return JSON.stringify({ decision: 'block', reason, ...messageOf(notices) });
-}
-/** The output field that sets the tab's title, or nothing without a title. */
-function titleOf(title) {
-    return title === undefined ? {} : { terminalSequence: tabTitleSequence(title) };
+/** A block that keeps the session going with `reason` as its next instruction, the `notices` shown to the human with it. */
+export function blockReply(reason, notices = []) {
+    return { verdict: { kind: 'block', reason }, notice: noticeOf(notices) };
 }
 /**
- * The Stop hook's stdout for a refresh decision and the model `notices` for the user. A block keeps
- * the session going with the reason as its next instruction; a notice shows the user one line and,
+ * The reply at a turn's end for a refresh decision and the model `notices` for the human. A block keeps
+ * the session going with the reason as its next instruction; a notice shows the human one line and,
  * when the team wants it, marks the tab; the model notices are shown with either, or alone. `tabTitle`
  * (tab status) sets the tab's title at any end but a block's, over a notice's own. A turn with none of
- * them prints nothing, so it costs no context.
+ * them answers a reply that says nothing, which prints nothing, so it costs no context.
  */
-export function stopOutput(decision, notices = [], tabTitle) {
+export function stopReply(decision, notices = [], tabTitle) {
     switch (decision.kind) {
         case 'block':
-            return blockOutput(decision.reason, notices);
+            return blockReply(decision.reason, notices);
         case 'notice':
-            return JSON.stringify({ ...messageOf([decision.message, ...notices]), ...titleOf(tabTitle ?? decision.title) });
+            return { notice: noticeOf([decision.message, ...notices]), tabTitle: tabTitle ?? decision.title };
         case 'none':
         case 'measure':
         case 'write':
-            return notices.length === 0 && tabTitle === undefined ? '' : JSON.stringify({ ...messageOf(notices), ...titleOf(tabTitle) });
+            return { notice: noticeOf(notices), tabTitle };
     }
 }

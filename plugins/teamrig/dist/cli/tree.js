@@ -3,23 +3,31 @@ import { TeamTree, teamNodeOf } from "../config/tree.js";
 import { resolveKitHome } from "../core/home.js";
 import { ID_PATTERN } from "../core/ids.js";
 import { openKit, rosterOf } from "./kit.js";
+/** The folder holding every team's folder, `<kit home>/teams`. */
+export function teamsFolderOf(runtime) {
+    return join(resolveKitHome(runtime.env, runtime.userHome), 'teams');
+}
 /**
  * Reads every team config under `<kit home>/teams/`, read-only. A folder with no config or one that
- * cannot be read is left out: that team's own commands report it, and `doctor` names a parent left
- * out this way as missing.
+ * cannot be read is left out of the tree and kept in `leftOut`: that team's own commands report it, and
+ * `doctor` names a parent left out this way as missing.
  */
 export async function loadTree(runtime) {
-    const folders = await runtime.files.list(join(resolveKitHome(runtime.env, runtime.userHome), 'teams'));
+    const folders = await runtime.files.list(teamsFolderOf(runtime));
     const teams = new Map();
+    const leftOut = new Map();
     for (const team of folders.filter((folder) => ID_PATTERN.test(folder)).sort()) {
         const kit = await openKit(runtime, team);
         if (kit.load.status === 'loaded') {
             const { config } = kit.load;
             teams.set(team, { kit, config, roster: await rosterOf(runtime, kit, config) });
         }
+        else {
+            leftOut.set(team, kit.load);
+        }
     }
     const nodes = [...teams].map(([team, { config, roster }]) => teamNodeOf(team, config, roster));
-    return { tree: new TeamTree(nodes), teams };
+    return { tree: new TeamTree(nodes), teams, leftOut };
 }
 /**
  * The sessions of the other teams of a team's tree that read its skills folder too: each such team's own `check` lints

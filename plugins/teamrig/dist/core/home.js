@@ -26,8 +26,6 @@ export const ENV = {
     claudeProjectDir: 'CLAUDE_PROJECT_DIR',
     /** Moves Claude Code's own folder (settings, plugins, transcripts) away from `~/.claude`. */
     claudeConfigDir: 'CLAUDE_CONFIG_DIR',
-    /** Moves Claude Code's temporary files, session scratchpads among them, away from the system's temporary folder. */
-    claudeTempDir: 'CLAUDE_CODE_TMPDIR',
     /** The session `teamrig launch` runs Claude Code for: it starts Claude Code again after an automatic restart. */
     launched: 'TEAMRIG_LAUNCHED',
     /** `off` turns `teamrig issue sync` off on this machine: it reads nothing and writes nothing. */
@@ -62,11 +60,6 @@ export function claudeConfigDir(env, userHome) {
     const fromEnv = env[ENV.claudeConfigDir]?.trim();
     return fromEnv ? fromEnv : join(userHome, '.claude');
 }
-/** The folder Claude Code keeps its temporary files under (scratchpads: `<it>/claude/<project>/<session>/scratchpad`). */
-export function claudeTempDir(env, systemTemp) {
-    const fromEnv = env[ENV.claudeTempDir]?.trim();
-    return fromEnv ? fromEnv : systemTemp;
-}
 /** The team's folder. The id is checked here too, since it becomes part of a path. */
 export function teamHome(kitHome, team) {
     if (!ID_PATTERN.test(team)) {
@@ -86,8 +79,15 @@ export function taskFolder(kitHome, team, id) {
 export function tasksFolder(kitHome, team) {
     return join(teamHome(kitHome, team), TASKS_FOLDER);
 }
-/** The team's paths; `claudeDir` is Claude Code's own folder (`claudeConfigDir`), whose `skills` is the default skills folder. */
-export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
+/** A team's config file, which tells the rest of its paths: found with no other path of the team known. */
+export function teamConfigFile(kitHome, team) {
+    return join(teamHome(kitHome, team), 'config.json');
+}
+/**
+ * The team's paths. `hostSkills` is the folder the run's host loads a person's skills from, the default skills
+ * folder; with none known, the team keeps its skills in its own folder.
+ */
+export function teamPaths(kitHome, team, hostSkills, overrides = {}) {
     const home = teamHome(kitHome, team);
     const inHome = (path) => path === undefined || isAbsolute(path) ? path : join(home, path);
     const state = inHome(overrides.state) ?? join(home, 'state');
@@ -95,7 +95,7 @@ export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
         kitHome,
         team,
         home,
-        config: join(home, 'config.json'),
+        config: teamConfigFile(kitHome, team),
         teamRules: join(home, 'rules.md'),
         backups: join(home, 'backups'),
         state,
@@ -122,7 +122,7 @@ export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
         ruleVerdicts: join(state, 'rule-verdicts.json'),
         renames: join(state, 'renames.jsonl'),
         renamesLock: join(state, 'renames.lock'),
-        skills: inHome(overrides.skills) ?? join(claudeDir, 'skills'),
+        skills: inHome(overrides.skills) ?? hostSkills ?? join(home, 'skills'),
         refresh: join(state, 'refresh'),
         handover: inHome(overrides.handover) ?? join(home, 'handover'),
         tasks: join(home, TASKS_FOLDER),

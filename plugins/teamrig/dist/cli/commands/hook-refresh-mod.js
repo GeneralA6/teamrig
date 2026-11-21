@@ -1,8 +1,7 @@
 import { claudeProjectsDir, findTranscript } from "../../budget/discover.js";
 import { sessionRefreshOf } from "../../config/refresh.js";
-import { isNonNegativeInteger, isRecord, stringField } from "../../core/guards.js";
+import { isNonNegativeInteger } from "../../core/guards.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
-import { sessionIdOf } from "../../inbox/inbox.js";
 import { inBookedMeeting, MeetingSchedule } from "../../meeting/schedule.js";
 import { inMeeting, MeetingStore } from "../../meeting/state.js";
 import { decideCompact, decideMidTurn, handoverHashOf } from "../../refresh/decide.js";
@@ -12,15 +11,15 @@ import { readContextEstimate } from "../../refresh/usage.js";
 import { contextSourceIfTold, transcriptsIfKept } from "../host.js";
 import { noPositionals } from "../args.js";
 import { EXIT } from "../runtime.js";
-import { hookScopeOf, parseJson } from "./hook-input.js";
+import { hookScopeOf, readHookInput, readModRequest, writeReply } from "./hook-input.js";
 const OFF = { kind: 'wait', nextAt: null };
 const GO = { kind: 'go' };
 function answer(runtime, value) {
     runtime.out.stdout(JSON.stringify(value));
     return EXIT.ok;
 }
-function countOf(payload, key) {
-    const value = payload[key];
+function countOf(fields, key) {
+    const value = fields[key];
     return isNonNegativeInteger(value) ? value : undefined;
 }
 /**
@@ -51,13 +50,12 @@ export async function inMeetingNow(runtime, scope) {
     return inBookedMeeting((await new MeetingSchedule(runtime.files, scope.kit.paths.meetings).read()).meetings, scope.id, now);
 }
 /** The tab's own transcript: the mod knows its Claude Code session and project, not where Claude Code keeps it. */
-async function transcriptOf(runtime, payload) {
-    const claudeSession = sessionIdOf(payload);
-    if (claudeSession === null) {
+async function transcriptOf(runtime, origin) {
+    if (origin.session === undefined) {
         return undefined;
     }
-    const project = runtime.env[ENV.claudeProjectDir] ?? stringField(payload, 'cwd');
-    return findTranscript(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), project, claudeSession);
+    const project = runtime.env[ENV.claudeProjectDir] ?? origin.cwd;
+    return findTranscript(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), project, origin.session);
 }
 function askContextOf(runtime, scope, store) {
     const { config, roster, id } = scope;
@@ -80,24 +78,25 @@ function askContextOf(runtime, scope, store) {
  */
 export async function refreshMid(args, runtime) {
     noPositionals(args);
-    const payload = parseJson(await runtime.readStdin());
-    if (!isRecord(payload)) {
+    const request = await readModRequest(runtime);
+    if (request === undefined) {
         return answer(runtime, OFF);
     }
-    const tokens = countOf(payload, 'tokens');
-    const scope = tokens === undefined ? undefined : await hookScopeOf(runtime, payload);
+    const { event, fields } = request;
+    const tokens = countOf(fields, 'tokens');
+    const scope = tokens === undefined ? undefined : await hookScopeOf(runtime, event);
     if (tokens === undefined || scope === undefined || !scope.config.refresh.enabled) {
         return answer(runtime, OFF);
     }
     // The window Claude Code reports, which tells a large one apart; a mod from before it sends none.
-    const window = countOf(payload, 'window');
+    const window = countOf(fields, 'window');
     const store = new RefreshStore(runtime.files, scope.kit.paths);
     const state = await store.state(scope.id);
     const context = askContextOf(runtime, scope, store);
     const meeting = await inMeetingNow(runtime, scope);
     const first = decideMidTurn(state, context, { tokens, window, meeting, due: undefined });
     const decision = first.kind === 'measure'
-        ? decideMidTurn(state, context, { tokens, window, meeting, due: await dueFactsAt(runtime, store, scope.id, await transcriptOf(runtime, payload)) })
+        ? decideMidTurn(state, context, { tokens, window, meeting, due: await dueFactsAt(runtime, store, scope.id, await transcriptOf(runtime, event)) })
         : first;
     switch (decision.kind) {
         case 'ask':
@@ -123,13 +122,14 @@ export async function refreshMid(args, runtime) {
  */
 export async function compactCheck(args, runtime) {
     noPositionals(args);
-    const payload = parseJson(await runtime.readStdin());
-    if (!isRecord(payload)) {
+    const request = await readModRequest(runtime);
+    if (request === undefined) {
         return answer(runtime, GO);
     }
-    const tokens = countOf(payload, 'tokens');
-    const window = countOf(payload, 'window');
-    const scope = tokens === undefined || window === undefined ? undefined : await hookScopeOf(runtime, payload);
+    const { event, fields } = request;
+    const tokens = countOf(fields, 'tokens');
+    const window = countOf(fields, 'window');
+    const scope = tokens === undefined || window === undefined ? undefined : await hookScopeOf(runtime, event);
     if (tokens === undefined || window === undefined || scope === undefined) {
         return answer(runtime, GO);
     }
@@ -146,12 +146,12 @@ export async function compactCheck(args, runtime) {
  */
 export async function preCompact(args, runtime) {
     noPositionals(args);
-    const payload = parseJson(await runtime.readStdin());
-    if (!isRecord(payload) || stringField(payload, 'trigger') !== 'auto') {
+    const { event } = await readHookInput(runtime);
+    if (event === undefined || event.trigger !== 'auto') {
         return EXIT.ok;
     }
-    const transcript = stringField(payload, 'transcript_path');
-    const scope = transcript === undefined ? undefined : await hookScopeOf(runtime, payload);
+    const { transcript } = event;
+    const scope = transcript === undefined ? undefined : await hookScopeOf(runtime, event);
     if (transcript === undefined || scope === undefined) {
         return EXIT.ok;
     }
@@ -161,7 +161,7 @@ export async function preCompact(args, runtime) {
     const state = await new RefreshStore(runtime.files, scope.kit.paths).state(scope.id);
     const decision = tokens === undefined ? GO : decideCompact(state, { settings: scope.config.refresh, command: KIT_NAME }, { tokens, window: undefined });
     if (decision.kind === 'skip') {
-        runtime.out.stdout(JSON.stringify({ decision: 'block', reason: decision.reason }));
+        writeReply(runtime, 'compact-start', { verdict: { kind: 'block', reason: decision.reason } });
     }
     return EXIT.ok;
 }

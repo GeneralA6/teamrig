@@ -12,7 +12,7 @@ import { readSessionContext, type Listed, type SessionContext, type SessionConte
 import { findDuplicates, type Duplicate } from './scan-duplicates.ts';
 import { scanPluginHooks } from './scan-plugin-hooks.ts';
 import { scanSettings, type SettingsFinding } from './scan-settings.ts';
-import { readTranscriptUse, type TranscriptUse } from './scan-usage.ts';
+import { readTranscriptUse, type TranscriptUse, type WorktreePaths } from './scan-usage.ts';
 import type { SkillDoctor, SkillDoctorRead } from './skill-doctor.ts';
 
 /**
@@ -33,6 +33,8 @@ export interface SetupScanPorts {
   readonly transcripts: TranscriptSource;
   /** The host's reader of a transcript's lines. */
   readonly reader: TranscriptReader;
+  /** The host's paths: a session started in one of the host's worktrees counts under the project that worktree copies. */
+  readonly paths: WorktreePaths;
   readonly doctor: SkillDoctor;
 }
 
@@ -45,6 +47,8 @@ export interface SetupScanInput extends SessionContextLocations {
   readonly maxBytes: number;
   /** The settings files sessions in the project run under. */
   readonly settings: readonly SettingsFile[];
+  /** The settings files a session started in the project reads, in the order the host reads them (`sessionSettingsFiles`). */
+  readonly sessionSettings: readonly string[];
   readonly keep: KeepList;
   readonly secrets: SecretScanner;
   /** The conflicts the team recorded with `rules keep`; none before a team exists. */
@@ -100,7 +104,7 @@ export async function scanSetup(ports: SetupScanPorts, at: SetupScanInput): Prom
   const context = await readSessionContext(ports.files, ports.probe, at);
   const rules = await scanRules(ports.files, ports.probe, at, at.conflicts);
   const [usage, doctor] = await Promise.all([
-    readTranscriptUse({ source: ports.transcripts, reader: ports.reader }, at.projectsDir, { since: at.since, maxBytes: at.maxBytes }),
+    readTranscriptUse({ source: ports.transcripts, reader: ports.reader, paths: ports.paths }, at.projectsDir, { since: at.since, maxBytes: at.maxBytes }),
     ports.doctor.read(at.project),
   ]);
   const recorded = await readSessionLists(ports.transcripts, at.projectsDir, at.project);

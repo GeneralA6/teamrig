@@ -6,6 +6,7 @@ import { clipEnd } from "../../core/clip.js";
 import { claudeConfigDir, KIT_NAME } from "../../core/home.js";
 import { expandHome, homeRelative, pathKey } from "../../core/paths.js";
 import { SecretScanner } from "../../core/secrets.js";
+import { sessionSettingsFiles } from "../../doctor/settings-env.js";
 import { CORE_RULE_KEYS, coreRuleKeyOf, ruleLabel } from "../../rules/keys.js";
 import { isPlaceKind, PLACE_KINDS } from "../../rules/places.js";
 import { coreRuleTexts } from "../../rules/pack.js";
@@ -15,6 +16,7 @@ import { isCleared, nextVerdicts, RULE_HASH_CLOCK, ruleHashesOf, verdictsByText,
 import { lineHash } from "../../inbox/line-hash.js";
 import { formatUtcDay } from "../../core/time.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
+import { pathsOf } from "../host.js";
 import { callerOf, listOf } from "../inputs.js";
 import { checkedNextConfig, configFileJson, configLockOf, leadOnly, openTeamKit, projectFolder, requireConfig, rosterOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -100,7 +102,9 @@ async function scanView(runtime, kit, config, kind, all) {
     const project = await projectFolder(runtime, config);
     const kitTree = await loadTree(runtime);
     const teamRules = teamRulesFilesOf(kit, kitTree).map((file) => file.path);
-    const found = await scanRules(runtime.files, runtime.probe, { claudeDir: claudeConfigDir(runtime.env, runtime.userHome), userHome: runtime.userHome, project, skills: kit.paths.skills, teamRules }, [...config.ruleConflicts, ...keptRulesAboveOf(kit, kitTree)]);
+    // The scan's whole work is the files the host loads into a session, so a host whose folders teamrig does not know refuses here.
+    const sessionSettings = sessionSettingsFiles({ paths: pathsOf(runtime), userHome: runtime.userHome }, project);
+    const found = await scanRules(runtime.files, runtime.probe, { claudeDir: claudeConfigDir(runtime.env, runtime.userHome), userHome: runtime.userHome, project, sessionSettings, skills: kit.paths.skills, teamRules }, [...config.ruleConflicts, ...keptRulesAboveOf(kit, kitTree)]);
     const kinds = kind === undefined ? PLACE_KINDS : [kind];
     const hashes = ruleHashesOf(coreRuleTexts(config, KIT_NAME, runtime.platform, RULE_HASH_CLOCK));
     const verdicts = await new VerdictStore(runtime.files, kit.paths.ruleVerdicts).read();

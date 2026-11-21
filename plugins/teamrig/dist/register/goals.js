@@ -1,6 +1,6 @@
 import { isStringArray } from "../core/guards.js";
 import { parseJsonl } from "../core/jsonl.js";
-import { parseUtcDay } from "../core/time.js";
+import { parseIsoStamp, parseUtcDay } from "../core/time.js";
 import { SESSION_NAME, TASK_ID } from "./model.js";
 /**
  * Goal records (T1730): a goal's tag, title, planned window and target, each move of its target with the note saying
@@ -61,10 +61,13 @@ function dayField(record, key) {
     const value = textField(record, key);
     return value !== undefined && isGoalDay(value) ? value : undefined;
 }
-/** The fields every record carries, or why the record cannot be read. */
+/**
+ * The fields every record carries, or why the record cannot be read. `at` is held to the stamp teamrig writes, so a
+ * record's time is never a carrier of other text to whoever is served it.
+ */
 function baseOf(record) {
     const at = textField(record, 'at');
-    if (at === undefined || Number.isNaN(Date.parse(at))) {
+    if (at === undefined || parseIsoStamp(at) === undefined) {
         return 'at is not a time';
     }
     const by = textField(record, 'by');

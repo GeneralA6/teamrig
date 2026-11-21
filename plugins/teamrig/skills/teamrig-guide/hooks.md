@@ -573,8 +573,8 @@ commands read theirs themselves). To check a saved key, ask the owner to look in
 [secretGuard.secretReads]"
 
 It also refuses a Bash or PowerShell line that holds a secret as text, a quiet one too, since the line itself stays in
-the transcript: a token by its shape (GitHub, Anthropic, `sk-`, AWS, Slack, Google, Stripe live, a JSON web token, a
-private key block), credentials in a URL (`postgres://app:<the password>@db`), the credentials of an `Authorization`
+the transcript: a token by its shape (GitHub, Anthropic, `sk-`, AWS, Slack, Google, Stripe live, npm, a JSON web
+token, a private key block, a Discord or Slack webhook URL), credentials in a URL (`postgres://app:<the password>@db`), the credentials of an `Authorization`
 header, the key of an API key header (`x-api-key: ...`), a quoted literal of 12 or more characters given to a
 secret-like name (`api_key = "..."`), and the team's own `register.secretPatterns`. A value that only stands in for a
 secret passes: a reference (`${DB_URI}`, `$env:DB_URI`, `<db_password>`, `%TOKEN%`), a placeholder word
@@ -626,8 +626,8 @@ reads only the call, so it cannot see the cases below; what such a call prints g
 The secret guard reads only the call, so a script, a log or a file can still print a secret it could not see. After
 each Bash, PowerShell, Read (of a text file) or Grep call, `hook secret-redact` scans the call's result and replaces
 each secret it holds with `[redacted <kind>]` before Claude and the transcript see it: a token by its shape (the
-guard's shapes: GitHub, Anthropic, `sk-`, AWS, Slack, Google, Stripe live, a JSON web token, a private key block),
-credentials in a URL, the credentials of an `Authorization` or API key header, a quoted literal given to a
+guard's shapes: GitHub, Anthropic, `sk-`, AWS, Slack, Google, Stripe live, npm, a JSON web token, a private key
+block, a Discord or Slack webhook URL), credentials in a URL, the credentials of an `Authorization` or API key header, a quoted literal given to a
 secret-like name, a match of `register.secretPatterns`, and the value of a secret variable as an environment dump, a
 `.env` file or `docker inspect` prints it: `NAME=value`, an upper-case name the guard's names judge secret, with no
 space around `=`. A value found once goes from every part of the result, `stdout` and `stderr` alike. A value that
@@ -892,8 +892,8 @@ tab. The route allow never lets one through, as it answers only once every guard
 
 It also refuses a session's own write of an owner-gated key of the team config, each a permission or an owner gate:
 `serviceRoles`, `roles`, `ownerGates`, `securityGates`, `register.ownerSource`, `prompts`, `readonlyShell`, `exec`,
-`alerts`, `github.owners`, `delivery.repos` (each repository's merge, deploy and check commands), `delivery.passEnv`, `permissions` and the
-guards (`pushGuard`, `secretGuard`, `packageGuard`, `dbWriteGuard`, `commitGuard`). It refuses a Write, Edit or
+`alerts`, `github.owners`, `delivery.repos` (each repository's merge, deploy and check commands), `delivery.passEnv`, `permissions`, `ui` (the
+script `teamrig ui` runs) and the guards (`pushGuard`, `secretGuard`, `packageGuard`, `dbWriteGuard`, `commitGuard`). It refuses a Write, Edit or
 MultiEdit of any team's config (a path ending in `teams/<team>/config.json`, the session's own and every other
 team's, in any spelling: a Git Bash `/c/` drive is read as `C:`, and its 8.3 short name `CONFIG~1.JSO` or a link to it counts too) whose result changes one (the guard applies the edit to that file as it is now and compares
 each key, a key the file lacks reading as unset), or that it cannot work out (text not found, a notebook edit), and a shell line naming the team config file (`teams/<team>/config.json`, or

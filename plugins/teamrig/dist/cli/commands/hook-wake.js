@@ -6,12 +6,12 @@ import { changedSincePoke, decideRushPoke, pokeMarkOf, queuedTasksOf, rushPokePr
 import { BurstLog } from "../../budget/burst-log.js";
 import { claudeProjectsDir, lastWriteOf } from "../../budget/discover.js";
 import { autoRestartOf } from "../../config/refresh.js";
-import { isRecord, stringField } from "../../core/guards.js";
+import { stringField } from "../../core/guards.js";
 import { LockBusyError } from "../../core/lock.js";
 import { MeetingStore, phaseOf } from "../../meeting/state.js";
 import { restartMayAct } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
-import { seenLinesOf, sessionIdOf, unseenLinesOf } from "../../inbox/inbox.js";
+import { seenLinesOf, unseenLinesOf } from "../../inbox/inbox.js";
 import { dayProbeClaimLine, dayProbePath } from "../../restore/day-probe.js";
 import { DayProbeStore } from "../../restore/day-probe-store.js";
 import { claudeCredentialsPath, LOGIN_LOCK, loginHoldsDayStart, loginMarkerPath, loginRetryLine } from "../../restore/login.js";
@@ -37,7 +37,7 @@ import { inboxDepsOf } from "./inbox.js";
 import { runIdlePass } from "./hook-idle-pass.js";
 import { runTreeIdlePasses } from "./hook-tree-idle-pass.js";
 import { sessionFoldersOf } from "./setup.js";
-import { parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
+import { readHookInput, readModRequest, sessionTeam, teamSessionOf } from "./hook-input.js";
 import { armParkedRestart, parkedHere, rearmDeadRestart } from "./hook-restart.js";
 import { fileLockOf } from "../file-locks.js";
 import { dayStartFor } from "../day-schedule.js";
@@ -73,12 +73,13 @@ function loginScopeOf(runtime, kitHome) {
 async function dayLoginOf(runtime, login) {
     return loginHoldsDayStart(await login.store.read(), await runtime.files.modifiedAt(login.credentials)) ? { kind: 'expired' } : { kind: 'ok' };
 }
-export async function wakeScopeOf(runtime, payload, needsWake) {
-    const tab = sessionIdOf(payload);
-    if (tab === null) {
+/** The scope of the call `origin` names: the hook event's, or the mod's own request; undefined when the input was no JSON record. */
+export async function wakeScopeOf(runtime, origin, needsWake) {
+    const tab = origin?.session;
+    if (origin === undefined || tab === undefined) {
         return { kind: 'off', why: 'no session id' };
     }
-    const found = await sessionTeam(payload, runtime);
+    const found = await sessionTeam(origin.cwd, runtime);
     if (found.kind !== 'team') {
         return { kind: 'off', why: 'not in a team' };
     }
@@ -370,8 +371,8 @@ async function decide(runtime, scope, store, fresh, login) {
  */
 export async function wakeCheck(args, runtime) {
     noPositionals(args);
-    const payload = parseJson(await runtime.readStdin());
-    const scope = await wakeScopeOf(runtime, payload, true);
+    const { event } = await readHookInput(runtime);
+    const scope = await wakeScopeOf(runtime, event, true);
     if (scope.kind === 'off') {
         return answer(runtime, scope);
     }
@@ -385,7 +386,7 @@ export async function wakeCheck(args, runtime) {
         return answer(runtime, waitAnswer(scope, null));
     }
     const restarts = new RefreshStore(runtime.files, kit.paths);
-    const rearm = { team: kit.paths.team, id, tab, refresh: { enabled: config.refresh.enabled, autoRestart: autoRestartOf(config, id) }, cwd: isRecord(payload) ? stringField(payload, 'cwd') : undefined };
+    const rearm = { team: kit.paths.team, id, tab, refresh: { enabled: config.refresh.enabled, autoRestart: autoRestartOf(config, id) }, cwd: event?.cwd };
     if (await restartHoldsWake(runtime, restarts, rearm)) {
         return answer(runtime, waitAnswer(scope, runtime.clock.now() + RESTART_RECHECK_MS));
     }
@@ -457,12 +458,13 @@ async function wake(runtime, scope, value) {
  */
 export async function wakeDropped(args, runtime) {
     noPositionals(args);
-    const payload = parseJson(await runtime.readStdin());
-    const scope = await wakeScopeOf(runtime, payload, false);
+    const request = await readModRequest(runtime);
+    const scope = await wakeScopeOf(runtime, request?.event, false);
     if (scope.kind === 'off') {
         return EXIT.ok;
     }
-    const reason = (isRecord(payload) ? stringField(payload, 'reason') : undefined) ?? 'no reason given';
+    // The request's own reason, the mod's word for why the wake was dropped: never the event's, which is a session end's.
+    const reason = (request === undefined ? undefined : stringField(request.fields, 'reason')) ?? 'no reason given';
     await logWake(runtime.files, scope.kit.paths.wakeLog, { kind: 'dropped', at: runtime.clock.now(), session: scope.id, tab: scope.tab, reason });
     await new WakePrompts(runtime.files, scope.kit.paths.wake).forget(scope.id, scope.tab);
     return EXIT.ok;

@@ -1,18 +1,23 @@
 import { join } from 'node:path';
 import { formatConfig, writeConfigWithBackup } from "../config/load.js";
 import { errorMessage, isRecord } from "../core/guards.js";
-import { claudeConfigDir, resolveKitHome } from "../core/home.js";
+import { resolveKitHome } from "../core/home.js";
+import { pathsOf } from "./host.js";
 import { RefusedError } from "./runtime.js";
 /**
- * The person's own Claude Code user settings (`<Claude Code folder>/settings.json`), as the commands that change them
+ * The person's own user settings of the host (the file its paths port names), as the commands that change them
  * read and write them: a missing file reads as empty and one that is not a JSON object is refused before anything is
  * written; a write keeps the old file in the kit's backups folder first.
  */
 /** The backup name of Claude Code's settings before a change. */
 const SETTINGS_BACKUP_NAME = 'claude-settings';
+/**
+ * Every caller's whole work is that one file, so a host whose folders teamrig does not know refuses here, with its own
+ * reason, before anything is read or written.
+ */
 export function settingsTargetOf(runtime) {
     return {
-        settingsPath: join(claudeConfigDir(runtime.env, runtime.userHome), 'settings.json'),
+        settingsPath: pathsOf(runtime).userSettings(runtime.userHome),
         backupsDir: join(resolveKitHome(runtime.env, runtime.userHome), 'backups'),
     };
 }

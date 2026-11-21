@@ -1,25 +1,19 @@
 import { isEffortLevel } from "../../config/types.js";
-import { stringField } from "../../core/guards.js";
 import { ENV } from "../../core/home.js";
-import { payloadEffortOf } from "../../hooks/model-check.js";
-import { sessionIdOf } from "../../inbox/inbox.js";
 import { noticeOf } from "../../refresh/decide.js";
 import { claudeProcessOf, restartMayAct } from "../../refresh/restart.js";
 import { parkRulesOf } from "../../register/park.js";
 import { startableTasks } from "../../wake/day-start.js";
 import { teamZone } from "../kit.js";
 import { teamRegister } from "../team-register.js";
-/** The restart's target; undefined when Claude Code did not give its session, its transcript or a folder. */
-export function restartTargetOf(runtime, payload) {
-    const claudeSession = sessionIdOf(payload);
-    const transcript = stringField(payload, 'transcript_path');
-    const cwd = stringField(payload, 'cwd');
+/** The restart's target; undefined when the event names no session, no transcript or no folder. */
+export function restartTargetOf(runtime, event) {
+    const { session, transcript, cwd, effort } = event;
     const project = runtime.env[ENV.claudeProjectDir] ?? cwd;
-    if (claudeSession === null || transcript === undefined || project === undefined) {
+    if (session === undefined || transcript === undefined || project === undefined) {
         return undefined;
     }
-    const effort = payloadEffortOf(payload);
-    return { claudeSession, transcript, cwd: cwd ?? null, project, effort: isEffortLevel(effort) ? effort : null };
+    return { claudeSession: session, transcript, cwd: cwd ?? null, project, effort: isEffortLevel(effort) ? effort : null };
 }
 /** Starts `restart` hidden for the request recorded at `at`, to wait until the session is idle; whether it started. */
 async function startRunner(runtime, team, id, at, project) {

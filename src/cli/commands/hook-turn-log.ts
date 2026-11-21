@@ -1,8 +1,7 @@
 import type { KitConfig } from '../../config/types.ts';
-import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { sessionIdOf } from '../../inbox/inbox.ts';
+import type { HookEvent } from '../../ports/host/index.ts';
 import { cappedText, type TurnLogEntry, type TurnLogKind } from '../../turn-log/entry.ts';
 import { REPLY_TAIL_BYTES, replyOf, type Reply } from '../../turn-log/reply.ts';
 import { TurnLog } from '../../turn-log/store.ts';
@@ -27,7 +26,7 @@ interface Said {
   readonly from?: 'teamrig';
 }
 
-/** What SessionStart's `source` logs: a /clear or a compaction, which wipe what the tab showed. */
+/** What a session start's `source` logs: a /clear or a compaction, which wipe what the tab showed. */
 const WIPES: Readonly<Record<string, string>> = { clear: 'context cleared (/clear)', compact: 'context compacted' };
 
 function entryOf(runtime: CliRuntime, scope: TurnLogScope, said: Said): TurnLogEntry {
@@ -51,14 +50,12 @@ function logOf(runtime: CliRuntime, scope: TurnLogScope): TurnLog {
  * UserPromptSubmit: the prompt the person sent, or the wake teamrig submitted in that tab, marked `from: teamrig`;
  * nothing with the log off or an empty prompt.
  */
-export async function logPrompt(runtime: CliRuntime, scope: TurnLogScope, payload: unknown): Promise<void> {
-  const claude = sessionIdOf(payload);
-  const prompt = isRecord(payload) ? stringField(payload, 'prompt') : undefined;
-  if (!scope.config.turnLog.enabled || claude === null || prompt === undefined || prompt.trim() === '') {
+export async function logPrompt(runtime: CliRuntime, scope: TurnLogScope, { session, prompt }: Pick<HookEvent, 'session' | 'prompt'>): Promise<void> {
+  if (!scope.config.turnLog.enabled || session === undefined || prompt === undefined || prompt.trim() === '') {
     return;
   }
-  const woke = await new WakePrompts(runtime.files, scope.paths.wake).take(scope.id, { tab: claude, text: prompt });
-  const said: Said = { kind: 'prompt', claude, text: prompt, ...(woke ? { from: 'teamrig' } : {}) };
+  const woke = await new WakePrompts(runtime.files, scope.paths.wake).take(scope.id, { tab: session, text: prompt });
+  const said: Said = { kind: 'prompt', claude: session, text: prompt, ...(woke ? { from: 'teamrig' } : {}) };
   await logOf(runtime, scope).append(scope.id, entryOf(runtime, scope, said));
 }
 
@@ -70,8 +67,8 @@ interface ReplyText {
 }
 
 /**
- * The turn's reply from the transcript, ending with the message Claude Code gives the Stop hook
- * (`last_assistant_message`) when the transcript does not hold it yet; undefined when the turn wrote no text.
+ * The turn's reply from the transcript, ending with the last reply the turn end's hook event names when the
+ * transcript does not hold it yet; undefined when the turn wrote no text.
  * A reply of that message alone keeps `after`, the last entry an earlier reply took.
  */
 function replyWithLast(reply: Reply | undefined, last: string | undefined, after: string | undefined): ReplyText | undefined {
@@ -84,23 +81,21 @@ function replyWithLast(reply: Reply | undefined, last: string | undefined, after
 }
 
 /**
- * Stop: the reply the person saw since the last one logged. A stop that a hook sent back (`stop_hook_active`)
- * ends part of a turn, so a later stop of the same turn starts after the last entry this one took (`upTo`). On a
- * host whose transcript teamrig cannot read, the reply is the Stop hook's last message alone.
+ * A turn's end: the reply the person saw since the last one logged. A stop that a hook sent back ends part of
+ * a turn, so a later stop of the same turn starts after the last entry this one took (`upTo`). On a host whose
+ * transcript teamrig cannot read, the reply is the last reply the event names alone.
  */
-export async function logReply(runtime: CliRuntime, scope: TurnLogScope, payload: JsonRecord): Promise<void> {
-  const claude = sessionIdOf(payload);
-  if (!scope.config.turnLog.enabled || claude === null) {
+export async function logReply(runtime: CliRuntime, scope: TurnLogScope, { session: claude, transcript, lastReply }: Pick<HookEvent, 'session' | 'transcript' | 'lastReply'>): Promise<void> {
+  if (!scope.config.turnLog.enabled || claude === undefined) {
     return;
   }
   const log = logOf(runtime, scope);
   const last = await log.last(scope.id);
   const after = last?.kind === 'reply' && last.claude === claude ? last.upTo : undefined;
   const reader = transcriptsIfKept(runtime);
-  const transcript = reader === undefined ? undefined : stringField(payload, 'transcript_path');
-  const tail = transcript === undefined ? undefined : await runtime.files.readTail(transcript, REPLY_TAIL_BYTES);
+  const tail = reader === undefined || transcript === undefined ? undefined : await runtime.files.readTail(transcript, REPLY_TAIL_BYTES);
   const fromTranscript = reader === undefined || tail === undefined ? undefined : replyOf(reader, tail, after, Buffer.byteLength(tail, 'utf8') < REPLY_TAIL_BYTES);
-  const reply = replyWithLast(fromTranscript, stringField(payload, 'last_assistant_message'), after);
+  const reply = replyWithLast(fromTranscript, lastReply, after);
   if (reply === undefined) {
     return;
   }
@@ -112,16 +107,14 @@ export async function logReply(runtime: CliRuntime, scope: TurnLogScope, payload
  * SessionStart: marks a /clear or a compaction, which wipe what the tab showed, and removes every session's
  * hours past `turnLog.keepHours` (folder listings only).
  */
-export async function logStart(runtime: CliRuntime, scope: TurnLogScope, payload: unknown): Promise<void> {
+export async function logStart(runtime: CliRuntime, scope: TurnLogScope, { session, source }: Pick<HookEvent, 'session' | 'source'>): Promise<void> {
   if (!scope.config.turnLog.enabled) {
     return;
   }
   const log = logOf(runtime, scope);
-  const claude = sessionIdOf(payload);
-  const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
   const wipe = source === undefined ? undefined : WIPES[source];
-  if (claude !== null && wipe !== undefined) {
-    await log.append(scope.id, entryOf(runtime, scope, { kind: 'clear', claude, text: wipe }));
+  if (session !== undefined && wipe !== undefined) {
+    await log.append(scope.id, entryOf(runtime, scope, { kind: 'clear', claude: session, text: wipe }));
   }
   await log.prune(runtime.clock.now(), scope.config.turnLog.keepHours);
 }

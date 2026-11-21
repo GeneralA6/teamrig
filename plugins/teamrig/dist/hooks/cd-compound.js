@@ -1,21 +1,21 @@
 import * as nodePath from 'node:path';
-import { recordField, stringField } from "../core/guards.js";
 import { KIT_NAME } from "../core/home.js";
 import { bashDrivePath, resolveDir } from "../push-guard/location.js";
 import { isStaticWord, parseShell } from "../push-guard/tokenizer.js";
 import { rerunOf } from "./rerun-forms.js";
 /** A leading `NAME=value` word, which sets a variable for the command instead of naming its program. */
 const ASSIGNMENT = /^[A-Za-z_]\w*=/;
-/** Whether the guard looks at this payload: the switch is on and it is a PreToolUse call of Bash. */
-export function guardsCdCompound(enabled, payload) {
-    return enabled && stringField(payload, 'hook_event_name') === 'PreToolUse' && stringField(payload, 'tool_name') === 'Bash';
+/** Whether the guard looks at this event: the switch is on and it is a bash call about to run. */
+export function guardsCdCompound(enabled, event) {
+    const { call } = event;
+    return enabled && event.name === 'tool-start' && call?.kind === 'shell' && call.dialect === 'bash';
 }
 /**
  * The rerun form of a Bash `command` whose leading `cd D &&` Claude Code asks about: git runs after the move, or D lies
  * outside `place.cwd`. Undefined for any other line, and for one with no rerun form.
  */
 export function cdCompoundForm(command, place) {
-    const rerun = rerunOf('Bash', command);
+    const rerun = rerunOf('bash', command);
     if (rerun?.folder === undefined) {
         return undefined;
     }
@@ -39,10 +39,10 @@ export function cdCompoundOf(command, place) {
     const after = commands.slice(first);
     return after.some((each) => programOf(each) === 'git') || movesOut(after, place) ? { kind: 'drop-cd' } : undefined;
 }
-/** What the guard holds against the Bash command of a hook `payload`, as {@link cdCompoundOf} gives it. */
-export function cdCompoundOfPayload(payload, place) {
-    const command = stringField(recordField(payload, 'tool_input') ?? {}, 'command');
-    return command === undefined ? undefined : cdCompoundOf(command, place);
+/** What the guard holds against the line of a hook event's shell call, as {@link cdCompoundOf} gives it. */
+export function cdCompoundOfEvent(event, place) {
+    const { call } = event;
+    return call?.kind !== 'shell' || call.command === undefined ? undefined : cdCompoundOf(call.command, place);
 }
 /** Why the line is refused: the rerun form to run instead, or the ways to run it with no `cd`. */
 export function cdCompoundReason(compound) {

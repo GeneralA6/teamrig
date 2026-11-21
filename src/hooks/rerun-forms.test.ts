@@ -5,43 +5,42 @@ import { rerunForm, rerunOf } from './rerun-forms.ts';
 
 describe('rerunForm', () => {
   it('runs the commands after a leading cd in its folder: git through -C, anything else through env -C', () => {
-    assert.equal(rerunForm('Bash', 'cd /w && git status'), 'git -C /w status');
-    assert.equal(rerunForm('Bash', 'cd /w && npm test'), 'env -C /w npm test');
-    assert.equal(rerunForm('Bash', 'cd /w && CI=1 git log -1'), 'env -C /w CI=1 git log -1');
-    assert.equal(rerunForm('Bash', "cd '/my dir' && git status"), "git -C '/my dir' status");
+    assert.equal(rerunForm('bash', 'cd /w && git status'), 'git -C /w status');
+    assert.equal(rerunForm('bash', 'cd /w && npm test'), 'env -C /w npm test');
+    assert.equal(rerunForm('bash', 'cd /w && CI=1 git log -1'), 'env -C /w CI=1 git log -1');
+    assert.equal(rerunForm('bash', "cd '/my dir' && git status"), "git -C '/my dir' status");
   });
 
   it('keeps the separators and their order, a newline as a semicolon', () => {
-    assert.equal(rerunForm('Bash', 'cd /w && git fetch && git status -sb'), 'git -C /w fetch && git -C /w status -sb');
-    assert.equal(rerunForm('Bash', 'cd /w && npm test | tail -5'), 'env -C /w npm test | env -C /w tail -5');
-    assert.equal(rerunForm('Bash', 'cd /w && git status\ngit log -1'), 'git -C /w status; git -C /w log -1');
-    assert.equal(rerunForm('Bash', 'cd /w && git status;'), 'git -C /w status');
+    assert.equal(rerunForm('bash', 'cd /w && git fetch && git status -sb'), 'git -C /w fetch && git -C /w status -sb');
+    assert.equal(rerunForm('bash', 'cd /w && npm test | tail -5'), 'env -C /w npm test | env -C /w tail -5');
+    assert.equal(rerunForm('bash', 'cd /w && git status\ngit log -1'), 'git -C /w status; git -C /w log -1');
+    assert.equal(rerunForm('bash', 'cd /w && git status;'), 'git -C /w status');
   });
 
   it('keeps a redirection that reaches the same file from any folder', () => {
-    assert.equal(rerunForm('Bash', 'cd /w && npm test 2>&1 | tail -5'), 'env -C /w npm test 2>&1 | env -C /w tail -5');
-    assert.equal(rerunForm('Bash', 'cd /w && git status 2>/dev/null'), 'git -C /w status 2>/dev/null');
+    assert.equal(rerunForm('bash', 'cd /w && npm test 2>&1 | tail -5'), 'env -C /w npm test 2>&1 | env -C /w tail -5');
+    assert.equal(rerunForm('bash', 'cd /w && git status 2>/dev/null'), 'git -C /w status 2>/dev/null');
   });
 
   it('runs a plain git worktree remove through teamrig, which unlinks shared folders first', () => {
-    assert.equal(rerunForm('Bash', 'git worktree remove /w/x'), 'teamrig worktree remove /w/x');
-    assert.equal(rerunForm('Bash', 'cd /w && git worktree remove ../x'), 'env -C /w teamrig worktree remove ../x');
+    assert.equal(rerunForm('bash', 'git worktree remove /w/x'), 'teamrig worktree remove /w/x');
+    assert.equal(rerunForm('bash', 'cd /w && git worktree remove ../x'), 'env -C /w teamrig worktree remove ../x');
   });
 
   it("writes a word behind a $'...' string whose value is nothing as the word bash gives the program", () => {
     for (const quote of NOTHING_QUOTES) {
-      assert.equal(rerunForm('Bash', `cd /w && git ${quote}status`), 'git -C /w status', quote);
-      assert.equal(rerunForm('Bash', `cd ${quote}/w && ${quote}git status`), 'git -C /w status', quote);
-      assert.equal(rerunForm('Bash', `git ${quote}worktree remove /w/x`), 'teamrig worktree remove /w/x', quote);
+      assert.equal(rerunForm('bash', `cd /w && git ${quote}status`), 'git -C /w status', quote);
+      assert.equal(rerunForm('bash', `cd ${quote}/w && ${quote}git status`), 'git -C /w status', quote);
+      assert.equal(rerunForm('bash', `git ${quote}worktree remove /w/x`), 'teamrig worktree remove /w/x', quote);
     }
   });
 
   it('gives no form when no rule applies', () => {
     for (const command of ['git status', 'rm -rf x', 'cd /w', 'cd /w; git status', 'git worktree remove --force /w/x', 'git worktree remove']) {
-      assert.equal(rerunForm('Bash', command), undefined, command);
+      assert.equal(rerunForm('bash', command), undefined, command);
     }
-    assert.equal(rerunForm('PowerShell', 'cd /w && git status'), undefined);
-    assert.equal(rerunForm(undefined, 'cd /w && git status'), undefined);
+    assert.equal(rerunForm('powershell', 'cd /w && git status'), undefined);
   });
 
   it('gives no form when the form could do something else', () => {
@@ -65,24 +64,24 @@ describe('rerunForm', () => {
       "cd /w && git log 'unclosed",
     ];
     for (const command of doubts) {
-      assert.equal(rerunForm('Bash', command), undefined, command);
+      assert.equal(rerunForm('bash', command), undefined, command);
     }
   });
 });
 
 describe('rerunOf', () => {
   it('names the folder of the leading cd and the program each command after it runs', () => {
-    assert.deepEqual(rerunOf('Bash', 'cd /w && CI=1 npm test 2>&1 | tail -5'), {
+    assert.deepEqual(rerunOf('bash', 'cd /w && CI=1 npm test 2>&1 | tail -5'), {
       form: 'env -C /w CI=1 npm test 2>&1 | env -C /w tail -5',
       folder: '/w',
       programs: ['npm', 'tail'],
     });
-    assert.deepEqual(rerunOf('Bash', 'cd /w && git worktree remove ../x')?.programs, ['git']);
+    assert.deepEqual(rerunOf('bash', 'cd /w && git worktree remove ../x')?.programs, ['git']);
   });
 
   it('names no folder for a form with no leading cd, and gives nothing where rerunForm gives nothing', () => {
-    assert.deepEqual(rerunOf('Bash', 'git worktree remove /w/x'), { form: 'teamrig worktree remove /w/x', folder: undefined, programs: ['git'] });
-    assert.equal(rerunOf('Bash', 'cd /w; git status'), undefined);
-    assert.equal(rerunOf('PowerShell', 'cd /w && git status'), undefined);
+    assert.deepEqual(rerunOf('bash', 'git worktree remove /w/x'), { form: 'teamrig worktree remove /w/x', folder: undefined, programs: ['git'] });
+    assert.equal(rerunOf('bash', 'cd /w; git status'), undefined);
+    assert.equal(rerunOf('powershell', 'cd /w && git status'), undefined);
   });
 });

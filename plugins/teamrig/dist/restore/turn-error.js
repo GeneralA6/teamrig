@@ -1,4 +1,3 @@
-import { stringField } from "../core/guards.js";
 /**
  * The API error a failed turn ended on, as the host names it (`authentication_failed`, `server_error`,
  * `overloaded`, ...). A StopFailure payload carries it as `error`; one that does not leaves only the turn's last
@@ -9,12 +8,11 @@ export const TURN_TAIL_BYTES = 64 * 1024;
 /** The one entry kind the error is read from; every other line is passed over. */
 const REPLY_ONLY = ['reply'];
 /**
- * The error a StopFailure ended its turn on. The payload's `error` decides it; only a payload with none reads the
- * transcript's end (`tailOf`, undefined when there is none) through the host's `reader`, and a host that keeps no
- * transcript (`reader` undefined) leaves it unread. Undefined when neither names one.
+ * The error a failed turn ended on. `error`, the one its hook event names, decides it; only an event that names none
+ * reads the transcript's end (`tailOf`, undefined when there is none) through the host's `reader`, and a host that
+ * keeps no transcript (`reader` undefined) leaves it unread. Undefined when neither names one.
  */
-export async function turnErrorOf(reader, payload, tailOf) {
-    const error = stringField(payload, 'error');
+export async function turnErrorOf(reader, error, tailOf) {
     if (error !== undefined || reader === undefined) {
         return error;
     }

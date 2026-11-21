@@ -1,12 +1,10 @@
 import { DEFAULT_SECRET_GUARD } from "../config/defaults.js";
-import { toolCommandReadings } from "../core/bash-tool-readings.js";
-import { isRecord, recordField, stringField } from "../core/guards.js";
 import { resolveDir } from "../push-guard/location.js";
 import { describeFinding, uniqueFindings } from "../secret-guard/findings.js";
 import { braceAlternatives } from "../secret-guard/glob.js";
 import { literalFindings, writtenFindings } from "../secret-guard/literals.js";
 import { shellFindings } from "../secret-guard/shell.js";
-import { holdBackOutput } from "./permission.js";
+import { heldBack } from "./permission.js";
 /** The most `{a,b}` alternatives the guard spells out of one Grep glob; one with more counts as naming a secret file. */
 const MAX_GREP_ALTERNATIVES = 64;
 /**
@@ -15,81 +13,57 @@ const MAX_GREP_ALTERNATIVES = 64;
  * a glob a person or a model writes for a search stays far shorter.
  */
 const MAX_GREP_GLOB_LENGTH = 1024;
-/**
- * The call once for each text its shell may run (`toolCommandReadings`): a Bash line on Windows also as bash receives
- * it, so a secret the line as written hides behind a backslash run is still found. `secretFindingsOf` reads one text,
- * the way the read-only allow calls it per reading; a call with no command line is itself.
- */
-function callReadings(payload, platform) {
-    const input = recordField(payload, 'tool_input');
-    const command = input === undefined ? undefined : stringField(input, 'command');
-    if (input === undefined || command === undefined) {
-        return [payload];
-    }
-    return toolCommandReadings(stringField(payload, 'tool_name'), command, platform).map((text) => ({ ...payload, tool_input: { ...input, command: text } }));
-}
 /** The secret guard's config. A missing or unreadable config keeps the default, so a broken config never switches the guard off. */
 export function secretGuardOf(load) {
     return load?.status === 'loaded' ? load.config.secretGuard : DEFAULT_SECRET_GUARD;
 }
 /**
- * The secrets a tool call would print into the conversation: what a Bash or PowerShell line holds as text and what it
- * prints, the file a Read opens, and the file or glob a Grep shows matching lines of. A Grep that lists file names or
- * counts prints no content; one over a folder with no glob, or only `!globs`, may still show a secret file's lines: a gap.
- * Also the secrets a Write, Edit, MultiEdit or NotebookEdit call writes as text (T1369 R3), unless it writes a secret file.
+ * The secrets a tool call would print into the conversation: what a shell line holds as text and what it prints, the
+ * file a read opens, and the file or glob a search that shows content reads. A shell line is read in each text its
+ * shell may run (the call's `readings`), so a secret the line as written hides behind a run the host rewrites is still
+ * found; a finding both readings make comes once per reading. A search that lists file names or counts prints no
+ * content; one over a folder with no glob, or only `!globs`, may still show a secret file's lines: a gap. Also the
+ * secrets a file-writing call writes as text (T1369 R3), unless it writes a secret file.
  */
-export function secretFindingsOf(payload, cwd, rules) {
-    const input = recordField(payload, 'tool_input') ?? {};
-    const dir = stringField(payload, 'cwd') ?? cwd;
-    const tool = stringField(payload, 'tool_name');
-    switch (tool) {
-        case 'Bash':
-        case 'PowerShell': {
-            const command = stringField(input, 'command');
-            return command === undefined
-                ? []
-                : [...literalFindings(command, rules.shapes), ...shellFindings(command, { cwd: dir, home: rules.home, dialect: tool === 'PowerShell' ? 'powershell' : 'bash' }, rules)];
+export function secretFindingsOf(event, cwd, rules) {
+    const { call } = event;
+    const dir = event.cwd ?? cwd;
+    switch (call?.kind) {
+        case 'shell': {
+            const context = { cwd: dir, home: rules.home, dialect: call.dialect };
+            return call.readings.flatMap((text) => [...literalFindings(text, rules.shapes), ...shellFindings(text, context, rules)]);
         }
-        case 'Read': {
-            const path = stringField(input, 'file_path');
-            return path !== undefined && rules.paths.listed(toolPath(path, dir, rules.home)) ? [{ kind: 'file', path }] : [];
-        }
-        case 'Grep':
-            return grepFindings(input, dir, rules);
-        case 'Write':
-        case 'Edit':
-        case 'MultiEdit':
-        case 'NotebookEdit':
-            return writeFindings(input, dir, rules);
+        case 'read':
+            return call.path !== undefined && rules.paths.listed(toolPath(call.path, dir, rules.home)) ? [{ kind: 'file', path: call.path }] : [];
+        case 'search':
+            return searchFindings(call, dir, rules);
+        case 'edit':
+            return writeFindings(call, dir, rules);
         default:
             return [];
     }
 }
 /**
- * The secrets a file-writing call writes as text: a Write's `content`, an Edit's `new_string`, each of a MultiEdit's
- * `edits`, a NotebookEdit's `new_source`. A secret file (`secretGuard.paths`) is where a secret belongs, so a call that
- * writes one passes; every other folder, tests too, is read.
+ * The secrets a file-writing call writes as text (the call's `texts`). A secret file (`secretGuard.paths`) is where a
+ * secret belongs, so a call that writes one passes; every other folder, tests too, is read.
  */
-function writeFindings(input, dir, rules) {
-    const path = stringField(input, 'file_path') ?? stringField(input, 'notebook_path');
-    if (path !== undefined && rules.paths.listed(toolPath(path, dir, rules.home))) {
+function writeFindings(call, dir, rules) {
+    if (call.path !== undefined && rules.paths.listed(toolPath(call.path, dir, rules.home))) {
         return [];
     }
-    const edits = input['edits'];
-    const texts = [input, ...(Array.isArray(edits) ? edits.filter(isRecord) : [])].flatMap((record) => ['content', 'new_string', 'new_source'].flatMap((key) => stringField(record, key) ?? []));
-    return writtenFindings(texts, rules.shapes);
+    return writtenFindings(call.texts, rules.shapes);
 }
-/** The secret file a Grep that shows content searches, named by its path or by a glob that picks the files it reads. */
-function grepFindings(input, dir, rules) {
-    if (stringField(input, 'output_mode') !== 'content') {
+/** The secret file a search that shows content reads, named by its path or by a glob that picks the files it reads. */
+function searchFindings(call, dir, rules) {
+    if (!call.showsContent) {
         return [];
     }
-    const path = stringField(input, 'path');
+    const { path } = call;
     const target = toolPath(path ?? '.', dir, rules.home);
     if (path !== undefined && rules.paths.listed(target)) {
         return [{ kind: 'file', path }];
     }
-    return grepIncludes(stringField(input, 'glob') ?? '')
+    return grepIncludes(call.glob ?? '')
         .filter((glob) => mayPick(rules, target, glob))
         .map((glob) => ({ kind: 'file', path: glob }));
 }
@@ -169,21 +143,21 @@ export function secretPatternsOf(load) {
     return load?.status === 'loaded' ? load.config.register.secretPatterns : [];
 }
 /**
- * The PreToolUse output for a Bash, PowerShell, Read, Grep or file-writing call: a refusal (or a question) when the call
- * would print a secret into the conversation, as `secretGuard.secretReads` says, or its command line or the text it
- * writes holds one, as `secretGuard.writes` says; a refusal when either refuses, naming only the findings a key does
- * not allow. Else nothing, so the normal permission flow decides. Under `hookAsks: refuse` the question is a refusal
- * instead, its reason saying what to do (see `holdBack`). A Bash line on Windows is judged in each reading bash may run
- * (`toolCommandReadings`), naming each finding once.
+ * The reply to a shell, read, search or file-writing call about to run: a refusal (or a question) when the call would
+ * print a secret into the conversation, as `secretGuard.secretReads` says, or its command line or the text it writes
+ * holds one, as `secretGuard.writes` says; a refusal when either refuses, naming only the findings a key does not
+ * allow. Else none, so the normal permission flow decides. Under `hookAsks: refuse` the question is a refusal instead,
+ * its reason saying what to do (see `heldBack`). A shell line is judged in each text its shell may run, naming each
+ * finding once.
  */
-export function secretGuardOutput(payload, env) {
-    if ((env.secretReads === 'allow' && env.writes === 'allow') || !isRecord(payload)) {
-        return '';
+export function secretGuardReply(event, env) {
+    if (env.secretReads === 'allow' && env.writes === 'allow') {
+        return undefined;
     }
-    const findings = uniqueFindings(callReadings(payload, env.platform).flatMap((call) => secretFindingsOf(call, env.cwd, env.rules))).filter((finding) => actionOf(finding, env) !== 'allow');
+    const findings = uniqueFindings(secretFindingsOf(event, env.cwd, env.rules)).filter((finding) => actionOf(finding, env) !== 'allow');
     if (findings.length === 0) {
-        return '';
+        return undefined;
     }
     const decision = findings.some((finding) => actionOf(finding, env) === 'deny') ? 'deny' : 'ask';
-    return holdBackOutput(decision, secretReason(findings));
+    return heldBack(decision, secretReason(findings));
 }

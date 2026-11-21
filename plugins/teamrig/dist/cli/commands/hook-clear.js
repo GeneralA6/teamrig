@@ -1,12 +1,11 @@
 import { resolveKitHome } from "../../core/home.js";
-import { sessionIdOf } from "../../inbox/inbox.js";
 import { CLAIM_END, CLAIM_HELD, CLAIM_TAKEN, END_SWITCH, HOLD_SWITCH, isClaudeSessionId, WHY_FLAG } from "../../mod/clear-hand.js";
 import { ClearAsks, clearAskDir } from "../../refresh/clear-asks.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { noPositionals } from "../args.js";
 import { openKit } from "../kit.js";
 import { EXIT } from "../runtime.js";
-import { parseJson } from "./hook-input.js";
+import { readHookInput } from "./hook-input.js";
 function asksOf(runtime) {
     return new ClearAsks(runtime.files, clearAskDir(resolveKitHome(runtime.env, runtime.userHome)));
 }
@@ -85,8 +84,8 @@ function tabAnswerOf(args) {
 export async function clearClaim(args, runtime) {
     noPositionals(args);
     const answer = tabAnswerOf(args);
-    const claudeSession = sessionIdOf(parseJson(await runtime.readStdin()));
-    const result = claudeSession === null || !isClaudeSessionId(claudeSession)
+    const claudeSession = (await readHookInput(runtime)).event?.session;
+    const result = claudeSession === undefined || !isClaudeSessionId(claudeSession)
         ? { problem: 'no Claude Code session id on stdin' }
         : await claimOf(runtime, asksOf(runtime), claudeSession, answer);
     runtime.out.stdout('problem' in result ? `declined: ${result.problem}` : result.claimed);

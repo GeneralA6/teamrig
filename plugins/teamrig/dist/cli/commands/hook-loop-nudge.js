@@ -1,9 +1,6 @@
 import { toolUseFrom } from "../../budget/line.js";
-import { isRecord, recordField, stringField } from "../../core/guards.js";
 import { leadNudgeLine, leadWorkOf, taskOwnersOf } from "../../hooks/lead-boundary.js";
 import { chainOf, nudgeLine, turnTasksOf, turnToolsOf } from "../../hooks/loop-nudge.js";
-import { postToolUseContext } from "../../hooks/post-tool-use.js";
-import { sessionIdOf } from "../../inbox/inbox.js";
 import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { noPositionals } from "../args.js";
@@ -12,23 +9,22 @@ import { openKit, rosterOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { meterTabMidTurn } from "./hook-budget.js";
 import { loadTree } from "../tree.js";
-import { parseJson, sessionTeam, teamSessionOf, turnLeadPathsOf } from "./hook-input.js";
-/** The tool the hook fires for, from its payload; undefined without an id or a name. */
-function currentToolOf(payload) {
-    const id = stringField(payload, 'tool_use_id');
-    const name = stringField(payload, 'tool_name');
-    return id === undefined || name === undefined ? undefined : toolUseFrom(id, name, recordField(payload, 'tool_input'));
+import { readHookInput, sessionTeam, teamSessionOf, turnLeadPathsOf, writeReply } from "./hook-input.js";
+/** The tool the hook fires for, from the event's call; undefined for an event with no call or a call with no id. */
+function currentToolOf(event) {
+    const { call } = event;
+    return call?.id === undefined ? undefined : toolUseFrom(call.id, call.name, call.input);
 }
 /**
  * The team session of this tab, looked up only when the budget or the lead boundary needs it; undefined for a tab
  * that is none of the team's.
  */
-async function tabSessionOf(runtime, kit, config, payload) {
+async function tabSessionOf(runtime, kit, config, event) {
     if (!config.budget.enabled && !config.leadBoundary.enabled) {
         return undefined;
     }
     const roster = await rosterOf(runtime, kit, config);
-    const id = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
+    const id = await teamSessionOf(runtime, kit, roster, event.session ?? null);
     return id === undefined ? undefined : { roster, id };
 }
 /** The sessions that own the tasks the turn's prompt names, read from the register's working set; none when it names none. */
@@ -54,21 +50,21 @@ async function leadBoundaryLine(runtime, kit, config, text, cut, current) {
     return leadNudgeLine(turn, current, paths, config.leadBoundary.searchNudgeAt, owners);
 }
 /**
- * The lines for this payload: the chain nudge and, on the lead's tab, the lead-boundary nudge; none for a
+ * The lines for this hook input: the chain nudge and, on the lead's tab, the lead-boundary nudge; none for a
  * helper's call, outside a loaded team or with both off.
  */
-async function loopNudgeLines(payload, runtime) {
-    const transcript = isRecord(payload) ? stringField(payload, 'transcript_path') : undefined;
-    if (!isRecord(payload) || transcript === undefined || stringField(payload, 'agent_id') !== undefined) {
+async function loopNudgeLines({ event }, runtime) {
+    const transcript = event?.transcript;
+    if (event === undefined || transcript === undefined || event.helper?.id !== undefined) {
         return [];
     }
-    const found = await sessionTeam(payload, runtime);
+    const found = await sessionTeam(event.cwd, runtime);
     const kit = found.kind === 'team' ? await openKit(runtime, found.team) : undefined;
     if (kit === undefined || kit.load.status !== 'loaded') {
         return [];
     }
     const { config } = kit.load;
-    const tab = await tabSessionOf(runtime, kit, config, payload).catch(() => undefined);
+    const tab = await tabSessionOf(runtime, kit, config, event).catch(() => undefined);
     if (tab !== undefined) {
         // Apart from the nudges: a failed meter run leaves them, and the next call or the Stop hook meters again.
         await meterTabMidTurn(runtime, { kit, config, ...tab }, transcript).catch(() => false);
@@ -81,7 +77,7 @@ async function loopNudgeLines(payload, runtime) {
         return [];
     }
     const cut = Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES;
-    const current = currentToolOf(payload);
+    const current = currentToolOf(event);
     // A host whose calls teamrig cannot price gets no chain nudge: the line is the price of the re-reads.
     const usage = at > 0 ? usageIfMetered(runtime) : undefined;
     const chain = usage === undefined ? undefined : nudgeLine(usage, chainOf(transcriptsOf(runtime), usage, text, cut, current), at);
@@ -92,16 +88,16 @@ async function loopNudgeLines(payload, runtime) {
  * PostToolUse on reads, edits, shell calls and web lookups: once a turn's run of single-step calls reaches
  * `loops.chainNudgeAt`, hands the model one line asking it to batch, priced in re-reads. On the lead's
  * tab it also hands the lead one line at its first edit outside its own files, its first test or build,
- * its first research and its `leadBoundary.searchNudgeAt`-th code search (lead-boundary.ts). A helper's calls (the payload
- * has `agent_id`) are skipped, since both count the main thread only. Outside a loaded team, with both
+ * its first research and its `leadBoundary.searchNudgeAt`-th code search (lead-boundary.ts). A helper's calls
+ * are skipped, since both count the main thread only. Outside a loaded team, with both
  * off or on any error it prints nothing. On a session's tab with the budget on it also meters the tab once its
  * transcript has grown `MID_TURN_METER_BYTES` past the stored cursor (T3298), printing nothing for that.
  */
 export async function loopNudge(args, runtime) {
     noPositionals(args);
-    const lines = await loopNudgeLines(parseJson(await runtime.readStdin()), runtime).catch(() => []);
+    const lines = await loopNudgeLines(await readHookInput(runtime), runtime).catch(() => []);
     if (lines.length > 0) {
-        runtime.out.stdout(postToolUseContext(lines.join('\n')));
+        writeReply(runtime, 'tool-end', { context: lines.join('\n') });
     }
     return EXIT.ok;
 }

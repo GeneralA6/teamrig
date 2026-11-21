@@ -2,7 +2,7 @@ import { errorMessage } from '../../core/guards.ts';
 import type { Roster } from '../../config/roster.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
-import { sessionTitleOf } from '../../names/title.ts';
+import { sessionTitleOf, type TitleSource } from '../../names/title.ts';
 import { bindByEnv, bindByProcess, bindByTitle, bindHint, hintReason, processBoundNote, refreshedIn, type BindOutcome, type TeamRoster } from '../../hooks/bind.ts';
 import { firstHint, JsonlHintLog } from '../../hooks/hint-log.ts';
 import { injectFor } from '../../inbox/inject.ts';
@@ -27,11 +27,11 @@ export type TitleRead = { readonly kind: 'read'; readonly title: string | undefi
 
 /**
  * Reads the title once for everything a hook does with it; it never throws. On a host that keeps no transcript
- * teamrig can read, only the payload's own title counts.
+ * teamrig can read, only the event's own title counts.
  */
-export async function readTitle(runtime: CliRuntime, payload: unknown): Promise<TitleRead> {
+export async function readTitle(runtime: CliRuntime, source: TitleSource): Promise<TitleRead> {
   try {
-    return { kind: 'read', title: await sessionTitleOf(transcriptsIfKept(runtime), payload, runtime.files) };
+    return { kind: 'read', title: await sessionTitleOf(transcriptsIfKept(runtime), source, runtime.files) };
   } catch (error) {
     return { kind: 'failed', error: errorMessage(error) };
   }

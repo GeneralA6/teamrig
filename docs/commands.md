@@ -323,6 +323,33 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       --team <child>: a request of a team below yours, whose roles.securityReviewer names you as <team>/<id>
   exec run R<n>        runs an approved request once, before its approval expires
   who [<id|name|role|team/id>] the name to message a session by (no argument: every session of yours)
+  read <document>... --json [--session <id|name>] [--conversation <id>] [--team <id>] [--owner <id|name>]
+      [--task T<id>] [--since <hours>] [--unless <document>=<revision>[,...]]
+      [--interface <major.minor>]   the public interface's read side, for a program: each document
+      asked is one JSON line on stdout, in the order asked, with its revision and what could not be
+      served (problems); a refusal goes to stderr, so stdout holds answers only.
+      Documents: tasks (the register's working set; --owner keeps one session's), plan (the team's
+      active tasks in plan order, each with the keys of that order, what it needs, who needs it and
+      who moves next, as teamrig's own lists place it; --owner keeps one session's; of another team's
+      task only the id, team, owner and status), goals (the goals a task of the team may serve, its
+      own and those of the teams above it, the ranked ones first: each one's title, rank, open slice,
+      window and every move of its target day), history (every event the register holds of the one
+      task --task names, the oldest first: its creation, each status set, each change of its fields
+      and a move to another team), inbox (--session's own lines, marking none read: the
+      unread ones and the read ones of the last --since hours, 24 unless given), sessions (every
+      session of your tree of teams: its place, hire, state and unread count; a hire's and a
+      retirement's words only for your own team and the teams above it), meetings (the team's
+      scheduled and started meetings by time, as meeting list --json prints them), config (the team,
+      its zone, its priorities and every key of the team config as config get --json reads it, a key
+      naming where a secret is kept without its value; with no team here config alone is answered,
+      with the teams of this machine to join).
+      --conversation: the host's id of the conversation the program runs in; sessions then names the
+      session holding it (self), and inbox serves that session's when no --session is given. --team: a
+      team above yours, for tasks, plan, goals, history, meetings and config. --task: the one task
+      history is asked of. --unless: the revision you hold of a document asked; one still at that
+      revision is answered with unchanged: true in place of its body, from its files' stamps alone.
+      --interface: the version you speak, refused when this teamrig does not serve it. It writes
+      nothing
   sessions [--pass] [--project <dir>]   each session: running (and the MB its Claude Code's processes
       hold), closed or never recorded; then the host's free memory and commit charge. --pass: what an
       idle pass would close and reopen (one reopen a pass, with room on the host) and why it keeps or
@@ -370,6 +397,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
   doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix;
       also a variable that overrides every model or effort choice, and a launch with a model but no effort,
       and a page webhook that gives no https URL
+  ui [--session <id|name>] [--team <team>]   starts the dedicated UI in this terminal, for the team here or the
+      one named, on that session's view; it runs the entry script ui.path names, else the released UI
+      this teamrig pins, fetched once into the kit home's ui folder, held to its sha256 at each start
+      and given only a few variables; refused while neither is there or ui.path names no file
   page test                    posts one page marked TEST through the team's page webhook, as an expired login's
       page goes; prints which team's alerts key paged, or why none went and fails, never the URL
   compact [--dry-run] [--from-history]   archives the task list's log and rewrites its snapshot, so reads

@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { API_VERSION } from '../plugin-api/index.ts';
+import { HOST_PORT_NAMES } from '../ports/host/index.ts';
+import { hostDeps } from '../testing/adapter-deps.ts';
 import { connectorDeclarationData, hostDeclarationData, terminalDeclarationData } from '../testing/manifests.ts';
 import { TERMINAL_ADAPTERS } from './adapters.ts';
 import { importModule, loadConnector, loadHost, loadTerminal, readDeclarations, type Load, type ModuleImporter } from './loader.ts';
@@ -37,8 +39,7 @@ describe('the adapter loader, on the adapters teamrig ships', () => {
     const load = await loadHost('claude-code');
     assert.equal(load.kind, 'loaded');
     assert.equal(load.kind === 'loaded' && load.value.declaration.name, 'Claude Code');
-    const ports = load.kind === 'loaded' ? load.value.create({ env: {}, platform: 'linux', run: () => Promise.reject(new Error('no program runs here')) }) : {};
-    assert.deepEqual(Object.keys(ports), ['transcripts', 'usage', 'statusLine']);
+    assert.deepEqual(load.kind === 'loaded' && Object.keys(load.value.create(hostDeps())), HOST_PORT_NAMES);
   });
 
   it('loads each connector through the real importer', async () => {

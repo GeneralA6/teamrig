@@ -1,6 +1,6 @@
 import { parseJsonl } from "../core/jsonl.js";
 import { isCappedCommand } from "../permissions/service-commands.js";
-import { holdBackOutput } from "./permission.js";
+import { heldBack } from "./permission.js";
 /** The rolling window the daily cap counts over. */
 export const ROLE_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
 /**
@@ -38,23 +38,17 @@ export function roleAllowRecord(facts) {
         ...(facts.count === undefined ? {} : { count: facts.count }),
     };
 }
-/** The hook's stdout for a role's call: an allow naming the role, the command and the issue or branch. */
-export function roleAllowOutput(role, call) {
-    return JSON.stringify({
-        hookSpecificOutput: {
-            hookEventName: 'PreToolUse',
-            permissionDecision: 'allow',
-            permissionDecisionReason: `teamrig: the service role ${role} lets this session run ${call.command} on ${call.target}`,
-        },
-    });
+/** The hook's reply to a role's call: an allow naming the role, the command and the issue or branch. */
+export function roleAllowReply(role, call) {
+    return { verdict: { kind: 'allow', reason: `teamrig: the service role ${role} lets this session run ${call.command} on ${call.target}` } };
 }
 /**
- * The hook's stdout once the role has no room left in 24 hours for a call weighing `weight` (a migrate's issue rows): a
+ * The hook's reply once the role has no room left in 24 hours for a call weighing `weight` (a migrate's issue rows): a
  * refusal, saying when the role runs again, and for a migrate that a file past the whole cap must be split.
  */
-export function roleCapOutput(role, cap, weight = 1) {
+export function roleCapReply(role, cap, weight = 1) {
     const ran = weight > 1 ? `has less room than this run's ${weight} issue rows left of its ${cap} calls` : `ran its ${cap} calls`;
     const split = weight > cap ? ' A rows file holding more issue rows than the cap never runs under the role: split it.' : '';
-    return holdBackOutput('ask', `teamrig: the service role ${role} ${ran} of the last 24 hours (prompts.serviceRoleDailyCap), so this one is refused. ` +
+    return heldBack('ask', `teamrig: the service role ${role} ${ran} of the last 24 hours (prompts.serviceRoleDailyCap), so this one is refused. ` +
         `The role runs again once its oldest call of the window is 24 hours old; only the owner raises the cap.${split}`);
 }

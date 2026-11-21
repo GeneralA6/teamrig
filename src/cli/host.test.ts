@@ -4,13 +4,15 @@ import type { HostSource } from '../composition/host-ports.ts';
 import { isUnsupported, type HostPorts } from '../ports/host/index.ts';
 import { bareHost } from '../testing/bare-host.ts';
 import { quietWorld } from '../testing/quiet-world.ts';
-import { contextSourceIfTold, hostOf, transcriptsIfKept, transcriptsOf, usageIfMetered, usageOf } from './host.ts';
+import { join } from 'node:path';
+import { contextSourceIfTold, hooksOf, hostHomeIfKnown, hostHomeOf, hostOf, pathsIfKnown, pathsOf, transcriptsIfKept, transcriptsOf, usageIfMetered, usageOf } from './host.ts';
 import { RefusedError } from './runtime.ts';
 
 /** One bare host, kept so a case can tell the very ports it handed in from a copy. */
 const BARE: HostPorts = bareHost();
 const bare: HostSource = () => BARE;
 const OUTPUT_ONLY = { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheWriteUnsplit: 0, cacheRead: 0, output: 2 };
+const USER_HOME = join('/', 'people', 'sam');
 
 describe('hostOf', () => {
   it('builds the ports from the environment and platform of the run it is asked for', () => {
@@ -29,6 +31,18 @@ describe('hostOf', () => {
     assert.equal(isUnsupported(transcripts), false);
     assert.deepEqual(!isUnsupported(transcripts) && transcripts.entry('not a transcript line'), { kind: 'unread', reason: 'damaged' });
     assert.equal(isUnsupported(usage), false);
+  });
+});
+
+describe('hooksOf', () => {
+  it('gives the bridge of the host the run is in', () => {
+    const world = quietWorld();
+    const hooks = hooksOf({ host: world.host, env: {}, platform: world.platform });
+    assert.equal(hooks.parse('{"prompt":"hello"}')?.prompt, 'hello');
+  });
+
+  it('refuses with the reason of a host that calls no hook', () => {
+    assert.throws(() => hooksOf({ host: bare, env: {}, platform: 'linux' }), (error) => error instanceof RefusedError && error.message === 'no hook is called');
   });
 });
 
@@ -92,5 +106,53 @@ describe('usageOf', () => {
       () => usageOf({ host: bare, env: {}, platform: 'linux' }),
       (error) => error instanceof RefusedError && error.message === 'no call is priced',
     );
+  });
+});
+
+describe('pathsIfKnown', () => {
+  it('gives the paths of a host that tells them, built from the environment of the run, and nothing for a host that tells none', () => {
+    const world = quietWorld();
+    const moved = { CLAUDE_CODE_TMPDIR: join('/', 'scratch') };
+    assert.equal(pathsIfKnown({ host: world.host, env: moved, platform: world.platform })?.scratchpads(join('/', 'tmp')), join('/', 'scratch', 'claude', '*', '*', 'scratchpad'));
+    assert.equal(pathsIfKnown({ host: bare, env: moved, platform: 'linux' }), undefined);
+  });
+});
+
+describe('pathsOf', () => {
+  it('gives the paths of a host that tells them, built from the environment of the run', () => {
+    const world = quietWorld();
+    const moved = { CLAUDE_CONFIG_DIR: join('/', 'cfg') };
+    assert.equal(pathsOf({ host: world.host, env: moved, platform: world.platform }).userSettings(USER_HOME), join('/', 'cfg', 'settings.json'));
+  });
+
+  it('refuses with the reason of a host whose folders are not known', () => {
+    assert.throws(
+      () => pathsOf({ host: bare, env: {}, platform: 'linux' }),
+      (error) => error instanceof RefusedError && error.message === 'no folder of the host is known',
+    );
+  });
+});
+
+describe('hostHomeOf', () => {
+  it("gives the host's own folder for the person of the run", () => {
+    const world = quietWorld();
+    assert.equal(hostHomeOf({ host: world.host, env: {}, platform: world.platform, userHome: USER_HOME }), join(USER_HOME, '.claude'));
+    const moved = { CLAUDE_CONFIG_DIR: join('/', 'cfg') };
+    assert.equal(hostHomeOf({ host: world.host, env: moved, platform: world.platform, userHome: USER_HOME }), join('/', 'cfg'));
+  });
+
+  it('refuses with the reason of a host whose folders are not known', () => {
+    assert.throws(
+      () => hostHomeOf({ host: bare, env: {}, platform: 'linux', userHome: USER_HOME }),
+      (error) => error instanceof RefusedError && error.message === 'no folder of the host is known',
+    );
+  });
+});
+
+describe('hostHomeIfKnown', () => {
+  it("gives the host's own folder for the person of the run, and nothing for a host whose folders are not known", () => {
+    const world = quietWorld();
+    assert.equal(hostHomeIfKnown({ host: world.host, env: {}, platform: world.platform, userHome: USER_HOME }), join(USER_HOME, '.claude'));
+    assert.equal(hostHomeIfKnown({ host: bare, env: {}, platform: 'linux', userHome: USER_HOME }), undefined);
   });
 });

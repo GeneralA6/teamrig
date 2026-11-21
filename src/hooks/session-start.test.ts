@@ -6,7 +6,7 @@ import { CONTEXT_MAX_CHARS, renderCorePack, TEAM_RULES_FLOOR_CHARS, TEAM_RULES_M
 import { testConfig } from '../testing/config.ts';
 import { RULES_CLOCK } from '../testing/zone.ts';
 import { renameOf } from '../testing/rename.ts';
-import { sessionStartContext, sessionStartOutput, type CuttableNote, type SessionStartInput } from './session-start.ts';
+import { sessionStartContext, sessionStartReply, type CuttableNote, type SessionStartInput } from './session-start.ts';
 
 const PATH = '/kit/teams/app/config.json';
 const COMMAND = 'teamrig';
@@ -290,21 +290,19 @@ describe('sessionStartContext: long notes within the context cap (T1376)', () =>
   });
 });
 
-describe('sessionStartOutput', () => {
-  it('wraps the context as SessionStart additionalContext', () => {
-    assert.deepEqual(JSON.parse(sessionStartOutput('hello')), {
-      hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'hello' },
+describe('sessionStartReply', () => {
+  it('gives the context to the session, and no notice without one', () => {
+    assert.deepEqual(sessionStartReply('hello'), { context: 'hello', notice: undefined });
+  });
+
+  it('shows the notices to the human as one notice, a line each', () => {
+    assert.deepEqual(sessionStartReply('hello', ['MODEL lead runs model claude-opus-5-5', undefined, 'teamrig needs git']), {
+      context: 'hello',
+      notice: 'MODEL lead runs model claude-opus-5-5\nteamrig needs git',
     });
   });
 
-  it('shows the notices to the user as one systemMessage, a line each', () => {
-    assert.deepEqual(JSON.parse(sessionStartOutput('hello', ['MODEL lead runs model claude-opus-5-5', undefined, 'teamrig needs git'])), {
-      systemMessage: 'MODEL lead runs model claude-opus-5-5\nteamrig needs git',
-      hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'hello' },
-    });
-  });
-
-  it('shows no systemMessage when every notice is absent', () => {
-    assert.equal('systemMessage' in JSON.parse(sessionStartOutput('hello', [undefined])), false);
+  it('shows no notice when every notice is absent', () => {
+    assert.equal(sessionStartReply('hello', [undefined]).notice, undefined);
   });
 });

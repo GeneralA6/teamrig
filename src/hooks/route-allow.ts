@@ -1,6 +1,7 @@
 import type { PromptsConfig } from '../config/types.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { RouteId, SanctionedRoute } from '../permissions/sanctioned.ts';
+import type { HookReply } from '../ports/host/index.ts';
 
 /**
  * The PreToolUse route allow (T679, design M1, security rulings Q7.1-Q7.5): a Bash line that runs a sanctioned route
@@ -21,22 +22,16 @@ export function preToolUseRouteOf(route: SanctionedRoute | undefined): Sanctione
 }
 
 /**
- * True when every guard let the call go: each answer is a guard hook's output, '' when it passes. A guard that asks or
- * refuses answers the call through its own hook, and the allow stays out of its way (Q7.1).
+ * True when every guard let the call go: each answer is a guard's reply, none when it passes. A guard that refuses or
+ * notes answers the call through its own hook, and the allow stays out of its way (Q7.1).
  */
-export function guardsPassed(answers: readonly string[]): boolean {
-  return answers.every((answer) => answer === '');
+export function guardsPassed(answers: readonly (HookReply | undefined)[]): boolean {
+  return answers.every((answer) => answer === undefined);
 }
 
-/** The hook's stdout: an allow that runs the route's line with no permission check, naming the route. */
-export function routeAllowOutput(route: SanctionedRoute): string {
-  return JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: 'PreToolUse',
-      permissionDecision: 'allow',
-      permissionDecisionReason: `teamrig: the sanctioned route ${route.id}, to ${route.purpose}`,
-    },
-  });
+/** The hook's reply: an allow that runs the route's line with no permission check, naming the route. */
+export function routeAllowReply(route: SanctionedRoute): HookReply {
+  return { verdict: { kind: 'allow', reason: `teamrig: the sanctioned route ${route.id}, to ${route.purpose}` } };
 }
 
 /** Who ran the allowed route, and when: the team session and the Claude Code session, when known. */

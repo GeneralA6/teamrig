@@ -1,4 +1,3 @@
-import { stringField } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
 import { LockBusyError } from "../../core/lock.js";
 import { injectFor } from "../../inbox/inject.js";
@@ -19,12 +18,12 @@ import { fileLockOf } from "../file-locks.js";
  * the next tool end looks again. Undefined when no ask is due, at a helper's tool end, outside a team session or with
  * `wake.enabled` false, which posts no asks.
  */
-export async function askedLinesOf(runtime, payload) {
-    // A helper's tool call carries the helper's id (`agent_id`); its context is not the session's.
-    if (stringField(payload, 'agent_id') !== undefined) {
+export async function askedLinesOf(runtime, event) {
+    // A helper's tool call carries the helper's id; its context is not the session's.
+    if (event.helper?.id !== undefined) {
         return undefined;
     }
-    const scope = await wakeScopeOf(runtime, payload, true);
+    const scope = await wakeScopeOf(runtime, event, true);
     if (scope.kind === 'off') {
         return undefined;
     }

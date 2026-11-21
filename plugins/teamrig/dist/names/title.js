@@ -1,4 +1,3 @@
-import { isRecord, stringField } from "../core/guards.js";
 /**
  * How much of a transcript's end is searched for the session's title, and for its context size at a
  * task boundary (`refresh/usage.ts`): many turns' worth, while a long session's transcript is never
@@ -34,19 +33,14 @@ export function aiTitleOf(reader, text) {
     return newestTitleOf(reader, text, 'host');
 }
 /**
- * The title of the session a hook runs for: the payload's `session_title`, else the newest title the
+ * The title of the host session a hook runs for: the one its event carries, else the newest title the
  * user gave near the end of its transcript. Undefined when the user never named it, and with no
- * `reader` (a host that keeps no transcript teamrig can read) when the payload names none.
+ * `reader` (a host that keeps no transcript teamrig can read) when the event carries none.
  */
-export async function sessionTitleOf(reader, payload, files) {
-    if (!isRecord(payload)) {
-        return undefined;
-    }
-    const title = stringField(payload, 'session_title')?.trim();
-    if (title !== undefined && title !== '') {
+export async function sessionTitleOf(reader, { title, transcript }, files) {
+    if (title !== undefined) {
         return title;
     }
-    const transcript = stringField(payload, 'transcript_path');
     const text = reader === undefined || transcript === undefined || transcript === '' ? undefined : await files.readTail(transcript, TRANSCRIPT_TAIL_BYTES);
     return reader === undefined || text === undefined ? undefined : customTitleOf(reader, text);
 }

@@ -34,7 +34,6 @@ export function issueTask(issue, rules) {
         priority: issuePriority(issue.labels, rules.priorities),
         owner: issueOwner(issue, rules),
         outcome: issueOutcome(issue),
-        url: issue.url,
     };
 }
 /**

@@ -1,4 +1,3 @@
-import { basename, dirname, join } from 'node:path';
 import { isRecord, stringField } from "../core/guards.js";
 import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 import { ownerTurnsOf } from "./owner-turns.js";
@@ -188,13 +187,10 @@ export function toldScratchpadOf(reader, text) {
     }
     return undefined;
 }
-/** The scratchpad folder a transcript's own name gives, `<temp>/claude/<project>/<session>/scratchpad`: the guess when its tail names none. */
-export function scratchpadOf(transcript, tempDir) {
-    return join(tempDir, 'claude', basename(dirname(transcript)), basename(transcript, '.jsonl'), 'scratchpad');
-}
 /**
  * What the session whose transcript this is leaves for the fresh one, counting the jobs it `inherited`, and with
- * `handoverPath` what the owner typed in it; undefined when the transcript is gone.
+ * `handoverPath` what the owner typed in it; undefined when the transcript is gone. With no `places`, on a host that
+ * tells none of its folders, the scratchpad is only the one the transcript names, and no plan file is looked for.
  */
 export async function readCarry(reader, files, transcript, now, places, inherited, handoverPath) {
     const text = await files.readTail(transcript, CARRY_TAIL_BYTES);
@@ -202,12 +198,12 @@ export async function readCarry(reader, files, transcript, now, places, inherite
         return undefined;
     }
     const found = carryOf(reader, text, now, inherited);
-    const scratchpad = toldScratchpadOf(reader, text) ?? scratchpadOf(transcript, places.tempDir);
-    const entries = (await files.list(scratchpad)).length;
-    const plan = found.planSlug === undefined ? undefined : join(places.claudeDir, 'plans', `${found.planSlug}.md`);
+    const scratchpad = toldScratchpadOf(reader, text) ?? places?.scratchpadOf(transcript);
+    const entries = scratchpad === undefined ? 0 : (await files.list(scratchpad)).length;
+    const plan = found.planSlug === undefined ? undefined : places?.planFile(found.planSlug);
     const planText = plan === undefined ? undefined : await files.read(plan);
     const owner = handoverPath === undefined ? {} : { ownerTurns: ownerTurnsOf(reader, text, handoverPath, [...inherited.map((cron) => cron.prompt)]) };
-    return { ...found, scratchpad: entries > 0 ? { path: scratchpad, entries } : undefined, plan: planText === undefined ? undefined : plan, ...owner };
+    return { ...found, scratchpad: scratchpad !== undefined && entries > 0 ? { path: scratchpad, entries } : undefined, plan: planText === undefined ? undefined : plan, ...owner };
 }
 /** A carried-jobs file's content; undefined when it is damaged or from another format. */
 export function parseCarriedJobs(text) {

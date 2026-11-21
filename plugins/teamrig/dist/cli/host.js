@@ -8,6 +8,17 @@ export function hostOf(runtime) {
     return runtime.host({ env: runtime.env, platform: runtime.platform });
 }
 /**
+ * The hook bridge of one run, for a hook command. A host with no hooks calls none of them, so one run there is
+ * refused with the host's own reason.
+ */
+export function hooksOf(runtime) {
+    const { hooks } = hostOf(runtime);
+    if (isUnsupported(hooks)) {
+        throw new RefusedError(hooks.notice);
+    }
+    return hooks;
+}
+/**
  * The run's transcript reader, or undefined on a host that keeps no transcript teamrig can read: for a caller that
  * goes on without what a transcript would tell, such as a hook that must never answer by a refusal.
  */
@@ -57,4 +68,31 @@ export function usageOf(runtime) {
         throw new RefusedError(usage.notice);
     }
     return usage;
+}
+/**
+ * Where the run's host keeps its files, or undefined on a host whose folders teamrig does not know: for a caller that
+ * goes on without the host's own files, such as a hook that must never answer by a refusal.
+ */
+export function pathsIfKnown(runtime) {
+    const { paths } = hostOf(runtime);
+    return isUnsupported(paths) ? undefined : paths;
+}
+/**
+ * Where the run's host keeps its files. A host whose folders teamrig does not know refuses with its own reason: for
+ * a command whose whole work is in the host's own files, such as one that edits its settings.
+ */
+export function pathsOf(runtime) {
+    const { paths } = hostOf(runtime);
+    if (isUnsupported(paths)) {
+        throw new RefusedError(paths.notice);
+    }
+    return paths;
+}
+/** The host's own folder for the person of this run. A host whose folders teamrig does not know refuses, as `pathsOf` does. */
+export function hostHomeOf(runtime) {
+    return pathsOf(runtime).home(runtime.userHome);
+}
+/** The host's own folder for the person of this run, or undefined on a host whose folders teamrig does not know. */
+export function hostHomeIfKnown(runtime) {
+    return pathsIfKnown(runtime)?.home(runtime.userHome);
 }

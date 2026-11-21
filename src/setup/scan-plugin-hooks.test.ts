@@ -9,12 +9,12 @@ import { scanPluginHooks, type PluginHookLocations } from './scan-plugin-hooks.t
 const CLAUDE_DIR = join(resolve('/', 'u'), '.claude');
 const PROJECT = resolve('/', 'work', 'app');
 const OTHER_PROJECT = resolve('/', 'work', 'other');
-const AT: PluginHookLocations = { claudeDir: CLAUDE_DIR, project: PROJECT };
 const PLUGIN_LIST = join(CLAUDE_DIR, 'plugins', 'installed_plugins.json');
 const KIT = join(CLAUDE_DIR, 'plugins', 'cache', 'mk', 'kit', '1.0.0');
 const KIT_HOOKS = join(KIT, 'hooks', 'hooks.json');
 const USER_SETTINGS = join(CLAUDE_DIR, 'settings.json');
 const LOCAL_SETTINGS = join(PROJECT, '.claude', 'settings.local.json');
+const AT: PluginHookLocations = { claudeDir: CLAUDE_DIR, project: PROJECT, sessionSettings: [USER_SETTINGS, join(PROJECT, '.claude', 'settings.json'), LOCAL_SETTINGS] };
 const SECRETS = new SecretScanner([]);
 
 /** The line a transcript records for kit's exec-form start hook: its command and args, the plugin root unexpanded. */
@@ -81,6 +81,8 @@ describe('scanPluginHooks', () => {
       [LOCAL_SETTINGS]: json({ enabledPlugins: { 'kit@mk': false } }),
     });
     assert.deepEqual(await scanPluginHooks(off, AT, HOOKS, SECRETS), []);
+    // The order is the one it is told the host reads the files in, not one of its own.
+    assert.equal((await scanPluginHooks(off, { ...AT, sessionSettings: [LOCAL_SETTINGS, USER_SETTINGS] }, HOOKS, SECRETS)).length, 1);
     const on = new MemoryFiles({
       [PLUGIN_LIST]: list,
       [KIT_HOOKS]: KIT_HOOKS_FILE,

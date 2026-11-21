@@ -26,13 +26,16 @@ const SHELL_ONLY = new Set([
 ]);
 /** A leading `NAME=value` word, which sets a variable for the command instead of naming its program. */
 const ASSIGNMENT = /^[A-Za-z_]\w*=/;
-/** The exact line to rerun a Bash `command` as, or undefined when no rule gives one or any doubt remains. */
-export function rerunForm(tool, command) {
-    return rerunOf(tool, command)?.form;
+/** The exact line to rerun a `command` of the shell `dialect` as, or undefined when no rule gives one or any doubt remains. */
+export function rerunForm(dialect, command) {
+    return rerunOf(dialect, command)?.form;
 }
-/** The rerun form of a Bash `command` with what it moves and runs, or undefined when no rule gives one or any doubt remains. */
-export function rerunOf(tool, command) {
-    if (tool !== 'Bash') {
+/**
+ * The rerun form of a `command` of the shell `dialect` with what it moves and runs, or undefined when no rule gives
+ * one or any doubt remains: the rules are written for bash lines, so any other dialect has none.
+ */
+export function rerunOf(dialect, command) {
+    if (dialect !== 'bash') {
         return undefined;
     }
     const parse = parseShell(command, 'bash');

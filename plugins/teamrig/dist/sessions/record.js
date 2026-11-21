@@ -54,6 +54,7 @@ export class SessionRecordStore {
     write(id, record) {
         return this.files.write(this.pathOf(id), formatSessionRecord(record));
     }
+    /** The session's record file, for a reader that stamps it without reading it. */
     pathOf(id) {
         return join(this.folder, `${id}.json`);
     }

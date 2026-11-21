@@ -1,4 +1,3 @@
-import { postToolUseReplace } from "../../hooks/post-tool-use.js";
 import { secretGuardOf, secretPatternsOf } from "../../hooks/secret-guard.js";
 import { redactableResultOf, redactedLine, rotationText, rotatorOf } from "../../hooks/secret-redact.js";
 import { EnvAssignments } from "../../secret-guard/env-assignments.js";
@@ -7,7 +6,7 @@ import { secretRulesOf } from "../../secret-guard/rules.js";
 import { noPositionals } from "../args.js";
 import { EXIT } from "../runtime.js";
 import { guardLoadOf } from "./hook-guard-load.js";
-import { parseJson } from "./hook-input.js";
+import { readHookInput, writeReply } from "./hook-input.js";
 import { fileRotations } from "./secret-rotation.js";
 /**
  * PostToolUse on Bash, PowerShell, Read and Grep (T1369 R7): replaces each secret the tool's result holds before the
@@ -18,14 +17,14 @@ import { fileRotations } from "./secret-rotation.js";
  */
 export async function secretRedact(args, runtime) {
     noPositionals(args);
-    const payload = parseJson(await runtime.readStdin());
-    const guard = await guardLoadOf(payload, runtime);
+    const { event } = await readHookInput(runtime);
+    const guard = await guardLoadOf(event?.cwd, runtime);
     if (guard === undefined) {
         return EXIT.ok;
     }
     const config = secretGuardOf(guard.load);
-    const result = redactableResultOf(payload);
-    if (!config.redact || result === undefined) {
+    const result = event === undefined ? undefined : redactableResultOf(event);
+    if (!config.redact || result === undefined || event === undefined) {
         return EXIT.ok;
     }
     const rules = secretRulesOf(config, runtime.userHome, runtime.platform, secretPatternsOf(guard.load));
@@ -33,7 +32,7 @@ export async function secretRedact(args, runtime) {
     if (redaction.classes.length === 0) {
         return EXIT.ok;
     }
-    const rotations = await fileRotations(runtime, result.payload, { tool: result.tool, kinds: redaction.classes, accounts: redaction.accounts });
-    runtime.out.stdout(postToolUseReplace(redaction.response, redactedLine(redaction, rotationText(rotatorOf(guard.load), rotations))));
+    const rotations = await fileRotations(runtime, event, { tool: result.tool, kinds: redaction.classes, accounts: redaction.accounts });
+    writeReply(runtime, 'tool-end', { toolOutput: redaction.response, context: redactedLine(redaction, rotationText(rotatorOf(guard.load), rotations)) });
     return EXIT.ok;
 }

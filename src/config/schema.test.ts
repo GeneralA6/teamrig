@@ -92,6 +92,7 @@ const EVERY_KEY = {
   paths: { state: '/s', inbox: '/i', skills: '/k' },
   exec: { path: ['C:/tools'], webhookEnv: 'EXEC_WEBHOOK_URL' },
   alerts: { pageWebhookEnv: 'PAGE_WEBHOOK_URL', pageWebhookFile: 'C:/chat/.page-webhook' },
+  ui: { path: 'C:/pane/out/ui/main.js' },
 };
 
 async function loadSchema(): Promise<JsonRecord> {

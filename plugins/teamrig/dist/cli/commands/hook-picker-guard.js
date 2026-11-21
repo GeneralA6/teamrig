@@ -1,17 +1,15 @@
-import { isRecord, stringField } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
-import { cdCompoundOfPayload, cdCompoundReason, guardsCdCompound } from "../../hooks/cd-compound.js";
+import { cdCompoundOfEvent, cdCompoundReason, guardsCdCompound } from "../../hooks/cd-compound.js";
 import { helperOf } from "../../hooks/helper-start.js";
-import { refusalOutput } from "../../hooks/permission.js";
+import { refusal } from "../../hooks/permission.js";
 import { askerOf, guardsPicker, pickerReason } from "../../hooks/picker-guard.js";
-import { sessionIdOf } from "../../inbox/inbox.js";
 import { MeetingSchedule, meetingInTabOf } from "../../meeting/schedule.js";
 import { MeetingStore, phaseOf } from "../../meeting/state.js";
 import { noPositionals } from "../args.js";
 import { openKit, rosterOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
-import { parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
+import { readHookInput, sessionTeam, teamSessionOf, writeReply } from "./hook-input.js";
 /**
  * Whether the owner's daily meeting is open now (src/meeting/state.ts). An unreadable meeting file reads as closed:
  * the meeting only picks the refusal's reason, so the guard refuses the picker either way (T3015).
@@ -48,17 +46,17 @@ async function parentLeadOf(runtime, kit, config) {
     return tree.placeOf(kit.paths.team)?.parentLead;
 }
 /**
- * Why the guard refuses this payload's question picker (hooks/picker-guard.ts); undefined lets the call go: the
+ * Why the guard refuses this hook event's question picker (hooks/picker-guard.ts); undefined lets the call go: the
  * switch is off, it is no picker call or no team session asks. The session is read only for a picker call with the
  * switch on, so the tab-status hook's other events read no file, and the team tree and the meeting, which only pick
  * the reason, only for the lead's own thread.
  */
-export async function pickerRefusal(runtime, kit, config, payload) {
-    if (!guardsPicker(config.pickerGuard.enabled, payload)) {
+export async function pickerRefusal(runtime, kit, config, caller) {
+    if (!guardsPicker(config.pickerGuard.enabled, caller)) {
         return undefined;
     }
-    const session = await teamSessionOf(runtime, kit, await rosterOf(runtime, kit, config), sessionIdOf(payload));
-    const helper = helperOf(payload) !== undefined;
+    const session = await teamSessionOf(runtime, kit, await rosterOf(runtime, kit, config), caller.session ?? null);
+    const helper = helperOf(caller.helper) !== undefined;
     const lead = config.roles.lead;
     const asker = askerOf(session, helper, lead, !helper && session === lead ? await parentLeadOf(runtime, kit, config) : undefined);
     if (asker === undefined) {
@@ -69,32 +67,32 @@ export async function pickerRefusal(runtime, kit, config, payload) {
     return pickerReason(KIT_NAME, asker, meeting);
 }
 /**
- * Why the guard refuses this payload's Bash `cd` compound (hooks/cd-compound.ts); undefined lets the line go: the
+ * Why the guard refuses this event's Bash `cd` compound (hooks/cd-compound.ts); undefined lets the line go: the
  * switch is off, the line has no cd compound Claude Code asks about, or no team session runs it.
  */
-async function cdCompoundRefusal(runtime, kit, config, payload, compound) {
+async function cdCompoundRefusal(runtime, kit, config, event, compound) {
     if (!config.pickerGuard.enabled) {
         return undefined;
     }
-    const session = await teamSessionOf(runtime, kit, await rosterOf(runtime, kit, config), sessionIdOf(payload));
+    const session = await teamSessionOf(runtime, kit, await rosterOf(runtime, kit, config), event.session ?? null);
     return session === undefined ? undefined : cdCompoundReason(compound);
 }
-/** What the hook prints for this payload: the refusal with its reason, or '' when the call goes on. */
-async function pickerGuardOutputOf(runtime, payload) {
+/** The hook's reply to this call: the refusal with its reason, or none when the call goes on. */
+async function pickerGuardReplyOf(runtime, event) {
     // Every Bash line reaches this hook, so a line with no cd compound to refuse returns before any file is read.
-    const bash = guardsCdCompound(true, payload);
-    const compound = bash ? cdCompoundOfPayload(payload, { cwd: stringField(payload, 'cwd') ?? runtime.cwd, home: runtime.userHome }) : undefined;
+    const bash = guardsCdCompound(true, event);
+    const compound = bash ? cdCompoundOfEvent(event, { cwd: event.cwd ?? runtime.cwd, home: runtime.userHome }) : undefined;
     if (bash && compound === undefined) {
-        return '';
+        return undefined;
     }
-    const found = await sessionTeam(payload, runtime);
+    const found = await sessionTeam(event.cwd, runtime);
     const kit = found.kind === 'team' ? await openKit(runtime, found.team) : undefined;
     if (kit?.load.status !== 'loaded') {
-        return '';
+        return undefined;
     }
     const config = kit.load.config;
-    const reason = compound === undefined ? await pickerRefusal(runtime, kit, config, payload) : await cdCompoundRefusal(runtime, kit, config, payload, compound);
-    return reason === undefined ? '' : refusalOutput(reason);
+    const reason = compound === undefined ? await pickerRefusal(runtime, kit, config, event) : await cdCompoundRefusal(runtime, kit, config, event, compound);
+    return reason === undefined ? undefined : refusal(reason);
 }
 /**
  * PreToolUse on AskUserQuestion and Bash, with `pickerGuard.enabled`. On AskUserQuestion it refuses the question
@@ -109,10 +107,8 @@ async function pickerGuardOutputOf(runtime, payload) {
  */
 export async function pickerGuard(args, runtime) {
     noPositionals(args);
-    const payload = parseJson(await runtime.readStdin());
-    const output = isRecord(payload) ? await pickerGuardOutputOf(runtime, payload).catch(() => '') : '';
-    if (output !== '') {
-        runtime.out.stdout(output);
-    }
+    const { event } = await readHookInput(runtime);
+    const reply = event === undefined ? undefined : await pickerGuardReplyOf(runtime, event).catch(() => undefined);
+    writeReply(runtime, 'tool-start', reply);
     return EXIT.ok;
 }

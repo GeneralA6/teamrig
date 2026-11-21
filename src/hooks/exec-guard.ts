@@ -1,5 +1,3 @@
-import { toolCommandReadings } from '../core/bash-tool-readings.ts';
-import { isRecord, recordField, stringField } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
 import { SETTINGS_WRITERS, settingsWriteRefusal, WRITE_SWITCH } from '../core/settings-writers.ts';
 import type { ClientCheck } from '../exec/client-integrity.ts';
@@ -7,9 +5,10 @@ import { placeProgram, placeScript, type ClientFile, type ClientInstalls, type C
 import { PACKAGE_STARTERS } from '../package-guard/packaged.ts';
 import { runsOf, type LineRuns, type OpaqueRun, type ProgramRun, type ProgramsContext } from '../package-guard/programs.ts';
 import { programName } from '../push-guard/launchers.ts';
+import type { HookEvent, HookReply } from '../ports/host/index.ts';
 import type { ShellWord } from '../push-guard/tokenizer.ts';
 import { ghWriteRefusals, type GhWriteEnv } from './gh-write-refusals.ts';
-import { holdBackOutput } from './permission.ts';
+import { heldBack } from './permission.ts';
 import { changesVariable } from './variable-change.ts';
 
 /**
@@ -122,8 +121,6 @@ export interface ExecGuardEnv {
   readonly search: ClientSearch;
   /** An install's client against its build's list, read once per install a line's `teamrig exec` calls start. */
   readonly checkClient: (root: string) => Promise<ClientCheck>;
-  /** The host's platform: on Windows a Bash line is read as written and as bash receives it (core/bash-tool-readings.ts). */
-  readonly platform: NodeJS.Platform;
   /** The team's GitHub repositories and where a raw `gh` write lands, for the check that refuses one there. */
   readonly ghWrites: GhWriteEnv;
 }
@@ -592,25 +589,17 @@ export function runsOfReadings(readings: readonly string[], context: ProgramsCon
  * from a pipe the guard cannot read, or a package runner hands its line to a shell the line names that the guard
  * cannot read; and for each raw `gh` write on the team's GitHub repositories (`ghWriteRefusals`). Else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec`
  * calls start once, and reads the tab's session only for a line that holds a review, or a bind that names a session
- * or runs where the line changes one. A Bash line on Windows is read in each reading bash may run
- * (`toolCommandReadings`), so a call the line as written escapes is still refused. It reads only the line's own words:
- * a script the line runs is not covered, so these are checks against mistakes.
+ * or runs where the line changes one. The line is read in each text its shell may run (the call's `readings`), so a
+ * call the line as written escapes is still refused. It reads only the line's own words: a script the line runs is
+ * not covered, so these are checks against mistakes.
  */
-export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Promise<string> {
-  if (!isRecord(payload)) {
-    return '';
+export async function execGuardReply(event: HookEvent, env: ExecGuardEnv): Promise<HookReply | undefined> {
+  const { call } = event;
+  if (call?.kind !== 'shell' || call.command === undefined) {
+    return undefined;
   }
-  const command = stringField(recordField(payload, 'tool_input') ?? {}, 'command');
-  if (command === undefined) {
-    return '';
-  }
-  const tool = stringField(payload, 'tool_name');
-  const context: ProgramsContext = {
-    cwd: stringField(payload, 'cwd') ?? env.cwd,
-    home: env.home,
-    dialect: tool === 'PowerShell' ? 'powershell' : 'bash',
-  };
-  const runs = runsOfReadings(toolCommandReadings(tool, command, env.platform), context);
+  const context: ProgramsContext = { cwd: event.cwd ?? env.cwd, home: env.home, dialect: call.dialect };
+  const runs = runsOfReadings(call.readings, context);
   const calls = runs.programs.flatMap((run) => {
     const launch = teamrigLaunchOf(run, startsGuarded);
     const call = launch === undefined ? undefined : guardedCallOf(launch.words);
@@ -655,7 +644,7 @@ export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Prom
     checkedBinds.length === 0 &&
     ghRefusals.length === 0;
   if (quiet && !unread && !fed && !foreign && !cleared) {
-    return '';
+    return undefined;
   }
   const reasons: string[] = [...(unread ? [UNREADABLE] : []), ...(fed ? [FED_SHELL] : []), ...(foreign ? [FOREIGN_SHELL] : []), ...(cleared ? [CLAUDE_CODE_CHANGED] : [])];
   reasons.push(...ghRefusals);
@@ -688,5 +677,5 @@ export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Prom
     reasons.push(...reviews.map((call) => reviewRefusalOf(call, identity)).filter((reason) => reason !== undefined));
     reasons.push(...checkedBinds.map((call) => bindRefusalOf(call, identity, steered)).filter((reason) => reason !== undefined));
   }
-  return reasons.length === 0 ? '' : holdBackOutput('deny', `teamrig exec guard: ${[...new Set(reasons)].join(' ')}`);
+  return reasons.length === 0 ? undefined : heldBack('deny', `teamrig exec guard: ${[...new Set(reasons)].join(' ')}`);
 }

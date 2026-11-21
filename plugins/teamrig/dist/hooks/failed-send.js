@@ -1,19 +1,16 @@
-import { isRecord, stringField } from "../core/guards.js";
+import { stringField } from "../core/guards.js";
 import { isReservedName, RESERVED_RULE } from "../core/ids.js";
-import { sendTargetOf } from "./cold-send.js";
+import { sentMessageOf } from "./cold-send.js";
 import { toolResponseOf } from "./post-tool-use.js";
-/** The failed send a PostToolUse payload reports; undefined for any other tool or a delivered message. */
-export function failedSendOf(payload) {
-    const to = sendTargetOf(payload);
-    if (to === undefined || !isRecord(payload)) {
-        return undefined;
-    }
-    const response = toolResponseOf(payload['tool_response']);
-    if (response === undefined || response['success'] !== false) {
+/** The failed send the event of a finished call reports; undefined for a call of any other kind or a delivered message. */
+export function failedSendOf(event) {
+    const sent = sentMessageOf(event);
+    const response = sent === undefined ? undefined : toolResponseOf(event.call?.response);
+    if (sent === undefined || response === undefined || response['success'] !== false) {
         return undefined;
     }
     const reason = stringField(response, 'message')?.split('\n')[0]?.trim();
-    return { to, reason: reason === undefined || reason === '' ? 'not delivered' : reason };
+    return { to: sent.to, reason: reason === undefined || reason === '' ? 'not delivered' : reason };
 }
 /**
  * The line for the model: where the message goes now. `id` is the team session `failed.to` names; for a

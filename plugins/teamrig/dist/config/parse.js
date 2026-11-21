@@ -349,6 +349,7 @@ export function parseConfig(raw, above) {
         pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', true) },
         meeting: parseMeeting(read, read.section(raw, 'meeting', '')),
         turnLog: parseTurnLog(read, read.section(raw, 'turnLog', '')),
+        ui: parseUi(read, read.section(raw, 'ui', '')),
         meetingNotices: parseMeetingNotices(read, read.section(raw, 'meetingNotices', '')),
         readonlyShell: parseReadonlyShell(read, read.section(raw, 'readonlyShell', '')),
         permissions: parsePermissions(read, read.section(raw, 'permissions', '')),
@@ -1305,6 +1306,11 @@ function parseExec(read, raw) {
         path: read.stringList(raw, 'path', path, DEFAULT_EXEC.path, shortLine(CONFIG_LIMITS.execPath.maxLength, EXEC_DIRECTORY), CONFIG_LIMITS.execPath.maxItems),
         ...(webhookEnv === undefined ? {} : { webhookEnv }),
     };
+}
+/** `ui`: a bad path is dropped, so `teamrig ui` starts the released UI rather than a file nobody named. */
+function parseUi(read, raw) {
+    const path = read.optionalString(raw, 'path', 'ui', isAbsoluteFile);
+    return path === undefined ? {} : { path };
 }
 function parseAlerts(read, raw) {
     const path = 'alerts';

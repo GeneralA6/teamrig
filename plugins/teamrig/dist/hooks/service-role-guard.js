@@ -1,9 +1,8 @@
 import { posix, win32 } from 'node:path';
 import { OWNER_GATED_KEYS } from "../config/owner-gated.js";
-import { toolCommandReadings } from "../core/bash-tool-readings.js";
-import { isRecord, recordField, stringField } from "../core/guards.js";
+import { isRecord } from "../core/guards.js";
 import { opaqueGuardedWords, runsOfReadings, teamrigLaunchOf } from "./exec-guard.js";
-import { holdBackOutput, refusalOutput } from "./permission.js";
+import { heldBack, refusal } from "./permission.js";
 /**
  * The service-role guard (T2984, security condition C2): a service role lets its holders run a few teamrig commands
  * past every permission check, so who holds one is a permission, an owner gate. A session's `teamrig roles grant` or
@@ -19,14 +18,6 @@ import { holdBackOutput, refusalOutput } from "./permission.js";
  */
 /** The `teamrig roles` commands that change who holds a role. */
 export const ROLE_CHANGES = new Set(['grant', 'revoke']);
-/** The file tools, by the input field naming the file they write. */
-const FILE_WRITERS = new Map([
-    ['Write', 'file_path'],
-    ['Edit', 'file_path'],
-    ['MultiEdit', 'file_path'],
-    ['NotebookEdit', 'notebook_path'],
-]);
-const SHELLS = new Set(['Bash', 'PowerShell']);
 /**
  * A team config path in a line: `teams/<team>/config.json`, any slash, a glob or variable as the team too, its 8.3
  * short name (`CONFIG~1.JSO`) and the trailing dots Windows drops (`config.json.`) included.
@@ -131,11 +122,6 @@ export function changedGatedKeys(before, after) {
     const [old, next] = [configOf(before), configOf(after)];
     return OWNER_GATED_KEYS.filter((keyPath) => valueAt(old, keyPath) !== valueAt(next, keyPath)).map((keyPath) => keyPath.join('.'));
 }
-function replacementOf(input) {
-    const from = stringField(input, 'old_string');
-    const to = stringField(input, 'new_string');
-    return from === undefined || to === undefined ? undefined : { from, to, all: input['replace_all'] === true };
-}
 /** The text after the replacements, or undefined when one finds nothing to replace, so the guard cannot tell the result. */
 function replaced(text, replacements) {
     let next = text;
@@ -147,34 +133,28 @@ function replaced(text, replacements) {
     }
     return next;
 }
-/** The config's text after a file tool's call, or undefined when the guard cannot work it out. */
-function nextText(tool, input, current) {
-    if (tool === 'Write') {
-        return stringField(input, 'content');
+/**
+ * The config's text after a file tool's call, or undefined when the guard cannot work it out: the call does not read
+ * as a change of the text, or it replaces text in a file that is not there.
+ */
+function nextText(change, current) {
+    if (change === undefined) {
+        return undefined;
     }
-    if (tool === 'Edit') {
-        const one = replacementOf(input);
-        return one === undefined || current === undefined ? undefined : replaced(current, [one]);
+    if (change.kind === 'whole') {
+        return change.text;
     }
-    if (tool === 'MultiEdit') {
-        const edits = input['edits'];
-        if (!Array.isArray(edits) || current === undefined) {
-            return undefined;
-        }
-        const each = edits.map((edit) => (isRecord(edit) ? replacementOf(edit) : undefined));
-        return each.every((edit) => edit !== undefined) ? replaced(current, each.filter((edit) => edit !== undefined)) : undefined;
-    }
-    return undefined;
+    return current === undefined ? undefined : replaced(current, change.replacements);
 }
 /** Why a file tool's call on the team config is refused, or undefined when it leaves every owner-gated key as it is. */
-async function fileRefusal(tool, input, path, configFile, env) {
+async function fileRefusal(call, path, configFile, env) {
     const current = await env.readConfig(configFile);
-    const next = nextText(tool, input, current);
+    const next = nextText(call.change, current);
     if (next === undefined) {
-        return `this ${tool} of the team config (${path}) cannot be read as a change of its text, so the guard cannot tell whether it changes an owner-gated key`;
+        return `this ${call.name} of the team config (${path}) cannot be read as a change of its text, so the guard cannot tell whether it changes an owner-gated key`;
     }
     const changed = changedGatedKeys(current, next);
-    return changed.length === 0 ? undefined : `this ${tool} changes ${changed.join(', ')} in the team config (${path})`;
+    return changed.length === 0 ? undefined : `this ${call.name} changes ${changed.join(', ')} in the team config (${path})`;
 }
 /** True when the shell line names the team config file. */
 function namesTeamConfig(command, cwd, env, configPath) {
@@ -198,47 +178,45 @@ function editRefusalOf(reach) {
         '`revoke`, which ask the owner, the rest in the owner\'s own editor. Change the config\'s other keys without touching ' +
         'them, read it with the Read tool, and do not retry this or route around it: the lead puts the change to the owner.');
 }
+/** The reply to a file tool's call: a refusal when it writes an owner-gated key of a team config or may, else none. */
+async function editReply(call, cwd, env) {
+    const { path } = call;
+    if (path === undefined) {
+        return undefined;
+    }
+    const alias = env.platform === 'win32' ? aliasFormOf(path) : undefined;
+    if (alias !== undefined && CONFIG_NAME.test(openedNameOf(path))) {
+        return refusal(editRefusalOf(`this ${call.name} names a config.json through ${alias} (${path}), a spelling the guard cannot hold to one file`));
+    }
+    const configFile = await teamConfigOf(path, cwd, env);
+    if (configFile === undefined) {
+        return undefined;
+    }
+    const reach = await fileRefusal(call, path, configFile, env);
+    return reach === undefined ? undefined : refusal(editRefusalOf(reach));
+}
 /**
- * The PreToolUse output for a Bash, PowerShell or file tool call: a refusal when it writes an owner-gated key or may (a
- * file tool on the team config, a shell line naming it), else an ask when it runs `teamrig roles grant` or `revoke`
- * through any client, else nothing, so the normal permission flow decides.
+ * The reply to a shell or file tool call before it runs: a refusal when it writes an owner-gated key or may (a file
+ * tool on the team config, a shell line naming it), else the refusal a guard gives in place of an ask when it runs
+ * `teamrig roles grant` or `revoke` through any client, else none, so the normal permission flow decides.
  */
-export async function serviceRoleGuardOutput(payload, env) {
-    if (!isRecord(payload)) {
-        return '';
+export async function serviceRoleGuardReply(event, env) {
+    const { call } = event;
+    const cwd = event.cwd ?? env.cwd;
+    if (call?.kind === 'edit') {
+        return editReply(call, cwd, env);
     }
-    const tool = stringField(payload, 'tool_name') ?? '';
-    const input = recordField(payload, 'tool_input') ?? {};
-    const cwd = stringField(payload, 'cwd') ?? env.cwd;
-    const field = FILE_WRITERS.get(tool);
-    if (field !== undefined) {
-        const path = stringField(input, field);
-        if (path === undefined) {
-            return '';
-        }
-        const alias = env.platform === 'win32' ? aliasFormOf(path) : undefined;
-        if (alias !== undefined && CONFIG_NAME.test(openedNameOf(path))) {
-            return refusalOutput(editRefusalOf(`this ${tool} names a config.json through ${alias} (${path}), a spelling the guard cannot hold to one file`));
-        }
-        const configFile = await teamConfigOf(path, cwd, env);
-        if (configFile === undefined) {
-            return '';
-        }
-        const reach = await fileRefusal(tool, input, path, configFile, env);
-        return reach === undefined ? '' : refusalOutput(editRefusalOf(reach));
+    if (call?.kind !== 'shell' || call.command === undefined) {
+        return undefined;
     }
-    const command = stringField(input, 'command');
-    if (!SHELLS.has(tool) || command === undefined) {
-        return '';
+    if (env.configPath !== undefined && namesTeamConfig(call.command, cwd, env, env.configPath)) {
+        return refusal(editRefusalOf(`this ${call.name} line names the team config file, and a shell line's writes cannot be told from its reads`));
     }
-    if (env.configPath !== undefined && namesTeamConfig(command, cwd, env, env.configPath)) {
-        return refusalOutput(editRefusalOf(`this ${tool} line names the team config file, and a shell line's writes cannot be told from its reads`));
-    }
-    const context = { cwd, home: env.home, dialect: tool === 'PowerShell' ? 'powershell' : 'bash' };
-    const runs = runsOfReadings(toolCommandReadings(tool, command, env.platform), context);
+    const context = { cwd, home: env.home, dialect: call.dialect };
+    const runs = runsOfReadings(call.readings, context);
     const changes = runs.programs.some((run) => {
         const launch = teamrigLaunchOf(run, startsRoleChange);
         return launch !== undefined && startsRoleChange(launch.words);
     }) || runs.opaque.some((run) => opaqueGuardedWords(run, startsRoleChange) !== undefined);
-    return changes ? holdBackOutput('ask', ROLE_CHANGE_ASK) : '';
+    return changes ? heldBack('ask', ROLE_CHANGE_ASK) : undefined;
 }

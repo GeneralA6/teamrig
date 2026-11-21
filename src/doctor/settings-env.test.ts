@@ -2,19 +2,29 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { claudeSettingsFiles, readSettingsEnv } from './settings-env.ts';
+import { testPaths } from '../testing/host.ts';
+import { readSettingsEnv, sessionSettingsFiles, type SessionSettingsHost } from './settings-env.ts';
 
-const USER = join('/u/.claude', 'settings.json');
+const USER = join('/u', '.claude', 'settings.json');
 const SHARED = join('/w/app', '.claude', 'settings.json');
 const LOCAL = join('/w/app', '.claude', 'settings.local.json');
+const SHIPPED: SessionSettingsHost = { paths: testPaths(), userHome: '/u' };
 
-describe('claudeSettingsFiles', () => {
+describe('sessionSettingsFiles', () => {
   it("lists the user's settings, then the project's shared and local ones", () => {
-    assert.deepEqual(claudeSettingsFiles('/u/.claude', '/w/app'), [USER, SHARED, LOCAL]);
+    assert.deepEqual(sessionSettingsFiles(SHIPPED, '/w/app'), [USER, SHARED, LOCAL]);
   });
 
   it("lists the user's file once when the project is the user's home folder", () => {
-    assert.deepEqual(claudeSettingsFiles('/u/.claude', '/u'), [USER, join('/u', '.claude', 'settings.local.json')]);
+    assert.deepEqual(sessionSettingsFiles(SHIPPED, '/u'), [USER, join('/u', '.claude', 'settings.local.json')]);
+  });
+
+  it('joins no name of its own: a host with other files is listed by what its paths tell', () => {
+    const other: SessionSettingsHost = {
+      paths: { userSettings: (userHome) => join(userHome, 'agent.toml'), folderSettings: (folder) => [{ path: join(folder, '.agent', 'rules.toml'), kind: 'local' }] },
+      userHome: '/u',
+    };
+    assert.deepEqual(sessionSettingsFiles(other, '/w/app'), [join('/u', 'agent.toml'), join('/w/app', '.agent', 'rules.toml')]);
   });
 });
 

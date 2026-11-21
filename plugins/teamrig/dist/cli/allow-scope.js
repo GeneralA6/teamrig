@@ -1,21 +1,30 @@
 import { teamPlace } from "../delivery/places.js";
-import { claudeConfigDir } from "../core/home.js";
 import { SecretScanner } from "../core/secrets.js";
 import { KeepList } from "../permissions/allow-rules.js";
 import { ownUntracked, settingsScope } from "../permissions/settings-scope.js";
 import { planScope, wideAllowOf } from "../permissions/trim.js";
+import { pathsIfKnown } from "./host.js";
 /**
- * The Claude Code settings files a team's sessions run under, for `permissions trim` and its flag in doctor and `check`
- * (which `start` shows the lead): the person's user settings, the project folder and each repository teamrig
- * merges into (`delivery.repos`), each with the worktrees Claude Code made in it.
+ * The host's settings files a team's sessions run under, where `host` keeps them, for `permissions trim` and its flag
+ * in doctor and `check` (which `start` shows the lead): the person's user settings, the project folder and each
+ * repository teamrig merges into (`delivery.repos`), each with the worktrees the host made in it.
  */
-export async function teamSettingsScope(runtime, { paths, config, project }) {
+export async function teamSettingsScope(runtime, host, { paths, config, project }) {
     const repos = Object.values(config.delivery.repos).map((repo) => teamPlace(paths, repo.mainCheckout));
-    return projectsSettingsScope(runtime, claudeConfigDir(runtime.env, runtime.userHome), [project, ...repos]);
+    return projectsSettingsScope(runtime, host, [project, ...repos]);
 }
-/** The settings files of the user and `projects` (`settingsScope`), each project `settings.json` its repository does not track read as the person's own (#837). */
-export async function projectsSettingsScope(runtime, claudeDir, projects) {
-    return ownUntracked(runtime.files, await settingsScope(runtime.files, claudeDir, projects, runtime.platform), (path) => settingsInGit(runtime, path));
+/**
+ * That scope for a caller that only reads it and must go on, such as `check`: on a host whose folders teamrig does
+ * not know it holds no file, so nothing is flagged there.
+ */
+export async function knownSettingsScope(runtime, input) {
+    const host = pathsIfKnown(runtime);
+    return host === undefined ? [] : teamSettingsScope(runtime, host, input);
+}
+/** The settings files of the user and `projects` (`settingsScope`), each project file its repository does not track read as the person's own (#837). */
+export async function projectsSettingsScope(runtime, host, projects) {
+    const scope = await settingsScope(runtime.files, { paths: host, userHome: runtime.userHome }, projects, runtime.platform);
+    return ownUntracked(runtime.files, scope, (path) => settingsInGit(runtime, path));
 }
 /** git's word on a settings file through the kit's git runner (the team pointer's port): only `tracked` is committed; no repository or no answer is unknown. */
 function settingsInGit(runtime, path) {
@@ -29,9 +38,12 @@ function settingsInGit(runtime, path) {
             return 'unknown';
     }
 }
-/** The rules off the team's keep-list that approve a whole tool or program or hold a credential, in every file of its scope. */
+/**
+ * The rules off the team's keep-list that approve a whole tool or program or hold a credential, in every file of its
+ * scope: none on a host whose folders teamrig does not know (`knownSettingsScope`).
+ */
 export async function readWideAllow(runtime, input) {
     const { config } = input;
-    const plans = await planScope(runtime.files, await teamSettingsScope(runtime, input), new KeepList(config.permissions.keepAllow), 'wide', new SecretScanner(config.register.secretPatterns));
+    const plans = await planScope(runtime.files, await knownSettingsScope(runtime, input), new KeepList(config.permissions.keepAllow), 'wide', new SecretScanner(config.register.secretPatterns));
     return wideAllowOf(plans);
 }

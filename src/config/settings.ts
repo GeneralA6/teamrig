@@ -91,12 +91,33 @@ export function settingRows(
   issues: readonly ConfigIssue[],
   leadKeys: ReadonlySet<string> = LEAD_KEYS,
 ): readonly SettingRow[] {
-  const definitions = isRecord(schema['$defs']) ? schema['$defs'] : {};
   const rows: SettingRow[] = [];
+  eachSetting(schema, raw, (path, group, node, written) => rows.push(rowOf(path, group, node, written, issues, leadKeys)));
+  return rows;
+}
+
+/**
+ * Each row's own schema node by the row's path, a `$ref` resolved: where a caller reads what a row does not carry,
+ * such as a keyword only it knows or the shape of the value's own keys.
+ */
+export function settingNodes(schema: JsonRecord): ReadonlyMap<string, JsonRecord> {
+  const nodes = new Map<string, JsonRecord>();
+  eachSetting(schema, {}, (path, _group, node) => nodes.set(path, node));
+  return nodes;
+}
+
+/** The schema's shared types, which a `$ref` names one of. */
+export function definitionsOf(schema: JsonRecord): JsonRecord {
+  return isRecord(schema['$defs']) ? schema['$defs'] : {};
+}
+
+/** Every key the schema describes, in its order, with the value `raw` holds at it: objects that list keys are walked into. */
+function eachSetting(schema: JsonRecord, raw: JsonRecord, visit: (path: string, group: string, node: JsonRecord, written: unknown) => void): void {
+  const definitions = definitionsOf(schema);
   const walk = (properties: JsonRecord, parent: string, group: string | undefined, values: JsonRecord): void => {
     for (const [key, child] of Object.entries(properties)) {
       const path = parent === '' ? key : `${parent}.${key}`;
-      const node = resolve(child, definitions);
+      const node = resolvedNode(child, definitions);
       if (node === undefined || SKIPPED_KEYS.has(path)) {
         continue;
       }
@@ -107,13 +128,12 @@ export function settingRows(
         walk(nested, path, top, isRecord(below) ? below : {});
         continue;
       }
-      rows.push(rowOf(path, top, node, values[key], issues, leadKeys));
+      visit(path, top, node, values[key]);
     }
   };
   if (isRecord(schema['properties'])) {
     walk(schema['properties'], '', undefined, raw);
   }
-  return rows;
 }
 
 /** The rows at `path` or under it; empty when the schema has no such key. */
@@ -192,7 +212,7 @@ function gateOf(path: string): string | undefined {
 }
 
 /** A node, or the `$defs` entry its `$ref` names, its own description kept over the definition's. */
-function resolve(node: unknown, definitions: JsonRecord): JsonRecord | undefined {
+export function resolvedNode(node: unknown, definitions: JsonRecord): JsonRecord | undefined {
   if (!isRecord(node)) {
     return undefined;
   }

@@ -8,13 +8,19 @@ import { SHIPPED_CONFIG_FORMAT } from "../config/migrate.js";
 import { Roster } from "../config/roster.js";
 import { parseConfigText } from "../config/text.js";
 import { isRecord } from "../core/guards.js";
-import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths } from "../core/home.js";
+import { ENV, KIT_NAME, resolveKitHome, teamConfigFile, teamPaths } from "../core/home.js";
 import { ID_PATTERN } from "../core/ids.js";
 import { resolveTeam, TEAM_POINTER } from "../core/team.js";
 import { TimeZone } from "../core/zone.js";
 import { JsonlRenameLog } from "../names/log.js";
 import { RefusedError } from "./runtime.js";
 import { fileLockOf } from "./file-locks.js";
+import { pathsIfKnown } from "./host.js";
+/** The folder the reader's host loads a person's skills from: none for a reader with no host, or a host that tells no folder. */
+function hostSkillsOf(reader) {
+    const { host, platform, env, userHome } = reader;
+    return host === undefined || platform === undefined ? undefined : pathsIfKnown({ host, platform, env })?.skills(userHome);
+}
 /** The lock every change to the team's config is read and written under (config-lock.ts). */
 export function configLockOf(runtime, kit, config) {
     const place = { configPath: kit.load.path, backupsDir: kit.paths.backups };
@@ -97,9 +103,8 @@ function overridesOf(config) {
  */
 export async function openKit(runtime, team) {
     const kitHome = resolveKitHome(runtime.env, runtime.userHome);
-    const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
     const load = await teamConfigOf(runtime, team, []);
-    const paths = teamPaths(kitHome, team, claudeDir, load.status === 'loaded' ? overridesOf(load.config) : {});
+    const paths = teamPaths(kitHome, team, hostSkillsOf(runtime), load.status === 'loaded' ? overridesOf(load.config) : {});
     if (load.status !== 'loaded') {
         return { load, paths };
     }
@@ -118,7 +123,7 @@ export function reloadTeamConfig(runtime, kit) {
  */
 async function teamConfigOf(runtime, team, below) {
     const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;
-    const path = teamPaths(resolveKitHome(runtime.env, runtime.userHome), team, claudeConfigDir(runtime.env, runtime.userHome)).config;
+    const path = teamConfigFile(resolveKitHome(runtime.env, runtime.userHome), team);
     const chain = [...below, team];
     return loadConfig(runtime.files, path, format.migrations, format.version, async (own) => {
         const parent = own.team?.parent;
@@ -138,7 +143,14 @@ export function teamFolders(env, first) {
 }
 /** A command's team: `$TEAMRIG_TEAM`, else the nearest pointer. Without one the command refuses. */
 export async function findTeam(runtime) {
-    const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
+    return foundTeamOf(await lookForTeam(runtime));
+}
+/** Where {@link findTeam} looks, refusing nothing: for a command that also answers a run with no team. */
+export function lookForTeam(runtime) {
+    return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
+}
+/** The team a look found; with none, or with a pointer that names none, the command refuses. */
+export function foundTeamOf(found) {
     switch (found.kind) {
         case 'none':
             throw new RefusedError(`no team here: create one with ${KIT_NAME} team create <team> --sessions <id,id>, set $${ENV.team}, or put ${TEAM_POINTER} {"team": "<id>"} in the project folder`);
@@ -199,17 +211,9 @@ export function rulesClockOf(runtime) {
  * best-effort and never written through.
  */
 export function requireConfig(kit, runtime, access) {
-    const { load } = kit;
-    switch (load.status) {
-        case 'missing':
-            throw new RefusedError(`no team config at ${load.path}; create it with: ${KIT_NAME} team create ${kit.paths.team} --sessions <id,id>`);
-        case 'unreadable':
-            throw new RefusedError(`the team config at ${load.path} cannot be read: ${issueText(load.issue)}`);
-        case 'loaded':
-            break;
-    }
+    const load = loadedConfig(kit);
     const [first] = load.issues;
-    const newer = load.newerVersion === undefined ? undefined : `${load.path} is config version ${load.newerVersion}, from a newer teamrig; update teamrig`;
+    const newer = newerConfigText(load);
     if (access === 'write') {
         if (newer !== undefined) {
             throw new RefusedError(`${newer} before writing`);
@@ -218,13 +222,39 @@ export function requireConfig(kit, runtime, access) {
             throw new RefusedError(`the team config has ${load.issues.length} problem(s) (first: ${issueText(first)}); run: teamrig config validate`);
         }
     }
-    if (newer !== undefined) {
-        runtime.out.stderr(`WARN ${newer}; reading it best-effort`);
-    }
-    if (first !== undefined) {
-        runtime.out.stderr(`WARN config: ${load.issues.length} problem(s), defaults used (first: ${issueText(first)}); run: teamrig config validate`);
+    for (const warning of configWarnings(load)) {
+        runtime.out.stderr(`WARN ${warning}`);
     }
     return load.config;
+}
+/** The kit's config as it loaded; refused when the team has none, or it cannot be read at all. */
+export function loadedConfig(kit) {
+    const { load } = kit;
+    switch (load.status) {
+        case 'missing':
+            throw new RefusedError(`no team config at ${load.path}; create it with: ${KIT_NAME} team create ${kit.paths.team} --sessions <id,id>`);
+        case 'unreadable':
+            throw new RefusedError(`the team config at ${load.path} cannot be read: ${issueText(load.issue)}`);
+        case 'loaded':
+            return load;
+    }
+}
+/**
+ * What a read through `load` must tell its reader, one line each: the file is from a newer teamrig, some fields are
+ * on their defaults. A command printing for a person writes them as `WARN` lines (`requireConfig`); one answering
+ * as data carries them in its answer, so its output stays data.
+ */
+export function configWarnings(load) {
+    const [first] = load.issues;
+    const newer = newerConfigText(load);
+    return [
+        ...(newer === undefined ? [] : [`${newer}; reading it best-effort`]),
+        ...(first === undefined ? [] : [`config: ${load.issues.length} problem(s), defaults used (first: ${issueText(first)}); run: teamrig config validate`]),
+    ];
+}
+/** What to say of a config a newer teamrig wrote, or undefined for one this teamrig knows whole. */
+function newerConfigText(load) {
+    return load.newerVersion === undefined ? undefined : `${load.path} is config version ${load.newerVersion}, from a newer teamrig; update teamrig`;
 }
 /** The config file's own JSON, not the copy migrated in memory, so nothing else in it changes, its version included. */
 export async function configFileJson(runtime, path) {
