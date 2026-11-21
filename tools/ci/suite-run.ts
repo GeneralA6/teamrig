@@ -1,40 +1,20 @@
 import { spawn } from 'node:child_process';
-import type { Readable } from 'node:stream';
-import { DEFAULT_QUEUE } from '../../src/config/defaults.ts';
-import { realSleep } from '../../src/core/lock.ts';
-import { CpuGate, nodeHostCpu, type CpuLook } from '../../src/delivery/cpu.ts';
-import { nodeTreeKill, type HeldProcess, type TreeKill } from '../../src/delivery/tree-kill.ts';
+import { nodeTreeKill, type TreeKill } from '../../src/delivery/tree-kill.ts';
+import { BUSY_STRETCH, silenceHostCpu, watchSilence, type SilenceHostCpu, type WatchedChild } from '../../src/test-run/silence.ts';
 
 /** How the suite run ended: it exited with this status, or printed nothing for `silentMs` and was killed with its tree. */
 export type SuiteEnd = { readonly kind: 'exited'; readonly status: number | null } | { readonly kind: 'idle'; readonly silentMs: number };
 
 /** Reads whether the host is busy when the suite falls silent: a look finding no CPU room means busy. */
-export interface SuiteHostCpu {
-  look(): Promise<CpuLook>;
-}
+export type SuiteHostCpu = SilenceHostCpu;
 
-/**
- * A busy host stretches the silence limit up to this many times (T2700): another step's test run on every core can
- * slow this suite until it prints nothing past the limit and still ends, while a run that truly hangs is still
- * stopped, only later.
- */
-export const BUSY_STRETCH = 3;
+export { BUSY_STRETCH };
 
-/**
- * The host counts as busy below the idle CPU share the queue needs to start a second heavy step
- * (`delivery.queue.heavyIdleCpuPct`'s default): the gate runs in CI too, where no team config is read.
- */
-export function suiteHostCpu(): SuiteHostCpu {
-  return new CpuGate(nodeHostCpu(), realSleep, DEFAULT_QUEUE.heavyIdleCpuPct);
-}
+/** The host reading the coverage gate uses: the queue's default heavy-step CPU share, as CI reads no team config. */
+export const suiteHostCpu = silenceHostCpu;
 
 /** The running suite, as the watch reads and kills it: Node's child process, or a fake in tests. */
-export interface SuiteChild extends HeldProcess {
-  readonly stdout: Readable;
-  readonly stderr: Readable;
-  once(event: 'close', listener: (code: number | null) => void): unknown;
-  once(event: 'error', listener: (error: Error) => void): unknown;
-}
+export type SuiteChild = WatchedChild;
 
 /** Where the suite's output is echoed as it comes. */
 export interface SuiteEcho {
@@ -52,74 +32,12 @@ export interface SuiteRequest {
 }
 
 /**
- * Echoes the suite's output and kills it with every process it started once it prints nothing for `idleMs`; settles
- * when the suite has closed and any kill is done, so a hung run never holds the host past its silence limit. When the
- * limit passes on a busy host (`cpu` finds no room), the suite gets another `idleMs`, up to `BUSY_STRETCH` limits in
- * all; output while the host is read starts the limit again.
+ * Echoes the suite's output and kills it with every process it started once it prints nothing for `idleMs`, a busy
+ * host stretching the limit (`watchSilence`); settles when the suite has closed and any kill is done.
  */
-export function watchSuite(child: SuiteChild, idleMs: number, kill: TreeKill, echo: SuiteEcho, cpu: SuiteHostCpu): Promise<SuiteEnd> {
-  return new Promise((resolve, reject) => {
-    let killed: Promise<void> | undefined;
-    let closed = false;
-    let silentMs = 0;
-    // Counts each output, so a host reading that output overtook is dropped.
-    let heardCount = 0;
-    const stop = (): void => {
-      killed = kill(child);
-    };
-    const onIdle = (): void => {
-      silentMs += idleMs;
-      if (silentMs >= idleMs * BUSY_STRETCH) {
-        stop();
-        return;
-      }
-      const silence = heardCount;
-      void cpu.look().then(
-        (look) => {
-          if (closed || silence !== heardCount) {
-            return;
-          }
-          if (look.kind === 'cpu') {
-            timer = setTimeout(onIdle, idleMs);
-          } else {
-            stop();
-          }
-        },
-        // A host that cannot be read leaves the plain limit.
-        () => {
-          if (!closed && silence === heardCount) {
-            stop();
-          }
-        },
-      );
-    };
-    let timer = setTimeout(onIdle, idleMs);
-    const heard = (): void => {
-      if (killed === undefined) {
-        heardCount += 1;
-        silentMs = 0;
-        clearTimeout(timer);
-        timer = setTimeout(onIdle, idleMs);
-      }
-    };
-    child.stdout.on('data', (chunk: Buffer) => {
-      echo.out.write(chunk);
-      heard();
-    });
-    child.stderr.on('data', (chunk: Buffer) => {
-      echo.err.write(chunk);
-      heard();
-    });
-    child.once('error', (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.once('close', (code) => {
-      closed = true;
-      clearTimeout(timer);
-      void (killed ?? Promise.resolve()).then(() => resolve(killed === undefined ? { kind: 'exited', status: code } : { kind: 'idle', silentMs }));
-    });
-  });
+export async function watchSuite(child: SuiteChild, idleMs: number, kill: TreeKill, echo: SuiteEcho, cpu: SuiteHostCpu): Promise<SuiteEnd> {
+  const end = await watchSilence(child, idleMs, kill, (stream, chunk) => (stream === 'out' ? echo.out : echo.err).write(chunk), cpu);
+  return end.kind === 'idle' ? end : { kind: 'exited', status: end.code };
 }
 
 /**

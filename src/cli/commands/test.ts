@@ -12,6 +12,7 @@ import type { ParsedArgs } from '../args.ts';
 import { sessionRef, shellWordsOf } from '../inputs.ts';
 import { openKit, rosterOf, teamFolders } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode, type SelfLocation } from '../runtime.ts';
+import { STEP_RUNNING } from './queue.ts';
 
 /** Where a run's log goes, whose it is, and how much of its failures is printed. */
 interface LogPlace {
@@ -19,6 +20,8 @@ interface LogPlace {
   /** The session the log is named after, null for none. */
   readonly session: string | null;
   readonly maxFailureChars: number;
+  /** The team's `tests.idleStopSeconds`: how long the run may print nothing before it is stopped; 0 never. */
+  readonly idleStopSeconds: number;
   /** The team's `delivery.passEnv`: the credential variables the command still gets; none outside a team. */
   readonly passEnv: readonly string[];
   /** Whether the run goes through the host queue: in a team whose config loads, which the queue reads. */
@@ -43,15 +46,15 @@ function givenSession(args: ParsedArgs, runtime: CliRuntime): string | null {
 async function logPlace(runtime: CliRuntime, session: string | null): Promise<LogPlace> {
   const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
   if (found.kind !== 'team') {
-    return { dir: join(resolveKitHome(runtime.env, runtime.userHome), 'logs'), session, maxFailureChars: DEFAULT_TESTS.maxFailureChars, passEnv: DEFAULT_PASS_ENV, queued: false };
+    return { dir: join(resolveKitHome(runtime.env, runtime.userHome), 'logs'), session, maxFailureChars: DEFAULT_TESTS.maxFailureChars, idleStopSeconds: DEFAULT_TESTS.idleStopSeconds, passEnv: DEFAULT_PASS_ENV, queued: false };
   }
   const kit = await openKit(runtime, found.team);
   if (kit.load.status !== 'loaded') {
-    return { dir: kit.paths.logs, session, maxFailureChars: DEFAULT_TESTS.maxFailureChars, passEnv: DEFAULT_PASS_ENV, queued: false };
+    return { dir: kit.paths.logs, session, maxFailureChars: DEFAULT_TESTS.maxFailureChars, idleStopSeconds: DEFAULT_TESTS.idleStopSeconds, passEnv: DEFAULT_PASS_ENV, queued: false };
   }
   const { config } = kit.load;
   const known = session === null ? undefined : (await rosterOf(runtime, kit, config)).lookup(session);
-  return { dir: kit.paths.logs, session: known?.ok === true ? known.id : session, maxFailureChars: config.tests.maxFailureChars, passEnv: config.delivery.passEnv, queued: true };
+  return { dir: kit.paths.logs, session: known?.ok === true ? known.id : session, maxFailureChars: config.tests.maxFailureChars, idleStopSeconds: config.tests.idleStopSeconds, passEnv: config.delivery.passEnv, queued: true };
 }
 
 /** A spec file's name, and the characters of a glob, which may match many. */
@@ -78,7 +81,12 @@ export function runsOneSpecFile(words: readonly string[]): boolean {
 export function queuedWords(self: SelfLocation, words: readonly string[], session: string | null): string[] {
   const size = runsOneSpecFile(words) ? ['--small'] : [];
   const owner = session === null ? [] : ['--session', session];
-  return [self.node, self.script, 'queue', '--kind', 'test', ...size, '--what', `test: ${labelOf(words)}`, ...owner, '--', ...words];
+  return [self.node, self.script, 'queue', '--kind', 'test', ...size, '--what', queuedWhat(words), ...owner, '--', ...words];
+}
+
+/** The step's name in the host queue, which its start line (`running: <what>`) names too. */
+function queuedWhat(words: readonly string[]): string {
+  return `test: ${labelOf(words)}`;
 }
 
 /** Runs the command; when it cannot start, the log (holding the command line) says why before the error goes on. */
@@ -94,8 +102,10 @@ async function runLogged(runtime: CliRuntime, request: ShellRequest, log: string
 /**
  * `teamrig test -- <command ...>`: runs a test command in the shell (in a team through the host queue, `queuedWords`), writes all it printed to a
  * numbered log (the session's newest 20 are kept) and prints one PASS or FAIL line, then each failing
- * test within `tests.maxFailureChars`, so a long test run costs the model a few lines. Exit 0 when the
- * command passed, 1 otherwise.
+ * test within `tests.maxFailureChars`, so a long test run costs the model a few lines. A run that prints
+ * nothing for `tests.idleStopSeconds` (a queued one from its step's start) is stopped with every process it started
+ * and fails (#1532). Exit 0 when
+ * the command passed, 1 otherwise.
  */
 export async function test(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const words = shellWordsOf(args, runtime.platform);
@@ -104,7 +114,9 @@ export async function test(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const log = await reserveLog(runtime.files, place.dir, place.session, commandHeader(command));
   const run = place.queued ? commandLine(queuedWords(runtime.self, words, place.session), runtime.platform) : command;
   const started = runtime.clock.now();
-  const result = await runLogged(runtime, { command: run, cwd: runtime.cwd, env: withoutCredentials(runtime.env, place.passEnv) }, log);
+  // A queued run is timed from its step's start line: its wait for its turn in the queue prints nothing for long spells.
+  const idleFrom = place.queued ? { idleFrom: `${STEP_RUNNING}${queuedWhat(words)}` } : {};
+  const result = await runLogged(runtime, { command: run, cwd: runtime.cwd, env: withoutCredentials(runtime.env, place.passEnv), idleMs: place.idleStopSeconds * 1000, ...idleFrom }, log);
   const tookMs = runtime.clock.now() - started;
   const output = cleanOutput(result.output);
   await runtime.files.append(log, logBody(output, result.end));

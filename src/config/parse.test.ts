@@ -27,7 +27,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.turnLog, { enabled: true, keepHours: 24 });
     assert.deepEqual(config.needsYou, { enabled: true, kinds: ['permission', 'question', 'elicitation', 'decision'], osToast: false });
     assert.deepEqual(config.meetingNotices, { enabled: true, beforeMinutes: 10, atStart: true, missedAfterMinutes: 5, osToast: true, tabToast: true, leadInbox: true });
-    assert.deepEqual(config.tests, { maxFailureChars: 4000 });
+    assert.deepEqual(config.tests, { maxFailureChars: 4000, idleStopSeconds: 600 });
     assert.deepEqual(config.github, { repos: [], owners: {}, areaOwners: {}, sessions: {}, closedDays: 14, probeSeconds: 60, statusPush: false, acceptLabel: 'teamrig', similarThreshold: 0.35, activity: true, followMax: 20, stamp: true, fields: DEFAULT_ISSUE_FIELDS });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
@@ -404,6 +404,16 @@ describe('parseConfig', () => {
       const { config, issues } = parseConfig({ ...ROSTER, tests: { maxFailureChars: wrong } });
       assert.deepEqual(paths(issues), ['tests.maxFailureChars']);
       assert.equal(config.tests.maxFailureChars, 4000);
+    }
+  });
+
+  it('reads tests.idleStopSeconds, 0 for never, and refuses a value under 0 or past a day (#1532)', () => {
+    assert.equal(parseConfig({ ...ROSTER, tests: { idleStopSeconds: 0 } }).config.tests.idleStopSeconds, 0);
+    assert.equal(parseConfig({ ...ROSTER, tests: { idleStopSeconds: 86_400 } }).config.tests.idleStopSeconds, 86_400);
+    for (const wrong of [-1, 86_401]) {
+      const { config, issues } = parseConfig({ ...ROSTER, tests: { idleStopSeconds: wrong } });
+      assert.deepEqual(paths(issues), ['tests.idleStopSeconds']);
+      assert.equal(config.tests.idleStopSeconds, 600);
     }
   });
 

@@ -82,6 +82,31 @@ describe('teamrig test', () => {
     assert.equal(kit.files.get(join(LOGS, 'test-1.log')), '$ npm test\nended by SIGTERM\n');
   });
 
+  it('stops a run silent past tests.idleStopSeconds, says so with its last output, and the log ends with it (#1532)', async () => {
+    const { kit, shell } = harness();
+    const result = await kit.run(['test', '--', 'npm test'], { shell: shell.prints('▶ slow spec\n', { kind: 'idle', silentMs: 600_000 }, 600_000) });
+    const log = join(LOGS, 'test-1.log');
+    assert.equal(shell.ran[0]?.idleMs, 600_000, 'the default limit is ten minutes');
+    assert.deepEqual(result, {
+      code: 1,
+      stdout: [
+        `FAIL npm test in 10 min 0 s (stopped: no output for 10 min 0 s, so every process it started was ended (tests.idleStopSeconds)). Log: ${log}`,
+        "The output's last line:",
+        '▶ slow spec',
+      ],
+      stderr: [],
+    });
+    assert.equal(kit.files.get(log), '$ npm test\n▶ slow spec\nstopped: no output for 600 s, every process it started ended\n');
+  });
+
+  it("gives the run the team's tests.idleStopSeconds, 0 for never (#1532)", async () => {
+    for (const [seconds, idleMs] of [[30, 30_000], [0, 0]] as const) {
+      const { kit, shell } = harness({ ...TEAM, tests: { idleStopSeconds: seconds } });
+      await kit.run(['test', '--', 'npm test'], { shell });
+      assert.equal(shell.ran[0]?.idleMs, idleMs);
+    }
+  });
+
   it('prints failures within the configured cap, then how many more the log holds', async () => {
     const output = tapFailures(3, 300);
     const capped = harness({ ...TEAM, tests: { maxFailureChars: 500 } });
@@ -131,6 +156,15 @@ describe('teamrig test', () => {
     assert.equal(one.stdout[0], `PASS node --test src/a.test.ts: 1,532 tests in 1.0 s. Log: ${join(LOGS, 'test-alpha-1.log')}`);
     await kit.run(['test', '--session', 'alpha', '--', 'npm test'], { shell });
     assert.equal(shell.ran[1]?.command, `${QUEUE} --what 'test: npm test' --session alpha -- 'npm test'`);
+  });
+
+  it("times a queued run's silence from its step's start line, and a bare run's from its start (#1532)", async () => {
+    const { kit, shell } = harness();
+    await kit.run(['test', '--', 'npm test'], { shell });
+    assert.equal(shell.ran[0]?.idleFrom, 'running: test: npm test', "the queue's wait for its turn is not timed");
+    const bare = new FakeShell();
+    await new CliHarness(TEAM, null).run(['test', '--', 'npm test'], { shell: bare });
+    assert.equal(bare.ran[0]?.idleFrom, undefined);
   });
 
   it("runs bare when the team's config cannot be read, as the queue could not read it either", async () => {

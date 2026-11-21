@@ -671,6 +671,11 @@ export interface WakeConfig {
 export interface TestsConfig {
   /** The most characters of failing tests it prints, all of them together; the rest stays in the log. */
   readonly maxFailureChars: number;
+  /**
+   * Seconds a run may print nothing before it is stopped with every process it started (#1532); a busy host stretches
+   * it up to three times, as in the coverage gate. 0 never stops a run.
+   */
+  readonly idleStopSeconds: number;
 }
 
 /** The kinds of issue a task's issue is typed as (T3406): a design issue, a goal (a task planned after its parts), a bug, else a task. */

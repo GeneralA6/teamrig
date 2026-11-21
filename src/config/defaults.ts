@@ -301,7 +301,8 @@ export const DEFAULT_MEETING: MeetingConfig = {
 };
 
 /** About a screenful: two or three failing tests with their errors and first stack frames. */
-export const DEFAULT_TESTS: TestsConfig = { maxFailureChars: 4000 };
+/** Ten silent minutes: a quiet build or a slow suite step prints within it, while a hung run is stopped the same hour. */
+export const DEFAULT_TESTS: TestsConfig = { maxFailureChars: 4000, idleStopSeconds: 600 };
 
 /**
  * GitHub's own field names and default issue types. A goal is a Feature, as an issue opened for one is typed

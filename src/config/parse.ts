@@ -599,6 +599,7 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
     wake: parseWake(read, read.section(raw, 'wake', ''), budget.quietHours),
     tests: {
       maxFailureChars: read.integer(read.section(raw, 'tests', ''), 'maxFailureChars', 'tests', DEFAULT_TESTS.maxFailureChars, CONFIG_LIMITS.maxFailureChars),
+      idleStopSeconds: read.integer(read.section(raw, 'tests', ''), 'idleStopSeconds', 'tests', DEFAULT_TESTS.idleStopSeconds, CONFIG_LIMITS.idleStopSeconds),
     },
     github: parseGithub(read, read.section(raw, 'github', ''), sessions),
     serviceRoles: parseServiceRoles(read, read.section(raw, 'serviceRoles', ''), sessions),

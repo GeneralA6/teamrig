@@ -1,6 +1,6 @@
 import { formatCount } from '../budget/format.ts';
 import type { TestOutput } from './parse.ts';
-import type { ShellEnd } from '../core/shell-end.ts';
+import type { TestEnd } from './shell.ts';
 
 /** The longest command text the first line names; a longer one is cut with `…`. */
 export const LABEL_CHARS = 60;
@@ -11,7 +11,7 @@ export const TAIL_LINES = 40;
 export interface FinishedRun {
   /** The command text as typed after `--`, cut to a label. */
   readonly label: string;
-  readonly end: ShellEnd;
+  readonly end: TestEnd;
   readonly tookMs: number;
   readonly log: string;
   /** Its output with colours and carriage returns taken out. */
@@ -44,13 +44,21 @@ function failures(count: number): string {
   return `${count} more ${count === 1 ? 'failure' : 'failures'} in the log`;
 }
 
-function passed(end: ShellEnd): boolean {
+function passed(end: TestEnd): boolean {
   return end.kind === 'exited' && end.code === 0;
 }
 
 /** How a failed command ended, as words after "the command": `exited 2`, `was ended by SIGTERM`. */
-function endedAs(end: ShellEnd): string {
+function endedAs(end: TestEnd): string {
+  if (end.kind === 'idle') {
+    return `was stopped, ${silentFor(end.silentMs)}`;
+  }
   return end.kind === 'exited' ? `exited ${end.code}` : `was ended by ${end.signal}`;
+}
+
+/** Why an idle run was stopped: `no output for 600 s, so every process it started was ended`. */
+export function silentFor(silentMs: number): string {
+  return `no output for ${formatDuration(silentMs)}, so every process it started was ended (tests.idleStopSeconds)`;
 }
 
 /** The first line: PASS or FAIL by the exit code, with the counts when the runner printed them. */
@@ -67,7 +75,7 @@ export function headline(run: FinishedRun): string {
       : `PASS ${run.label}: the command exited 0, but ${formatCount(counts.failed)} of ${tests(counts.total)} failed, in ${took}. ${log}`;
   }
   if (counts === null) {
-    const how = run.end.kind === 'exited' ? `exit ${run.end.code}` : `ended by ${run.end.signal}`;
+    const how = run.end.kind === 'exited' ? `exit ${run.end.code}` : run.end.kind === 'idle' ? `stopped: ${silentFor(run.end.silentMs)}` : `ended by ${run.end.signal}`;
     return `FAIL ${run.label} in ${took} (${how}). ${log}`;
   }
   return counts.failed > 0

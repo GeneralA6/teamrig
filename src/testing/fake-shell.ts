@@ -1,5 +1,4 @@
-import type { ShellEnd } from '../core/shell-end.ts';
-import type { ShellRequest, ShellResult, ShellRunner } from '../test-run/shell.ts';
+import type { ShellRequest, ShellResult, ShellRunner, TestEnd } from '../test-run/shell.ts';
 
 /** A clock a fake run moves forward, such as the harness's `FakeClock`. */
 interface Advancing {
@@ -8,7 +7,7 @@ interface Advancing {
 
 /**
  * A shell that runs nothing: each request is recorded, and every run prints what was set (default
- * nothing) and ends as set (default exit 0), moving `clock` on by the time it was set to take.
+ * nothing) and ends as set (default exit 0; an idle stop too), moving `clock` on by the time it was set to take.
  */
 export class FakeShell implements ShellRunner {
   readonly ran: ShellRequest[] = [];
@@ -23,7 +22,7 @@ export class FakeShell implements ShellRunner {
   }
 
   /** From now on, every run prints `output`, ends with `end` (an exit code or a signal) and takes `takesMs`. */
-  prints(output: string, end: ShellEnd | number = 0, takesMs = 0): this {
+  prints(output: string, end: TestEnd | number = 0, takesMs = 0): this {
     this.result = { end: typeof end === 'number' ? { kind: 'exited', code: end } : end, output };
     this.takesMs = takesMs;
     return this;

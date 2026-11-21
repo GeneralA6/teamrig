@@ -723,7 +723,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; in a team through teamrig queue --kind test, one node spec
-      file as --small, anything more as a heavy step; exit 0 when the command passed, 1 otherwise. One
+      file as --small, anything more as a heavy step; a run silent for tests.idleStopSeconds is
+      stopped with every process it started and fails; exit 0 when the command passed, 1 otherwise. One
       quoted word runs as a shell line ("npm run build && npm test"); several run as one command, each
       word passed as is, so a word that is only &&, || or ; is REFUSED before anything runs
   hook push-guard | hook package-guard | hook secret-guard | hook db-write-guard | hook exec-guard | hook pass-record-guard | hook service-role-guard | hook cold-send | hook failed-send | hook missing-cli | hook route-reminder | hook loop-nudge | hook secret-redact | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook effort-writeback | hook tab-status | hook pre-compact | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse | hook route-allow

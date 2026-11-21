@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
-import type { ShellEnd } from '../core/shell-end.ts';
+import type { TestEnd } from './shell.ts';
 
 /** How many logs are kept for each session (and for runs with no session); older ones are removed. */
 export const KEPT_LOGS = 20;
@@ -51,8 +51,11 @@ export async function pruneLogs(files: Files, dir: string, session: string | nul
   }
 }
 
-/** How the command ended, as the log's last line: `exit 1`, or `ended by SIGTERM`. */
-export function endLine(end: ShellEnd): string {
+/** How the command ended, as the log's last line: `exit 1`, `ended by SIGTERM`, or `stopped: no output for 600 s`. */
+export function endLine(end: TestEnd): string {
+  if (end.kind === 'idle') {
+    return `stopped: no output for ${end.silentMs / 1000} s, every process it started ended`;
+  }
   return end.kind === 'exited' ? `exit ${end.code}` : `ended by ${end.signal}`;
 }
 
@@ -66,7 +69,7 @@ export function commandHeader(command: string): string {
  * appended, never written over the log: on Windows a file a reader or a virus scan holds open cannot
  * be replaced (T696).
  */
-export function logBody(output: string, end: ShellEnd): string {
+export function logBody(output: string, end: TestEnd): string {
   const printed = output === '' || output.endsWith('\n') ? output : `${output}\n`;
   return `${printed}${endLine(end)}\n`;
 }

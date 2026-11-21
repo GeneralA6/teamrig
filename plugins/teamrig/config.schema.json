@@ -1341,7 +1341,7 @@
       }
     },
     "tests": {
-      "description": "What teamrig test prints of a failed run.",
+      "description": "What teamrig test prints of a failed run, and when it stops a silent one.",
       "type": "object",
       "properties": {
         "maxFailureChars": {
@@ -1350,6 +1350,13 @@
           "minimum": 500,
           "maximum": 50000,
           "default": 4000
+        },
+        "idleStopSeconds": {
+          "description": "Seconds a teamrig test run may print nothing before it is stopped with every process it started and reported as a failure; a busy host stretches it up to three times, as in the coverage gate. 0 never stops a run.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400,
+          "default": 600
         }
       }
     },

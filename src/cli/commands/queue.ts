@@ -40,6 +40,9 @@ import { inboxDepsOf } from './inbox.ts';
 
 const MINUTE_MS = 60_000;
 
+/** The word a step's line starts with once it runs, after any wait for its turn; `teamrig test` times a queued run's silence from it. */
+export const STEP_RUNNING = 'running: ';
+
 /**
  * `--max-minutes`: whole minutes from 1 to the lock's TTL less its margin, so the step never outlives its lock, and for
  * a small step to `smallMaxRunMinutes`, so a step that shares the host stays short; unset, the config's.
@@ -465,7 +468,7 @@ async function sessionOf(args: ParsedArgs, runtime: CliRuntime, kit: Kit, roster
  */
 async function runUnderParent(runtime: CliRuntime, say: Say, parent: string, step: Step): Promise<ExitCode> {
   const { what, words, maxRunMinutes, watching, env } = step;
-  say(`running: ${what} under the host lock of ${parent} (killed after ${minutesText(maxRunMinutes)})`);
+  say(`${STEP_RUNNING}${what} under the host lock of ${parent} (killed after ${minutesText(maxRunMinutes)})`);
   await step.reporting.started();
   const end = await runtime.steps.run({ command: commandLine(words, runtime.platform), cwd: runtime.cwd, env, timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop });
   return report(runtime, say, end, step);
@@ -714,7 +717,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       if (sharing !== undefined) {
         say(sharing);
       }
-      say(`running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
+      say(`${STEP_RUNNING}${what} (killed after ${minutesText(maxRunMinutes)})`);
       await reporting.started();
       // A merge that steps away while its checks run (teamrig step-away) holds nothing meanwhile: that time, and its wait
       // in line to take its share back, does not count against its limit (T4218).
