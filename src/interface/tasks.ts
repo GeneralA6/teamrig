@@ -153,7 +153,7 @@ function servedTask(task: Task, served: ServedText, input: Pick<TasksInput, 'con
 }
 
 /** A wait written out field by field, so a field the register adds to a reason is not served by accident. */
-function servedWait(reason: WaitReason): ServedWait {
+export function servedWait(reason: WaitReason): ServedWait {
   switch (reason.kind) {
     case 'decision':
     case 'approval':
