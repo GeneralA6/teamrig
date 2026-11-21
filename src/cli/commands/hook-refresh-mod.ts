@@ -1,14 +1,14 @@
 import { claudeProjectsDir, findTranscript } from '../../budget/discover.ts';
 import { sessionRefreshOf } from '../../config/refresh.ts';
 import { isNonNegativeInteger, type JsonRecord } from '../../core/guards.ts';
-import { ENV, KIT_NAME } from '../../core/home.ts';
+import { KIT_NAME } from '../../core/home.ts';
 import { inBookedMeeting, MeetingSchedule } from '../../meeting/schedule.ts';
 import { inMeeting, MeetingStore } from '../../meeting/state.ts';
 import { decideCompact, decideMidTurn, handoverHashOf, type AskContext, type CompactDecision, type DueFacts } from '../../refresh/decide.ts';
 import { readRunningWork } from '../../refresh/running.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { readContextEstimate } from '../../refresh/usage.ts';
-import { contextSourceIfTold, transcriptsIfKept } from '../host.ts';
+import { contextSourceIfTold, identityOf, transcriptsIfKept } from '../host.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { hookScopeOf, readHookInput, readModRequest, writeReply, type HookOrigin, type SessionScope } from './hook-input.ts';
@@ -69,7 +69,7 @@ async function transcriptOf(runtime: CliRuntime, origin: HookOrigin): Promise<st
   if (origin.session === undefined) {
     return undefined;
   }
-  const project = runtime.env[ENV.claudeProjectDir] ?? origin.cwd;
+  const project = identityOf(runtime).projectDir ?? origin.cwd;
   return findTranscript(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), project, origin.session);
 }
 

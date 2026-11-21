@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { FakePathProbe } from '../testing/fake-processes.ts';
-import { NO_PATHS_HOST } from '../testing/host.ts';
+import { hostTelling, NO_PATHS_HOST, NO_SESSION_HOST } from '../testing/host.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { APP, CliHarness, KIT, POINTER, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { CONFIG_VERSION } from '../config/types.ts';
@@ -204,6 +204,16 @@ describe('teamrig team create', () => {
     const fromCwd = new CliHarness(null, null);
     await create(fromCwd, ['team', 'create', 'shop', '--sessions', 'api'], { CLAUDE_PROJECT_DIR: ' ' }, SHOP);
     assert.notEqual(await fromCwd.files.read(SHOP_POINTER), undefined);
+  });
+
+  it('asks the running host for the folder the session started in, and takes the current folder on a host telling none', async () => {
+    const argv = ['team', 'create', 'shop', '--sessions', 'api'];
+    const told = new CliHarness(null, null);
+    await told.run(argv, { probe: FOLDERS, env: { CLAUDE_PROJECT_DIR: APP }, cwd: APP, host: hostTelling({ projectDir: SHOP }) });
+    assert.notEqual(await told.files.read(SHOP_POINTER), undefined);
+    const untold = new CliHarness(null, null);
+    await untold.run(argv, { probe: FOLDERS, env: { CLAUDE_PROJECT_DIR: APP }, cwd: SHOP, host: NO_SESSION_HOST });
+    assert.notEqual(await untold.files.read(SHOP_POINTER), undefined);
   });
 
   it('refuses another team of the same id, or a project tied to another team', async () => {

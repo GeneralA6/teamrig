@@ -7,6 +7,7 @@ import type { ParkedRestart, RestartRequest, RestartTab } from '../../refresh/st
 import type { RefreshStore } from '../../refresh/store.ts';
 import { parkRulesOf } from '../../register/park.ts';
 import { startableTasks } from '../../wake/day-start.ts';
+import { identityOf } from '../host.ts';
 import { teamZone } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
@@ -16,7 +17,7 @@ export interface RestartTarget {
   readonly claudeSession: string;
   readonly transcript: string;
   readonly cwd: string | null;
-  /** Where a new tab opens: Claude Code's project folder, else the session's working folder. */
+  /** Where a new tab opens: the folder the host says the session started in, else the session's working folder. */
   readonly project: string;
   /** The effort level the turn ran at; null when the event names none teamrig knows. */
   readonly effort: EffortLevel | null;
@@ -25,7 +26,7 @@ export interface RestartTarget {
 /** The restart's target; undefined when the event names no session, no transcript or no folder. */
 export function restartTargetOf(runtime: CliRuntime, event: Pick<HookEvent, 'session' | 'transcript' | 'cwd' | 'effort'>): RestartTarget | undefined {
   const { session, transcript, cwd, effort } = event;
-  const project = runtime.env[ENV.claudeProjectDir] ?? cwd;
+  const project = identityOf(runtime).projectDir ?? cwd;
   if (session === undefined || transcript === undefined || project === undefined) {
     return undefined;
   }
@@ -128,7 +129,7 @@ async function armFromTab(runtime: CliRuntime, store: RefreshStore, scope: Rearm
   const { team, id, cwd } = scope;
   // Looked up on this rare path only: each look at a process starts a PowerShell on Windows.
   const claude = await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid);
-  const project = runtime.env[ENV.claudeProjectDir] ?? tab.cwd ?? cwd;
+  const project = identityOf(runtime).projectDir ?? tab.cwd ?? cwd;
   if (claude !== undefined && project !== undefined) {
     const at = new Date(runtime.clock.now()).toISOString();
     await store.setRestart(id, { ...tab, phase: 'pending', at, pid: claude });

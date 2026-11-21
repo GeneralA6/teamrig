@@ -17,6 +17,7 @@ import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { FakeWebhook } from '../testing/fake-webhook.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { holdFileLock } from '../testing/held-file-lock.ts';
+import { hostTelling, NO_SESSION_HOST } from '../testing/host.ts';
 import { treeHarness } from '../testing/team-tree.ts';
 import { apiErrorLine, promptLine, transcript } from '../testing/transcript-lines.ts';
 
@@ -88,6 +89,20 @@ describe('hook restore-track', () => {
     const entry = await entryOf(kit);
     assert.equal(entry?.projectDir, join(APP, 'sub'));
     assert.deepEqual([entry.team, entry.session, entry.entrypoint], [undefined, undefined, undefined]);
+  });
+
+  it('records what the running host tells of the session, and no variable of a host telling nothing', async () => {
+    const started = join(APP, 'started');
+    const stdin = payload('UserPromptSubmit');
+    const sessionProcesses = new FakeSessionProcesses(7000);
+    const told = new CliHarness();
+    await told.run(['hook', 'restore-track'], { stdin, env: LAUNCHED, sessionProcesses, host: hostTelling({ projectDir: started, startedAs: 'desk', sessionKind: 'bg' }) });
+    const entry = await entryOf(told);
+    assert.deepEqual([entry?.projectDir, entry?.entrypoint, entry?.sessionKind], [started, 'desk', 'bg']);
+    const untold = new CliHarness();
+    await untold.run(['hook', 'restore-track'], { stdin, env: { ...LAUNCHED, CLAUDE_CODE_SESSION_KIND: 'bg' }, sessionProcesses, host: NO_SESSION_HOST });
+    const bare = await entryOf(untold);
+    assert.deepEqual([bare?.projectDir, bare?.entrypoint, bare?.sessionKind], [join(APP, 'sub'), undefined, undefined], 'the folder its payload names');
   });
 
   it("leaves a session in a turn as it was at a compaction's start, which comes mid-turn", async () => {
