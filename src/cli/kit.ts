@@ -10,7 +10,7 @@ import { Roster } from '../config/roster.ts';
 import { parseConfigText } from '../config/text.ts';
 import type { KitConfig } from '../config/types.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
-import { ENV, KIT_NAME, resolveKitHome, teamConfigFile, teamPaths, type Env, type PathOverrides, type TeamPaths } from '../core/home.ts';
+import { ENV, KIT_NAME, resolveKitHome, teamConfigFile, teamPaths, type PathOverrides, type TeamPaths } from '../core/home.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 import { resolveTeam, TEAM_POINTER, type TeamResolution } from '../core/team.ts';
 import { TimeZone } from '../core/zone.ts';
@@ -19,7 +19,7 @@ import type { RenameDeps } from '../names/record.ts';
 import type { RulesClock } from '../rules/pack.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 import { fileLockOf } from './file-locks.ts';
-import { pathsIfKnown } from './host.ts';
+import { identityOf, pathsIfKnown } from './host.ts';
 
 export interface Kit {
   readonly paths: TeamPaths;
@@ -168,11 +168,12 @@ async function teamConfigOf(runtime: KitReader, team: string, below: readonly st
 }
 
 /**
- * Where to look for a team pointer: the given folders in order, then the folder Claude Code started
- * the session in, so a command run from a subfolder or a temp folder still finds its team.
+ * Where to look for a team pointer: the given folders in order, then the folder the run's host says it started
+ * the session in, so a command run from a subfolder or a temp folder still finds its team. A host telling no such
+ * folder adds none.
  */
-export function teamFolders(env: Env, first: readonly (string | undefined)[]): string[] {
-  return [...first, env[ENV.claudeProjectDir]].flatMap((folder) => (folder?.trim() ? [folder] : []));
+export function teamFolders(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>, first: readonly (string | undefined)[]): string[] {
+  return [...first, identityOf(runtime).projectDir].flatMap((folder) => (folder?.trim() ? [folder] : []));
 }
 
 /** A command's team, and where it was found: `$TEAMRIG_TEAM`, or the path of the pointer file. */
@@ -187,8 +188,8 @@ export async function findTeam(runtime: CliRuntime): Promise<FoundTeam> {
 }
 
 /** Where {@link findTeam} looks, refusing nothing: for a command that also answers a run with no team. */
-export function lookForTeam(runtime: Pick<CliRuntime, 'files' | 'env' | 'cwd'>): Promise<TeamResolution> {
-  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
+export function lookForTeam(runtime: Pick<CliRuntime, 'files' | 'env' | 'cwd' | 'host' | 'platform'>): Promise<TeamResolution> {
+  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime, [runtime.cwd]));
 }
 
 /** The team a look found; with none, or with a pointer that names none, the command refuses. */
@@ -207,11 +208,11 @@ export function foundTeamOf(found: TeamResolution): FoundTeam {
 
 /**
  * The team's project folder, where its CLAUDE.md and rule files sit: `team.project`, else the folder of its pointer
- * file; for a team named by `$TEAMRIG_TEAM` alone, the folder Claude Code started the session in, else the working folder.
+ * file; for a team named by `$TEAMRIG_TEAM` alone, the folder the host started the session in, else the working folder.
  */
 export async function projectFolder(runtime: CliRuntime, config: KitConfig): Promise<string> {
   const { from } = await findTeam(runtime);
-  return teamProjectOf(config, from) ?? teamFolders(runtime.env, [])[0] ?? runtime.cwd;
+  return teamProjectOf(config, from) ?? teamFolders(runtime, [])[0] ?? runtime.cwd;
 }
 
 /**

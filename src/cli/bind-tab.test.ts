@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import type { HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { indexMarks, readMarks } from '../inbox/marks.ts';
-import { HOOKS_ONLY_HOST } from '../testing/host.ts';
+import { HOOKS_ONLY_HOST, hostTelling, NO_SESSION_HOST } from '../testing/host.ts';
 import { APP, CLAUDE_SESSION, CliHarness, contextOf, RENAMES_PATH, TEAM, TEAM_HOME, titledPromptOf, USER_HOME } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { treeHarness } from '../testing/team-tree.ts';
@@ -230,6 +230,19 @@ describe('runCli: a session hook reads the team of the folder the session starte
     await fresh.files.write(join(WEB_PROJECT, '.teamrig.json'), '{"team": "web"}');
     const unset = await fresh.run(['hook', 'inbox-reminder'], { stdin: moved, cwd: WEB_PROJECT });
     assert.match(unset.stdout[0] ?? '', /"app-alpha" names no session of team web/, 'without the start folder, the payload folder decides');
+  });
+
+  it('takes the start folder from the running host, whatever variable of another host the environment holds', async () => {
+    const kit = await treeHarness();
+    await kit.files.write(join(WEB_PROJECT, '.teamrig.json'), '{"team": "web"}');
+    const moved = prompt({ cwd: WEB_PROJECT, session_title: 'app-alpha' });
+    const told = await kit.run(['hook', 'inbox-reminder'], { stdin: moved, cwd: WEB_PROJECT, env: { CLAUDE_PROJECT_DIR: WEB_PROJECT }, host: hostTelling({ projectDir: APP }) });
+    assert.match(told.stdout[0] ?? '', /now the `alpha` session of team app/);
+
+    const fresh = await treeHarness();
+    await fresh.files.write(join(WEB_PROJECT, '.teamrig.json'), '{"team": "web"}');
+    const untold = await fresh.run(['hook', 'inbox-reminder'], { stdin: moved, cwd: WEB_PROJECT, env: { CLAUDE_PROJECT_DIR: APP }, host: NO_SESSION_HOST });
+    assert.match(untold.stdout[0] ?? '', /"app-alpha" names no session of team web/, 'a host telling no start folder leaves the payload folder to decide');
   });
 });
 
