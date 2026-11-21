@@ -152,6 +152,11 @@ export interface ReopenInput {
   readonly unseenLines: number;
   /** How many unseen lines reopen it (`open.idle.reopenUnreadLines`); 0: none do. */
   readonly reopenUnreadLines: number;
+  /**
+   * Its tasks another session waits on (`awaitedAnswers`, src/budget/work.ts): neither a rest nor `maxPriority` holds
+   * such an answer back, and a wait on it is news it has not seen.
+   */
+  readonly awaited: ReadonlySet<string>;
   readonly now: number;
   readonly zone: TimeZone;
 }
@@ -164,6 +169,7 @@ export interface ReopenInput {
 export type ReopenVerdict =
   | { readonly kind: 'asked'; readonly asks: readonly WakeAsk[]; readonly at: number }
   | { readonly kind: 'needed'; readonly waiting: readonly WaitingOnYou[] }
+  | { readonly kind: 'awaited'; readonly tasks: readonly Task[] }
   | { readonly kind: 'handed'; readonly tasks: readonly Task[] }
   | { readonly kind: 'piled'; readonly lines: number; readonly threshold: number }
   | { readonly kind: 'day-start'; readonly at: number; readonly tasks: readonly Task[] }
@@ -190,11 +196,12 @@ function neededSince({ tasks, elsewhere, session, closedAt, now, zone }: ReopenI
  * Whether a session teamrig closed reopens now, as the wake check would wake its open tab: for urgent lines posted to
  * it, whatever its rest and at once (each is urgent by its sender's choice, and a pass's closes post theirs together),
  * else for right-now work of another session that waits on it and came to after its close, whatever its rest too
- * (right-now work wakes past every rest), else for work it can start within `maxPriority` that someone else or the clock changed since it last touched it
- * (`isNews`, so work it saw before the close does not reopen it). While it does not rest (quiet hours, held by its
- * budget), else for `reopenUnreadLines` inbox lines or more it has not seen, none urgent, which a lead's or a busy
- * peer's inbox gathers while it sleeps (T3387), else for a day start after its close when it has any work it can
- * start. Else it stays closed.
+ * (right-now work wakes past every rest), else for work it can start that another session waits on (`awaited`),
+ * whatever its rest and `maxPriority` and whether or not it saw it before the close, else for work it can start within
+ * `maxPriority` that someone else or the clock changed since it last touched it (`isNews`, so work it saw before the
+ * close does not reopen it). While it does not rest (quiet hours, held by its budget), else for `reopenUnreadLines`
+ * inbox lines or more it has not seen, none urgent, which a lead's or a busy peer's inbox gathers while it sleeps
+ * (T3387), else for a day start after its close when it has any work it can start. Else it stays closed.
  */
 export function reopenVerdict(input: ReopenInput): ReopenVerdict {
   const { tasks, elsewhere, session, now, zone, parking } = input;
@@ -205,7 +212,12 @@ export function reopenVerdict(input: ReopenInput): ReopenVerdict {
   if (waiting.length > 0) {
     return { kind: 'needed', waiting };
   }
-  const handed = startableTasks(tasks, elsewhere, session, now, zone, parking, input.maxPriority).filter((task) => isNews(task, session, tasks, elsewhere, zone));
+  const startable = startableTasks(tasks, elsewhere, session, now, zone, parking);
+  const awaited = startable.filter((task) => input.awaited.has(task.id));
+  if (awaited.length > 0) {
+    return { kind: 'awaited', tasks: awaited };
+  }
+  const handed = startable.filter((task) => task.priority <= input.maxPriority && isNews(task, session, tasks, elsewhere, zone));
   if (handed.length > 0) {
     return { kind: 'handed', tasks: handed };
   }
@@ -220,6 +232,5 @@ export function reopenVerdict(input: ReopenInput): ReopenVerdict {
   if (dayStart === undefined || dayStart > now || dayStart <= input.closedAt) {
     return { kind: 'stay' };
   }
-  const startable = startableTasks(tasks, elsewhere, session, now, zone, parking);
   return startable.length === 0 ? { kind: 'stay' } : { kind: 'day-start', at: dayStart, tasks: startable };
 }

@@ -260,6 +260,19 @@ describe('teamrig close', () => {
     assert.deepEqual(held.processes.ends, []);
   });
 
+  it('keeps open a session its budget holds while another session waits on its p2 task (#1292)', async () => {
+    const held = await runningAlpha(75, reply(40_000), undefined, { ...TEAM, budget: HOLDING_BUDGET });
+    await holdAlpha(held.kit, CLAUDE_SESSION, LEAD_TAB);
+    ok(await held.kit.run(['add', '--title', 'Answer the schema question', '--description', 'what and why', '--priority', 'p2', '--owner', 'alpha', '--session', 'lead']));
+    ok(await held.kit.run(['add', '--title', 'Ship the migration', '--description', 'what and why', '--priority', 'p2', '--owner', 'bravo', '--session', 'lead']));
+    const preview = await close(held, ['alpha', '--session', 'lead']);
+    assert.match(preview.stdout[0] ?? '', /^CLOSE app-alpha \(session alpha\): quiet 75 min/, [...preview.stdout, ...preview.stderr].join('\n'));
+    ok(await held.kit.run(['set', 'T2', '--status', 'in-progress', '--session', 'bravo']));
+    ok(await held.kit.run(['set', 'T2', '--status', 'waiting', '--waits', 'task:T1', '--note', 'needs the answer', '--session', 'bravo']));
+    assertRefused(await close(held, ['alpha', '--yes', '--session', 'lead']), /alpha \(session alpha\) has work it can start \(T1\)/);
+    assert.deepEqual(held.processes.ends, []);
+  });
+
   it('closes a session with p1 work in quiet hours that block, and keeps it open for p0 (T2504)', async () => {
     const quietHours = { startUtc: '09:00', endUtc: '11:00', action: 'block' };
     const quiet = await runningAlpha(75, reply(40_000), undefined, { ...TEAM, budget: { enabled: true, quietHours } });

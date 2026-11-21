@@ -60,6 +60,7 @@ function reopen(overrides: Partial<ReopenInput>): ReopenVerdict {
     dayStart: undefined,
     unseenLines: 0,
     reopenUnreadLines: 10,
+    awaited: new Set(),
     now: NOW,
     zone: UTC,
     ...overrides,
@@ -224,6 +225,16 @@ describe('reopenVerdict', () => {
   it('stays closed for work it saw before the close, or less urgent than maxPriority', () => {
     assert.deepEqual(reopen({ tasks: tasksOf(testTask({ ownerSeenAt: SEEN })) }), { kind: 'stay' });
     assert.deepEqual(reopen({ tasks: tasksOf(testTask()), maxPriority: 1 }), { kind: 'stay' });
+  });
+
+  it('reopens for a task another session waits on, past its rest and seen before the close, ahead of news (#1292)', () => {
+    const awaited = testTask({ id: 'T5', ownerSeenAt: SEEN });
+    const news = testTask({ id: 'T6', priority: 0 });
+    const blocked = timeWait('T8', '2030-01-09 10:00', { ownerSeenAt: SEEN });
+    const held = { rest: { held: true, quiet: false }, maxPriority: 0 };
+    assert.deepEqual(reopen({ tasks: tasksOf(awaited, news), awaited: new Set(['T5']), ...held }), { kind: 'awaited', tasks: [awaited] });
+    assert.deepEqual(reopen({ tasks: tasksOf(awaited), ...held }), { kind: 'stay' }, 'no one waits on it');
+    assert.deepEqual(reopen({ tasks: tasksOf(blocked), awaited: new Set(['T8']), ...held }), { kind: 'stay' }, 'it cannot go on');
   });
 
   it('stays closed for a parked task, as news and at a day start alike, and reopens once an event moves it (T2090)', () => {

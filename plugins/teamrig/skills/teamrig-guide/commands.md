@@ -2673,10 +2673,12 @@ does not count. Then the host's free memory and commit charge (Windows, and Linu
 
 With `--pass` it prints, in the roster's order, what an idle pass would do, and changes nothing: `CLOSE` a running
 session [teamrig close](#teamrig-close) would close (quiet `open.headroom.closeIdleMinutes` or more, nothing it can
-start under the wake priority its budget leaves it, no [urgent line](hooks.md#urgent-lines) waiting to wake it),
-`KEEP` one it keeps open and why, `REOPEN` a session teamrig closed that the wake check would now wake (urgent lines
-posted for it, work handed to it since its close, or, unless its budget rests it, [open.idle.reopenUnreadLines] (10)
-inbox lines it has not seen, or the day's start with work it can start), `LATER` such a session
+start under the wake priority its budget leaves it and no task another session waits on, no
+[urgent line](hooks.md#urgent-lines) waiting to wake it), `KEEP` one it keeps open and why, `REOPEN` a session
+teamrig closed that the wake check would now wake (urgent lines posted for it, a task it can start that another
+session waits on, whatever its budget and `wake.priority`, work handed to it since its close, or, unless its budget
+rests it, [open.idle.reopenUnreadLines] (10) inbox lines it has not seen, or the day's start with work it can start),
+`LATER` such a session
 this pass leaves for the next (one reopen a pass, urgent lines first, the oldest first, then the most urgent top task,
 then a pile of unseen lines, and only on a settled plugin install with room on the host), `CLOSED` one teamrig closed with nothing it can start,
 and `AWAY` one not running that teamrig did not close; then a `PASS` total. A session whose project folder
@@ -2733,7 +2735,8 @@ It refuses the lead of the tree's root team (every team's lead with [open.idle.l
 session listed in `open.idle.keepOpen`, one in the owner's open booked
 meeting (started, under 4 hours, neither ended nor dropped: the owner talks to its tab), a lead or sub-lead that a
 live task's approval or decision waits on (the team's lead for the owner's too) or one of whose sessions runs, a session not running, one
-with work it can start or a time wait of its own ending within 30 minutes, one quiet under
+with work it can start (a task another session waits on counts whatever its budget) or a time wait of its own
+ending within 30 minutes, one quiet under
 `open.headroom.closeIdleMinutes` (60) since its transcript's last entry of the person or the model (a slash command,
 an away summary or a file change with no entry is no activity), in a turn, at a tool call (running, or waiting on a permission or an answer), waiting on a decision it put to the
 person (a `Decision needed:` line) or still running background work, one whose Claude Code runs shells the end
@@ -6794,7 +6797,8 @@ lift that gives more), a week already at the stop % or an unknown week (no statu
 
 A leader cuts one session under it to its own daily budget, for today at most. Without a cut, a session past its
 daily budget uses the room the others left: it is held only once the team has no room left today. Under a cut it is
-held as soon as it is past its own budget, whatever room the team has: it wakes, and is reopened, for p0 work only,
+held as soon as it is past its own budget, whatever room the team has: it wakes, and is reopened, for p0 work only
+(the idle pass also keeps it open, and reopens it, for a task of its another session waits on),
 and `budget.overAction` holds its new helpers back as it says. Its budget lines name the cut, and its leader gets no
 inbox line about it, since a leader gave the cut. A lift in force still sets the session's budget; a lift of the
 session given after the cut ends it. A cut ends at `--until` or at the end of the budget day (a UTC day), whichever
