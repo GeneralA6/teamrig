@@ -7,7 +7,7 @@ import { keepSessionsWeek, sessionsWeekOf, workHoursSince, type SessionsWeekInpu
 import { formatSessionsWeek, parseSessionsWeek, SESSIONS_WEEK_FORMAT } from './session-week-summary.ts';
 import { EMPTY_USAGE, type UsageState } from './store.ts';
 
-const WINDOW: WeekWindow = { start: Date.parse('2030-01-07T01:00:00Z'), reset: Date.parse('2030-01-14T01:00:00Z'), paceEnd: Date.parse('2030-01-13T21:00:00Z') };
+const WINDOW: WeekWindow = { start: Date.parse('2030-01-07T01:00:00Z'), startPct: 0, reset: Date.parse('2030-01-14T01:00:00Z'), paceEnd: Date.parse('2030-01-13T21:00:00Z') };
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 const PATH = '/kit/teams/app/state/usage/sessions.week.json';
 

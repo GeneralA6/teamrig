@@ -926,7 +926,7 @@ describe("teamrig budget in a child team on its parent's account", () => {
       const byDay = { '2030-01-07': { w, calls: 1, patterns: emptyPatterns() } };
       assert.ok(await store.save(id, { ...EMPTY_USAGE, byDay }, (await store.load(id)).rev), `${id}'s use saved`);
     }
-    const period = { start: Date.parse('2030-01-07T01:00:00Z'), end: RESET, kind: 'week', lastPct: 30, lastAt: kit.clock.now() } as const;
+    const period = { start: Date.parse('2030-01-07T01:00:00Z'), end: RESET, kind: 'week', startPct: 0, lastPct: 30, lastAt: kit.clock.now() } as const;
     await kit.files.write(join(usage, 'period.json'), formatPeriod(period));
     kit.clock.advance(60_000);
     ok(await run(['statusline'], { stdin: status(APP, 31) }));
@@ -1146,8 +1146,9 @@ describe('teamrig statusline', () => {
     const fallen = JSON.stringify({ session_id: ALPHA_TAB, cwd: APP, rate_limits: { seven_day: { used_percentage: 0.5, resets_at: RESET / 1000 } } });
     ok(await run(['statusline'], { stdin: fallen }));
     const lines = ok(await run(['budget']));
-    // The pace line runs from 10:00 to an hour before the reset, 134 hours: 1 of them is 0.74%.
-    assert.match(lines[0] ?? '', /^Week: 0\.50% used at 11:00 UTC \(status line\); the pace line is at 0\.74%/);
+    // The pace line runs from 10:00 to an hour before the reset, 134 hours, from the 0.5% the reset left (T4864):
+    // 1 of them is 0.5 + 99 / 134, 1.24%.
+    assert.match(lines[0] ?? '', /^Week: 0\.50% used at 11:00 UTC \(status line\); the pace line is at 1\.2%/);
     assert.match(lines[0] ?? '', / Counted from \w{3} 01-08 10:00 UTC, after a reset inside the week\.$/);
     // Today's use counts from 10:00 too: the team's 09:00 calls were the last budget's.
     assert.match(lines[3] ?? '', /^ {2}the team +0[.0]*% /);
@@ -1161,7 +1162,7 @@ describe('teamrig statusline', () => {
     kit.clock.advance(3_600_000);
     const fallen = JSON.stringify({ session_id: ALPHA_TAB, cwd: APP, rate_limits: { seven_day: { used_percentage: 0.5, resets_at: RESET / 1000 } } });
     ok(await run(['statusline'], { stdin: fallen }));
-    assert.match(ok(await run(['budget']))[0] ?? '', /the pace line is at 0\.74%/);
+    assert.match(ok(await run(['budget']))[0] ?? '', /the pace line is at 1\.2%/);
     const start = Date.parse('2030-01-08T10:00:00Z');
     assert.equal(parsePeriod(kit.files.get(join(TEAM_HOME, 'state', 'usage', 'period.json')) ?? '')?.start, start);
     await kit.files.write(TEAM_WEEK, formatTeamWeek({ ...KEPT_WEEK, start }));
