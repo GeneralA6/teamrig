@@ -25,9 +25,7 @@ import {
   type RevisionParts,
 } from '../../interface/index.ts';
 import type { Roster } from '../../config/roster.ts';
-import type { Task } from '../../register/fold.ts';
-import { layoutPaths, MissingSegmentError, readWorkingSet, type LayoutPaths } from '../../register/layout.ts';
-import type { RegisterSnapshot } from '../../register/snapshot.ts';
+import { layoutPaths } from '../../register/layout.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
 import { sessionRef } from '../inputs.ts';
 import { foundTeamOf, loadedConfig, lookForTeam, openKit, pastOrPresentIdOf, rosterOf } from '../kit.ts';
@@ -36,7 +34,7 @@ import { loadTree } from '../tree.ts';
 import { configSource, teamlessConfigSource } from './read-config.ts';
 import { meetingsSource } from './read-meetings.ts';
 import { selfOf, sessionsSource } from './read-sessions.ts';
-import { configProblemsOf, once, servedPathOf, skippedOf, stampsOf, type DocumentSource, type ReadScope, type ServedFolder } from './read-source.ts';
+import { configProblemsOf, once, skippedOf, stampsOf, workingSetOf, type DocumentSource, type ReadScope } from './read-source.ts';
 
 /** The trackers a document names a ref or a source by; a second one is one more entry here. */
 const CONNECTORS: readonly Connector[] = [GITHUB_CONNECTOR];
@@ -326,7 +324,7 @@ function tasksSource(scope: ReadScope): DocumentSource {
     async build() {
       const register = await workingSetOf(runtime, kit.paths, layout);
       const body = tasksBody({
-        tasks: register.tasks,
+        tasks: register.tasks.values(),
         owner: scope.owner,
         shapes: new SecretScanner(config.register.secretPatterns),
         connectors: CONNECTORS,
@@ -396,33 +394,4 @@ function inboxSessionOf(roster: Roster, asker: string): string {
     throw new RefusedError(found.error);
   }
   return found.id;
-}
-
-interface WorkingSet {
-  readonly tasks: Iterable<Task>;
-  readonly problems: readonly string[];
-}
-
-/**
- * The register's tasks and what could not be read of them. An archive with a segment gone serves no task and says
- * why, where a text command refuses: one broken document must not take down the others asked in the same run.
- */
-async function workingSetOf(runtime: CliRuntime, folder: ServedFolder, layout: LayoutPaths): Promise<WorkingSet> {
-  try {
-    const snapshot = await readWorkingSet(runtime.files, layout);
-    return { tasks: snapshot.state.tasks.values(), problems: damageOf(snapshot, folder, layout.tail) };
-  } catch (error) {
-    if (error instanceof MissingSegmentError) {
-      const segment = servedPathOf(folder, error.path);
-      return { tasks: [], problems: [`${segment}: missing, so the register's archive is incomplete and its tasks cannot be read`] };
-    }
-    throw error;
-  }
-}
-
-/** Damaged or newer lines never stop a read; each kind left out is one line, so a reader shows which it is. */
-function damageOf(snapshot: RegisterSnapshot, folder: ServedFolder, path: string): string[] {
-  const { orphans } = snapshot.state;
-  const unowned = orphans > 0 ? [`${servedPathOf(folder, path)}: ${orphans} event(s) naming no task left out`] : [];
-  return [...skippedOf(folder, path, snapshot.read), ...unowned];
 }
