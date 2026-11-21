@@ -32,8 +32,13 @@ const HOUR_MS = 3_600_000;
 const REVISION = /^[0-9a-f]{16}$/;
 /** A revision of the shape `read` serves, which no document of these specs has. */
 const HELD = '0123456789abcdef';
-/** The five documents of interface 1.0 in one run, the inbox being alpha's; a document a minor added has its own spec file. */
-const READ_ALL = ['read', 'tasks', 'inbox', 'sessions', 'meetings', 'config', '--json', '--session', 'alpha'] as const;
+/**
+ * Every document one run can ask for with no flag of its own, the inbox being alpha's: the five of interface 1.0 and
+ * those a minor added, so the specs that hold the store unwritten cover each new one.
+ */
+const ALL_DOCUMENTS = ['tasks', 'inbox', 'sessions', 'meetings', 'config', 'plan'] as const;
+const READ_ALL = ['read', ...ALL_DOCUMENTS, '--json', '--session', 'alpha'] as const;
+const ALL_UNCHANGED = ALL_DOCUMENTS.map(() => true);
 /** A text one of teamrig's own secret shapes matches, built from parts so this file holds none. */
 const SECRET = ['pass', 'word', '=', 'hunter2'].join('');
 
@@ -678,7 +683,7 @@ describe('teamrig read --unless', () => {
     const [tasks, , , meetings] = first;
     assert.ok(tasks !== undefined && meetings !== undefined);
     const again = allServed(await kit.run([...READ_ALL, '--unless', heldOf([meetings, tasks])]));
-    assert.deepEqual(unchangedOf(again), [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', false]]);
+    assert.deepEqual(unchangedOf(again), [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', false], ['plan', false]]);
     assert.deepEqual(again[0], { interface: '1.1', document: 'tasks', revision: tasks['revision'], unchanged: true });
     assert.deepEqual(again.slice(1, 3), first.slice(1, 3));
   });
@@ -701,11 +706,11 @@ describe('teamrig read --unless', () => {
     const kit = new CliHarness();
     await add(kit, 'Ship the gate', 'alpha');
     const held = heldOf(allServed(await kit.run(READ_ALL)));
-    assert.deepEqual(unchangedOf(allServed(await kit.run([...READ_ALL, '--unless', held]))).map(([, unchanged]) => unchanged), [true, true, true, true, true]);
+    assert.deepEqual(unchangedOf(allServed(await kit.run([...READ_ALL, '--unless', held]))).map(([, unchanged]) => unchanged), ALL_UNCHANGED);
     await post(kit, 'lead', 'alpha', 'the gate is merged');
     assert.deepEqual(
       unchangedOf(allServed(await kit.run([...READ_ALL, '--unless', held]))),
-      [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', true]],
+      [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', true], ['plan', true]],
     );
   });
 
@@ -722,14 +727,14 @@ describe('teamrig read --unless', () => {
 describe('teamrig read: the store is left as it was', () => {
   const STATE = `${normalisePath(join(TEAM_HOME, 'state'))}/`;
 
-  it('writes no byte and calls for no write over the five documents, served in full or as unchanged', async () => {
+  it('writes no byte and calls for no write over every document, served in full or as unchanged', async () => {
     const kit = new CliHarness();
     await add(kit, 'Ship the gate', 'alpha');
     await post(kit, 'lead', 'alpha', 'the gate is merged');
     const before = await storeOf(kit);
     const files = new WatchedFiles(kit.files);
     const held = heldOf(allServed(await kit.run(READ_ALL, { files })));
-    assert.deepEqual(unchangedOf(allServed(await kit.run([...READ_ALL, '--unless', held], { files }))).map(([, unchanged]) => unchanged), [true, true, true, true, true]);
+    assert.deepEqual(unchangedOf(allServed(await kit.run([...READ_ALL, '--unless', held], { files }))).map(([, unchanged]) => unchanged), ALL_UNCHANGED);
     assert.deepEqual([files.written(), await storeOf(kit)], [[], before]);
   });
 
@@ -738,7 +743,7 @@ describe('teamrig read: the store is left as it was', () => {
     assert.deepEqual(kit.files.paths().filter((path) => path.startsWith(STATE)), []);
     const before = await storeOf(kit);
     const files = new WatchedFiles(kit.files);
-    assert.equal(allServed(await kit.run(READ_ALL, { files })).length, READ_ALL.length - 4);
+    assert.equal(allServed(await kit.run(READ_ALL, { files })).length, ALL_DOCUMENTS.length);
     assert.deepEqual([files.written(), await storeOf(kit)], [[], before]);
     assert.ok(files.touched().some((path) => path.startsWith(STATE)));
   });
