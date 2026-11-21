@@ -1,13 +1,14 @@
 # teamrig logo and icon
 
-<img src="logo.svg" width="378" alt="teamrig logo">
+<img src="logo.svg" width="360" alt="teamrig logo">
 
 **Idea:** a frame holding three tiled panes, one tall and two stacked: the sessions of a team laid out side by side
-in one rig, as they run in a terminal.
+in one rig, as they run in a terminal. The tall pane is the lead, and two bridges link it to the two team panes it
+runs.
 
-**Colors** ([palette](colors.md)): purple for the frame, the rig; gray for the three panes, the team. The word
-"teamrig" keeps the wordmark's look: monospace, "team" gray and bold, "rig" purple and regular, drawn as paths
-(Liberation Mono, SIL Open Font License 1.1), so no font is needed.
+**Colors** ([palette](colors.md)): purple for the rig: the frame, the lead pane and its bridges; gray for the two team
+panes. The word "teamrig" matches the README's wordmark: Open Sans, "team" gray and regular, "rig" purple and bold,
+drawn as paths (Open Sans 3.003, SIL Open Font License 1.1), so it looks the same on every system and needs no font.
 
 **Plain text:** ◫ (a square split into panes)
 
@@ -25,9 +26,11 @@ and dark values each meet both backgrounds.
 
 ## Files
 
-- [`logo.svg`](logo.svg): the mark beside the word, 504 x 128.
+- [`logo.svg`](logo.svg): the mark beside the word, 480 x 128.
 - [`icon.svg`](icon.svg): the mark alone, 64 x 64, two colors, no line thinner than 4 units; drawn on a 4-unit grid,
   so at 16 px the frame and the gaps between the panes are each one whole pixel.
+- [`icon-16.svg`](icon-16.svg): the mark drawn for 16 px, its bridges twice as tall (8 units, two whole pixels), so they
+  still show at that size; the previews use it for their 16 px icon.
 - [`icon-mono.svg`](icon-mono.svg): the same mark in one color, every fill and stroke `currentColor`.
 - [`colors.md`](colors.md): the palette.
 - [`preview-light.svg`](preview-light.svg), [`preview-dark.svg`](preview-dark.svg): the pictures above.
