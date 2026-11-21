@@ -64,7 +64,8 @@ export interface HostPaths {
    * The host's own files whose content is a secret, such as its login and what a person typed into it: globs as the
    * secret guard reads its list (`secretGuard.paths`), in which `~/` starts at the person's home folder and a glob
    * with no leading `/` or drive matches at any depth. The guard reads them after its own defaults and before a
-   * team's globs, so a team's `!glob` still keeps one of them readable.
+   * team's globs, so a team's `!glob` still keeps one of them readable. A host only adds secret files: the guard
+   * keeps every shipped host's whatever host runs, and leaves out a `!glob` named here.
    */
   secretFiles(): readonly string[];
 }

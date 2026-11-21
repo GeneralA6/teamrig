@@ -17,6 +17,7 @@ import type { HookEvent, HookReply } from '../../ports/host/index.ts';
 import { approvedTaskOf } from '../../register/approval.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
+import { secretFilesOf } from '../host.ts';
 import { rosterOf, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { leadAboveOf } from '../tree.ts';
@@ -137,7 +138,7 @@ export function secretGuardReplyOf(runtime: CliRuntime, guard: GuardLoad, event:
   const config = secretGuardOf(guard.load);
   return secretGuardReply(event, {
     cwd: runtime.cwd,
-    rules: secretRulesOf(config, runtime.userHome, runtime.platform, secretPatternsOf(guard.load)),
+    rules: secretRulesOf(config, runtime.userHome, runtime.platform, secretFilesOf(runtime), secretPatternsOf(guard.load)),
     secretReads: config.secretReads,
     writes: config.writes,
   });
