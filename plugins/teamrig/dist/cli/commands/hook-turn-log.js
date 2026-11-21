@@ -5,6 +5,7 @@ import { cappedText } from "../../turn-log/entry.js";
 import { REPLY_TAIL_BYTES, replyOf } from "../../turn-log/reply.js";
 import { TurnLog } from "../../turn-log/store.js";
 import { WakePrompts } from "../../wake/prompts.js";
+import { transcriptsIfKept } from "../host.js";
 /** What SessionStart's `source` logs: a /clear or a compaction, which wipe what the tab showed. */
 const WIPES = { clear: 'context cleared (/clear)', compact: 'context compacted' };
 function entryOf(runtime, scope, said) {
@@ -51,19 +52,21 @@ function replyWithLast(reply, last, after) {
 }
 /**
  * Stop: the reply the person saw since the last one logged. A stop that a hook sent back (`stop_hook_active`)
- * ends part of a turn, so a later stop of the same turn starts after the last entry this one took (`upTo`).
+ * ends part of a turn, so a later stop of the same turn starts after the last entry this one took (`upTo`). On a
+ * host whose transcript teamrig cannot read, the reply is the Stop hook's last message alone.
  */
 export async function logReply(runtime, scope, payload) {
     const claude = sessionIdOf(payload);
-    const transcript = stringField(payload, 'transcript_path');
     if (!scope.config.turnLog.enabled || claude === null) {
         return;
     }
     const log = logOf(runtime, scope);
     const last = await log.last(scope.id);
     const after = last?.kind === 'reply' && last.claude === claude ? last.upTo : undefined;
+    const reader = transcriptsIfKept(runtime);
+    const transcript = reader === undefined ? undefined : stringField(payload, 'transcript_path');
     const tail = transcript === undefined ? undefined : await runtime.files.readTail(transcript, REPLY_TAIL_BYTES);
-    const fromTranscript = tail === undefined ? undefined : replyOf(tail, after, Buffer.byteLength(tail, 'utf8') < REPLY_TAIL_BYTES);
+    const fromTranscript = reader === undefined || tail === undefined ? undefined : replyOf(reader, tail, after, Buffer.byteLength(tail, 'utf8') < REPLY_TAIL_BYTES);
     const reply = replyWithLast(fromTranscript, stringField(payload, 'last_assistant_message'), after);
     if (reply === undefined) {
         return;

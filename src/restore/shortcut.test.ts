@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { ProgramRequest, ProgramResult, ProgramRunner } from '../github/credentials.ts';
+import type { ProgramRequest, ProgramResult, ProgramRunner } from '../core/program-runner.ts';
 import {
   parseShortcutScan,
   RESTORE_SHORTCUT_DESCRIPTION,

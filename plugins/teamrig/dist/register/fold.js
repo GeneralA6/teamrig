@@ -74,6 +74,7 @@ function created(id, fields, at, by) {
         ...fields,
         id,
         status: 'open',
+        descriptionCut: null,
         note: null,
         evidence: null,
         skill: null,
@@ -182,7 +183,8 @@ function reparksAfter(task, event) {
  * marks the task `decided`. On a task in any other status they mean nothing. A pin holds for the owner it was set for:
  * handing the task on clears it, unless the same update pins it (T637). An update that gives a size, or clears it,
  * gives its size base too (T649). An update with an `audit` pins a hand step file for the task, by the session that
- * wrote it (T2312).
+ * wrote it (T2312). An update that gives a description, or clears it, ends the mark of a cut one (T4781): the task
+ * holds its text whole again.
  */
 function withChanges(task, { changes, note, at, by, verdict, waits, decided, sizeBase, audit, securityVerdict }) {
     const priorityAt = changes.priority === undefined || changes.priority === task.priority ? task.priorityAt : at;
@@ -195,6 +197,7 @@ function withChanges(task, { changes, note, at, by, verdict, waits, decided, siz
     const next = {
         ...task,
         ...changes,
+        descriptionCut: changes.description === undefined ? task.descriptionCut : null,
         note: shown,
         answer,
         decided: decision,

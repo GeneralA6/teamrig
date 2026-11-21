@@ -1,0 +1,170 @@
+[
+  {
+    "event": "PostToolUse",
+    "index": 0,
+    "hook": "hook loop-nudge",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 0,
+    "hook": "hook tool-end",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 1,
+    "hook": "hook secret-redact",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 1,
+    "hook": "hook loop-nudge",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 1,
+    "hook": "hook tool-end",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 2,
+    "hook": "hook loop-nudge",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 2,
+    "hook": "hook tool-end",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 3,
+    "hook": "hook secret-redact",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 3,
+    "hook": "hook loop-nudge",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 3,
+    "hook": "hook tool-end",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 4,
+    "hook": "hook loop-nudge",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 4,
+    "hook": "hook tool-end",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 5,
+    "hook": "hook secret-redact",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 5,
+    "hook": "hook loop-nudge",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 5,
+    "hook": "hook missing-cli",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 5,
+    "hook": "hook tool-end",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 6,
+    "hook": "hook secret-redact",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 6,
+    "hook": "hook loop-nudge",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 6,
+    "hook": "hook missing-cli",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 6,
+    "hook": "hook tool-end",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUse",
+    "index": 7,
+    "hook": "hook tool-end",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  }
+]

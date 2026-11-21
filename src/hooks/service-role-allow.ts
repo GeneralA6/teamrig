@@ -8,9 +8,9 @@ import { holdBackOutput } from './permission.ts';
  * The service-role allow (T2984, the owner's option A): a session holding a role runs the role's teamrig commands with no
  * permission check, so a job the owner gave it (closing the GitHub issue a fix landed for, shipping its own branch)
  * never stalls on a prompt. It answers only for the tab bound to the holder (C1), only once every guard passed the
- * call, and only up to `prompts.serviceRoleDailyCap` closes, comments and migrated issues a role in 24 hours, then it asks
- * the owner (C6); a ship is held to the holder's own task branch instead (C4). Its log line names the role, command
- * and issue or branch, never the text (C7); `prompts.routeAllow: off` takes it away.
+ * call, and only up to `prompts.serviceRoleDailyCap` closes and migrated issues a role in 24 hours, then it asks the
+ * owner (C6); a ship is held to the holder's own task branch instead (C4). Its log line names the role, command and
+ * issue or branch, never the text (C7); `prompts.routeAllow: off` takes it away.
  */
 
 /** A role call's command and what it acts on, as the log and the allow name them. */
@@ -21,8 +21,8 @@ export const ROLE_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
  * How many calls the role's allow let run at or after `sinceMs` toward its cap, by the prompt-answers log's text: one
- * for each close and comment, and for a migrate its `count`, the issue rows its file held (T4606), so a run opening
- * fifty issues weighs fifty; a ship counts toward no cap. A line with no positive whole `count` weighs one.
+ * for each close, and for a migrate its `count`, the issue rows its file held (T4606), so a run opening fifty issues
+ * weighs fifty; a ship counts toward no cap. A line with no positive whole `count` weighs one.
  */
 export function roleAllowsSince(log: string, role: string, sinceMs: number): number {
   return parseJsonl(log)

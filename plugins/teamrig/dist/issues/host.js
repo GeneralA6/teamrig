@@ -1,7 +1,8 @@
 /**
  * The issue host port: where a team's issues and pull requests live, behind names that hold for any host. teamrig
- * writes to a host only through this port, and each host (GitHub is the only one so far, src/github/host.ts) is an
- * adapter that keeps its own access rules. A repository reaches a host only when the team config lists it there.
+ * writes to a host only through this port, split by kind (Tracker, CodeHost) into small capabilities, and each host
+ * (GitHub is the only one so far, src/github/host.ts, and it is both kinds) is an adapter that keeps its own access
+ * rules. A repository reaches a host only when the team config lists it there.
  */
 /** `owner/name#number`, as a command takes and prints it: a name is never `.` or `..` alone. */
 const TARGET_TEXT = /^([A-Za-z0-9-]+\/(?!\.\.?#)[A-Za-z0-9_.-]+)#([1-9][0-9]{0,9})$/u;
@@ -18,7 +19,9 @@ export function targetText(target) {
 }
 /** Why an issue was closed, as the host shows it: done, not to be done, or a duplicate of another. */
 export const CLOSE_REASONS = ['completed', 'not-planned', 'duplicate'];
+/** The host whose list is `github.repos`: the one a command that works through that list reaches. */
+export const GITHUB_REPOS_HOST = 'github';
 /** The host whose config list names `repo`, or undefined when none does. */
 export function hostKindOf(repo, lists) {
-    return lists.github.repos.includes(repo) ? 'github' : undefined;
+    return lists.github.repos.includes(repo) ? GITHUB_REPOS_HOST : undefined;
 }

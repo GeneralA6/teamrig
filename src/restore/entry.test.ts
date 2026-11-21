@@ -141,6 +141,32 @@ describe('formatEntry and parseEntry', () => {
     assert.deepEqual(parseEntry(text), ENTRY);
   });
 
+  it('writes an entry as the very text every installed teamrig reads (T4762)', () => {
+    // The file names each field itself, so this text may change only in the commit that moves the written name.
+    const lines = [
+      `"claudeSession": "${ID}"`,
+      '"projectDir": "/work/first"',
+      '"transcriptPath": "/u/.claude/projects/app/x.jsonl"',
+      '"entrypoint": "cli"',
+      '"pid": 6000',
+      '"team": "app"',
+      '"session": "alpha"',
+      '"state": "working"',
+      '"createdAt": "2030-01-08T09:00:00.000Z"',
+      '"updatedAt": "2030-01-08T09:00:00.000Z"',
+      '"restoreAttempts": 1',
+      '"restoredAt": "2030-01-08T09:00:00.000Z"',
+    ];
+    assert.equal(formatEntry(ENTRY), `{\n  ${lines.join(',\n  ')}\n}\n`);
+  });
+
+  it('reads an entry a later teamrig wrote, naming the session hostSession (T4762)', () => {
+    const later = formatEntry(ENTRY).replace('"claudeSession"', '"hostSession"');
+    assert.match(later, /"hostSession": "0123abcd/);
+    assert.deepEqual(parseEntry(later), ENTRY);
+    assert.equal(parseEntry(later.replace(ID, '../x')), undefined);
+  });
+
   it('refuses a damaged entry or one of another shape', () => {
     const record = JSON.parse(formatEntry(ENTRY));
     assert.equal(parseEntry('{"claudeSe'), undefined);

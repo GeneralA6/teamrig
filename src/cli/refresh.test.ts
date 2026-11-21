@@ -1,8 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import type { HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { MeetingSchedule } from '../meeting/schedule.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { CONTEXT_MAX_CHARS } from '../rules/pack.ts';
@@ -498,6 +500,18 @@ describe('runCli: context refresh', () => {
     assert.match(file, /## 2\n\nDecision: approve the release after the photos\n/);
     assert.match(file, /## 3 \(after your handover was written: it does not hold this\)\n\nHold the migration until Monday\n/);
     assert.ok(!file.includes('task-notification'));
+  });
+
+  it('carries nothing from the old session on a host whose transcript it cannot read, and its note still arrives', async () => {
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
+    await handoverWritten(kit);
+    await kit.files.append(TRANSCRIPT, `${JSON.stringify({ type: 'user', message: { role: 'user', content: 'Hold the migration until Monday' } })}\n`);
+    stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }));
+    const bare: HostSource = bareHost;
+    const fresh = contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear'), host: bare }));
+    assert.ok(fresh.includes('You were refreshed'), fresh);
+    assert.ok(!fresh.includes('The owner typed') && !fresh.includes('could not read'), fresh);
+    assert.equal(await kit.files.read(join(TEAM_HOME, 'handover', 'alpha.owner.md')), undefined);
   });
 
   it('removes the owner file of an earlier refresh when the old session had nothing from the owner', async () => {

@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
+import { cutTask } from '../register/description-cut.ts';
 import type { HostIssue, LabelEvent } from '../issues/issue.ts';
 import { importRules, type ImportRules } from './map.ts';
 import { closedNote, importedTasks, latestIssues, linkedRefs, planSync, refHolders } from './plan.ts';
@@ -172,6 +173,18 @@ describe('planSync', () => {
     const [step] = planSync([issue(1, { body: 'Why.', labels: ['p3'] })], importedTasks([all]), RULES).steps;
     assert.equal(step?.kind === 'update' ? step.note : undefined, 'title, description and priority as on GitHub');
     assert.deepEqual(planSync([issue(1, { body: 'Old steps.' })], importedTasks([described]), RULES).unchanged, 1);
+  });
+
+  it('judges a task whose line left the description out by its mark: the same body writes nothing, an edit of the same length is written', () => {
+    const cut = cutTask(imported('T1', 1, { description: 'Now with steps.' }));
+    assert.equal(cut.description, null);
+    assert.deepEqual(planSync([issue(1, { body: 'Now with steps.' })], importedTasks([cut]), RULES), { steps: [], inserted: 0, changed: 0, unchanged: 1, leftOut: [] });
+    assert.deepEqual(planSync([issue(1, { body: 'Now with stops.' })], importedTasks([cut]), RULES).steps, [
+      { kind: 'update', ref: 'gh:acme/web#1', id: 'T1', changes: { description: 'Now with stops.' }, note: 'description as on GitHub' },
+    ]);
+    assert.deepEqual(planSync([issue(1)], importedTasks([cut]), RULES).steps, [
+      { kind: 'update', ref: 'gh:acme/web#1', id: 'T1', changes: { description: null }, note: 'description as on GitHub' },
+    ]);
   });
 
   it('finishes, drops or reopens a task as its issue closes or reopens', () => {

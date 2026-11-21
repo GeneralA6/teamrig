@@ -1,0 +1,20 @@
+[
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000002",
+    "permission_mode": "default",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "Do these steps in order, one tool call per step; skip none and add none.\n1. Write the file notes.txt in the current folder with the single line: alpha.\n2. Read notes.txt.\n3. Edit notes.txt, replacing alpha with beta.\n4. Grep for beta in notes.txt.\n5. Glob for *.txt in the current folder.\n6. Run the Bash command: echo recorded-bash.\n7. Run the PowerShell command: Write-Output recorded-powershell.\n8. Run the Bash command: exit 3 (it fails on purpose; go on).\n9. Read the file missing.txt in the current folder (it does not exist; go on).\n10. Start one Agent helper with the prompt \"Reply with the word helper.\" and wait for its answer.\nThen reply with the word done."
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000003",
+    "permission_mode": "default",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "Reply with the word again."
+  }
+]

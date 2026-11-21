@@ -2,7 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TRANSCRIPT_TAIL_BYTES } from '../names/title.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { contextEstimateOf, contextTokensOf, ESTIMATE_BYTES_PER_TOKEN, readContextEstimate, readContextTokens } from './usage.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
+import { shippedUsage } from '../testing/shipped-usage.ts';
+import { contextEstimateOf, contextTokensOf, ESTIMATE_BYTES_PER_TOKEN, readContextEstimate, readContextTokens, type ContextSource } from './usage.ts';
+
+const source: ContextSource = { reader: shippedTranscripts(), usage: shippedUsage() };
+/** A meter whose context reading differs from the shipped one, so a case fails if the code adds the tokens by itself. */
+const stubbed: ContextSource = { ...source, usage: { ...source.usage, contextReading: (each) => each.output } };
 
 interface Usage {
   readonly input_tokens?: unknown;
@@ -28,14 +34,14 @@ const TRANSCRIPT = '/t/session.jsonl';
 describe('contextTokensOf', () => {
   it("adds the last main-thread reply's input, cache-creation and cache-read tokens", () => {
     const older = reply({ input_tokens: 5, cache_read_input_tokens: 10 });
-    assert.equal(contextTokensOf([older, PROMPT, MAIN, PROMPT].join('\n'), false), 99_140);
+    assert.equal(contextTokensOf(source,[older, PROMPT, MAIN, PROMPT].join('\n'), false), 99_140);
   });
 
   it("skips a subagent's reply, a damaged line and a line that only mentions usage", () => {
     const sidechain = reply({ input_tokens: 1, cache_read_input_tokens: 400_000 }, true);
     const damaged = MAIN.slice(0, -2);
     const mention = JSON.stringify({ type: 'user', isSidechain: false, message: { content: '"usage" is in the text' } });
-    assert.equal(contextTokensOf([MAIN, sidechain, damaged, mention, '{"usage": ['].join('\n'), false), 99_140);
+    assert.equal(contextTokensOf(source,[MAIN, sidechain, damaged, mention, '{"usage": ['].join('\n'), false), 99_140);
   });
 
   it('skips a reply without usage, with damaged numbers, or that read nothing', () => {
@@ -48,26 +54,33 @@ describe('contextTokensOf', () => {
       reply({ input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }),
       JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 9 } } }),
     ];
-    assert.equal(contextTokensOf(lines.join('\n'), false), 99_140);
+    assert.equal(contextTokensOf(source,lines.join('\n'), false), 99_140);
   });
 
   it('counts a missing cache field as 0', () => {
-    assert.equal(contextTokensOf(reply({ input_tokens: 1_234 }), false), 1_234);
+    assert.equal(contextTokensOf(source,reply({ input_tokens: 1_234 }), false), 1_234);
   });
 
   it('skips the first line of a cut tail, which may be the end of a longer line', () => {
     const tail = `${reply({ input_tokens: 7 })}\n${PROMPT}`;
-    assert.equal(contextTokensOf(tail, false), 7);
-    assert.equal(contextTokensOf(tail, true), undefined);
+    assert.equal(contextTokensOf(source,tail, false), 7);
+    assert.equal(contextTokensOf(source,tail, true), undefined);
   });
 
   it('is unknown when no line tells', () => {
-    assert.equal(contextTokensOf('', false), undefined);
-    assert.equal(contextTokensOf(PROMPT, false), undefined);
+    assert.equal(contextTokensOf(source,'', false), undefined);
+    assert.equal(contextTokensOf(source,PROMPT, false), undefined);
   });
 
   it('reads Windows line ends', () => {
-    assert.equal(contextTokensOf(`${PROMPT}\r\n${MAIN}\r\n`, false), 99_140);
+    assert.equal(contextTokensOf(source,`${PROMPT}\r\n${MAIN}\r\n`, false), 99_140);
+  });
+});
+
+describe('a context source', () => {
+  it('gives the context its meter reads from the reply, in the size and in the estimate', () => {
+    assert.equal(contextTokensOf(stubbed, [PROMPT, MAIN].join('\n'), false), 50);
+    assert.equal(contextEstimateOf(stubbed, MAIN, false), 50 + Math.ceil(Buffer.byteLength(MAIN, 'utf8') / ESTIMATE_BYTES_PER_TOKEN));
   });
 });
 
@@ -75,7 +88,7 @@ describe('readContextTokens', () => {
   it('reads a short transcript whole, its first line included', async () => {
     const files = new MemoryFiles();
     await files.write(TRANSCRIPT, `${MAIN}\n${PROMPT}\n`);
-    assert.equal(await readContextTokens(files, TRANSCRIPT), 99_140);
+    assert.equal(await readContextTokens(source,files,TRANSCRIPT), 99_140);
   });
 
   it('reads only the tail of a long transcript', async () => {
@@ -83,22 +96,22 @@ describe('readContextTokens', () => {
     const head = `${reply({ input_tokens: 1 })}\n`.repeat(10);
     const body = userLine(TRANSCRIPT_TAIL_BYTES);
     await files.write(TRANSCRIPT, `${head}${body}`);
-    assert.equal(await readContextTokens(files, TRANSCRIPT), undefined);
+    assert.equal(await readContextTokens(source,files,TRANSCRIPT), undefined);
     await files.write(TRANSCRIPT, `${head}${body}${MAIN}\n`);
-    assert.equal(await readContextTokens(files, TRANSCRIPT), 99_140);
+    assert.equal(await readContextTokens(source,files,TRANSCRIPT), 99_140);
   });
 
   it("takes a tail as long as the limit as cut, so its first line is skipped, and a shorter one as whole", async () => {
     const files = new MemoryFiles();
     const first = `${MAIN}\n`;
     await files.write(TRANSCRIPT, `${first}${userLine(TRANSCRIPT_TAIL_BYTES - first.length)}`);
-    assert.equal(await readContextTokens(files, TRANSCRIPT), undefined);
+    assert.equal(await readContextTokens(source,files,TRANSCRIPT), undefined);
     await files.write(TRANSCRIPT, `${first}${userLine(TRANSCRIPT_TAIL_BYTES - first.length - 1)}`);
-    assert.equal(await readContextTokens(files, TRANSCRIPT), 99_140);
+    assert.equal(await readContextTokens(source,files,TRANSCRIPT), 99_140);
   });
 
   it('is unknown for a missing transcript', async () => {
-    assert.equal(await readContextTokens(new MemoryFiles(), TRANSCRIPT), undefined);
+    assert.equal(await readContextTokens(source,new MemoryFiles(),TRANSCRIPT), undefined);
   });
 });
 
@@ -111,19 +124,19 @@ describe('contextEstimateOf', () => {
   it("adds the last main-thread reply and every line after it, a byte share each, to that reply's context", () => {
     const result = userLine(30_000);
     assert.equal(ESTIMATE_BYTES_PER_TOKEN, 3);
-    assert.equal(contextEstimateOf([PROMPT, MAIN, result].join('\n'), false), estimate(`${MAIN}\n${result}`));
+    assert.equal(contextEstimateOf(source,[PROMPT, MAIN, result].join('\n'), false), estimate(`${MAIN}\n${result}`));
     assert.equal(estimate(`${MAIN}\n${result}`) > 99_140 + 10_000, true, 'a 30,000-byte result adds at least 10,000');
-    assert.equal(contextEstimateOf(MAIN, false), estimate(MAIN), 'the reply alone');
+    assert.equal(contextEstimateOf(source,MAIN, false), estimate(MAIN), 'the reply alone');
   });
 
   it("counts a subagent's reply after it as bytes, never as the context", () => {
     const sidechain = reply({ input_tokens: 1, cache_read_input_tokens: 400_000 }, true);
-    assert.equal(contextEstimateOf([MAIN, sidechain].join('\n'), false), estimate(`${MAIN}\n${sidechain}`));
+    assert.equal(contextEstimateOf(source,[MAIN, sidechain].join('\n'), false), estimate(`${MAIN}\n${sidechain}`));
   });
 
   it('is unknown when no line tells, the first line of a cut tail included', () => {
-    assert.equal(contextEstimateOf(PROMPT, false), undefined);
-    assert.equal(contextEstimateOf(`${MAIN}\n${PROMPT}`, true), undefined);
+    assert.equal(contextEstimateOf(source,PROMPT, false), undefined);
+    assert.equal(contextEstimateOf(source,`${MAIN}\n${PROMPT}`, true), undefined);
   });
 });
 
@@ -133,12 +146,12 @@ describe('readContextEstimate', () => {
     const head = `${reply({ input_tokens: 1 })}\n`.repeat(10);
     const body = userLine(TRANSCRIPT_TAIL_BYTES);
     await files.write(TRANSCRIPT, `${head}${body}`);
-    assert.equal(await readContextEstimate(files, TRANSCRIPT), undefined);
+    assert.equal(await readContextEstimate(source,files,TRANSCRIPT), undefined);
     await files.write(TRANSCRIPT, `${head}${body}${MAIN}\n`);
-    assert.equal(await readContextEstimate(files, TRANSCRIPT), estimate(`${MAIN}\n`));
+    assert.equal(await readContextEstimate(source,files,TRANSCRIPT), estimate(`${MAIN}\n`));
   });
 
   it('is unknown for a missing transcript', async () => {
-    assert.equal(await readContextEstimate(new MemoryFiles(), TRANSCRIPT), undefined);
+    assert.equal(await readContextEstimate(source,new MemoryFiles(),TRANSCRIPT), undefined);
   });
 });

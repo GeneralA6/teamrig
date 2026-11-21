@@ -17,6 +17,7 @@ export function localChecks(base: string): readonly LocalCheck[] {
   return [
     ...commitChecks(base),
     TYPECHECK,
+    BOUNDARIES,
     ...BUILD,
     { name: 'coverage gate', argv: ['node', 'tools/ci/coverage-cli.ts'] },
     { name: 'dist smoke', argv: ['node', 'tools/ci/dist-smoke-cli.ts'] },
@@ -38,6 +39,7 @@ export function prePushChecks(base: string): readonly LocalCheck[] {
   return [
     ...commitChecks(base),
     TYPECHECK,
+    BOUNDARIES,
     ...BUILD,
     PLUGIN_TESTS,
     ...DOC_CHECKS,
@@ -45,6 +47,9 @@ export function prePushChecks(base: string): readonly LocalCheck[] {
 }
 
 const TYPECHECK: LocalCheck = { name: 'typecheck', argv: ['node', TSC, '-p', 'tsconfig.json'] };
+
+/** The layer boundaries of `src`, counted in under a second; in warn mode it fails only when it cannot read the tree. */
+const BOUNDARIES: LocalCheck = { name: 'boundaries', argv: ['node', 'tools/ci/boundaries-cli.ts'] };
 
 /** `npm run build`'s three steps: the dist cleared, compiled and its integrity list written. */
 const BUILD: readonly LocalCheck[] = [
@@ -56,10 +61,11 @@ const BUILD: readonly LocalCheck[] = [
 /** The plugin's own tests, in an empty home: no account, settings or other plugins. */
 const PLUGIN_TESTS: LocalCheck = { name: 'plugin tests', argv: ['claude', 'plugin', 'test', 'plugins/teamrig'], isolatedHome: true };
 
-/** The checks that hold the docs to the code: the pictures, the configuration reference and the links. */
+/** The checks that hold the docs to the code: the pictures, the configuration reference, the parity page and the links. */
 const DOC_CHECKS: readonly LocalCheck[] = [
   { name: 'doc pictures', argv: ['node', 'tools/docs/images-cli.ts', '--check'] },
   { name: 'doc config reference', argv: ['node', 'tools/docs/configuration-cli.ts', '--check'] },
+  { name: 'doc parity page', argv: ['node', 'tools/docs/parity-cli.ts', '--check'] },
   { name: 'doc links', argv: ['node', 'tools/docs/doc-check-cli.ts'] },
 ];
 
@@ -78,7 +84,10 @@ function signedScrubbed(base: string): readonly LocalCheck[] {
   ];
 }
 
-/** The size rule and the commit subjects of the commits since the base. */
+/**
+ * The size rule and the commit subjects of the commits since the base. Each takes under a second, and a miss found
+ * only at CI means a rewritten, re-pushed branch, so a short proof runs them too (security's condition C1, T4080).
+ */
 function commitShape(base: string): readonly LocalCheck[] {
   return [
     { name: 'size rule', argv: ['node', 'tools/ci/size-rule-cli.ts', '--base', base] },
@@ -87,13 +96,35 @@ function commitShape(base: string): readonly LocalCheck[] {
 }
 
 /**
- * The short checks (check-scope.ts, T3414): the scrub, the DCO sign-off, the typecheck and the given specs, for a
- * branch whose main merges only on GitHub's required checks, which run the whole suite on the pull request. The
- * pre-push hook runs `teamrig secrets pushed` before them. With no spec to run, the specs' check is left out.
+ * The short checks (check-scope.ts, T3414): the commit checks (scrub, DCO sign-off, size and subjects), the typecheck
+ * and the given specs, for a branch whose main merges only on GitHub's required checks, which run the whole suite on
+ * the pull request. The pre-push hook runs `teamrig secrets pushed` before them. With no spec to run, the specs' check
+ * is left out.
  */
 export function shortChecks(base: string, specs: readonly string[]): readonly LocalCheck[] {
-  const checks = [...signedScrubbed(base), TYPECHECK];
+  const checks = [...commitChecks(base), TYPECHECK];
   return specs.length === 0 ? checks : [...checks, { name: 'changed specs', argv: ['node', '--test', ...specs] }];
+}
+
+/**
+ * The paths whose change makes a short proof run every check (security's condition C2, T4080): the gate itself (its
+ * hooks, CI workflows, local and ship tools, the push guard) and what every spec depends on (the package, its lockfile
+ * and the TypeScript configs). A change there can break a spec no changed file sits beside, or the gate that would
+ * find it, so the short set proves too little.
+ */
+const GATE_PATHS: readonly RegExp[] = [
+  /^\.githooks\//,
+  /^\.github\//,
+  /^tools\/ci\//,
+  /^tools\/ship\//,
+  /^src\/push-guard\//,
+  /^package(-lock)?\.json$/,
+  /^tsconfig[^/]*\.json$/,
+];
+
+/** The changed paths that change the gate itself (GATE_PATHS), in the order given. */
+export function gateChanges(changed: readonly string[]): string[] {
+  return changed.filter((path) => GATE_PATHS.some((pattern) => pattern.test(path)));
 }
 
 const SPEC = /\.test\.ts$/;

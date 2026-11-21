@@ -1,9 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { toolUseFrom, type CallLine, type PromptLine, type ToolUse, type TranscriptLine } from './line.ts';
-import { RollupFold, parseRollupLine, type RollupSource } from './rollup.ts';
+import type { CallUsage, UsageMeter } from '../ports/host/index.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
+import { shippedUsage } from '../testing/shipped-usage.ts';
+import { RollupFold, rollupLineOf, type RollupSource } from './rollup.ts';
 import type { DayRollup, TaskRow, UseClass, UseRow } from './rollup-file.ts';
-import type { Usage } from './weights.ts';
 
 const NOON = Date.UTC(2026, 10, 2, 12);
 const MINUTE = 60_000;
@@ -13,7 +15,7 @@ const WORKER: RollupSource = { session: 'a', lead: false, side: false };
 const LEAD: RollupSource = { session: 'lead', lead: true, side: false };
 const HELPER: RollupSource = { session: 'a', lead: false, side: true };
 
-const usage = (input: number, output = 0): Usage => ({ input, cacheWrite5m: 0, cacheWrite1h: 0, cacheWriteUnsplit: 0, cacheRead: 0, output });
+const usage = (input: number, output = 0): CallUsage => ({ input, cacheWrite5m: 0, cacheWrite1h: 0, cacheWriteUnsplit: 0, cacheRead: 0, output });
 const shell = (command: string): ToolUse => toolUseFrom('t', 'Bash', { command });
 const READ_LIST = shell('teamrig list');
 const RUN_BUILD = shell('npm run build');
@@ -26,7 +28,7 @@ function call(at: number, tools: readonly ToolUse[] = [], fields: Partial<CallLi
 const prompt = (at: number, pushed = false): PromptLine => ({ kind: 'prompt', at, trigger: 'other', commands: [], ...(pushed ? { pushed: true } : {}) });
 
 function foldOf(source: RollupSource, lines: readonly TranscriptLine[]): ReadonlyMap<string, DayRollup> {
-  const fold = new RollupFold();
+  const fold = new RollupFold(shippedUsage());
   const transcript = fold.transcript(source);
   lines.forEach((line) => transcript.line(line));
   transcript.end();
@@ -107,8 +109,20 @@ describe('RollupFold W and tokens', () => {
     assert.equal(row?.output, 14);
   });
 
+  it("prices a call and the output a reply adds by the host's usage meter, and drops a call it prices at nothing", () => {
+    // A meter unlike the shipped one: a call costs 3 per output token, output added later 7 per token.
+    const flat: UsageMeter = { ...shippedUsage(), weights: { ...shippedUsage().weights, output: 7 }, ofCall: (each) => each.output * 3 };
+    const fold = new RollupFold(flat);
+    const transcript = fold.transcript(WORKER);
+    const line = call(NOON, [RUN_BUILD], { usage: usage(100, 10) });
+    [prompt(NOON), line, { ...line, usage: usage(100, 14) }, call(NOON + 1, [RUN_BUILD])].forEach((each) => transcript.line(each));
+    transcript.end();
+    const rows = rowsOf(fold.rollups());
+    assert.deepEqual(rows.map((row) => [row.calls, row.w]), [[1, 10 * 3 + 4 * 7]]);
+  });
+
   it('counts a reply two transcripts share once', () => {
-    const fold = new RollupFold();
+    const fold = new RollupFold(shippedUsage());
     const line = call(NOON, [RUN_BUILD]);
     for (const source of [WORKER, { ...WORKER, session: 'b' }]) {
       const transcript = fold.transcript(source);
@@ -166,7 +180,7 @@ describe('RollupFold days and seconds', () => {
   it('gives the same rows whatever order the sessions come in', () => {
     const lines = (): readonly TranscriptLine[] => [prompt(NOON), call(NOON, [RUN_BUILD])];
     const twice = (sessions: readonly string[]): readonly UseRow[] => {
-      const fold = new RollupFold();
+      const fold = new RollupFold(shippedUsage());
       for (const session of sessions) {
         const transcript = fold.transcript({ ...WORKER, session });
         lines().forEach((line) => transcript.line(line));
@@ -206,19 +220,20 @@ describe('RollupFold tasks', () => {
   });
 });
 
-describe('parseRollupLine', () => {
+describe('rollupLineOf', () => {
+  const reader = shippedTranscripts();
   const meta = (text: string, isMeta: boolean): string =>
     JSON.stringify({ type: 'user', isMeta, timestamp: '2026-11-02T12:00:00.000Z', message: { role: 'user', content: text } });
 
   it("reads the Stop hook's meta line as a pushed prompt", () => {
-    const line = parseRollupLine(meta('Stop hook feedback: go on', true));
+    const line = rollupLineOf(reader, meta('Stop hook feedback: go on', true));
     assert.equal(line?.kind, 'prompt');
     assert.equal(line?.kind === 'prompt' ? line.pushed : undefined, true);
   });
 
   it('drops any other meta line, and reads a plain prompt as the meter does', () => {
-    assert.equal(parseRollupLine(meta('Caveat: local commands', true)), undefined);
-    assert.equal(parseRollupLine(meta('fix the table', false))?.kind, 'prompt');
-    assert.equal(parseRollupLine('not json'), undefined);
+    assert.equal(rollupLineOf(reader, meta('Caveat: local commands', true)), undefined);
+    assert.equal(rollupLineOf(reader, meta('fix the table', false))?.kind, 'prompt');
+    assert.equal(rollupLineOf(reader, 'not json'), undefined);
   });
 });

@@ -1,9 +1,9 @@
 import { formatUtcDay } from '../core/time.ts';
-import { parseTranscriptLine, stopFeedbackPromptOf, type CallLine, type ToolUse, type TranscriptLine } from './line.ts';
+import type { TranscriptReader, UsageMeter } from '../ports/host/index.ts';
+import { stopFeedbackOf, transcriptLineOf, type CallLine, type ToolUse, type TranscriptLine } from './line.ts';
 import type { DayRollup, TaskRow, UseClass, UseRow } from './rollup-file.ts';
 import { TASKS_PER_TURN, tasksNamedBy } from './tasks.ts';
 import { isCoordinationTool } from './use-class.ts';
-import { WEIGHTS, weightOf } from './weights.ts';
 
 /**
  * The fold of a team's transcripts into rows per UTC day, by T1995's classes: what keeps the team running against what
@@ -26,8 +26,8 @@ export interface RollupSource {
 }
 
 /** One line of a transcript as the rollup reads it: the meter's lines, and the Stop hook's push that starts a turn here only. */
-export function parseRollupLine(raw: string): TranscriptLine | undefined {
-  return parseTranscriptLine(raw) ?? stopFeedbackPromptOf(raw);
+export function rollupLineOf(reader: TranscriptReader, raw: string): TranscriptLine | undefined {
+  return transcriptLineOf(reader, raw) ?? stopFeedbackOf(reader, raw);
 }
 
 /** A reply while its turn is open. A reply's lines repeat its usage, so the first gives the W and later ones only what they add. */
@@ -44,7 +44,7 @@ interface HeldCall {
   readonly tools: ToolUse[];
 }
 
-function heldCallOf(line: CallLine, at: number): HeldCall {
+function heldCallOf(line: CallLine, at: number, w: number): HeldCall {
   const { usage } = line;
   return {
     key: line.key,
@@ -55,7 +55,7 @@ function heldCallOf(line: CallLine, at: number): HeldCall {
     cacheWrite: usage.cacheWrite5m + usage.cacheWrite1h + usage.cacheWriteUnsplit,
     cacheRead: usage.cacheRead,
     output: usage.output,
-    w: weightOf(usage),
+    w,
     tools: [...line.tools],
   };
 }
@@ -178,9 +178,11 @@ export class TranscriptFold {
   private readonly dayOf: (day: string) => DayTally;
   private calls: HeldCall[] = [];
   private start: TurnStart | undefined;
+  private readonly usage: UsageMeter;
 
-  constructor(source: RollupSource, seen: Set<string>, dayOf: (day: string) => DayTally) {
+  constructor(source: RollupSource, usage: UsageMeter, seen: Set<string>, dayOf: (day: string) => DayTally) {
     this.source = source;
+    this.usage = usage;
     this.seen = seen;
     this.dayOf = dayOf;
   }
@@ -202,19 +204,20 @@ export class TranscriptFold {
   private reply(line: CallLine): void {
     const open = this.calls.at(-1);
     if (open !== undefined && line.key !== undefined && line.key === open.key) {
-      open.w += Math.max(0, line.usage.output - open.output) * WEIGHTS.output;
+      open.w += Math.max(0, line.usage.output - open.output) * this.usage.weights.output;
       open.output = Math.max(open.output, line.usage.output);
       open.tools.push(...line.tools);
       return;
     }
     // A reply with no W is Claude Code's own text, not an API call; a resumed session's transcript repeats old replies.
-    if (line.at === undefined || weightOf(line.usage) <= 0 || (line.key !== undefined && this.seen.has(line.key))) {
+    const w = this.usage.ofCall(line.usage);
+    if (line.at === undefined || w <= 0 || (line.key !== undefined && this.seen.has(line.key))) {
       return;
     }
     if (line.key !== undefined) {
       this.seen.add(line.key);
     }
-    this.calls.push(heldCallOf(line, line.at));
+    this.calls.push(heldCallOf(line, line.at, w));
   }
 
   private flush(): void {
@@ -254,9 +257,15 @@ export class TranscriptFold {
 export class RollupFold {
   private readonly seen = new Set<string>();
   private readonly days = new Map<string, DayTally>();
+  /** The host's price of one call. */
+  private readonly usage: UsageMeter;
+
+  constructor(usage: UsageMeter) {
+    this.usage = usage;
+  }
 
   transcript(source: RollupSource): TranscriptFold {
-    return new TranscriptFold(source, this.seen, (day) => this.dayTally(day));
+    return new TranscriptFold(source, this.usage, this.seen, (day) => this.dayTally(day));
   }
 
   /** The folded days, oldest first. */

@@ -14,6 +14,7 @@ import { ghHostsDenyLine, secretDenyLines } from '../doctor/deny-lines.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import type { StoreFolders } from '../core/plugin-store.ts';
 import type { TranscriptSource } from '../budget/discover.ts';
+import type { HostSource } from '../composition/host-ports.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
 import type { RestorePorts } from '../restore/ports.ts';
@@ -22,7 +23,8 @@ import type { SessionProcesses } from '../open/session-processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
 import type { RepoState } from '../push-guard/push.ts';
 import type { SecretsGit } from '../secret-guard/secrets-git.ts';
-import type { CredentialStore } from '../github/credentials.ts';
+import type { CredentialStore } from '../core/credentials.ts';
+import type { HttpClient } from '../core/http.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { ShellRunner } from '../test-run/shell.ts';
 import type { HostCpu } from '../delivery/cpu.ts';
@@ -142,6 +144,8 @@ export interface RunOptions {
   readonly gh?: GhRunner;
   /** The saved secrets `issue sync` reads tokens from; default a store with none. */
   readonly credentials?: CredentialStore;
+  /** The outside API a connector adapter reaches; default one where no request is answered. */
+  readonly http?: HttpClient;
   /** The folders and programs the CLI sees; default none. */
   readonly probe?: PathProbe;
   /** The plugin store the idle pass dates; default one with nothing in it. */
@@ -150,6 +154,8 @@ export interface RunOptions {
   readonly requirements?: RequirementsCheck;
   /** The Claude Code transcripts `budget` measures; default none. */
   readonly transcripts?: TranscriptSource;
+  /** The host ports the run is given; default the shipped host's (the quiet world's). */
+  readonly host?: HostSource;
   /** The worktrees `worktree remove` sees; default none. */
   readonly worktrees?: WorktreePorts;
   /** The shutdown log and countdown `restore` sees; default no shutdown on record and a countdown that goes at once. */
@@ -241,10 +247,12 @@ export class CliHarness {
       ...(options.shell === undefined ? {} : { shell: options.shell }),
       ...(options.gh === undefined ? {} : { gh: options.gh }),
       ...(options.credentials === undefined ? {} : { credentials: options.credentials }),
+      ...(options.http === undefined ? {} : { http: options.http }),
       ...(options.probe === undefined ? {} : { probe: options.probe }),
       ...(options.pluginStore === undefined ? {} : { pluginStore: options.pluginStore }),
       ...(options.requirements === undefined ? {} : { requirements: options.requirements }),
       ...(options.transcripts === undefined ? {} : { transcripts: options.transcripts }),
+      ...(options.host === undefined ? {} : { host: options.host }),
       ...(options.worktrees === undefined ? {} : { worktrees: options.worktrees }),
       ...(options.restore === undefined ? {} : { restore: options.restore }),
       ...(options.steps === undefined ? {} : { steps: options.steps }),

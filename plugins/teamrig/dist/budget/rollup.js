@@ -1,8 +1,7 @@
 import { formatUtcDay } from "../core/time.js";
-import { parseTranscriptLine, stopFeedbackPromptOf } from "./line.js";
+import { stopFeedbackOf, transcriptLineOf } from "./line.js";
 import { TASKS_PER_TURN, tasksNamedBy } from "./tasks.js";
 import { isCoordinationTool } from "./use-class.js";
-import { WEIGHTS, weightOf } from "./weights.js";
 /**
  * The fold of a team's transcripts into rows per UTC day, by T1995's classes: what keeps the team running against what
  * does its work. W here is raw, with no `budget.subagentWeight` and no `budget.modelWeights`, so a reader can apply
@@ -13,10 +12,10 @@ const TASK_WORK_CLASSES = new Set(['work', 'lead-work', 'helper']);
 /** The longest time one call is charged: a foreground Bash call stops at 10 minutes, so a longer gap is an idle session. */
 const MAX_CALL_MS = 600_000;
 /** One line of a transcript as the rollup reads it: the meter's lines, and the Stop hook's push that starts a turn here only. */
-export function parseRollupLine(raw) {
-    return parseTranscriptLine(raw) ?? stopFeedbackPromptOf(raw);
+export function rollupLineOf(reader, raw) {
+    return transcriptLineOf(reader, raw) ?? stopFeedbackOf(reader, raw);
 }
-function heldCallOf(line, at) {
+function heldCallOf(line, at, w) {
     const { usage } = line;
     return {
         key: line.key,
@@ -27,7 +26,7 @@ function heldCallOf(line, at) {
         cacheWrite: usage.cacheWrite5m + usage.cacheWrite1h + usage.cacheWriteUnsplit,
         cacheRead: usage.cacheRead,
         output: usage.output,
-        w: weightOf(usage),
+        w,
         tools: [...line.tools],
     };
 }
@@ -127,8 +126,10 @@ export class TranscriptFold {
     dayOf;
     calls = [];
     start;
-    constructor(source, seen, dayOf) {
+    usage;
+    constructor(source, usage, seen, dayOf) {
         this.source = source;
+        this.usage = usage;
         this.seen = seen;
         this.dayOf = dayOf;
     }
@@ -148,19 +149,20 @@ export class TranscriptFold {
     reply(line) {
         const open = this.calls.at(-1);
         if (open !== undefined && line.key !== undefined && line.key === open.key) {
-            open.w += Math.max(0, line.usage.output - open.output) * WEIGHTS.output;
+            open.w += Math.max(0, line.usage.output - open.output) * this.usage.weights.output;
             open.output = Math.max(open.output, line.usage.output);
             open.tools.push(...line.tools);
             return;
         }
         // A reply with no W is Claude Code's own text, not an API call; a resumed session's transcript repeats old replies.
-        if (line.at === undefined || weightOf(line.usage) <= 0 || (line.key !== undefined && this.seen.has(line.key))) {
+        const w = this.usage.ofCall(line.usage);
+        if (line.at === undefined || w <= 0 || (line.key !== undefined && this.seen.has(line.key))) {
             return;
         }
         if (line.key !== undefined) {
             this.seen.add(line.key);
         }
-        this.calls.push(heldCallOf(line, line.at));
+        this.calls.push(heldCallOf(line, line.at, w));
     }
     flush() {
         const { calls, source, start } = this;
@@ -197,8 +199,13 @@ export class TranscriptFold {
 export class RollupFold {
     seen = new Set();
     days = new Map();
+    /** The host's price of one call. */
+    usage;
+    constructor(usage) {
+        this.usage = usage;
+    }
     transcript(source) {
-        return new TranscriptFold(source, this.seen, (day) => this.dayTally(day));
+        return new TranscriptFold(source, this.usage, this.seen, (day) => this.dayTally(day));
     }
     /** The folded days, oldest first. */
     rollups() {

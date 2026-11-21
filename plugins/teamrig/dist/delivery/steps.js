@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { closeSync, openSync } from 'node:fs';
-import { endOf } from "../test-run/shell.js";
+import { endOf } from "../core/shell-end.js";
 import { constants } from 'node:os';
 import { lowerStep, NODE_PRIORITIES, STEP_PRIORITY } from "./priority.js";
 import { nodeTreeKill } from "./tree-kill.js";

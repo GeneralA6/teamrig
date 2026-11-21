@@ -1,18 +1,41 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseObject } from '../core/jsonl.ts';
+import { resolve } from 'node:path';
 import { blockStartLines } from '../hooks/live-tasks.ts';
+import { FolderNames } from '../testing/folder-names.ts';
+import { loadRecording } from '../testing/recorded.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { compactLine, promptLine, replyLine, resultsLine, sessionStartNoteLine, systemLine } from '../testing/transcript-lines.ts';
-import { callOf, parseTranscriptLine, stopFeedbackPromptOf, tasksIn } from './line.ts';
+import { stopFeedbackOf, tasksIn, transcriptLineOf, type PromptLine, type TranscriptLine } from './line.ts';
 
 const AT = '2026-03-02T10:00:00.000Z';
+const reader = shippedTranscripts();
 
-function keyOf(raw: string): string | undefined {
-  const entry = parseObject(raw);
-  return entry === undefined ? 'unparsed' : callOf(entry)?.key;
+/** The line as the meter counts it, read through the shipped host's reader. */
+function lineOf(raw: string): TranscriptLine | undefined {
+  return transcriptLineOf(reader, raw);
 }
 
-describe('parseTranscriptLine', () => {
+function stopFeedback(raw: string): PromptLine | undefined {
+  return stopFeedbackOf(reader, raw);
+}
+
+function keyOf(raw: string): string | undefined {
+  const line = lineOf(raw);
+  return line?.kind === 'call' ? line.key : 'no call';
+}
+
+describe('the recorded session read as the meter counts it', () => {
+  const recording = loadRecording('claude-code', new FolderNames({ cwd: resolve('/', 'work', 'app'), temp: resolve('/', 'tmp'), home: resolve('/', 'u') }));
+  const lines = recording.transcripts.flatMap((transcript) => transcript.text.split('\n'));
+
+  it('counts calls, results and prompts among the recorded lines', () => {
+    const kinds = new Set(lines.map((line) => lineOf(line)?.kind));
+    assert.deepEqual([...kinds].filter((kind) => kind === 'call' || kind === 'results' || kind === 'prompt').sort(), ['call', 'prompt', 'results']);
+  });
+});
+
+describe('transcriptLineOf', () => {
   it('reads a reply: its key, time, thread, usage and tool calls', () => {
     const raw = replyLine({
       id: 'msg_1',
@@ -24,7 +47,7 @@ describe('parseTranscriptLine', () => {
         { id: 't2', name: 'Read' },
       ],
     });
-    assert.deepEqual(parseTranscriptLine(raw), {
+    assert.deepEqual(lineOf(raw), {
       kind: 'call',
       key: 'msg_1|req_1',
       at: Date.parse(AT),
@@ -43,15 +66,15 @@ describe('parseTranscriptLine', () => {
   });
 
   it('marks a subagent reply, and one that does not say, as off the main thread', () => {
-    const sidechain = parseTranscriptLine(replyLine({ id: 'm', at: AT, sidechain: true, usage: {} }));
-    const unsaid = parseTranscriptLine(JSON.stringify({ type: 'assistant', message: { usage: {} } }));
+    const sidechain = lineOf(replyLine({ id: 'm', at: AT, sidechain: true, usage: {} }));
+    const unsaid = lineOf(JSON.stringify({ type: 'assistant', message: { usage: {} } }));
     assert.equal(sidechain?.kind === 'call' && sidechain.mainThread, false);
     assert.equal(unsaid?.kind === 'call' && unsaid.mainThread, false);
   });
 
   it('leaves the time undefined when the timestamp is missing or unreadable', () => {
-    assert.equal(parseTranscriptLine(replyLine({ id: 'm', usage: {} }))?.at, undefined);
-    assert.equal(parseTranscriptLine(replyLine({ id: 'm', at: 'yesterday', usage: {} }))?.at, undefined);
+    assert.equal(lineOf(replyLine({ id: 'm', usage: {} }))?.at, undefined);
+    assert.equal(lineOf(replyLine({ id: 'm', at: 'yesterday', usage: {} }))?.at, undefined);
   });
 
   it('skips tool blocks without an id or a name, and other blocks', () => {
@@ -68,7 +91,7 @@ describe('parseTranscriptLine', () => {
         ],
       },
     });
-    const line = parseTranscriptLine(raw);
+    const line = lineOf(raw);
     assert.deepEqual(line?.kind === 'call' ? line.tools : undefined, [{ id: 'y', name: 'Grep', command: undefined }]);
   });
 
@@ -85,7 +108,7 @@ describe('parseTranscriptLine', () => {
         ],
       },
     });
-    assert.deepEqual(parseTranscriptLine(raw), {
+    assert.deepEqual(lineOf(raw), {
       kind: 'results',
       at: Date.parse(AT),
       results: [
@@ -97,15 +120,15 @@ describe('parseTranscriptLine', () => {
   });
 
   it('reads a user line without results as a prompt, and skips text Claude Code adds itself', () => {
-    assert.deepEqual(parseTranscriptLine(promptLine(AT)), { kind: 'prompt', at: Date.parse(AT), trigger: 'other', commands: [] });
-    assert.equal(parseTranscriptLine(resultsLine(AT, [{ id: 'a', text: 'ok' }]))?.kind, 'results');
-    assert.equal(parseTranscriptLine(JSON.stringify({ type: 'user', isMeta: true, message: { content: 'note' } })), undefined);
-    assert.equal(parseTranscriptLine(JSON.stringify({ type: 'user', message: 'flat' })), undefined);
+    assert.deepEqual(lineOf(promptLine(AT)), { kind: 'prompt', at: Date.parse(AT), trigger: 'other', commands: [] });
+    assert.equal(lineOf(resultsLine(AT, [{ id: 'a', text: 'ok' }]))?.kind, 'results');
+    assert.equal(lineOf(JSON.stringify({ type: 'user', isMeta: true, message: { content: 'note' } })), undefined);
+    assert.equal(lineOf(JSON.stringify({ type: 'user', message: 'flat' })), undefined);
   });
 
   it('marks a prompt the team pushed, and no prompt a person typed (T2064)', () => {
     const pushed = (text: string): boolean | undefined => {
-      const line = parseTranscriptLine(promptLine(AT, text));
+      const line = lineOf(promptLine(AT, text));
       return line?.kind === 'prompt' ? line.pushed : undefined;
     };
     assert.equal(pushed('The day started at 02:00 IST: read your list'), true);
@@ -115,9 +138,9 @@ describe('parseTranscriptLine', () => {
   it('keeps the model and the effort a reply names, with no field for what it leaves out (T2064)', () => {
     const reply = (fields: Readonly<Record<string, unknown>>, message: Readonly<Record<string, unknown>>): string =>
       JSON.stringify({ type: 'assistant', timestamp: AT, ...fields, message: { id: 'm', usage: { input_tokens: 1 }, ...message } });
-    const named = parseTranscriptLine(reply({ effort: 'high' }, { model: 'model-a' }));
+    const named = lineOf(reply({ effort: 'high' }, { model: 'model-a' }));
     assert.deepEqual(named?.kind === 'call' ? [named.model, named.effort] : undefined, ['model-a', 'high']);
-    const bare = parseTranscriptLine(reply({}, {}));
+    const bare = lineOf(reply({}, {}));
     assert.deepEqual(bare?.kind === 'call' ? ['model' in bare, 'effort' in bare] : undefined, [false, false]);
   });
 
@@ -136,15 +159,15 @@ describe('parseTranscriptLine', () => {
         ],
       },
     });
-    const call = parseTranscriptLine(reply);
+    const call = lineOf(reply);
     assert.deepEqual(call?.kind === 'call' ? call.tools.map((tool) => tool.skill) : undefined, ['alpha-check', undefined, undefined]);
     assert.deepEqual(call?.kind === 'call' ? call.tools.map((tool) => tool.background) : undefined, [undefined, true, undefined]);
-    const prompt = parseTranscriptLine(promptLine(AT, '<command-message>x</command-message>\n<command-name>/alpha-check</command-name> <command-name>clear</command-name>'));
+    const prompt = lineOf(promptLine(AT, '<command-message>x</command-message>\n<command-name>/alpha-check</command-name> <command-name>clear</command-name>'));
     assert.deepEqual(prompt?.kind === 'prompt' ? prompt.commands : undefined, ['alpha-check', 'clear']);
   });
 
   it('names the agent type an Agent call runs, general-purpose when it names none (T1232)', () => {
-    const call = parseTranscriptLine(
+    const call = lineOf(
       replyLine({
         id: 'm',
         usage: { input: 1, output: 1 },
@@ -172,9 +195,9 @@ describe('parseTranscriptLine', () => {
         ],
       },
     });
-    const call = parseTranscriptLine(reply);
+    const call = lineOf(reply);
     assert.deepEqual(call?.kind === 'call' ? call.tools.map((tool) => tool.url) : undefined, ['https://vendor.example/terms', undefined]);
-    const prompt = parseTranscriptLine(promptLine(AT, 'T12 and T7, then T12 again; not T0, T05 or AT5'));
+    const prompt = lineOf(promptLine(AT, 'T12 and T7, then T12 again; not T0, T05 or AT5'));
     assert.deepEqual(prompt?.kind === 'prompt' ? prompt.tasks : undefined, ['T12', 'T7']);
     assert.equal(tasksIn('no task here').length, 0);
   });
@@ -183,7 +206,7 @@ describe('parseTranscriptLine', () => {
     const tagged = '<task-notification>\n<task-id>b1</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n</task-notification>';
     const notice = JSON.stringify({ type: 'user', origin: { kind: 'task-notification' }, message: { role: 'user', content: tagged }, timestamp: AT });
     const answers = (raw: string): string | undefined => {
-      const line = parseTranscriptLine(raw);
+      const line = lineOf(raw);
       return line?.kind === 'prompt' ? line.answers : undefined;
     };
     assert.equal(answers(notice), 'toolu_1');
@@ -195,7 +218,7 @@ describe('parseTranscriptLine', () => {
     const user = (fields: Readonly<Record<string, unknown>>, content: unknown = 'go'): string =>
       JSON.stringify({ type: 'user', message: { role: 'user', content }, timestamp: AT, ...fields });
     const triggerOf = (raw: string): string | undefined => {
-      const line = parseTranscriptLine(raw);
+      const line = lineOf(raw);
       return line?.kind === 'prompt' ? line.trigger : undefined;
     };
     const lines = [
@@ -229,46 +252,46 @@ describe('parseTranscriptLine', () => {
   });
 
   it('reads a compaction marker', () => {
-    assert.deepEqual(parseTranscriptLine(compactLine(AT)), { kind: 'compact', at: Date.parse(AT) });
+    assert.deepEqual(lineOf(compactLine(AT)), { kind: 'compact', at: Date.parse(AT) });
   });
 
   it('reads a SessionStart note holding the start note line as a work-block start, and no other note or text (T1529)', () => {
     const start = blockStartLines('alpha', { at: 'Mon 03-02 12:00 IST', meetings: undefined, week: undefined }, 'teamrig').join('\n');
-    assert.deepEqual(parseTranscriptLine(sessionStartNoteLine(AT, ['# Team rules', `${start}\nLIVE TASKS of alpha`])), { kind: 'start-note', at: Date.parse(AT) });
-    assert.equal(parseTranscriptLine(sessionStartNoteLine(AT, ['# Team rules', 'LIVE TASKS of alpha'])), undefined, 'a note with no start line');
-    assert.equal(parseTranscriptLine(sessionStartNoteLine(AT, [start], 'UserPromptSubmit')), undefined, 'another hook');
-    assert.equal(parseTranscriptLine(sessionStartNoteLine(AT, [`quoted: ${start}`])), undefined, 'a line that only quotes it');
-    assert.equal(parseTranscriptLine(promptLine(AT, start))?.kind, 'prompt', 'a prompt that quotes it');
+    assert.deepEqual(lineOf(sessionStartNoteLine(AT, ['# Team rules', `${start}\nLIVE TASKS of alpha`])), { kind: 'start-note', at: Date.parse(AT) });
+    assert.equal(lineOf(sessionStartNoteLine(AT, ['# Team rules', 'LIVE TASKS of alpha'])), undefined, 'a note with no start line');
+    assert.equal(lineOf(sessionStartNoteLine(AT, [start], 'UserPromptSubmit')), undefined, 'another hook');
+    assert.equal(lineOf(sessionStartNoteLine(AT, [`quoted: ${start}`])), undefined, 'a line that only quotes it');
+    assert.equal(lineOf(promptLine(AT, start))?.kind, 'prompt', 'a prompt that quotes it');
   });
 
   it('skips lines it does not count, damaged and torn lines, and replies without readable usage', () => {
-    assert.equal(parseTranscriptLine(systemLine(AT)), undefined);
-    assert.equal(parseTranscriptLine(replyLine({ id: 'm', at: AT, usage: { input: 1 } }).slice(0, -5)), undefined);
-    assert.equal(parseTranscriptLine(JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: -1 } } })), undefined);
-    assert.equal(parseTranscriptLine(JSON.stringify({ type: 'summary', usage: 1 })), undefined);
-    assert.equal(parseTranscriptLine(JSON.stringify({ type: 'assistant', message: { content: [] } })), undefined);
-    assert.equal(parseTranscriptLine('"usage"'), undefined);
+    assert.equal(lineOf(systemLine(AT)), undefined);
+    assert.equal(lineOf(replyLine({ id: 'm', at: AT, usage: { input: 1 } }).slice(0, -5)), undefined);
+    assert.equal(lineOf(JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: -1 } } })), undefined);
+    assert.equal(lineOf(JSON.stringify({ type: 'summary', usage: 1 })), undefined);
+    assert.equal(lineOf(JSON.stringify({ type: 'assistant', message: { content: [] } })), undefined);
+    assert.equal(lineOf('"usage"'), undefined);
   });
 });
 
-describe('stopFeedbackPromptOf', () => {
+describe('stopFeedbackOf', () => {
   const meta = (content: unknown, type = 'user'): string => JSON.stringify({ type, isMeta: true, timestamp: AT, message: { role: 'user', content } });
 
   it("reads the Stop hook's own line as a pushed prompt, which the meter goes on skipping (T2064)", () => {
     const raw = meta('Stop hook feedback:\nkeep going on T12');
-    assert.deepEqual(stopFeedbackPromptOf(raw), { kind: 'prompt', at: Date.parse(AT), trigger: 'other', commands: [], tasks: ['T12'], pushed: true });
-    assert.equal(parseTranscriptLine(raw), undefined);
+    assert.deepEqual(stopFeedback(raw), { kind: 'prompt', at: Date.parse(AT), trigger: 'other', commands: [], tasks: ['T12'], pushed: true });
+    assert.equal(lineOf(raw), undefined);
   });
 
   it('reads the text from blocks too', () => {
-    assert.equal(stopFeedbackPromptOf(meta([{ type: 'text', text: 'Stop hook feedback: go' }]))?.pushed, true);
+    assert.equal(stopFeedback(meta([{ type: 'text', text: 'Stop hook feedback: go' }]))?.pushed, true);
   });
 
   it('takes no other line', () => {
-    assert.equal(stopFeedbackPromptOf(meta('Caveat: local commands')), undefined, 'another line of its own');
-    assert.equal(stopFeedbackPromptOf(meta('Stop hook feedback', 'assistant')), undefined, 'not a user line');
-    assert.equal(stopFeedbackPromptOf(promptLine(AT, 'Stop hook feedback')), undefined, 'not its own text');
-    assert.equal(stopFeedbackPromptOf(JSON.stringify({ type: 'user', isMeta: true, message: 'flat' })), undefined, 'no message');
-    assert.equal(stopFeedbackPromptOf('"isMeta":true'), undefined, 'a torn line');
+    assert.equal(stopFeedback(meta('Caveat: local commands')), undefined, 'another line of its own');
+    assert.equal(stopFeedback(meta('Stop hook feedback', 'assistant')), undefined, 'not a user line');
+    assert.equal(stopFeedback(promptLine(AT, 'Stop hook feedback')), undefined, 'not its own text');
+    assert.equal(stopFeedback(JSON.stringify({ type: 'user', isMeta: true, message: 'flat' })), undefined, 'no message');
+    assert.equal(stopFeedback('"isMeta":true'), undefined, 'a torn line');
   });
 });

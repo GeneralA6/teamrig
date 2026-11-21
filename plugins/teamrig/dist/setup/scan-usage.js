@@ -1,6 +1,6 @@
 import { readLines } from "../budget/cursor.js";
 import { discoverTranscripts } from "../budget/discover.js";
-import { AGENT_TOOL, parseTranscriptLine, SKILL_TOOL } from "../budget/line.js";
+import { AGENT_TOOL, SKILL_TOOL, transcriptLineOf } from "../budget/line.js";
 import { stringField } from "../core/guards.js";
 import { parseObject } from "../core/jsonl.js";
 import { claudeWorktreeRepo, isAtOrBelow, pathKey } from "../core/paths.js";
@@ -17,8 +17,8 @@ function addCwd(line, one) {
         one.cwd = entry === undefined ? undefined : stringField(entry, 'cwd');
     }
 }
-function addUses(line, one) {
-    const parsed = parseTranscriptLine(line);
+function addUses(reader, line, one) {
+    const parsed = transcriptLineOf(reader, line);
     if (parsed?.kind === 'call') {
         for (const tool of parsed.tools) {
             if (tool.skill !== undefined) {
@@ -33,14 +33,14 @@ function addUses(line, one) {
         parsed.commands.forEach((command) => one.skills.add(command));
     }
 }
-async function readOne(source, path, one, chunkBytes) {
+async function readOne({ source, reader }, path, one, chunkBytes) {
     const size = (await source.size(path)) ?? 0;
     for (let offset = 0; offset < size;) {
         const batch = await readLines(source, path, offset, size, chunkBytes);
         for (const line of batch.lines) {
             addCwd(line, one);
             if (mayNameUse(line)) {
-                addUses(line, one);
+                addUses(reader, line, one);
             }
             const run = mayRecordHookRun(line) ? hookRunOf(line) : undefined;
             if (run !== undefined) {
@@ -83,12 +83,12 @@ async function newestFirst(source, projectsDir, since) {
  * the first one carrying a `cwd`, the folder the session started in, and what each context hook's runs printed: a project folder's name in `projectsDir` is a
  * lossy slug (`a/b-c` and `a-b/c` share one), so it cannot say where.
  */
-export async function readTranscriptUse(source, projectsDir, window) {
+export async function readTranscriptUse(deps, projectsDir, window) {
     const skills = new Map();
     const agents = new Map();
     const folders = new Map();
     const hooks = new Map();
-    const dated = await newestFirst(source, projectsDir, window.since);
+    const dated = await newestFirst(deps.source, projectsDir, window.since);
     let transcripts = 0;
     let bytes = 0;
     for (const { path } of dated) {
@@ -96,7 +96,7 @@ export async function readTranscriptUse(source, projectsDir, window) {
             break;
         }
         const one = { cwd: undefined, skills: new Set(), agents: new Set(), hooks };
-        bytes += await readOne(source, path, one, window.chunkBytes ?? USE_CHUNK_BYTES);
+        bytes += await readOne(deps, path, one, window.chunkBytes ?? USE_CHUNK_BYTES);
         transcripts += 1;
         const cwd = startFolderOf(one.cwd);
         addUsedIn(skills, one.skills, cwd);

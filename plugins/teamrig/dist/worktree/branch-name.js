@@ -1,3 +1,4 @@
+import { branchHint } from "../issues/ref.js";
 /**
  * A new branch's name from its task (T2690), by the team's pattern (`delivery.branches`), so every branch and the
  * worktree folder named after it read the same way: `feat/t12-parser` by default, after Conventional Branch. The task id
@@ -68,7 +69,7 @@ export function taskBranchName(task, branches, type) {
     return branchNameFor(pattern, {
         type: branchType,
         id: task.id.toLowerCase(),
-        issue: issueNumberOf(task.ref),
+        issue: branchHint(task.ref),
         slug: slugOf(task.title, branches.slugMax),
         session: task.owner,
     });
@@ -92,10 +93,6 @@ export function slugOf(title, max) {
         slug = next;
     }
     return slug === '' ? (words[0]?.slice(0, max) ?? 'work') : slug;
-}
-/** The issue number of a task's `gh:<owner>/<repo>#<n>` ref; undefined for none. */
-export function issueNumberOf(ref) {
-    return ref === null ? undefined : /^gh:[^#\s]+#(\d+)$/.exec(ref)?.[1];
 }
 function fill(pattern, words) {
     return pattern.replace(PLACEHOLDER, (whole, name) => (isPlaceholder(name) ? (words[name] ?? '') : whole));

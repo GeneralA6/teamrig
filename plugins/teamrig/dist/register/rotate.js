@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { toJsonlLine } from "../core/jsonl.js";
 import { compactRegister } from "./compaction.js";
+import { cutTask } from "./description-cut.js";
 import { assemble, historyPlan, readPlan, readSnapshotText, workingSetPlan } from "./layout.js";
 import { markerRecord } from "./marker.js";
 import { isWritable, readEvents } from "./snapshot.js";
@@ -35,6 +36,15 @@ function countProblems(what, actual, expected) {
         .map(([key, value]) => `${what} has ${key} ${String(value)} where ${String(want[key])} is expected`);
 }
 /**
+ * True when two folds of a task are the same task: equal on every field once each has its description cut. A task
+ * line holds a description as its mark (description-cut.ts, T4781), so a working set holds cut what the history, or
+ * the source of a compaction, holds whole; the mark is the whole text's length and hash, so a text that differs
+ * still tells.
+ */
+function sameButCut(a, b) {
+    return isDeepStrictEqual(cutTask(a), cutTask(b));
+}
+/**
  * The new files read back as a reader reads them (the snapshot, then the marker alone as the tail), held
  * against the source on every task and count: any difference is a problem that refuses the rotation.
  */
@@ -55,7 +65,7 @@ export function readBack(source, compaction, markerText) {
             if (after !== undefined)
                 problems.push(`${id} is retired and still in the new working set`);
         }
-        else if (isDeepStrictEqual(after, task)) {
+        else if (after !== undefined && sameButCut(after, task)) {
             unchanged += 1;
         }
         else {
@@ -75,7 +85,7 @@ function historyProblems(working, history) {
             if (task.status !== 'done' && task.status !== 'dropped')
                 problems.push(`${id} is ${task.status} in the history and missing from the working set`);
         }
-        else if (!isDeepStrictEqual(kept, task)) {
+        else if (!sameButCut(kept, task)) {
             problems.push(`${id} folds otherwise in the working set than in the history`);
         }
     }

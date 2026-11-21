@@ -2,7 +2,8 @@ import { isRecord } from "../core/guards.js";
 import { privateShapeIn } from "../core/private-shapes.js";
 import { SecretScanner } from "../core/secrets.js";
 import { taskIdIn } from "../issues/posted.js";
-import { ACTIVE_STATUSES, ISSUE_REF_PREFIX } from "../register/model.js";
+import { refOf } from "../issues/ref.js";
+import { ACTIVE_STATUSES, isIssueRef } from "../register/model.js";
 /**
  * Moving a team's tasks to GitHub issues (`teamrig issue migrate`): a file of rows, one per task, says for each task
  * whether it becomes an issue, with the public wording the team wrote for it, or stays on the team's own list
@@ -187,13 +188,13 @@ function skipReason(row, task, repos, judge) {
     if (row.decision === 'local') {
         return undefined;
     }
-    if (task.ref?.startsWith(ISSUE_REF_PREFIX) === true) {
+    if (isIssueRef(task.ref)) {
         return `the task has its issue already: ${task.ref}`;
     }
     if (!repos.includes(row.repo)) {
         return `${row.repo} is not one of github.repos (${repos.join(', ')})`;
     }
-    return judge(task, `${ISSUE_REF_PREFIX}${row.repo}#1`);
+    return judge(task, refOf({ repo: row.repo, number: 1 }));
 }
 /** The number of the issue GitHub's create answered with, from the JSON gh prints; undefined when there is none. */
 export function createdNumber(stdout) {

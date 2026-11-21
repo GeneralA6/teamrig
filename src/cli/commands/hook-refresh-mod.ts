@@ -9,6 +9,7 @@ import { decideCompact, decideMidTurn, handoverHashOf, type AskContext, type Com
 import { readRunningWork } from '../../refresh/running.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { readContextEstimate } from '../../refresh/usage.ts';
+import { contextSourceIfTold, transcriptsIfKept } from '../host.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { hookScopeOf, parseJson, type SessionScope } from './hook-input.ts';
@@ -42,10 +43,12 @@ function countOf(payload: JsonRecord, key: string): number | undefined {
  */
 export async function dueFactsAt(runtime: CliRuntime, store: RefreshStore, id: string, transcript: string | undefined): Promise<DueFacts> {
   const handover = await store.handover(id);
+  // A host that keeps no transcript teamrig can read shows no running work, as a missing transcript shows none.
+  const reader = transcriptsIfKept(runtime);
   return {
     handoverHash: handoverHashOf(handover),
     handover,
-    running: transcript === undefined ? 0 : await readRunningWork(runtime.files, transcript, runtime.clock.now()),
+    running: transcript === undefined || reader === undefined ? 0 : await readRunningWork(reader, runtime.files, transcript, runtime.clock.now()),
   };
 }
 
@@ -172,7 +175,9 @@ export async function preCompact(args: ParsedArgs, runtime: CliRuntime): Promise
   if (transcript === undefined || scope === undefined) {
     return EXIT.ok;
   }
-  const tokens = await readContextEstimate(runtime.files, transcript);
+  // No readable transcript or no meter, no estimate: the compaction goes, since a refusal here would block it.
+  const source = contextSourceIfTold(runtime);
+  const tokens = source === undefined ? undefined : await readContextEstimate(source, runtime.files, transcript);
   const state = await new RefreshStore(runtime.files, scope.kit.paths).state(scope.id);
   const decision = tokens === undefined ? GO : decideCompact(state, { settings: scope.config.refresh, command: KIT_NAME }, { tokens, window: undefined });
   if (decision.kind === 'skip') {

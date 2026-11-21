@@ -7,6 +7,7 @@ import { SCAN_MAX_BYTES, scanTranscripts } from "../../skills/scorecard-scan.js"
 import { ScorecardStore } from "../../skills/scorecard-store.js";
 import { signatureOf } from "../../skills/signature.js";
 import { noPositionals, UsageError } from "../args.js";
+import { transcriptsOf } from "../host.js";
 import { openTeamKit, requireConfig } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { loadTree, skillOwnersElsewhere } from "../tree.js";
@@ -29,7 +30,7 @@ export async function scorecard(args, runtime) {
     const baseline = rangeOf(dayFlag(args.flags, 'baseline-from') ?? addDays(baselineTo, -daysIn(window) + 1), baselineTo, 'baseline-from');
     const skills = await skillsToLint(runtime.files, kit.paths.skills, runtime.userHome);
     const signatures = skills.map(signatureOf);
-    const result = await scanTranscripts({ source: runtime.transcripts, store: new ScorecardStore(runtime.files, kit.paths.skillsScorecard), clock: runtime.clock }, {
+    const result = await scanTranscripts({ source: runtime.transcripts, reader: transcriptsOf(runtime), store: new ScorecardStore(runtime.files, kit.paths.skillsScorecard), clock: runtime.clock }, {
         projectsDir: claudeProjectsDir(runtime.env, runtime.userHome),
         skills: { names: new Set(skills.map((skill) => skill.name)), signatures: signatures.filter((signature) => signature.patterns.length > 0) },
         since: startOf(baseline.from < window.from ? baseline.from : window.from),

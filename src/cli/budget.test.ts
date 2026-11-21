@@ -21,7 +21,9 @@ import { formatUtcDay, MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
 import { formatMeeting, type Meeting } from '../meeting/state.ts';
 import { APP, CliHarness, EVENTS_PATH, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { shippedStatusSource } from '../testing/shipped-status-line.ts';
 import { SUB_TEAMS, teamConfigOf, teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { promptLine, replyLine, transcript, type FixtureTool } from '../testing/transcript-lines.ts';
 import type { RepoState } from '../push-guard/push.ts';
@@ -79,7 +81,7 @@ function weekOnlyStatus(cwd: string): string {
 /** A status line snapshot a tab of another team saved in `dir`: the week `usedPct` used, read now. */
 async function saveReading(kit: CliHarness, dir: string, session: string, usedPct: number): Promise<void> {
   const input = JSON.stringify({ session_id: session, cwd: APP, rate_limits: { seven_day: { used_percentage: usedPct, resets_at: RESET / 1000 } } });
-  const snapshot = snapshotOfStatus(input, kit.clock.now());
+  const snapshot = snapshotOfStatus(shippedStatusSource(), input, kit.clock.now());
   assert.ok(snapshot, input);
   await kit.files.write(join(dir, `${session}.json`), formatSnapshot(snapshot));
 }
@@ -1059,6 +1061,16 @@ describe('teamrig statusline', () => {
     assert.deepEqual([result.code, result.stdout, result.stderr], [EXIT.ok, [SHOWN], []]);
     assert.match(kit.files.get(join(LIVE, SNAPSHOT)) ?? '', /"seven_day":\{"used_percentage":30,"resets_at":1894582800\}/);
     assert.match(kit.files.get(join(LIVE, WEEK_SUMMARY_FILE)) ?? '', /^\{"v":2,"reading":\{"used_percentage":30,"resets_at":1894582800,"at":"2030-01-08T10:00:00\.000Z","after":/);
+  });
+
+  it('saves nothing on a host that draws no status line: it prints the reason, or with --pass the input, and exits 0', async () => {
+    const kit = new CliHarness(LIMITED);
+    const result = await kit.run(['statusline'], { stdin: status(APP), host: bareHost });
+    const reason = 'no status line is drawn';
+    assert.deepEqual([result.code, result.stdout, result.stderr], [EXIT.ok, [reason], [`teamrig statusline: ${reason}; nothing saved`]]);
+    const passed = await kit.run(['statusline', '--pass'], { stdin: `${status(APP)}\n`, host: bareHost });
+    assert.deepEqual([passed.code, passed.stdout], [EXIT.ok, [status(APP)]]);
+    assert.deepEqual([kit.files.get(join(LIVE, SNAPSHOT)), kit.files.get(join(LIVE, WEEK_SUMMARY_FILE))], [undefined, undefined]);
   });
 
   it("folds the status input's five-hour reading into the folder's summary", async () => {

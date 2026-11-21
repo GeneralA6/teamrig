@@ -6,7 +6,7 @@
  * List a key only when changing it grants or takes away nothing a session may do, runs no program, moves no folder,
  * and leaves the budget, the host's shared resources and every guard as they are: those are owner gates (core rule 6).
  * Three listed keys rest on the lead's judgment and the docs say so: register.review.mode and register.review.requireOn
- * (which parts a bug's review needs) and github.repos (a repository gh migrate and issue comment may write to).
+ * (which parts a bug's review needs) and github.repos (a repository gh migrate and issue reply may write to).
  * github.watcher, who hears the GitHub news no task owner takes, is staffing like the roster's work order, not a
  * permission: the loader refuses a name that is not one of the sessions, so a set cannot name one.
  */

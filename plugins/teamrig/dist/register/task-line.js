@@ -1,5 +1,6 @@
 import { isNonNegativeInteger, isRecord } from "../core/guards.js";
 import { parseCard } from "./card.js";
+import { parseDescriptionCut } from "./description-cut.js";
 import { isApprovalVerdict, parseCompleteTaskFields, parseFollowups, parseSizeBase } from "./events.js";
 import { parseAuditPin } from "./hand-step.js";
 import { isTaskStatus, TASK_ID } from "./model.js";
@@ -177,5 +178,12 @@ export function parseTaskLine(record) {
     if (typeof securityVerdict === 'string') {
         return problem(securityVerdict);
     }
-    return { ...fields, id, status, ...nullable, waits, card, answer, decided, reparks, followups, review, sizeBase, audits, securityVerdict, ...texts };
+    const descriptionCut = parseDescriptionCut(task['descriptionCut']);
+    if (typeof descriptionCut === 'string') {
+        return problem(descriptionCut);
+    }
+    if (descriptionCut !== null && fields.description !== null) {
+        return problem('holds a description and the mark of a cut one');
+    }
+    return { ...fields, id, status, descriptionCut, ...nullable, waits, card, answer, decided, reparks, followups, review, sizeBase, audits, securityVerdict, ...texts };
 }

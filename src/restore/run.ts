@@ -5,6 +5,7 @@ import type { PathProbe } from '../core/path-probe.ts';
 import { samePath } from '../core/paths.ts';
 import { customTitleOf } from '../names/title.ts';
 import type { EndOutcome } from '../open/session-processes.ts';
+import type { TranscriptReader } from '../ports/host/index.ts';
 import { CARRY_TAIL_BYTES } from '../refresh/carry.ts';
 import { turnRunning } from '../refresh/turn.ts';
 import { resumeFolderOf } from '../sessions/resume-folder.ts';
@@ -73,6 +74,8 @@ export interface RestoreDeps {
   readonly clock: Clock;
   readonly sleep: Sleep;
   readonly probe: PathProbe;
+  /** Reads the host's transcript lines: whether a session's last turn still runs. */
+  readonly reader: TranscriptReader;
   readonly shutdowns: ShutdownLog;
   readonly countdown: Countdown;
   readonly stops: StopWatch;
@@ -125,11 +128,11 @@ export interface ReopenEffort {
  * The config's `launch.<id>.effort` wins once set, so a restore after a config change brings the session back on the
  * new level, not the old one its transcript ran at (T2440); a session the config leaves unset comes back at its last.
  */
-function reopenEffortOf(team: TeamSession | undefined, text: string): ReopenEffort | undefined {
+function reopenEffortOf(reader: TranscriptReader, team: TeamSession | undefined, text: string): ReopenEffort | undefined {
   if (team?.effort !== undefined) {
     return { level: team.effort, from: 'config' };
   }
-  const last = lastRecordedEffort(text);
+  const last = lastRecordedEffort(reader, text);
   return last === undefined ? undefined : { level: last, from: 'last run' };
 }
 
@@ -156,8 +159,8 @@ async function factsOf(deps: RestoreDeps, entries: readonly RestoreEntry[], sinc
       transcripts.set(entry.claudeSession, transcript);
       const tail = await deps.readTail(transcript, KIND_TAIL_BYTES);
       if (tail !== undefined) {
-        kinds.set(entry.claudeSession, transcriptKindOf(tail));
-        if (live && turnRunning(tail) && (await stalledSince(deps, transcript, now))) {
+        kinds.set(entry.claudeSession, transcriptKindOf(deps.reader, tail));
+        if (live && turnRunning(deps.reader, tail) && (await stalledSince(deps, transcript, now))) {
           stalled.add(entry.claudeSession);
         }
       }
@@ -177,11 +180,11 @@ async function itemOf(deps: RestoreDeps, facts: JudgeFacts, judged: Judged): Pro
   const { entry } = judged;
   const transcript = facts.transcripts.get(entry.claudeSession);
   const text = (transcript === undefined ? undefined : await deps.readTail(transcript, CARRY_TAIL_BYTES)) ?? '';
-  const lost = lostWorkOf(text, Buffer.byteLength(text, 'utf8') >= CARRY_TAIL_BYTES, diedAt(entry, facts.shutdown?.start));
+  const lost = lostWorkOf(deps.reader, text, Buffer.byteLength(text, 'utf8') >= CARRY_TAIL_BYTES, diedAt(entry, facts.shutdown?.start));
   const team = teamSessionOf(entry, deps.teams);
-  const label = team?.name ?? customTitleOf(text) ?? `Claude ${entry.claudeSession.slice(0, 8)}`;
+  const label = team?.name ?? customTitleOf(deps.reader, text) ?? `Claude ${entry.claudeSession.slice(0, 8)}`;
   const resumeFolder = transcript === undefined ? undefined : resumeFolderOf(transcript, text, entry.projectDir, deps.projectsDir, deps.platform);
-  return { ...judged, transcript, resumeFolder, label, team, lost, effort: reopenEffortOf(team, text), ...chooseMode(entry, lost, team?.isLead === true) };
+  return { ...judged, transcript, resumeFolder, label, team, lost, effort: reopenEffortOf(deps.reader, team, text), ...chooseMode(entry, lost, team?.isLead === true) };
 }
 
 /** Where a restored session reopens, and why there when that is not the folder it started in. */

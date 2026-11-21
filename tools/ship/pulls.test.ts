@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
 import type { Gh } from './github.ts';
 import { arrayOf, booleanAt, listAt, recordAt, recordOf } from './json.ts';
-import { findOpenPull, openPull, parsePull, rebaseMerge } from './pulls.ts';
+import { closePull, findOpenPull, openPull, openPullsInto, parsePull, rebaseMerge } from './pulls.ts';
 
 const REPO = 'Owner/repo';
 const pullJson = (number: number, sha: string): Record<string, unknown> => ({ number, html_url: `https://github.com/${REPO}/pull/${number}`, head: { ref: 'dev', sha }, base: { ref: 'main' } });
@@ -33,6 +33,21 @@ test('opens a pull request with raw string fields, so a body starting with @ is 
   const gh = mock.fn<Gh>(() => JSON.stringify(pullJson(9, 'abc')));
   assert.equal(openPull(gh, REPO, 'dev', 'main', 'Merge dev', '@etc/passwd\n- a').number, 9);
   assert.deepEqual(gh.mock.calls[0]?.arguments[0], ['api', `repos/${REPO}/pulls`, '-X', 'POST', '-f', 'title=Merge dev', '-f', 'head=dev', '-f', 'base=main', '-f', 'body=@etc/passwd\n- a']);
+});
+
+test('lists every open pull request into a base with the repo its head lives in', () => {
+  const gh = mock.fn<Gh>(() => JSON.stringify([{ ...pullJson(4, 'a'), head: { ref: 'dev-2', sha: 'a', repo: { full_name: REPO } } }, { ...pullJson(5, 'b'), head: { ref: 'dev', sha: 'b', repo: null } }]));
+  assert.deepEqual(openPullsInto(gh, REPO, 'main').map(pull => [pull.number, pull.headRef, pull.headRepo]), [[4, 'dev-2', REPO], [5, 'dev', null]]);
+  assert.deepEqual(gh.mock.calls[0]?.arguments[0], ['api', `repos/${REPO}/pulls?state=open&base=main&per_page=100`]);
+});
+
+test('comments on a pull request with a raw string field, then closes it', () => {
+  const gh = mock.fn<Gh>(() => '{}');
+  closePull(gh, REPO, 4, '@etc Superseded by #5');
+  assert.deepEqual(gh.mock.calls.map(call => call.arguments[0]), [
+    ['api', `repos/${REPO}/issues/4/comments`, '-X', 'POST', '-f', 'body=@etc Superseded by #5'],
+    ['api', `repos/${REPO}/pulls/4`, '-X', 'PATCH', '-f', 'state=closed'],
+  ]);
 });
 
 test('rebase-merges pinned to the checked sha, and reads a refusal', () => {

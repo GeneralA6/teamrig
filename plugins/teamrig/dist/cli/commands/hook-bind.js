@@ -7,12 +7,16 @@ import { injectFor } from "../../inbox/inject.js";
 import { claudeProcessOf } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { hookLogOf } from "../hook-logs.js";
+import { transcriptsIfKept } from "../host.js";
 import { loadTree } from "../tree.js";
 import { inboxDepsOf } from "./inbox.js";
-/** Reads the title once for everything a hook does with it; it never throws. */
+/**
+ * Reads the title once for everything a hook does with it; it never throws. On a host that keeps no transcript
+ * teamrig can read, only the payload's own title counts.
+ */
 export async function readTitle(runtime, payload) {
     try {
-        return { kind: 'read', title: await sessionTitleOf(payload, runtime.files) };
+        return { kind: 'read', title: await sessionTitleOf(transcriptsIfKept(runtime), payload, runtime.files) };
     }
     catch (error) {
         return { kind: 'failed', error: errorMessage(error) };

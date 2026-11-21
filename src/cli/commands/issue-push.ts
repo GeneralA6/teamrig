@@ -2,15 +2,15 @@ import { ENV } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { RepoFailure } from '../../github/auto.ts';
 import { closedSince } from '../../github/sync.ts';
-import { targetText, type IssueHost } from '../../issues/host.ts';
+import { GITHUB_REPOS_HOST, targetText, type PullRequests, type Tracker } from '../../issues/host.ts';
 import { applyPush } from '../../issues/push-apply.ts';
 import { planAssigned, viewerOf } from '../../issues/push-assignees.ts';
-import { changeLine, changeWrites, planPush, pushAssignees, SESSION_PUSH, sessionLogins, VIEWER_UNREAD, type PushLimits, type PushPlan, type SessionLogins } from '../../issues/status-push.ts';
+import { changeLine, changeWrites, planPush, pushAssignees, SESSION_PUSH, sessionLogins, VIEWER_UNREAD, type PushAssignees, type PushLimits, type PushPlan, type SessionLogins } from '../../issues/status-push.ts';
 import type { Task } from '../../register/fold.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { hostOf, reposOf } from '../issue-hosts.ts';
+import { hostsOf, reposOf } from '../issue-hosts.ts';
 import { sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { GITHUB_OFF, githubOff } from './issue-sync-auto.ts';
@@ -51,10 +51,12 @@ export async function issuePush(args: ParsedArgs, runtime: CliRuntime): Promise<
     say('OFF no repository to push to: list them as "owner/name" under github.repos in the team config; nothing was read or written');
     return EXIT.ok;
   }
+  // github.repos is GitHub's list, so every repository it names is GitHub's, which is its tracker and its code host.
+  const hosts = await hostsOf(GITHUB_REPOS_HOST, runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp);
   const totals = await pushRepos(
     {
-      // github.repos is GitHub's list, so every repository it names is GitHub's.
-      host: hostOf('github', runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp),
+      host: hosts.tracker,
+      pulls: hosts.codeHost,
       repos: reposOf(config.github.repos, args.flags.get('repo')),
       since: closedSince(new Date(runtime.clock.now()), config.github.closedDays),
       tasks: async () => (await team.register.snapshot()).state.tasks.values(),
@@ -72,7 +74,10 @@ export async function issuePush(args: ParsedArgs, runtime: CliRuntime): Promise<
 
 /** One push over some repositories: where it reads, what it plans against, whether it sends, and its writes. */
 export interface PushRun {
-  readonly host: IssueHost;
+  /** The tracker whose issues the push reads and writes. */
+  readonly host: Tracker;
+  /** The code host whose open pull requests tell a number the issue list left out from a pull request's (openPullsOf). */
+  readonly pulls: PullRequests;
   readonly repos: readonly string[];
   /** The oldest close the host lists, as closedSince gives it. */
   readonly since: string;
@@ -144,13 +149,14 @@ export async function pushRepos(run: PushRun, say: (line: string) => void): Prom
       viewers.set(reach.scope, reading);
       return reading;
     };
-    const assigned = await planAssigned(run.host, repo, (who) => planPush(repo, read.issues, tasks, limits, who), pushAssignees(run.logins, VIEWER_UNREAD), readViewer, say);
+    // Each status label is planned under the name the tracker holds it by, as the list above gave the issues' labels.
+    const planFor = (who: PushAssignees, openPulls?: ReadonlySet<number>): PushPlan => planPush(repo, read.issues, tasks, limits, who, openPulls, (label) => run.host.labelName(label));
+    const assigned = await planAssigned(run.host, repo, planFor, pushAssignees(run.logins, VIEWER_UNREAD), readViewer, say);
     if (assigned.kind === 'failed') {
       failures.push({ repo, reason: assigned.reason });
       continue;
     }
-    const plan =
-      assigned.plan.unlisted.length === 0 ? assigned.plan : planPush(repo, read.issues, tasks, limits, assigned.who, await openPullsOf(run.host, repo, say));
+    const plan = assigned.plan.unlisted.length === 0 ? assigned.plan : planFor(assigned.who, await openPullsOf(run.pulls, repo, say));
     planLines(plan).forEach(say);
     const planned = plan.changes.reduce((sum, change) => sum + changeWrites(change), 0);
     left -= planned;
@@ -189,7 +195,7 @@ export function pushEndLine(send: boolean, totals: PushTotals, writesPerRun: num
  * The numbers of `repo`'s open pull requests, read only when an active task holds a number the issue list left out,
  * since the list holds issues alone (#1451). A read that fails is said, and leaves every such number unlisted.
  */
-async function openPullsOf(host: IssueHost, repo: string, say: (line: string) => void): Promise<ReadonlySet<number>> {
+async function openPullsOf(host: PullRequests, repo: string, say: (line: string) => void): Promise<ReadonlySet<number>> {
   const read = await host.pulls(repo, undefined);
   if (read.kind === 'failed') {
     say(`NOTE ${repo}: its pull requests could not be read (${read.reason}), so a number below may be one`);

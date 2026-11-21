@@ -12,6 +12,7 @@ import { RestartLog } from "../../refresh/restart-log.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { RestoreRegistry, restoreSessionsDir } from "../../restore/registry.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
+import { transcriptsOf } from "../host.js";
 import { openKit, reloadTeamConfig, requireConfig, rosterOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { inboxDepsOf } from "./inbox.js";
@@ -80,6 +81,7 @@ export async function restart(args, runtime) {
     const result = await runRestart({
         store,
         files: runtime.files,
+        reader: transcriptsOf(runtime),
         processes: runtime.sessionProcesses,
         clock: runtime.clock,
         sleep: runtime.sleep,

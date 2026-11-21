@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { Roster } from '../config/roster.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
+import { shippedUsage } from '../testing/shipped-usage.ts';
 import type { ClaudeSessionFiles } from './discover.ts';
 import { formatRollup, type DayRollup } from './rollup-file.ts';
 import { applyPlans, attributeInTree, foldTeam, outcomeCounts, planDays, type DayPlan, type TreeMember } from './rollup-run.ts';
@@ -96,6 +98,8 @@ function reply(id: string, at: string, input: number): string {
   })}\n`;
 }
 
+const reader = shippedTranscripts();
+const usage = shippedUsage();
 const NOON = `${DAY}T12:00:00.000Z`;
 const NEXT_NOON = `${NEXT_DAY}T12:00:00.000Z`;
 
@@ -114,7 +118,7 @@ describe('foldTeam', () => {
       ['bravo', { main: ['/b.jsonl'], subagents: [] }],
       ['alpha', { main: ['/a.jsonl'], subagents: ['/a/subagents/x.jsonl'] }],
     ]);
-    const rollups = await foldTeam(transcripts, { byTeamSession, lead: undefined, chunkBytes: 1024 });
+    const rollups = await foldTeam({ bytes: transcripts, reader, usage }, { byTeamSession, lead: undefined, chunkBytes: 1024 });
     assert.deepEqual([...rollups.keys()], [DAY, NEXT_DAY]);
     assert.equal(callsOf(rollups.get(DAY), 'alpha'), 2);
     assert.equal(callsOf(rollups.get(DAY), 'bravo'), 1);
@@ -126,21 +130,21 @@ describe('foldTeam', () => {
     const lines = [1, 2, 3, 4, 5].map((id) => reply(`r${id}`, NOON, 10));
     const transcripts = new MemoryTranscripts({ '/a.jsonl': lines.join('') });
     const byTeamSession = new Map([['alpha', { main: ['/a.jsonl'], subagents: [] }]]);
-    const rollups = await foldTeam(transcripts, { byTeamSession, lead: undefined, chunkBytes: (lines[0]?.length ?? 0) + 1 });
+    const rollups = await foldTeam({ bytes: transcripts, reader, usage }, { byTeamSession, lead: undefined, chunkBytes: (lines[0]?.length ?? 0) + 1 });
     assert.equal(callsOf(rollups.get(DAY), 'alpha'), 5);
   });
 
   it('stops at a last line still being written', async () => {
     const transcripts = new MemoryTranscripts({ '/a.jsonl': `${reply('a1', NOON, 10)}{"type":"assist` });
     const byTeamSession = new Map([['alpha', { main: ['/a.jsonl'], subagents: [] }]]);
-    const rollups = await foldTeam(transcripts, { byTeamSession, lead: undefined, chunkBytes: 1024 });
+    const rollups = await foldTeam({ bytes: transcripts, reader, usage }, { byTeamSession, lead: undefined, chunkBytes: 1024 });
     assert.equal(callsOf(rollups.get(DAY), 'alpha'), 1);
   });
 
   it('takes a reply two transcripts repeat once, whichever order the set lists them in', async () => {
     const shared = reply('a1', NOON, 10);
     const transcripts = new MemoryTranscripts({ '/a.jsonl': shared, '/b.jsonl': shared });
-    const fold = (main: readonly string[]) => foldTeam(transcripts, { byTeamSession: new Map([['alpha', { main, subagents: [] }]]), lead: undefined, chunkBytes: 1024 });
+    const fold = (main: readonly string[]) => foldTeam({ bytes: transcripts, reader, usage }, { byTeamSession: new Map([['alpha', { main, subagents: [] }]]), lead: undefined, chunkBytes: 1024 });
     const forward = await fold(['/a.jsonl', '/b.jsonl']);
     assert.equal(callsOf(forward.get(DAY), 'alpha'), 1);
     assert.deepEqual(await fold(['/b.jsonl', '/a.jsonl']), forward);
@@ -149,7 +153,7 @@ describe('foldTeam', () => {
   it('marks the lead, whose calls are never plain work', async () => {
     const transcripts = new MemoryTranscripts({ '/a.jsonl': reply('a1', NOON, 10) });
     const byTeamSession = new Map([['alpha', { main: ['/a.jsonl'], subagents: [] }]]);
-    const rollups = await foldTeam(transcripts, { byTeamSession, lead: 'alpha', chunkBytes: 1024 });
+    const rollups = await foldTeam({ bytes: transcripts, reader, usage }, { byTeamSession, lead: 'alpha', chunkBytes: 1024 });
     assert.deepEqual(rollups.get(DAY)?.rows.map(({ useClass }) => useClass), ['lead-work']);
   });
 });

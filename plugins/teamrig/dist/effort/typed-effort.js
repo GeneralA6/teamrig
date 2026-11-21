@@ -1,60 +1,43 @@
 import { isEffortLevel } from "../config/types.js";
-import { instantField, isRecord, recordField, stringField } from "../core/guards.js";
 const COMMAND_MARK = '<command-name>/effort</command-name>';
 const REPLY_MARK = '<local-command-stdout>Set effort level to ';
 const REPLY_LEVEL = /^<local-command-stdout>Set effort level to ([a-z]+)\b/;
-function parsedLine(line) {
-    try {
-        const value = JSON.parse(line);
-        return isRecord(value) ? value : undefined;
-    }
-    catch {
-        // A tail read can start mid-line: that line is no entry.
-        return undefined;
-    }
-}
 /**
- * The text of a user entry the user typed in this session's main thread, else undefined: a helper's (sidechain), a
- * meta line (a peer's message), one with an `origin` (a plugin's injected /clear, a peer), another session's, and a
- * tool result (whose content is an array) are no typing of the user's.
+ * The line as text the user typed in this session's main thread, else undefined: a helper's, the host's own text
+ * (a peer's message), one that names where it came from (a plugin's injected /clear, a peer), another session's,
+ * and a tool result (whose content is a list of parts) are no typing of the user's. So is a torn line of a tail
+ * read, which starts mid-line.
  */
-function typedTextOf(entry, claudeSession) {
-    if (entry['type'] !== 'user' || entry['isSidechain'] !== false || entry['isMeta'] === true || entry['origin'] !== undefined) {
+function typedOf(reader, line, hostSession) {
+    const entry = reader.entry(line, ['input']);
+    if (entry?.kind !== 'input' || entry.thread !== 'main' || entry.meta || entry.origin !== undefined || entry.session !== hostSession) {
         return undefined;
     }
-    if (stringField(entry, 'sessionId') !== claudeSession) {
-        return undefined;
-    }
-    const message = recordField(entry, 'message');
-    return message === undefined ? undefined : stringField(message, 'content');
+    return entry.text === undefined ? undefined : { text: entry.text, id: entry.id, at: entry.at, parent: entry.parent };
 }
 /**
- * Each `/effort` the user typed in the transcript text (whole or a tail), oldest first, with the level Claude Code
- * says it set. Only lines that hold one of the two marks are parsed. A command with no reply, or a reply naming no
+ * Each `/effort` the user typed in the transcript text (whole or a tail), oldest first, with the level the host
+ * says it set. Only lines that hold one of the two marks are read. A command with no reply, or a reply naming no
  * level teamrig knows (a cancelled picker, `auto`), is left out: nothing says what level runs after it.
  */
-export function typedEffortsOf(text, claudeSession) {
+export function typedEffortsOf(reader, text, hostSession) {
     const commands = [];
     const replies = new Map();
     for (const line of text.split('\n')) {
         if (!line.includes(COMMAND_MARK) && !line.includes(REPLY_MARK)) {
             continue;
         }
-        const entry = parsedLine(line);
-        const content = entry === undefined ? undefined : typedTextOf(entry, claudeSession);
-        if (entry === undefined || content === undefined) {
+        const typed = typedOf(reader, line, hostSession);
+        if (typed === undefined) {
             continue;
         }
-        const uuid = stringField(entry, 'uuid');
-        const at = instantField(entry, 'timestamp');
-        if (content.startsWith(COMMAND_MARK) && uuid !== undefined && at !== undefined) {
-            commands.push({ uuid, at });
+        if (typed.text.startsWith(COMMAND_MARK) && typed.id !== undefined && typed.at !== undefined) {
+            commands.push({ uuid: typed.id, at: typed.at });
             continue;
         }
-        const parent = stringField(entry, 'parentUuid');
-        const level = REPLY_LEVEL.exec(content)?.[1];
-        if (parent !== undefined && isEffortLevel(level)) {
-            replies.set(parent, level);
+        const level = REPLY_LEVEL.exec(typed.text)?.[1];
+        if (typed.parent !== undefined && isEffortLevel(level)) {
+            replies.set(typed.parent, level);
         }
     }
     return commands.flatMap(({ uuid, at }) => {

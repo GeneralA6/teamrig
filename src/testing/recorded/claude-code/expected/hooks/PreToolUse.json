@@ -1,0 +1,313 @@
+[
+  {
+    "event": "PreToolUse",
+    "index": 0,
+    "hook": "hook pass-record-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 0,
+    "hook": "hook service-role-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 0,
+    "hook": "hook secret-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 1,
+    "hook": "hook secret-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 2,
+    "hook": "hook pass-record-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 2,
+    "hook": "hook service-role-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 2,
+    "hook": "hook secret-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 3,
+    "hook": "hook secret-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 5,
+    "hook": "hook push-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 5,
+    "hook": "hook package-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 5,
+    "hook": "hook secret-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 5,
+    "hook": "hook db-write-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 5,
+    "hook": "hook exec-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 5,
+    "hook": "hook pass-record-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 5,
+    "hook": "hook service-role-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 5,
+    "hook": "hook readonly-allow",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 5,
+    "hook": "hook route-allow",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 5,
+    "hook": "hook picker-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 6,
+    "hook": "hook push-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 6,
+    "hook": "hook package-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 6,
+    "hook": "hook secret-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 6,
+    "hook": "hook db-write-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 6,
+    "hook": "hook exec-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 6,
+    "hook": "hook pass-record-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 6,
+    "hook": "hook service-role-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 6,
+    "hook": "hook readonly-allow",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 7,
+    "hook": "hook push-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 7,
+    "hook": "hook package-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 7,
+    "hook": "hook secret-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 7,
+    "hook": "hook db-write-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 7,
+    "hook": "hook exec-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 7,
+    "hook": "hook pass-record-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 7,
+    "hook": "hook service-role-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 7,
+    "hook": "hook readonly-allow",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 7,
+    "hook": "hook route-allow",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 7,
+    "hook": "hook picker-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 8,
+    "hook": "hook secret-guard",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PreToolUse",
+    "index": 9,
+    "hook": "hook helper-gate",
+    "code": 0,
+    "stdout": [
+      {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "additionalContext": "teamrig rule 8: work in your own session: start a helper only when it keeps far more tokens out of your context than it uses or truly runs in parallel, never for a build or test you wait on. Weigh the next helper the same way."
+        }
+      }
+    ],
+    "stderr": []
+  }
+]

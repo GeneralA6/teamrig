@@ -1,13 +1,13 @@
 # Build on teamrig: the public interface (design)
 
-> **Status: proposed** (written 2026-11-15) on [#1048](https://github.com/teamrig/teamrig/issues/1048), under
-> discussion and not agreed. This is a design record, not a description of how teamrig works today: do not build on
-> it.
+> **Status: accepted** (written 2026-11-15, agreed 2026-11-20) on
+> [#1048](https://github.com/teamrig/teamrig/issues/1048), with the changes agreed in that thread folded in. This is a
+> design record, not a description of how teamrig works today: nothing here is built yet.
 
-Nothing on this page is built yet. It answers
-[#1048](https://github.com/teamrig/teamrig/issues/1048), which asks how a terminal app can work with teamrig without
-following teamrig's insides. It is open for comments on that issue; what ships will be marked in
-[Everything teamrig does](../features.md) as each part lands.
+It answers [#1048](https://github.com/teamrig/teamrig/issues/1048), which asks how a terminal app can work with teamrig
+without following teamrig's insides. What ships is marked in [Everything teamrig does](../features.md) as each part
+lands. It is built alongside the harness work that makes every AI CLI and every outside tool a plug-in of teamrig
+([#1884](https://github.com/teamrig/teamrig/issues/1884), [#1885](https://github.com/teamrig/teamrig/issues/1885)).
 
 **Contents**
 
@@ -21,6 +21,7 @@ following teamrig's insides. It is open for comments on that issue; what ships w
 - [Versions and notice](#versions-and-notice)
 - [The conformance kit](#the-conformance-kit)
 - [Order of work](#order-of-work)
+- [Left for later](#left-for-later)
 - [Answers to #1048's open questions](#answers-to-1048s-open-questions)
 
 ## Why an interface
@@ -141,13 +142,21 @@ terminal a **host**: a program teamrig runs, speaking a small protocol, in the m
 
 | Request | What the host does |
 | --- | --- |
-| `open` | Opens a pane for a session, with the command, folder, title and an opaque identity bag teamrig gives |
+| `open` | Opens a pane for a session, with the command, folder, title and an opaque identity bag teamrig gives, and answers with the host's own pane id |
 | `focus` | Brings a session's pane forward |
 | `close` | Closes it |
 | `restart` | Restarts it, resuming the conversation when asked |
 | `rename` | Changes its title |
-| `deliver` | Delivers one wake message, only if the pane is idle and no question shows; else it answers `held` with why |
-| `isIdle` | Says whether the pane is idle, busy, asking or gone |
+| `deliver` | Delivers one wake message, only when no turn runs, no question shows and the input holds nothing unsent; else it answers `held` with why (`held: draft` for unsent input) |
+| `isIdle` | Says whether the pane is idle, busy, asking, holding a draft or gone |
+| `list` | Lists the host's panes: each pane id, its idle state and its identity bag |
+
+- **Pane ids.** The id `open` returns stays the same across the host's own restart, and teamrig sends it back on every
+  later request for that pane. teamrig re-links only pane ids it recorded itself: a pane `list` reports that teamrig did
+  not record is reported to the owner, never adopted as a session.
+- **A draft is not idle.** A person typing into a session's input box is using it, so a wake never lands on top of
+  their text. A host that cannot see its input box says so in its capabilities, and teamrig treats its panes as never
+  sure to be free of a draft.
 
 - **Transport.** teamrig runs the host program, writes one JSON-RPC 2.0 request to its standard input and reads one
   answer from its standard output, with a time limit. A host that fronts a running app forwards the request over its
@@ -156,6 +165,9 @@ terminal a **host**: a program teamrig runs, speaking a small protocol, in the m
   uses nothing else. A host without `deliver` gets no wakes; the session sees new work at its next prompt.
 - **Pinned by the owner.** The team's config names a host by its path and its sha256, and only the owner sets them.
   teamrig refuses to run a host whose file no longer matches, and says so.
+- **After a host update.** A check flag names the host and its new sha256. One command, which only the owner runs,
+  shows the old and the new hash and pins the new one. Until then the host gets no wakes; its sessions see new work at
+  their next prompt. A host is pinned by hash only, not by a release signing key ([Left for later](#left-for-later)).
 - **Run by its path, with a short environment.** teamrig runs a host by its absolute path, with no shell and its
   arguments only, and gives it a short, explicit environment: never the GitHub key or any other teamrig credential.
   The sha256 is checked on the exact bytes that run, so the file cannot change between the check and the start.
@@ -169,7 +181,8 @@ terminal a **host**: a program teamrig runs, speaking a small protocol, in the m
   - a token per pane that allows a wake and nothing else;
   - its channel bound to `127.0.0.1`, or a pipe or socket only the user can open;
   - fixed wake text: teamrig's message, which points the session at its inbox, never text from a caller;
-  - one atomic check that the pane is idle and shows no question, at the moment of delivery.
+  - one atomic check, at the moment of delivery, that no turn runs, no question shows and the input holds nothing
+    unsent.
 
 ## Versions and notice
 
@@ -190,8 +203,12 @@ teamrig ships a conformance kit with the interface:
 - **For hosts**: a test runner that drives a host through scripted cases and checks each answer against the protocol.
 - **For tools**: a fake teamrig that serves read documents and events from a scripted team and records the acts it
   gets.
+- **One kit with the harness's contract suites.** The same suite runs an adapter inside teamrig directly and an outside
+  program through the protocol, so a built-in terminal, an in-repo adapter and an outside host are held to the same
+  cases.
 - **Negative tests are part of it**, and a host passes only with them: `deliver` held in a busy pane, in one that shows
-  a question, or with a wrong token; a listener refused on any address but `127.0.0.1`; an owner-only act refused
+  a question, in one whose input holds a draft, or with a wrong token; a pane that `list` reports and teamrig did not
+  record never adopted as a session; a listener refused on any address but `127.0.0.1`; an owner-only act refused
   without its proof; an act with a forged identity field refused or ignored; an owner proof that is replayed, expired
   or made for another command or commit refused; a read of `inbox` that leaves the unread state as it was; outside
   text never in an event frame; unknown fields ignored.
@@ -202,11 +219,24 @@ teamrig ships a conformance kit with the interface:
 1. A security review of every path the interface reaches, fixed until it passes. No part ships before that.
 2. **Read** version 1: the documents above, with the scan and the outside marks.
 3. **The terminal protocol and the kit**: the built-in terminals move behind it with no change in behaviour.
-4. **Outside hosts**, pinned by path and sha256.
-5. **Act**, then **events**.
-6. **The owner's own acts**, once the proof exists on each operating system.
+4. **Outside hosts**, pinned by path and sha256, with the re-pin after an update.
+5. **Events**: ids and statuses only, local only.
+6. **Act**: through the same code the command line runs.
+7. **The owner's own acts**, once the proof exists on each operating system.
 
-Each step ships on its own and is usable without the next.
+Each step ships on its own and is usable without the next. Events come before act (agreed on #1048): a tool that shows
+the team needs to learn of changes before it needs to make them, and act carries the harder identity questions.
+
+## Left for later
+
+Agreed on #1048 as not part of this design's steps:
+
+- **Pinning a host by a release signing key**, beside or instead of its sha256: a later minor version.
+- **A long-lived host process** (a `session` capability), instead of one process per request: only if a measurement
+  on Windows shows a process per request costs too much.
+- **An owner proof signed on the owner's own computer**, for an owner who reaches the team's machine over SSH: open,
+  the maintainer's call after a security review. If taken, it uses FIDO `sk-` keys only; the signature covers the
+  action, the commit, a nonce and an expiry, once; changing the pinned key needs a proof by an already-pinned method.
 
 ## Answers to #1048's open questions
 
@@ -236,8 +266,9 @@ These are teamrig's answers. The questions about the terminal app's own design a
 
 1. **A red contract suite** blocks the release of the side whose change turned it red, not the other side's: each
    side's release states the interface versions it supports.
-2. **What version 1 holds**, on teamrig's side: read, and the terminal protocol with `deliver` (its atomic idle and
-   no-question check) and `isIdle`. Act and events follow in minor versions; the owner's own acts come last.
+2. **What version 1 holds**, on teamrig's side: read, and the terminal protocol with `deliver` (its atomic check of no
+   turn, no question and no draft), `isIdle` and `list`. Events, then act, follow in minor versions; the owner's own
+   acts come last.
 
 **For the owner, teamrig's view**
 

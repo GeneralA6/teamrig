@@ -1,6 +1,6 @@
 import { formatW } from "../budget/format.js";
 import { taskWOf } from "../budget/task-use.js";
-import { ISSUE_REF_PREFIX } from "../register/model.js";
+import { isIssueRef } from "../register/model.js";
 import { readStoredUsage } from "./stored-week.js";
 /** The GitHub-linked tasks the `GITHUB` line names, costliest first; the rest it only counts. */
 export const GITHUB_TASKS_SHOWN = 6;
@@ -13,7 +13,7 @@ export function githubWLines(tasks, wByTask) {
     const spent = [...tasks]
         .flatMap((task) => {
         const w = wByTask.get(task.id) ?? 0;
-        return task.ref !== null && task.ref.startsWith(ISSUE_REF_PREFIX) && w > 0 ? [{ id: task.id, ref: task.ref, w }] : [];
+        return isIssueRef(task.ref) && w > 0 ? [{ id: task.id, ref: task.ref, w }] : [];
     })
         .sort((a, b) => b.w - a.w || a.id.localeCompare(b.id));
     if (spent.length === 0) {

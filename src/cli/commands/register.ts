@@ -57,6 +57,7 @@ import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, dropApprovalOf
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
 import { fiveHourWarnings } from '../five-hour-check.ts';
+import { transcriptsIfKept } from '../host.ts';
 import { logSizeWarnings } from '../log-size-check.ts';
 import { githubLateWarnings } from '../github-late-check.ts';
 import { promptHoldWarnings } from '../prompt-hold-page.ts';
@@ -228,7 +229,7 @@ async function addHere(args: ParsedArgs, runtime: CliRuntime, caller: string): P
   const ids = addInputIds(team, issue.value.kind === 'local' ? { ...input, ref: issue.value.ref } : input);
   const end =
     issue.value.kind === 'open'
-      ? await addWithIssue((line) => runtime.out.stdout(line), team.register, addIssueHost(runtime, scanner, team.config.github.stamp), by, ids, issue.value.draft)
+      ? await addWithIssue((line) => runtime.out.stdout(line), team.register, await addIssueHost(runtime, scanner, team.config.github.stamp), by, ids, issue.value.draft)
       : { kind: 'written' as const, verdict: await team.register.add(by, ids), ref: undefined };
   if (end.kind === 'stopped') {
     return end.code;
@@ -878,7 +879,9 @@ function weekMayBeRetired(week: string): HistoryNeed {
 
 /**
  * `show` prints a task's history and counts its events, so it reads the whole history for a task the working set
- * lacks (retired) or one created before the snapshot's event window, whose older events only the history holds.
+ * lacks (retired) or one created before the snapshot's event window, whose older events only the history holds. That
+ * second case also covers every task whose task line left its description out (T4781): a snapshot holds a task as a
+ * line only once its create event is before the window, so `show` prints such a description from the history.
  */
 function showNeedsHistory(id: string): HistoryNeed {
   return (snapshot) => {
@@ -1190,7 +1193,7 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const restore = await restoreLauncherWarnings(runtime.files, resolveKitHome(runtime.env, runtime.userHome));
   const holds = await promptHoldWarnings(runtime, own.paths, zone, new SecretScanner(own.config.register.secretPatterns), now.getTime());
   const logs = await logSizeWarnings(runtime.files, own.paths);
-  const stalled = await restartStalledWarnings(runtime.files, runtime.sessionProcesses, own.paths, own.config, zone, now.getTime());
+  const stalled = await restartStalledWarnings(transcriptsIfKept(runtime), runtime.files,runtime.sessionProcesses, own.paths, own.config, zone, now.getTime());
   const lead = own.config.roles.lead;
   return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks, ...off, ...fiveHour, ...resets, ...restore, ...late, ...holds, ...logs, ...stalled], lead, decisions };
 }

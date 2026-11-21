@@ -216,7 +216,10 @@ and `state/snapshot.jsonl` holds every task as it stood, so commands and the tas
 recent lines instead of the whole history. The snapshot holds one line per task as it stood two days before the
 compaction, then the events of those two days as written, so its size follows the tasks kept, not their history; a
 read that needs older events (`show` of an older task, `meeting end` of a meeting that started before, a leader
-digest from an older cursor, `team split`) reads the archive for them. Tasks done or dropped over 8 days ago, in no week plan from the current
+digest from an older cursor, `team split`) reads the archive for them. A task's line leaves its description out,
+the longest field, and keeps only its length and a hash: the commands that print or compare one (`show`, the owner's
+cards of `meeting`, `decisions` and `meet --cards`, `issue similar`) read it from the archive, an issue sync tells
+by the hash whether the body changed, and the task pane shows such a task without its description. Tasks done or dropped over 8 days ago, in no week plan from the current
 one on, leave the snapshot: `show`, `list --status done` and the plan of a past week still read them from the
 archive, and a task that left cannot be changed. `compact --dry-run` prints what it would archive and write, and writes nothing; a real run first
 reads the new files back and holds every task against the whole history, and writes nothing on any difference.

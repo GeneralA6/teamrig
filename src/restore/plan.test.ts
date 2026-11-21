@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join, parse, resolve } from 'node:path';
 import { PROMPT_MAX } from '../open/prompt.ts';
 import { FakePathProbe } from '../testing/fake-processes.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import type { RestoreEntry } from './entry.ts';
 import {
   chooseMode,
@@ -230,8 +231,9 @@ describe('lostWorkOf', () => {
       call('toolu_wake', 'ScheduleWakeup', { delaySeconds: 3600, prompt: 'check CI', reason: 'r' }, at),
       '',
     ].join('\n');
-    assert.deepEqual(lostWorkOf(text, false, SHUTDOWN), { background: 1, crons: 1, wake: true });
-    assert.deepEqual(lostWorkOf('', false, SHUTDOWN), NOTHING);
+    const reader = shippedTranscripts();
+    assert.deepEqual(lostWorkOf(reader, text, false, SHUTDOWN), { background: 1, crons: 1, wake: true });
+    assert.deepEqual(lostWorkOf(reader, '', false, SHUTDOWN), NOTHING);
   });
 });
 
@@ -332,15 +334,16 @@ describe('nearestExistingFolder', () => {
 });
 
 describe('lastRecordedEffort', () => {
+  const reader = shippedTranscripts();
   const turn = (effort: string, model = 'claude-opus-5-5'): string => JSON.stringify({ type: 'assistant', effort, message: { model } });
 
   it('takes the newest real assistant turn that records a known level', () => {
     const text = [turn('high'), turn('max'), turn('low', '<synthetic>'), '{"type":"user"}', ''].join('\n');
-    assert.equal(lastRecordedEffort(text), 'max');
+    assert.equal(lastRecordedEffort(reader, text), 'max');
   });
 
   it('skips unknown levels and torn lines, and is undefined with none', () => {
-    assert.equal(lastRecordedEffort(`"type":"assistant","effort":"max"}\n${turn('turbo')}\n`), undefined);
-    assert.equal(lastRecordedEffort(''), undefined);
+    assert.equal(lastRecordedEffort(reader, `"type":"assistant","effort":"max"}\n${turn('turbo')}\n`), undefined);
+    assert.equal(lastRecordedEffort(reader, ''), undefined);
   });
 });

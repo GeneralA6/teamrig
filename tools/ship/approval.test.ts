@@ -226,6 +226,15 @@ describe('shipWritesOf: how an approval reads the paths a ship writes again (T29
     const { regenerated } = profileFor(readProfiles(), 'GeneralA6/teamrig');
     assert.deepEqual(teamrigShipWritesOf(regenerated), shipWritesOf(regenerated, TEAMRIG_SHIP_VERSION_FILES, TEAMRIG_RELEASE_STAMPS));
   });
+
+  it("teamrigShipWritesOf knows another repo's plugin manifest by its shape, and still refuses any other file (T4821)", () => {
+    const pane = 'plugins/teamrig-pane/.claude-plugin/plugin.json';
+    const { versionFiles } = teamrigShipWritesOf([pane, TEAMRIG_RELEASE_MANIFEST.path]);
+    assert.deepEqual(versionFiles.map((file) => file.path), [pane, TEAMRIG_RELEASE_MANIFEST.path]);
+    assert.equal(versionFiles[0]?.pattern.exec(manifest('0.77.0'))?.[2], '0.77.0');
+    assert.throws(() => teamrigShipWritesOf(['plugins/teamrig-pane/hooks/hooks.json']), /regenerated path plugins\/teamrig-pane\/hooks\/hooks\.json is no folder/);
+    assert.throws(() => teamrigShipWritesOf(['plugins/teamrig-pane/nested/.claude-plugin/plugin.json']), /is no folder the build rebuilds/);
+  });
 });
 
 describe('changePatch: the fingerprint of what a branch changes over main', () => {

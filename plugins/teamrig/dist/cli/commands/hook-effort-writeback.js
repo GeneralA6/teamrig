@@ -6,6 +6,7 @@ import { payloadEffortOf } from "../../hooks/model-check.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { noPositionals } from "../args.js";
 import { postToHolder, sessionNameOn } from "../holder-team.js";
+import { transcriptsIfKept } from "../host.js";
 import { checkedNextConfig, configFileJson, configLockOf, requireConfig, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { leadAboveOf } from "../tree.js";
@@ -75,6 +76,7 @@ export async function effortWritebackOf(runtime, scope, payload) {
     let updated = scope.config;
     const deps = {
         files: runtime.files,
+        reader: transcriptsIfKept(runtime),
         clock: runtime.clock,
         marks: new WritebackMarksStore(runtime.files, scope.kit.paths.effortWriteback),
         configChangedAt: () => runtime.files.modifiedAt(scope.kit.load.path),

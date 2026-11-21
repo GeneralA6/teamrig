@@ -21,6 +21,7 @@ import { noRoomText } from "../../sessions/headroom.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { admitBusyText, admitTab, dropTabHold } from "../headroom.js";
+import { transcriptsOf } from "../host.js";
 import { loadTree } from "../tree.js";
 import { claudeExit, claudeProgramOf, claudeSessionArg, effortFlag, encodedPromptFlag, homeArgs, openSessionTab, TERMINAL_LABELS, terminalFlag } from "./open.js";
 /** The title of the tab `restore check` opens for the restore. */
@@ -177,6 +178,7 @@ async function restoreDepsOf(runtime, terminal) {
         clock: runtime.clock,
         sleep: runtime.sleep,
         probe: runtime.probe,
+        reader: transcriptsOf(runtime),
         shutdowns: runtime.restore.shutdowns,
         countdown: runtime.restore.countdown,
         stops: runtime.restore.stops,

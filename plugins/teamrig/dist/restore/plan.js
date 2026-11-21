@@ -1,7 +1,5 @@
 import { dirname } from 'node:path';
 import { isEffortLevel } from "../config/types.js";
-import { parseObject } from "../core/jsonl.js";
-import { isRecord, stringField } from "../core/guards.js";
 import { PROMPT_MAX } from "../open/prompt.js";
 import { carryOf } from "../refresh/carry.js";
 import { runningWorkOf } from "../refresh/running.js";
@@ -113,9 +111,9 @@ export function diedAt(entry, shutdownStart) {
     return entry.endedAt ?? shutdownStart ?? entry.updatedAt;
 }
 /** The work the transcript shows still live at `at`; `cut` when the text is the tail of a longer file. */
-export function lostWorkOf(text, cut, at) {
-    const carry = carryOf(text, at, []);
-    return { background: runningWorkOf(text, cut, at), crons: carry.crons.length, wake: carry.wake !== undefined };
+export function lostWorkOf(reader, text, cut, at) {
+    const carry = carryOf(reader, text, at, []);
+    return { background: runningWorkOf(reader, text, cut, at), crons: carry.crons.length, wake: carry.wake !== undefined };
 }
 function counted(count, one) {
     return `${count} ${one}${count === 1 ? '' : 's'}`;
@@ -224,29 +222,21 @@ export async function nearestExistingFolder(folder, probe) {
         }
     }
 }
-const ASSISTANT_TURN = '"type":"assistant"';
+/** The one kind of transcript entry that records an effort. */
+const EFFORT_KINDS = ['reply'];
 /**
- * The effort the session last ran at: the newest real assistant turn that records one. `claude --resume` alone
- * reopens at the configured default and drops an effort set inside the session (`/effort`). The model is not
- * carried: the transcript records it without its context-window suffix, so passing it would reopen on a smaller
- * window. Undefined when no turn records a known level.
+ * The effort the session last ran at: the newest real reply that records one. A plain resume reopens at the
+ * configured default and drops an effort set inside the session (`/effort`). The model is not carried: the
+ * transcript records it without its context-window suffix, so passing it would reopen on a smaller window.
+ * Undefined when no reply records a known level.
  */
-export function lastRecordedEffort(text) {
+export function lastRecordedEffort(reader, text) {
     const lines = text.split('\n');
     for (let index = lines.length - 1; index >= 0; index -= 1) {
-        const line = lines[index] ?? '';
-        // Most lines are not assistant turns; a torn first line of a tail fails to parse and is skipped.
-        const turn = line.includes(ASSISTANT_TURN) ? parseObject(line) : undefined;
-        if (turn === undefined || turn['type'] !== 'assistant') {
-            continue;
-        }
-        const message = turn['message'];
-        if (isRecord(message) && stringField(message, 'model') === '<synthetic>') {
-            continue;
-        }
-        const effort = turn['effort'];
-        if (isEffortLevel(effort)) {
-            return effort;
+        // Most lines are not replies; a torn first line of a tail is unread and skipped, as is a reply the host made up.
+        const entry = reader.entry(lines[index] ?? '', EFFORT_KINDS);
+        if (entry?.kind === 'reply' && !entry.synthetic && isEffortLevel(entry.effort)) {
+            return entry.effort;
         }
     }
     return undefined;

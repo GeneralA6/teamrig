@@ -1,4 +1,4 @@
-import { isRecord, stringField } from './guards.ts';
+import { fetchFailure, isHttpsUrl } from './http.ts';
 
 /**
  * A chat webhook teamrig posts one line of text to: `teamrig exec` each approval, refusal and run (exec spec §10), and
@@ -17,23 +17,6 @@ export const WEBHOOK_TIMEOUT_MS = 5_000;
 
 function fitted(content: string): string {
   return content.length <= WEBHOOK_MAX_CONTENT ? content : `${content.slice(0, WEBHOOK_MAX_CONTENT - 1)}…`;
-}
-
-/**
- * Why a post failed, from the error's name and its cause's code (`ECONNREFUSED`) alone: fetch's own messages can
- * quote the URL, which is the secret.
- */
-function failureOf(error: unknown, timeoutMs: number): string {
-  if (error instanceof Error && error.name === 'TimeoutError') {
-    return `the webhook did not answer within ${timeoutMs} ms`;
-  }
-  const code = error instanceof Error && isRecord(error.cause) ? stringField(error.cause, 'code') : undefined;
-  return `the webhook could not be reached${code === undefined ? '' : ` (${code})`}`;
-}
-
-/** True for an absolute https URL, the only kind a teamrig post goes to, so its text never crosses a network in the clear. */
-export function isHttpsUrl(text: string): boolean {
-  return URL.canParse(text) && new URL(text).protocol === 'https:';
 }
 
 /**
@@ -73,7 +56,8 @@ export function httpWebhook(timeoutMs: number = WEBHOOK_TIMEOUT_MS): ChatWebhook
         });
         return response.ok ? undefined : `the webhook answered HTTP ${response.status}`;
       } catch (error) {
-        return failureOf(error, timeoutMs);
+        // Never the error's own words: they can quote the URL, which is the secret.
+        return fetchFailure('the webhook', error, timeoutMs);
       }
     },
   };

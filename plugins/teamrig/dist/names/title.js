@@ -5,51 +5,40 @@ import { isRecord, stringField } from "../core/guards.js";
  * read whole on every prompt.
  */
 export const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
-/** The transcript entry Claude Code writes when the user names the session (`--name`, `/rename`). */
-const CUSTOM_TITLE = 'custom-title';
-/** The transcript entry holding the title Claude Code made up from the conversation. */
-const AI_TITLE = 'ai-title';
-function parseLine(line) {
-    try {
-        return JSON.parse(line);
-    }
-    catch {
-        return undefined;
-    }
-}
-/** The newest non-blank `field` of the `type` entries in transcript lines, trimmed. A torn first line of a tail is skipped. */
-function newestTitleOf(text, type, field) {
+/** Most lines are turns; only a line that can be a title is worth reading. */
+const KINDS = ['title'];
+/** The newest non-blank title `by` gave in transcript lines, trimmed. A torn first line of a tail is skipped. */
+function newestTitleOf(reader, text, by) {
     const lines = text.split('\n');
     for (let index = lines.length - 1; index >= 0; index -= 1) {
-        const line = lines[index] ?? '';
-        // Most lines are turns; only a line naming the entry type is worth parsing.
-        const entry = line.includes(type) ? parseLine(line) : undefined;
-        const title = isRecord(entry) && entry['type'] === type ? stringField(entry, field)?.trim() : undefined;
-        if (title !== undefined && title !== '') {
+        const entry = reader.entry(lines[index] ?? '', KINDS);
+        const title = entry?.kind === 'title' && entry.by === by ? entry.text.trim() : '';
+        if (title !== '') {
             return title;
         }
     }
     return undefined;
 }
 /**
- * The newest title the user gave the session, from transcript lines: only `custom-title` entries
- * count, never a title Claude Code made up. A torn first line of a tail is skipped.
+ * The newest title the user gave the session (`--name`, `/rename`), from transcript lines: never a
+ * title the host made up. A torn first line of a tail is skipped.
  */
-export function customTitleOf(text) {
-    return newestTitleOf(text, CUSTOM_TITLE, 'customTitle');
+export function customTitleOf(reader, text) {
+    return newestTitleOf(reader, text, 'person');
 }
 /**
- * The newest title Claude Code made up for the session (`ai-title` entries), from transcript lines. It
+ * The newest title the host made up for the session from the conversation, from transcript lines. It
  * only describes the conversation, as a tab's topic (tabs/status.ts): it never names the session.
  */
-export function aiTitleOf(text) {
-    return newestTitleOf(text, AI_TITLE, 'aiTitle');
+export function aiTitleOf(reader, text) {
+    return newestTitleOf(reader, text, 'host');
 }
 /**
- * The title of the Claude Code session a hook runs for: the payload's `session_title`, else the
- * newest `custom-title` near the end of its transcript. Undefined when the user never named it.
+ * The title of the session a hook runs for: the payload's `session_title`, else the newest title the
+ * user gave near the end of its transcript. Undefined when the user never named it, and with no
+ * `reader` (a host that keeps no transcript teamrig can read) when the payload names none.
  */
-export async function sessionTitleOf(payload, files) {
+export async function sessionTitleOf(reader, payload, files) {
     if (!isRecord(payload)) {
         return undefined;
     }
@@ -58,6 +47,6 @@ export async function sessionTitleOf(payload, files) {
         return title;
     }
     const transcript = stringField(payload, 'transcript_path');
-    const text = transcript === undefined || transcript === '' ? undefined : await files.readTail(transcript, TRANSCRIPT_TAIL_BYTES);
-    return text === undefined ? undefined : customTitleOf(text);
+    const text = reader === undefined || transcript === undefined || transcript === '' ? undefined : await files.readTail(transcript, TRANSCRIPT_TAIL_BYTES);
+    return reader === undefined || text === undefined ? undefined : customTitleOf(reader, text);
 }

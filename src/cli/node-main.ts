@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import type { Writable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 import { nodeTranscriptSource } from '../budget/discover.ts';
+import { HOST_PROGRAM_TIMEOUT_MS, loadHostPorts } from '../composition/host-ports.ts';
 import { nodeFileBytes } from '../core/file-bytes.ts';
 import { nodeFiles } from '../core/files.ts';
 import { GIT_TREES } from '../delivery/git-tree.ts';
@@ -14,7 +15,9 @@ import { realSleep, systemClock } from '../core/lock.ts';
 import { NODE_PATH_PROBE } from '../core/path-probe.ts';
 import { NODE_STORE_FOLDERS } from '../core/node-store-folders.ts';
 import { chatWebhook } from '../core/webhook.ts';
-import { nodeProgramRunner, systemCredentials } from '../github/credentials.ts';
+import { CREDENTIAL_TIMEOUT_MS, systemCredentials } from '../core/credentials.ts';
+import { nodeHttpClient } from '../core/http.ts';
+import { nodeProgramRunner } from '../core/program-runner.ts';
 import { GIT_CHECKOUT } from '../exec/binding.ts';
 import { nodeExecSpawner } from '../exec/runner.ts';
 import { nodeGhRunner } from '../github/gh.ts';
@@ -98,6 +101,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     secretsGit: gitSecrets(process.env),
     out: entry.out,
     platform: process.platform,
+    host: await loadHostPorts(nodeProgramRunner(HOST_PROGRAM_TIMEOUT_MS)),
     processes: nodeProcesses(),
     sessionProcesses,
     starters: starterWatch(sessionProcesses, { pid: process.pid, shells: launchingShellsOf(process.env, process.ppid) }, nodeEvery),
@@ -106,7 +110,8 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     memory: nodeHostMemory(process.platform),
     cpu: nodeHostCpu(),
     gh: nodeGhRunner(),
-    credentials: systemCredentials(process.platform, nodeProgramRunner()),
+    credentials: systemCredentials(process.platform, nodeProgramRunner(CREDENTIAL_TIMEOUT_MS)),
+    http: nodeHttpClient(),
     probe: NODE_PATH_PROBE,
     pluginStore: NODE_STORE_FOLDERS,
     transcripts: nodeTranscriptSource,

@@ -1,14 +1,14 @@
 import { ENV } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { closedSince } from "../../github/sync.js";
-import { targetText } from "../../issues/host.js";
+import { GITHUB_REPOS_HOST, targetText } from "../../issues/host.js";
 import { applyPush } from "../../issues/push-apply.js";
 import { planAssigned, viewerOf } from "../../issues/push-assignees.js";
 import { changeLine, changeWrites, planPush, pushAssignees, SESSION_PUSH, sessionLogins, VIEWER_UNREAD } from "../../issues/status-push.js";
 import { RegisterPolicy } from "../../register/policy.js";
 import { noPositionals } from "../args.js";
 import { callerOf } from "../inputs.js";
-import { hostOf, reposOf } from "../issue-hosts.js";
+import { hostsOf, reposOf } from "../issue-hosts.js";
 import { sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { GITHUB_OFF, githubOff } from "./issue-sync-auto.js";
@@ -47,9 +47,11 @@ export async function issuePush(args, runtime) {
         say('OFF no repository to push to: list them as "owner/name" under github.repos in the team config; nothing was read or written');
         return EXIT.ok;
     }
+    // github.repos is GitHub's list, so every repository it names is GitHub's, which is its tracker and its code host.
+    const hosts = await hostsOf(GITHUB_REPOS_HOST, runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp);
     const totals = await pushRepos({
-        // github.repos is GitHub's list, so every repository it names is GitHub's.
-        host: hostOf('github', runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp),
+        host: hosts.tracker,
+        pulls: hosts.codeHost,
         repos: reposOf(config.github.repos, args.flags.get('repo')),
         since: closedSince(new Date(runtime.clock.now()), config.github.closedDays),
         tasks: async () => (await team.register.snapshot()).state.tasks.values(),
@@ -109,12 +111,14 @@ export async function pushRepos(run, say) {
             viewers.set(reach.scope, reading);
             return reading;
         };
-        const assigned = await planAssigned(run.host, repo, (who) => planPush(repo, read.issues, tasks, limits, who), pushAssignees(run.logins, VIEWER_UNREAD), readViewer, say);
+        // Each status label is planned under the name the tracker holds it by, as the list above gave the issues' labels.
+        const planFor = (who, openPulls) => planPush(repo, read.issues, tasks, limits, who, openPulls, (label) => run.host.labelName(label));
+        const assigned = await planAssigned(run.host, repo, planFor, pushAssignees(run.logins, VIEWER_UNREAD), readViewer, say);
         if (assigned.kind === 'failed') {
             failures.push({ repo, reason: assigned.reason });
             continue;
         }
-        const plan = assigned.plan.unlisted.length === 0 ? assigned.plan : planPush(repo, read.issues, tasks, limits, assigned.who, await openPullsOf(run.host, repo, say));
+        const plan = assigned.plan.unlisted.length === 0 ? assigned.plan : planFor(assigned.who, await openPullsOf(run.pulls, repo, say));
         planLines(plan).forEach(say);
         const planned = plan.changes.reduce((sum, change) => sum + changeWrites(change), 0);
         left -= planned;

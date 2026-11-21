@@ -4,6 +4,7 @@ import { droppedEditReason, droppedEditsOf } from "../../hooks/dropped-edit.js";
 import { blockOutput } from "../../hooks/stop.js";
 import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { noPositionals } from "../args.js";
+import { transcriptsOf } from "../host.js";
 import { EXIT } from "../runtime.js";
 import { parseJson, sessionTeam } from "./hook-input.js";
 /**
@@ -24,7 +25,7 @@ export async function droppedEditReasonOf(runtime, payload, thread) {
     }
     const bytes = thread === 'main' ? TRANSCRIPT_TAIL_BYTES : HELPER_TRANSCRIPT_BYTES;
     const text = await runtime.files.readTail(transcript, bytes);
-    const dropped = text === undefined ? [] : droppedEditsOf(text, Buffer.byteLength(text, 'utf8') >= bytes, thread);
+    const dropped = text === undefined ? [] : droppedEditsOf(transcriptsOf(runtime), text, Buffer.byteLength(text, 'utf8') >= bytes, thread);
     return dropped.length === 0 ? undefined : droppedEditReason(dropped, KIT_NAME);
 }
 /** The SubagentStop's reason for this payload; none outside a team. */

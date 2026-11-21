@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { testTask } from '../testing/task.ts';
+import { cutTask, textHash } from './description-cut.ts';
 import { foldEvents, type Task } from './fold.ts';
 import { readEvents } from './snapshot.ts';
 import { isTaskLine, parseTaskLine, taskLineRecord, TASK_LINE_TYPE } from './task-line.ts';
@@ -118,6 +119,23 @@ describe('task lines', () => {
     assert.equal(parseTaskLine(editedLine(richTask, { followups: undefined })), 'T42: followups is missing');
     assert.equal(parseTaskLine(editedLine(richTask, { review: undefined })), 'T42: review is missing');
     assert.match(String(parseTaskLine(editedLine(richTask, { audits: undefined }))), /^T42: audits is not a list$/);
+  });
+
+  it('reads back a cut description as its mark, and a whole one with none', () => {
+    const cut = cutTask(richTask);
+    assert.deepEqual(cut.descriptionCut, { chars: 13, hash: textHash('All the parts') });
+    assert.deepEqual(parseTaskLine(onDisk(cut)), cut);
+    assert.equal(richTask.descriptionCut, null);
+    assert.deepEqual(parseTaskLine(onDisk(richTask)), richTask);
+  });
+
+  it('refuses a line written before the mark existed, so its snapshot falls to the history', () => {
+    assert.equal(parseTaskLine(editedLine(richTask, { descriptionCut: undefined })), 'T42: descriptionCut is neither a mark nor null');
+  });
+
+  it('refuses a bad mark, and one beside a description', () => {
+    assert.equal(parseTaskLine(editedLine(richTask, { description: null, descriptionCut: { chars: 13 } })), 'T42: bad descriptionCut {"chars":13}');
+    assert.equal(parseTaskLine(editedLine(richTask, { descriptionCut: { chars: 13, hash: '0123abcd' } })), 'T42: holds a description and the mark of a cut one');
   });
 
   it('refuses a bad id, status or count', () => {

@@ -5,8 +5,8 @@ import { holdBackOutput } from "./permission.js";
 export const ROLE_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
 /**
  * How many calls the role's allow let run at or after `sinceMs` toward its cap, by the prompt-answers log's text: one
- * for each close and comment, and for a migrate its `count`, the issue rows its file held (T4606), so a run opening
- * fifty issues weighs fifty; a ship counts toward no cap. A line with no positive whole `count` weighs one.
+ * for each close, and for a migrate its `count`, the issue rows its file held (T4606), so a run opening fifty issues
+ * weighs fifty; a ship counts toward no cap. A line with no positive whole `count` weighs one.
  */
 export function roleAllowsSince(log, role, sinceMs) {
     return parseJsonl(log)

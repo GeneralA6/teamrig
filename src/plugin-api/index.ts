@@ -1,0 +1,146 @@
+/**
+ * The plugin API: everything an adapter may import from teamrig. An adapter imports this file and its own folder,
+ * nothing else, so moving one out of the repo changes no line of it but this import.
+ */
+export { API_VERSION, apiVersionNotice, isApiVersion } from './version.ts';
+export { OSES, isManifest, isOs, isProofRef, isSupport, manifestProblems, provedOn, supportProblem, type Manifest, type Os, type ProofRef, type Support } from './support.ts';
+export { ADAPTER_ID, adapterEntry, declarationProblems, type AdapterDeclaration, type AdapterEntry } from './declaration.ts';
+export { defineHost, hostAdapterProblems, hostDeclarationProblems, isHostAdapter, isHostDeclaration, type HostAdapter, type HostDeclaration, type HostDeps } from './host.ts';
+export {
+  connectorAdapterProblems,
+  connectorDeclarationProblems,
+  defineConnector,
+  isConnectorAdapter,
+  isConnectorDeclaration,
+  type ConnectorAdapter,
+  type ConnectorDeclaration,
+  type ConnectorDeps,
+  type ConnectorPorts,
+} from './connector.ts';
+export {
+  PANE_STATES,
+  TERMINAL_REQUESTS,
+  isPaneState,
+  isTerminalRequest,
+  type DeliverAnswer,
+  type HeldWhy,
+  type IdleAnswer,
+  type ListAnswer,
+  type ListedPane,
+  type OpenAnswer,
+  type PaneAnswer,
+  type PaneIdentity,
+  type PaneOpen,
+  type PaneState,
+  type TerminalCapabilities,
+  type TerminalFailure,
+  type TerminalPort,
+  type TerminalRequest,
+  type Unserved,
+  type Wake,
+} from './terminal.ts';
+export {
+  defineTerminal,
+  isTerminalAdapter,
+  isTerminalDeclaration,
+  terminalAdapterProblems,
+  terminalDeclarationProblems,
+  type TerminalAdapter,
+  type TerminalDeclaration,
+  type TerminalDeps,
+  type TerminalPorts,
+} from './terminal-adapter.ts';
+export {
+  CONNECTOR_FEATURES,
+  CONNECTOR_KINDS,
+  HOST_FEATURES,
+  TERMINAL_FEATURES,
+  featuresOf,
+  isConnectorFeatureId,
+  isConnectorKind,
+  isHostFeatureId,
+  isTerminalFeatureId,
+  type ConnectorFeatureId,
+  type ConnectorKind,
+  type FeatureId,
+  type FeatureIdOf,
+  type FeatureRow,
+  type FeatureSide,
+  type HostFeatureId,
+  type TerminalFeatureId,
+  type Toggle,
+} from '../features/registry.ts';
+export {
+  INPUT_ORIGINS,
+  isUnsupported,
+  unsupported,
+  type BackgroundMark,
+  type CallUsage,
+  type CompactEntry,
+  type ContinuedEntry,
+  type EntryKind,
+  type EntryThread,
+  type EnvironmentEntry,
+  type HookNoteEntry,
+  type HostPorts,
+  type InputEntry,
+  type InputOrigin,
+  type ModelSwitchEntry,
+  type OtherEntry,
+  type QueuedPromptEntry,
+  type ReplyCall,
+  type ReplyEntry,
+  type ScheduledCarryEntry,
+  type ScheduledJob,
+  type StatusLine,
+  type StatusLineAnswer,
+  type StatusLinePlan,
+  type StatusReading,
+  type TitleEntry,
+  type RateLimits,
+  type RateWindow,
+  type TokenWeights,
+  type ToolOutcome,
+  type TranscriptEntry,
+  type TranscriptReader,
+  type TurnEndEntry,
+  type UnreadLine,
+  type Unsupported,
+  type UsageMeter,
+} from '../ports/host/index.ts';
+export type { CredentialRead, CredentialStore } from '../core/credentials.ts';
+// What an adapter reads outside JSON with, an API's answer or a host's own line: it is narrowed, never cast.
+export { instantField, isNonNegativeInteger, isRecord, isStringArray, recordField, stringField, type JsonRecord } from '../core/guards.ts';
+export type { Env } from '../core/home.ts';
+export type { HttpClient, HttpMethod, HttpRequest, HttpResult } from '../core/http.ts';
+// The footer of a text a connector posts: taken off a text already stamped, and its parts for a tool with no Markdown.
+export { stampCredit, withoutStampFooter, type StampCredit } from '../core/stamp.ts';
+// Whether a comment's text is a claim line: a tracker matches it as it reads the comment, and drops the text.
+export { isClaim } from '../issues/claim.ts';
+export type {
+  CloseReason,
+  CodeHost,
+  HostAssignee,
+  HostComments,
+  HostEnd,
+  HostIssueId,
+  HostIssueLabels,
+  HostLabel,
+  HostLinks,
+  HostList,
+  HostOpen,
+  HostReach,
+  HostThread,
+  HostUse,
+  HostViewer,
+  HostWatch,
+  IssueDraft,
+  IssueTarget,
+  LabelSpec,
+  Tracker,
+  WatchMarks,
+} from '../issues/host.ts';
+export type { HostIssue, IssueComment, IssueThread, ReadComment } from '../issues/issue.ts';
+export type { ProgramRequest, ProgramResult, ProgramRunner } from '../core/program-runner.ts';
+export type { SecretScanner } from '../core/secrets.ts';
+export type { ShellEnd } from '../core/shell-end.ts';

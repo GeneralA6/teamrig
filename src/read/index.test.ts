@@ -215,7 +215,7 @@ describe('the read entry', () => {
   it('reads a turn-log line as the hooks write it, and none from a newer teamrig', () => {
     const reply = { at: '2030-01-08T09:00:00.000Z', kind: 'reply', text: 'shipped', claude: 'claude-1', truncated: true, upTo: 'u-7' };
     assert.deepEqual(read.parseEntry({ v: read.TURN_LOG_VERSION, ...reply, later: 'a field it does not know' }), reply);
-    assert.equal(read.parseEntry({ v: read.TURN_LOG_VERSION + 1, ...reply }), undefined);
+    assert.equal(read.parseEntry({ v: read.TURN_LOG_VERSION + 2, ...reply }), undefined);
   });
 
   it("reads each session's closes and reopens from the session log, and none from a newer teamrig (T1725)", () => {
@@ -223,7 +223,7 @@ describe('the read entry', () => {
     const reopen: read.ReopenRecord = { kind: 'reopen', session: 'alpha', at: '2030-01-08T10:00:00.000Z', resumed: 'claude-1' };
     const bravo: read.CloseRecord = { kind: 'close', session: 'bravo', by: 'lead', at: '2030-01-08T09:30:00.000Z', claudeSession: 'claude-2', idleMinutes: 40, freedMb: 600 };
     const line = (record: read.SessionLogRecord, version: number): string => JSON.stringify({ v: version, ...record });
-    const text = [line(close, read.SESSION_LOG_FORMAT), line(bravo, read.SESSION_LOG_FORMAT), line(reopen, read.SESSION_LOG_FORMAT), line(close, read.SESSION_LOG_FORMAT + 1)].join('\n');
+    const text = [line(close, read.SESSION_LOG_FORMAT), line(bravo, read.SESSION_LOG_FORMAT), line(reopen, read.SESSION_LOG_FORMAT), line(close, read.SESSION_LOG_FORMAT + 2)].join('\n');
     const log = read.readSessionLog(text);
     assert.equal(log.skipped, 1);
     const bySession = read.sessionLogBySession(log.records);

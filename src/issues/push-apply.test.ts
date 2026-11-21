@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeIssueHost } from '../testing/fake-issue-host.ts';
+import { trackerOnly } from '../testing/split-hosts.ts';
 import { applyPush } from './push-apply.ts';
 import { STATUS_LABEL_SPECS, type IssueChange, type PushPlan } from './status-push.ts';
 
@@ -76,6 +77,16 @@ describe('applyPush', () => {
     assert.equal(host.calls.filter((call) => call.kind === 'label-create').length, 1);
   });
 
+  it('makes a status label under the name the tracker holds it by, never calling it missing (T4754)', async () => {
+    const host = new FakeIssueHost().namesLabels((label) => label.replace(/\s+/gu, '-'));
+    const { outcome, lines } = await push(host, plan(change(1, { add: ['status:in-progress'] })));
+    assert.deepEqual(outcome, { sent: 1, writes: 2, held: 0, failed: undefined });
+    assert.deepEqual(lines, ['MADE acme/web: the label "status:in-progress", which the push sets', 'SET acme/web#1 T1 in-progress: add status:in-progress']);
+    const spaced = STATUS_LABEL_SPECS.find((spec) => spec.name === 'status:in progress');
+    assert.ok(spaced !== undefined);
+    assert.deepEqual(host.calls[0], { kind: 'label-create', repo: REPO, label: { ...spaced, name: 'status:in-progress' } });
+  });
+
   it('sends no change when making a status label fails', async () => {
     const host = new FakeIssueHost().failsLabelCreate('HTTP 403');
     const { outcome, lines } = await push(host, plan(change(1, { add: ['status:waiting'] })));
@@ -101,5 +112,17 @@ describe('applyPush', () => {
     const host = new FakeIssueHost().failsClose('HTTP 410');
     const closed = await push(host, plan(change(9, { status: 'dropped', close: 'not-planned' })));
     assert.deepEqual(closed.outcome, { sent: 0, writes: 0, held: 0, failed: 'HTTP 410' });
+  });
+
+  it('sends labels, an assign and a close with a tracker that is no code host (T4619)', async () => {
+    const host = new FakeIssueHost().hasLabels('status:in progress');
+    const lines: string[] = [];
+    const pushed = plan(change(7, { add: ['status:in progress'], assign: 'octocat' }), change(9, { status: 'dropped', close: 'not-planned' }));
+    const outcome = await applyPush(trackerOnly(host), pushed, (line) => lines.push(line));
+    assert.deepEqual(outcome, { sent: 2, writes: 3, held: 0, failed: undefined });
+    assert.deepEqual(
+      host.calls.map((call) => call.kind),
+      ['label-add', 'assign', 'close'],
+    );
   });
 });

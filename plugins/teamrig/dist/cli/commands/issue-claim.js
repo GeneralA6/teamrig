@@ -69,15 +69,15 @@ export async function recordClaims(runtime, kit, config, run) {
         claims.push(...plan.kept);
         let held = false;
         for (const claim of plan.made) {
-            if (!spend(claim, labelsOf(claim), STATUS_LABELS.open)) {
+            if (!spend(claim, labelsOf(claim), run.host.labelName(STATUS_LABELS.open))) {
                 held = true;
             }
-            else if (await makeClaim(run.host, claim, labelsOf(claim), say)) {
+            else if (await makeClaim(run, claim, labelsOf(claim), say)) {
                 claims.push(claim);
             }
         }
         for (const claim of plan.expired) {
-            if (!spend(claim, labelsOf(claim), STATUS_LABELS.claimed) || !(await endClaim(run.host, claim, labelsOf(claim), say))) {
+            if (!spend(claim, labelsOf(claim), run.host.labelName(STATUS_LABELS.claimed)) || !(await endClaim(run, claim, labelsOf(claim), say))) {
                 claims.push(claim);
             }
         }
@@ -117,35 +117,39 @@ function targetOf(claim) {
     return { repo: claim.repo, number: claim.number };
 }
 /** Assigns the claimer, swaps the status label when the issue shows `status:open`, and replies; true once assigned. */
-async function makeClaim(host, claim, labels, say) {
+async function makeClaim(via, claim, labels, say) {
     const target = targetOf(claim);
-    const assigned = await host.assign(target, [claim.login]);
+    const assigned = await via.host.assign(target, [claim.login]);
     if (assigned.kind === 'failed') {
         say(`FAILED ${targetText(target)}: ${claim.login}'s claim: ${assigned.reason}; no claim was made, a person may assign by hand`);
         return false;
     }
     say(`CLAIMED ${targetText(target)}: ${claim.login} took it by a comment and is assigned for ${CLAIM_DAYS} days, or until a linked pull request lands`);
-    await swapStatus(host, target, labels, { from: STATUS_LABELS.open, to: STATUS_LABELS.claimed }, say);
-    await reply(host, target, CLAIM_REPLY, say);
+    await swapStatus(via, target, labels, { from: STATUS_LABELS.open, to: STATUS_LABELS.claimed }, say);
+    await reply(via.host, target, CLAIM_REPLY, say);
     return true;
 }
 /** Takes the claimer off, swaps the status label back when the issue shows `status:claimed`, and replies; true once taken off. */
-async function endClaim(host, claim, labels, say) {
+async function endClaim(via, claim, labels, say) {
     const target = targetOf(claim);
-    const removed = await host.unassign(target, claim.login);
+    const removed = await via.host.unassign(target, claim.login);
     if (removed.kind === 'failed') {
         say(`FAILED ${targetText(target)}: ending ${claim.login}'s claim: ${removed.reason}; tried again on the next run`);
         return false;
     }
     say(`RELEASED ${targetText(target)}: ${claim.login}'s claim ran ${CLAIM_DAYS} days with no linked pull request; the assignee is taken off`);
-    await swapStatus(host, target, labels, { from: STATUS_LABELS.claimed, to: STATUS_LABELS.open }, say);
-    await reply(host, target, RELEASE_REPLY, say);
+    await swapStatus(via, target, labels, { from: STATUS_LABELS.claimed, to: STATUS_LABELS.open }, say);
+    await reply(via.host, target, RELEASE_REPLY, say);
     return true;
 }
-/** Swaps `from` for `to` only on an issue showing `from`: one with another status, or none, is the status push's. */
-async function swapStatus(host, target, labels, swap, say) {
-    if (labels.includes(swap.from)) {
-        await labelIssue(host, { target, add: [swap.to], remove: [swap.from] }, say);
+/**
+ * Swaps `from` for `to` only on an issue showing `from`: one with another status, or none, is the status push's. The
+ * issue's labels are as the tracker holds them, so `from` is looked for under the name it has there (labelIssue names
+ * the two it writes itself).
+ */
+async function swapStatus(via, target, labels, swap, say) {
+    if (labels.includes(via.host.labelName(swap.from))) {
+        await labelIssue(via.host, via.labelFiles, { target, add: [swap.to], remove: [swap.from] }, say);
     }
 }
 async function reply(host, target, body, say) {

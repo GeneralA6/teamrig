@@ -2,7 +2,7 @@ import { isNonNegativeInteger, isRecord, stringField, type JsonRecord } from '..
 import type { ProgramRun } from '../package-guard/programs.ts';
 import { TURN_TRIGGERS, type ToolResult, type ToolUse, type TurnTrigger } from './line.ts';
 import { runWorkOf, SHELL_DIALECTS, shellRunsOf } from './run-work.ts';
-import { CHARS_PER_TOKEN, contextTokens, WEIGHTS, type Usage } from './weights.ts';
+import type { CallUsage, UsageMeter } from '../ports/host/index.ts';
 
 /** What one tool call did, as far as the loop patterns care. */
 export const TOOL_KINDS = ['edit', 'editTest', 'testFull', 'testTargeted', 'build', 'teamrigCli', 'git', 'read', 'other'] as const;
@@ -17,8 +17,6 @@ const PIPED = /\|\s*(?:tail|head|grep|Select-Object|findstr)\b/;
 /** A failing run in the common reporters: node's spec and TAP counts, a failure mark, Jest and Vitest summaries. */
 const TEST_FAILED = /(?:^|\n)\s*(?:#|ℹ)\s*fail\s+[1-9]|✖|\bnot ok \d|Tests?:?\s+\d+ failed|FAIL\s/;
 
-/** Re-reading a token from the cache costs this much of a plain input token; the patterns' savings are priced at it. */
-const REREAD = WEIGHTS.cacheRead;
 /** A call whose context is below this share of the previous call's was compacted: what came before is gone. */
 const COMPACTED_BELOW = 0.65;
 /**
@@ -275,10 +273,18 @@ export class PatternTracker {
   private current: PatternState;
   /** What one W of this transcript costs in W of a main session: the W worked out here is multiplied by it, the W the meter hands in is weighted already. */
   private readonly weight: number;
+  /** The host's price of a token: a saving is priced at a re-read from the cache, test output kept in the context at an hour's cache write. */
+  private readonly usage: UsageMeter;
 
-  constructor(state: PatternState, weight = 1) {
+  constructor(state: PatternState, usage: UsageMeter, weight = 1) {
     this.current = state;
+    this.usage = usage;
     this.weight = weight;
+  }
+
+  /** The W of reading `tokens` again from the cache, in W of a main session. */
+  private reread(tokens: number): number {
+    return tokens * this.usage.weights.cacheRead * this.weight;
   }
 
   state(): PatternState {
@@ -302,18 +308,19 @@ export class PatternTracker {
    * dropped, which means a compaction removed that output. A call that re-wrote most of its context to
    * the cache is counted cold, with the W of those writes.
    */
-  callStarted(usage: Usage, tools: readonly ToolUse[], count: Count): void {
-    const context = contextTokens(usage);
+  callStarted(usage: CallUsage, tools: readonly ToolUse[], count: Count): void {
+    const context = this.usage.contextReading(usage);
     const written = usage.cacheWrite5m + usage.cacheWrite1h + usage.cacheWriteUnsplit;
     if (written >= COLD_MIN_TOKENS && written >= context * COLD_MIN_SHARE) {
       count('coldCalls', 1);
-      const writeW = usage.cacheWrite5m * WEIGHTS.cacheWrite5m + usage.cacheWrite1h * WEIGHTS.cacheWrite1h + usage.cacheWriteUnsplit * WEIGHTS.cacheWriteUnsplit;
+      const { weights } = this.usage;
+      const writeW = usage.cacheWrite5m * weights.cacheWrite5m + usage.cacheWrite1h * weights.cacheWrite1h + usage.cacheWriteUnsplit * weights.cacheWriteUnsplit;
       count('coldW', writeW * this.weight);
     }
     const { lastContext, rentTokens } = this.current;
     const compacted = lastContext > 0 && context < lastContext * COMPACTED_BELOW;
     if (!compacted && rentTokens > 0) {
-      count('passRentW', rentTokens * REREAD * this.weight);
+      count('passRentW', this.reread(rentTokens));
     }
     this.current = { ...this.current, open: tools.map(summaryOf), rentTokens: compacted ? 0 : rentTokens, lastContext: context };
   }
@@ -344,11 +351,11 @@ export class PatternTracker {
     }
     if (sameTurn && test !== undefined && !edits && prev.single === 'edit') {
       count('editThenTest', 1);
-      count('editThenTestSavedW', context * REREAD * this.weight);
+      count('editThenTestSavedW', this.reread(context));
     }
     if (sameTurn && single === 'edit' && prev.single === 'edit') {
       count('editChain', 1);
-      count('editChainSavedW', context * REREAD * this.weight);
+      count('editChainSavedW', this.reread(context));
     }
     if (sameTurn && isLookup(single) && isLookup(prev.single)) {
       count('readChain', 1);
@@ -385,10 +392,10 @@ export class PatternTracker {
         turnTest: this.current.turnTest?.id === result.id ? settled : this.current.turnTest,
       };
       if (!failed) {
-        const tokens = result.text.length / CHARS_PER_TOKEN;
+        const tokens = result.text.length / this.usage.charsPerToken;
         count('passRuns', 1);
         count('passTokens', tokens);
-        count('passRentW', tokens * WEIGHTS.cacheWrite1h * this.weight);
+        count('passRentW', tokens * this.usage.weights.cacheWrite1h * this.weight);
         this.current = { ...this.current, rentTokens: this.current.rentTokens + tokens };
       }
     }

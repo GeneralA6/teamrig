@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import type { HostSource } from '../composition/host-ports.ts';
 import { isRecord } from '../core/guards.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { APP, CLAUDE_SESSION, CliHarness, contextOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 
@@ -97,6 +99,16 @@ describe('the Stop hook checks the effort and the model that answers', () => {
     assert.deepEqual((await stopAs(kit, 'alpha', stopPayload())).stdout, [], 'once');
     assert.equal(noticeOf(await stopAs(kit, 'lead', stopPayload('high'))), `${LEAD_AT_HIGH}
 ${ALPHA_SWITCHED.replace('app-alpha', 'app-lead').replace('claude-fable-5-1 to', 'opus to')}`);
+  });
+
+  it('tells no switch on a host that keeps no transcript, and still tells the effort', async () => {
+    const bare: HostSource = bareHost;
+    const kit = new CliHarness();
+    await kit.files.write(TRANSCRIPT, switchedTranscript());
+    const stop = async (session: string, stdin: string): Promise<CliResult> => kit.run(['hook', 'stop'], { stdin, env: { TEAMRIG_SESSION: session }, host: bare });
+    assert.deepEqual((await stop('alpha', stopPayload())).stdout, []);
+    assert.equal(noticeOf(await stop('lead', stopPayload('high'))), LEAD_AT_HIGH);
+    assert.equal(noticeOf(await stopAs(kit, 'alpha', stopPayload())), ALPHA_SWITCHED, 'the shipped host reads the switch');
   });
 
   it('shows nothing it cannot record, and nothing for an unknown session', async () => {

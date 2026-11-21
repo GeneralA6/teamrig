@@ -199,6 +199,14 @@ jobs:
       # The configuration reference is drawn from the config schema; it must match the committed page.
       - run: node tools/docs/configuration-cli.ts --check
         if: ${{ needs.changes.outputs.kind != 'design' }}
+      # The parity page is drawn from what each adapter declares and the feature registry; it must match the committed
+      # page, on a docs change too, which could edit the page by hand.
+      - run: node tools/docs/parity-cli.ts --check
+        if: ${{ needs.changes.outputs.kind != 'design' }}
+      # The layer boundaries of src (what the core and an adapter import, who imports an adapter, where a tool is named): counted, failing nothing in warn mode.
+      # A docs or design change touches no file under src, so only a code change runs it.
+      - run: node tools/ci/boundaries-cli.ts
+        if: ${{ needs.changes.outputs.kind == 'code' }}
       # Every link, anchor and Mermaid block in the Markdown must resolve on every OS; a design change's too, as
       # docs/design/ is Markdown a reader follows.
       - run: node tools/docs/doc-check-cli.ts

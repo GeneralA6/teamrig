@@ -10,6 +10,7 @@ import { JsonlMarkLog } from "../../inbox/store.js";
 import { noPositionals, UsageError } from "../args.js";
 import { openTeamKit, requireConfig, rosterOf } from "../kit.js";
 import { logRollupRun } from "../rollup-start.js";
+import { transcriptsOf, usageOf } from "../host.js";
 import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
 /**
@@ -69,6 +70,8 @@ export async function rollup(args, runtime) {
     if (rewrite && !apply) {
         throw new UsageError('--rewrite needs --apply');
     }
+    const reader = transcriptsOf(runtime);
+    const usage = usageOf(runtime);
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'read');
     const now = runtime.clock.now();
@@ -85,8 +88,8 @@ export async function rollup(args, runtime) {
     const since = (parseUtcDay(range.from) ?? new Date(now - MS_PER_DAY)).getTime();
     const sessions = await discoverTranscripts(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), since);
     const tree = await treeMembersOf(runtime, await loadTree(runtime), team);
-    const byTeamSession = await attributeInTree({ own: team, tree, sessions, titleOf: (path) => transcriptTitleOf(runtime.transcripts, path) });
-    const rollups = await foldTeam(runtime.transcripts, { byTeamSession, lead: roster.holderOf('lead'), chunkBytes: CATCH_UP_CHUNK_BYTES });
+    const byTeamSession = await attributeInTree({ own: team, tree, sessions, titleOf: (path) => transcriptTitleOf(reader, runtime.transcripts, path) });
+    const rollups = await foldTeam({ bytes: runtime.transcripts, reader, usage }, { byTeamSession, lead: roster.holderOf('lead'), chunkBytes: CATCH_UP_CHUNK_BYTES });
     const plans = await planDays(runtime.files, { folder: kit.paths.rollup, team, range, rollups });
     const { inserted, unchanged, changed } = outcomeCounts(plans);
     const counts = `${inserted} inserted, ${unchanged} unchanged, ${changed} changed`;

@@ -1,9 +1,7 @@
-import { isRecord, recordField } from "../core/guards.js";
-import { parseObject } from "../core/jsonl.js";
 import { MS_PER_MINUTE, parseDeadline } from "../core/time.js";
 import { TaskTree } from "../register/tree.js";
 import { isRightNow } from "../config/priorities.js";
-import { asksDecision, messageTextOf } from "../tabs/status.js";
+import { asksDecision, inputTextOf } from "../tabs/status.js";
 import { replyOf } from "../turn-log/reply.js";
 import { startableTasks } from "../wake/day-start.js";
 import { isNews } from "../wake/decide.js";
@@ -17,26 +15,21 @@ import { isNews } from "../wake/decide.js";
  */
 /** A session whose own time wait ends within this many minutes stays open: closing it would only reopen it. */
 export const TIME_WAIT_GUARD_MINUTES = 30;
-/** How the lines of a slash command open: Claude Code writes them as user entries, and they start no model turn. */
+/** How the lines of a slash command open: the host writes them as inputs, and they start no model turn. */
 const LOCAL_COMMAND_TAGS = ['<command-name>', '<command-message>', '<local-command-stdout>', '<local-command-stderr>', '<local-command-caveat>'];
-/** How the entry Claude Code writes when the person stops a turn opens. */
+/** How the input the host writes when the person stops a turn opens. */
 const INTERRUPTED = '[Request interrupted by user';
-function callsTool(entry) {
-    const content = recordField(entry, 'message')?.['content'];
-    return Array.isArray(content) && content.some((block) => isRecord(block) && block['type'] === 'tool_use');
-}
+/** The entries a tab's turns are made of. */
+const KINDS = ['input', 'reply'];
 /** True for an entry of the tab's own turns: the person's or the model's, not meta context, a helper's or a slash command's. */
 function isTurnEntry(entry) {
-    if (entry['isMeta'] === true || entry['isSidechain'] === true) {
+    if (entry.meta || entry.thread === 'helper') {
         return false;
     }
-    if (entry['type'] === 'assistant') {
+    if (entry.kind === 'reply') {
         return true;
     }
-    if (entry['type'] !== 'user') {
-        return false;
-    }
-    const text = (messageTextOf(entry) ?? '').trimStart();
+    const text = (inputTextOf(entry) ?? '').trimStart();
     return !LOCAL_COMMAND_TAGS.some((tag) => text.startsWith(tag));
 }
 /** A transcript tail's lines (`cut`: the tail of a longer file, whose partial first line is skipped). */
@@ -44,10 +37,10 @@ function tailLines(text, cut) {
     return text.split('\n').slice(cut ? 1 : 0);
 }
 /** The last entry of the tab's own turns among `lines`, and its index. */
-function lastTurnEntryOf(lines) {
+function lastTurnEntryOf(reader, lines) {
     for (let index = lines.length - 1; index >= 0; index -= 1) {
-        const entry = parseObject((lines[index] ?? '').trim());
-        if (entry !== undefined && isTurnEntry(entry)) {
+        const entry = reader.entry(lines[index] ?? '', KINDS);
+        if ((entry?.kind === 'input' || entry?.kind === 'reply') && isTurnEntry(entry)) {
             return { entry, index };
         }
     }
@@ -60,21 +53,21 @@ function lastTurnEntryOf(lines) {
  * any other reply ended the turn; a person's entry (a prompt or a tool's result) is a turn under way, unless it is
  * the person stopping the turn. No entry: idle.
  */
-export function tabActivityOf(text, cut) {
+export function tabActivityOf(reader, text, cut) {
     const lines = tailLines(text, cut);
-    const last = lastTurnEntryOf(lines);
+    const last = lastTurnEntryOf(reader, lines);
     if (last === undefined) {
         return 'idle';
     }
     const { entry, index } = last;
-    if (entry['type'] === 'user') {
-        return (messageTextOf(entry) ?? '').startsWith(INTERRUPTED) ? 'idle' : 'turn';
+    if (entry.kind === 'input') {
+        return (inputTextOf(entry) ?? '').startsWith(INTERRUPTED) ? 'idle' : 'turn';
     }
-    if (callsTool(entry)) {
+    if (entry.calls.length > 0) {
         return 'call';
     }
     // Up to this reply only: a slash command run after it starts no turn, so the decision still waits.
-    return asksDecision(replyOf(lines.slice(0, index + 1).join('\n'), undefined, !cut)?.text) ? 'question' : 'idle';
+    return asksDecision(replyOf(reader, lines.slice(0, index + 1).join('\n'), undefined, !cut)?.text) ? 'question' : 'idle';
 }
 /**
  * When the tab's last own entry was written, epoch ms, from its transcript's tail (`cut` as for `tabActivityOf`): what
@@ -83,10 +76,8 @@ export function tabActivityOf(text, cut) {
  * together, an hour apart, their sizes unchanged: T1417). Undefined with no own entry in the tail, or a last one with
  * no time.
  */
-export function lastTurnAtOf(text, cut) {
-    const stamp = lastTurnEntryOf(tailLines(text, cut))?.entry['timestamp'];
-    const at = typeof stamp === 'string' ? Date.parse(stamp) : Number.NaN;
-    return Number.isNaN(at) ? undefined : at;
+export function lastTurnAtOf(reader, text, cut) {
+    return lastTurnEntryOf(reader, tailLines(text, cut))?.entry.at;
 }
 /**
  * The soonest time wait of the session's own unfinished tasks within `maxPriority` that ends after `now` and within

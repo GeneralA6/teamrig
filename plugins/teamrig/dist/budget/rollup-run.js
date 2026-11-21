@@ -3,7 +3,7 @@ import { sessionsTitled } from "../hooks/bind.js";
 import { attribute } from "./attribute.js";
 import { readLines } from "./cursor.js";
 import { formatRollup, rollupFileName } from "./rollup-file.js";
-import { parseRollupLine, RollupFold } from "./rollup.js";
+import { rollupLineOf, RollupFold } from "./rollup.js";
 /**
  * Who the session's inbox marks claim it for: a team's mark naming a session of that team first. Marks stay in the
  * log of the team that wrote them, so a session moved to another team leaves its old days marked in the team it left;
@@ -61,14 +61,14 @@ export async function attributeInTree(input) {
     return attribution.byTeamSession;
 }
 /** Folds one transcript, a chunk at a time; a last line Claude Code is still writing is left for the next run. */
-async function readInto(bytes, path, fold, source, chunkBytes) {
+async function readInto({ bytes, reader }, path, fold, source, chunkBytes) {
     const transcript = fold.transcript(source);
     const size = (await bytes.size(path)) ?? 0;
     let offset = 0;
     while (offset < size) {
         const batch = await readLines(bytes, path, offset, size, chunkBytes);
         for (const raw of batch.lines) {
-            const line = parseRollupLine(raw);
+            const line = rollupLineOf(reader, raw);
             if (line !== undefined) {
                 transcript.line(line);
             }
@@ -81,15 +81,15 @@ async function readInto(bytes, path, fold, source, chunkBytes) {
     transcript.end();
 }
 /** The team's rows per day. Sessions and their transcripts go in sorted, as the first reader of a repeated reply takes it. */
-export async function foldTeam(bytes, input) {
-    const fold = new RollupFold();
+export async function foldTeam(deps, input) {
+    const fold = new RollupFold(deps.usage);
     for (const [session, { main, subagents }] of [...input.byTeamSession].sort(([a], [b]) => a.localeCompare(b))) {
         const lead = session === input.lead;
         for (const path of [...main].sort()) {
-            await readInto(bytes, path, fold, { session, lead, side: false }, input.chunkBytes);
+            await readInto(deps, path, fold, { session, lead, side: false }, input.chunkBytes);
         }
         for (const path of [...subagents].sort()) {
-            await readInto(bytes, path, fold, { session, lead, side: true }, input.chunkBytes);
+            await readInto(deps, path, fold, { session, lead, side: true }, input.chunkBytes);
         }
     }
     return fold.rollups();

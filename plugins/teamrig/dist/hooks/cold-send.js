@@ -1,4 +1,5 @@
 import { isRecord, stringField } from "../core/guards.js";
+import { hostSessionOf } from "../core/host-session.js";
 import { parseJsonl, toJsonlLine } from "../core/jsonl.js";
 /**
  * The cold-send hook, PreToolUse on SendMessage. A message wakes its receiver, and a receiver idle
@@ -37,7 +38,10 @@ export function sendTextOf(payload) {
 export function isCold(idleMs, coldAfterMinutes) {
     return coldAfterMinutes > 0 && idleMs >= coldAfterMinutes * 60_000;
 }
-/** `cold-sends.jsonl`: one `{"v":1,"claudeSession":"…","to":"…","at":"…"}` line per hold. */
+/**
+ * `cold-sends.jsonl`: one `{"v":1,"claudeSession":"…","to":"…","at":"…"}` line per hold. A later teamrig's line
+ * names the tab `hostSession`, and its hold counts here too: both share the log until every tab has reloaded.
+ */
 export class JsonlColdSendLog {
     files;
     path;
@@ -50,7 +54,7 @@ export class JsonlColdSendLog {
         const { records } = parseJsonl((await this.files.readTail(this.path, COLD_SEND_TAIL_BYTES)) ?? '');
         return records.some((line) => {
             const at = Date.parse(stringField(line.record, 'at') ?? '');
-            return stringField(line.record, 'claudeSession') === claudeSession && stringField(line.record, 'to') === to && at >= since.getTime();
+            return hostSessionOf(line.record, 'claudeSession') === claudeSession && stringField(line.record, 'to') === to && at >= since.getTime();
         });
     }
     async record(claudeSession, to, at) {

@@ -2,15 +2,17 @@ import { stringField } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
 import { handStepLintReason } from "../../hooks/hand-step-lint.js";
 import { REPLY_TAIL_BYTES, replyOf } from "../../turn-log/reply.js";
+import { transcriptsIfKept } from "../host.js";
 /**
  * The text the person saw this turn: the model's text since the turn's start in the transcript's tail, and the
- * message Claude Code gives the Stop hook (`last_assistant_message`), which the transcript may not hold yet. A copy
- * of it twice changes nothing the lint reads.
+ * message the host gives the Stop hook (`last_assistant_message`), which the transcript may not hold yet. A copy
+ * of it twice changes nothing the lint reads. On a host whose transcript teamrig cannot read, that message alone.
  */
 async function turnTextOf(runtime, payload) {
-    const transcript = stringField(payload, 'transcript_path');
+    const reader = transcriptsIfKept(runtime);
+    const transcript = reader === undefined ? undefined : stringField(payload, 'transcript_path');
     const tail = transcript === undefined ? undefined : await runtime.files.readTail(transcript, REPLY_TAIL_BYTES);
-    const reply = tail === undefined ? undefined : replyOf(tail, undefined, Buffer.byteLength(tail, 'utf8') < REPLY_TAIL_BYTES);
+    const reply = reader === undefined || tail === undefined ? undefined : replyOf(reader, tail, undefined, Buffer.byteLength(tail, 'utf8') < REPLY_TAIL_BYTES);
     return [reply?.text, stringField(payload, 'last_assistant_message')].filter((part) => part !== undefined).join('\n\n');
 }
 /**

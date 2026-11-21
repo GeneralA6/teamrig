@@ -6,7 +6,7 @@ import type { Renamed } from './args.ts';
  * `teamrig deploy`, `teamrig deploys` became `teamrig deploy-status`, `teamrig heavy` became `teamrig queue`, `teamrig
  * claim` became `teamrig freeze`, `teamrig release` became `teamrig unfreeze`, `teamrig windows` became `teamrig
  * stable-periods` and `teamrig load` became `teamrig job` (`load end` with it). `teamrig gh sync` and `teamrig gh
- * migrate` became `teamrig issue sync` and `teamrig issue migrate`, beside `issue comment` and `issue close`, since
+ * migrate` became `teamrig issue sync` and `teamrig issue migrate`, beside `issue reply` and `issue close`, since
  * they are the issue host's commands, not the gh CLI's.
  *
  * The ship gate reads this file's text at main and at the branch tip (tools/ship/renamed-callers.ts), to refuse a

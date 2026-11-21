@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { promptLine, replyLine, type FixtureTool } from '../testing/transcript-lines.ts';
 import { hookOutputKey } from './scan-hook-output.ts';
 import { outermostFolders, projectUse, readTranscriptUse, type UsedIn } from './scan-usage.ts';
@@ -11,6 +12,7 @@ const AT = '2030-01-08T10:00:00Z';
 const SINCE = 1_000;
 const RECENT = 2_000;
 const UNBOUNDED = Number.MAX_SAFE_INTEGER;
+const reader = shippedTranscripts();
 /** Two projects whose folders Claude Code names by one slug, `-work-a-b-c`. */
 const SLASH_C = resolve('/', 'work', 'a', 'b-c');
 const DASH_B = resolve('/', 'work', 'a-b', 'c');
@@ -37,7 +39,7 @@ describe('readTranscriptUse', () => {
     source.set(join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000a.jsonl'), main, RECENT);
     source.set(join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000a', 'subagents', 'agent-1.jsonl'), sub, RECENT);
     source.set(join(PROJECTS, 'other', '0123abcd-0000-4000-8000-00000000000b.jsonl'), old, SINCE - 1);
-    const use = await readTranscriptUse(source, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED, chunkBytes: 16 });
+    const use = await readTranscriptUse({ source, reader }, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED, chunkBytes: 16 });
     assert.deepEqual(sorted(use.skills), [
       ['alpha-check', []],
       ['beta-run', []],
@@ -62,7 +64,7 @@ describe('readTranscriptUse', () => {
     source.set(join(PROJECTS, '-work-a-b-c', '0123abcd-0000-4000-8000-00000000000a.jsonl'), slashC, RECENT);
     source.set(join(PROJECTS, '-work-a-b-c', '0123abcd-0000-4000-8000-00000000000b.jsonl'), dashB, RECENT);
     source.set(join(PROJECTS, 'other', '0123abcd-0000-4000-8000-00000000000c.jsonl'), nowhere, RECENT);
-    const use = await readTranscriptUse(source, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED, chunkBytes: 64 });
+    const use = await readTranscriptUse({ source, reader }, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED, chunkBytes: 64 });
     assert.deepEqual(sorted(use.skills), [
       ['alpha-check', [SLASH_C, DASH_B_WEB].sort()],
       ['beta-run', [DASH_B_WEB]],
@@ -88,7 +90,7 @@ describe('readTranscriptUse', () => {
     source.set(join(PROJECTS, 'w1', '0123abcd-0000-4000-8000-00000000000a.jsonl'), `${callIn(worktree('t1'), [{ id: 's1', name: 'Skill', skill: 'alpha-check' }])}\n`, RECENT);
     source.set(join(PROJECTS, 'w2', '0123abcd-0000-4000-8000-00000000000b.jsonl'), `${callIn(worktree('t2'), [{ id: 's2', name: 'Skill', skill: 'alpha-check' }])}\n`, RECENT);
     source.set(join(PROJECTS, 'w3', '0123abcd-0000-4000-8000-00000000000c.jsonl'), `${callIn(worktree('t3', 'web'), [{ id: 'a1', name: 'Agent', agent: 'code-reader' }])}\n`, RECENT);
-    const use = await readTranscriptUse(source, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED });
+    const use = await readTranscriptUse({ source, reader }, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED });
     assert.deepEqual(sorted(use.skills), [['alpha-check', [DASH_B]]]);
     assert.deepEqual(sorted(use.agents), [['code-reader', [DASH_B_WEB]]]);
     assert.deepEqual(
@@ -106,7 +108,7 @@ describe('readTranscriptUse', () => {
     source.set(join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000b.jsonl'), `${skillCall('skill-old')}\n`, RECENT);
     source.set(join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000c.jsonl'), `${skillCall('skill-new')}\n`, 3_000);
     const one = Buffer.byteLength(`${skillCall('skill-new')}\n`);
-    const use = await readTranscriptUse(source, PROJECTS, { since: SINCE, maxBytes: one + 1 });
+    const use = await readTranscriptUse({ source, reader }, PROJECTS, { since: SINCE, maxBytes: one + 1 });
     assert.deepEqual([...use.skills.keys()].sort(), ['skill-mid', 'skill-new']);
     assert.deepEqual([use.transcripts, use.bytes, use.unread, use.since], [2, 2 * one, 1, 2_500]);
   });
@@ -119,7 +121,7 @@ describe('readTranscriptUse', () => {
     const source = new MemoryTranscripts();
     source.set(join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000a.jsonl'), first, RECENT);
     source.set(join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000b.jsonl'), second, RECENT);
-    const use = await readTranscriptUse(source, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED, chunkBytes: 64 });
+    const use = await readTranscriptUse({ source, reader }, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED, chunkBytes: 64 });
     assert.deepEqual(
       use.hooks,
       new Map([
@@ -132,7 +134,7 @@ describe('readTranscriptUse', () => {
 
   it('reads nothing when no transcript was written since then', async () => {
     const source = new MemoryTranscripts({ [join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000a.jsonl')]: `${skillCall('alpha-check')}\n` }, SINCE - 1);
-    assert.deepEqual(await readTranscriptUse(source, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED }), {
+    assert.deepEqual(await readTranscriptUse({ source, reader }, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED }), {
       skills: new Map(),
       agents: new Map(),
       folders: new Map(),

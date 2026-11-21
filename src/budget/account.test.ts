@@ -14,6 +14,7 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
+import { shippedStatusSource } from '../testing/shipped-status-line.ts';
 import { accountHolderOf, accountsOf, accountTeamsOf, accountWeekOf, workCacheFileOf, type AccountScope, type AccountTeamSource, type SnapshotDirSource, type TeamAccountFacts } from './account.ts';
 import { LiftLog, type Lift } from './lift.ts';
 import { formatSnapshot, snapshotOfStatus } from './snapshot.ts';
@@ -250,7 +251,7 @@ describe('accountWeekOf', () => {
   /** A snapshot a tab saved in `dir`: the week `usedPct` used. */
   async function save(files: MemoryFiles, dir: string, session: string, usedPct: number): Promise<void> {
     const input = JSON.stringify({ session_id: session, rate_limits: { seven_day: { used_percentage: usedPct, resets_at: NOW / 1000 + 86_400 } } });
-    const snapshot = snapshotOfStatus(input, NOW);
+    const snapshot = snapshotOfStatus(shippedStatusSource(), input, NOW);
     assert.ok(snapshot, input);
     await files.write(join(dir, `${session}.json`), formatSnapshot(snapshot));
   }

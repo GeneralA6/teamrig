@@ -1,8 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { turnRunning } from './turn.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
+import { turnRunning as turnRunningOf } from './turn.ts';
 
-const tail = (...entries: readonly object[]): string => `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`;
+const reader = shippedTranscripts();
+const turnRunning = (text: string): boolean => turnRunningOf(reader, text);
+
+const tail =(...entries: readonly object[]): string => `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`;
 
 const TOOL_USE = { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: {} }] } };
 const TOOL_RESULT = { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'ok' }] } };
@@ -43,5 +47,15 @@ describe('turnRunning', () => {
   it('reads a tail with no turn entry at all as idle', () => {
     assert.equal(turnRunning(''), false);
     assert.equal(turnRunning(tail({ type: 'file-history-snapshot' })), false);
+  });
+
+  it('reads each of the three ends of a turn as idle, and a stop by hand only at the start of the text', () => {
+    for (const subtype of ['stop_hook_summary', 'turn_duration', 'local_command']) {
+      assert.equal(turnRunning(tail(TOOL_USE, { type: 'system', subtype })), false, subtype);
+    }
+    const quoted = { type: 'user', message: { role: 'user', content: 'why did it say [Request interrupted by user]?' } };
+    assert.equal(turnRunning(tail(REPLY, TURN_END, quoted)), true);
+    const stopped = { type: 'user', message: { role: 'user', content: '[Request interrupted by user]' } };
+    assert.equal(turnRunning(tail(TOOL_USE, stopped)), false);
   });
 });

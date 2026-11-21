@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { text } from 'node:stream/consumers';
 import { nodeTranscriptSource } from "../budget/discover.js";
+import { HOST_PROGRAM_TIMEOUT_MS, loadHostPorts } from "../composition/host-ports.js";
 import { nodeFileBytes } from "../core/file-bytes.js";
 import { nodeFiles } from "../core/files.js";
 import { GIT_TREES } from "../delivery/git-tree.js";
@@ -13,7 +14,9 @@ import { realSleep, systemClock } from "../core/lock.js";
 import { NODE_PATH_PROBE } from "../core/path-probe.js";
 import { NODE_STORE_FOLDERS } from "../core/node-store-folders.js";
 import { chatWebhook } from "../core/webhook.js";
-import { nodeProgramRunner, systemCredentials } from "../github/credentials.js";
+import { CREDENTIAL_TIMEOUT_MS, systemCredentials } from "../core/credentials.js";
+import { nodeHttpClient } from "../core/http.js";
+import { nodeProgramRunner } from "../core/program-runner.js";
 import { GIT_CHECKOUT } from "../exec/binding.js";
 import { nodeExecSpawner } from "../exec/runner.js";
 import { nodeGhRunner } from "../github/gh.js";
@@ -81,6 +84,7 @@ export async function runWithNode(argv, entry) {
         secretsGit: gitSecrets(process.env),
         out: entry.out,
         platform: process.platform,
+        host: await loadHostPorts(nodeProgramRunner(HOST_PROGRAM_TIMEOUT_MS)),
         processes: nodeProcesses(),
         sessionProcesses,
         starters: starterWatch(sessionProcesses, { pid: process.pid, shells: launchingShellsOf(process.env, process.ppid) }, nodeEvery),
@@ -89,7 +93,8 @@ export async function runWithNode(argv, entry) {
         memory: nodeHostMemory(process.platform),
         cpu: nodeHostCpu(),
         gh: nodeGhRunner(),
-        credentials: systemCredentials(process.platform, nodeProgramRunner()),
+        credentials: systemCredentials(process.platform, nodeProgramRunner(CREDENTIAL_TIMEOUT_MS)),
+        http: nodeHttpClient(),
         probe: NODE_PATH_PROBE,
         pluginStore: NODE_STORE_FOLDERS,
         transcripts: nodeTranscriptSource,

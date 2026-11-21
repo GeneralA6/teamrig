@@ -3,6 +3,7 @@ import type { RuleConflict } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import type { SecretScanner } from '../core/secrets.ts';
+import type { TranscriptReader } from '../ports/host/index.ts';
 import { readSessionLists, type SessionListKind, type SessionLists, type SessionListSource } from '../doctor/session-lists.ts';
 import type { KeepList } from '../permissions/allow-rules.ts';
 import type { SettingsFile } from '../permissions/settings-scope.ts';
@@ -30,6 +31,8 @@ export interface SetupScanPorts {
   readonly files: Files;
   readonly probe: PathProbe;
   readonly transcripts: TranscriptSource;
+  /** The host's reader of a transcript's lines. */
+  readonly reader: TranscriptReader;
   readonly doctor: SkillDoctor;
 }
 
@@ -97,7 +100,7 @@ export async function scanSetup(ports: SetupScanPorts, at: SetupScanInput): Prom
   const context = await readSessionContext(ports.files, ports.probe, at);
   const rules = await scanRules(ports.files, ports.probe, at, at.conflicts);
   const [usage, doctor] = await Promise.all([
-    readTranscriptUse(ports.transcripts, at.projectsDir, { since: at.since, maxBytes: at.maxBytes }),
+    readTranscriptUse({ source: ports.transcripts, reader: ports.reader }, at.projectsDir, { since: at.since, maxBytes: at.maxBytes }),
     ports.doctor.read(at.project),
   ]);
   const recorded = await readSessionLists(ports.transcripts, at.projectsDir, at.project);

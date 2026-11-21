@@ -7,12 +7,13 @@ import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from "../cor
 import { waitAnswerersOf } from "./approval.js";
 import { NO_GOAL_TAGS } from "./goals.js";
 import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, SECURITY_FLAG, typedHandStep, WHY_ASK_FLAG, whyAskUsage } from "./card.js";
+import { holdsDescription } from "./description-cut.js";
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256 } from "./hand-step.js";
 import { verdictIsCurrent, verdictReadOf } from "./security-verdict.js";
 import { ITEM_TYPES, sizeProblem } from "./events.js";
 import { droppedApproval, isRepark, taskNumber } from "./fold.js";
 import { commitsNamed } from "./head-sha.js";
-import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, hasIssueOrReason, ISSUE_REF_PREFIX, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
+import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, hasIssueOrReason, isIssueRef, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
 import { ITEM_TYPE_TRAITS, traitsOf } from "./item-types.js";
 import { waitsOnOwner } from "./owner-waits.js";
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts } from "./review.js";
@@ -1014,7 +1015,8 @@ export class RegisterPolicy {
     }
     /**
      * A title, description or priority GitHub changed, on the import's own task only. A field the task already has
-     * is left out, judged under the lock, so a sync that raced another changes nothing twice.
+     * is left out, judged under the lock, so a sync that raced another changes nothing twice. A task whose line left
+     * its description out is judged by its mark (description-cut.ts), or every sync would write the body again.
      */
     importUpdate(task, changes, note) {
         const notImported = this.notImported(task);
@@ -1023,7 +1025,7 @@ export class RegisterPolicy {
         }
         const changed = {
             ...(changes.title !== undefined && changes.title !== task.title ? { title: changes.title } : {}),
-            ...(changes.description !== undefined && changes.description !== task.description ? { description: changes.description } : {}),
+            ...(changes.description !== undefined && !holdsDescription(task, changes.description) ? { description: changes.description } : {}),
             ...(changes.priority !== undefined && changes.priority !== task.priority ? { priority: changes.priority } : {}),
         };
         if (Object.keys(changed).length === 0) {
@@ -1360,8 +1362,7 @@ function timeProblem(at, { now, zone }) {
 }
 /** True when `changes` point a task holding no issue ref at an issue: what issue migrate writes for each task it opens one for. */
 function linksAnIssue(task, changes) {
-    const ref = changes.ref;
-    return task.ref?.startsWith(ISSUE_REF_PREFIX) !== true && ref !== undefined && ref !== null && ref.startsWith(ISSUE_REF_PREFIX);
+    return !isIssueRef(task.ref) && isIssueRef(changes.ref);
 }
 function blankToNull(text) {
     return text === undefined || text.trim() === '' ? null : text.trim();

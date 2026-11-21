@@ -2,18 +2,19 @@ import { ENV } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { KIT_VERSION } from "../../core/version.js";
 import { formatWatchLease, idleDone, leaseHeld, LIFETIME_MS, leaseOutdated, lifetimeDone, parseWatchLease, readDue, } from "../../github/watch.js";
+import { GITHUB_REPOS_HOST } from "../../issues/host.js";
 import { runsClaude } from "../../open/session-processes.js";
 import { SessionRecordStore } from "../../sessions/record.js";
 import { noPositionals } from "../args.js";
 import { fileLockOf } from "../file-locks.js";
-import { hostOf } from "../issue-hosts.js";
+import { hostsOf } from "../issue-hosts.js";
 import { openTeamKit, requireConfig } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { GITHUB_OFF, githubOff } from "./issue-sync-auto.js";
 import { issueSync } from "./issue-sync.js";
 /**
  * `issue watch`: the team's one watch on its GitHub repositories, started hidden by the hooks (`ensureWatch`). Every
- * `github.probeSeconds` it asks GitHub whether each repository changed (IssueHost.watch: conditional reads, free when
+ * `github.probeSeconds` it asks GitHub whether each repository changed (IssueEvents.watch: conditional reads, free when
  * nothing changed) and runs `issue sync --auto` in this process only when one did (github/watch.ts readDue). It holds
  * a lease file with its pid and a beat, so one runs per team; it stops when the lease is another's, when the config
  * lists no repository or sets 0 seconds, under TEAMRIG_GITHUB=off, once no team session ran for 10 minutes, and once
@@ -181,7 +182,8 @@ async function anySessionRuns(runtime, kit, config) {
 }
 /** Probes every repository: changed when any did (with the marks to keep once synced), else failed when one failed. */
 async function probeRound(runtime, config, marks) {
-    const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp);
+    // The probe goes over github.repos, GitHub's list, and asks its tracker.
+    const host = (await hostsOf(GITHUB_REPOS_HOST, runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp)).tracker;
     const pending = new Map();
     let failed = false;
     for (const repo of config.github.repos) {

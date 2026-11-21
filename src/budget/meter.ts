@@ -3,7 +3,8 @@ import type { Clock } from '../core/lock.ts';
 import { formatUtcDay, formatUtcHour, MS_PER_DAY } from '../core/time.ts';
 import { findLineAtOrAfter, readLines, type TranscriptBytes } from './cursor.ts';
 import type { TranscriptSet } from './discover.ts';
-import { parseTranscriptLine, type CallLine } from './line.ts';
+import type { TranscriptReader, UsageMeter } from '../ports/host/index.ts';
+import { transcriptLineOf, type CallLine } from './line.ts';
 import { MissTracker } from './misses.ts';
 import { emptyPatterns, PatternTracker, type Count, type PatternField } from './patterns.ts';
 import {
@@ -17,11 +18,15 @@ import {
   type UsageStorage,
 } from './store.ts';
 import { NO_TURN, TurnTasks } from './tasks.ts';
-import { contextTokens, modelWeightOf, WEIGHTS, weightOf } from './weights.ts';
+import { modelWeightOf } from './weights.ts';
 
 /** What the meter reads with and where it keeps its totals. */
 export interface MeterDeps {
   readonly bytes: TranscriptBytes;
+  /** The host's reading of one transcript line. */
+  readonly reader: TranscriptReader;
+  /** The host's price of one call. */
+  readonly usage: UsageMeter;
   readonly store: UsageStorage;
   readonly clock: Clock;
 }
@@ -172,10 +177,14 @@ class TranscriptFold {
   private readonly tally: Tally;
   private readonly weight: number;
   private readonly modelWeights: readonly ModelWeight[];
+  private readonly reader: TranscriptReader;
+  private readonly usage: UsageMeter;
 
-  constructor(cursor: TranscriptCursor, tally: Tally, transcript: WeightedTranscript) {
+  constructor(cursor: TranscriptCursor, tally: Tally, transcript: WeightedTranscript, host: Pick<MeterDeps, 'reader' | 'usage'>) {
+    this.reader = host.reader;
+    this.usage = host.usage;
     this.call = cursor.call;
-    this.tracker = new PatternTracker(cursor.patterns, transcript.weight);
+    this.tracker = new PatternTracker(cursor.patterns, host.usage, transcript.weight);
     this.misses = new MissTracker(cursor.misses, (day) => tally.counter(day));
     this.turn = transcript.own ? new TurnTasks(cursor.turn, (day, task, w) => tally.chargeTask(day, task, w)) : undefined;
     this.tally = tally;
@@ -189,7 +198,7 @@ class TranscriptFold {
   }
 
   line(raw: string): void {
-    const line = parseTranscriptLine(raw);
+    const line = transcriptLineOf(this.reader, raw);
     if (line === undefined) {
       return;
     }
@@ -218,7 +227,7 @@ class TranscriptFold {
   private reply(line: CallLine): void {
     const open = this.call;
     if (open !== null && line.key !== undefined && line.key === open.key) {
-      const added = Math.max(0, line.usage.output - open.output) * WEIGHTS.output * this.multiplier(line);
+      const added = Math.max(0, line.usage.output - open.output) * this.usage.weights.output * this.multiplier(line);
       this.turn?.named(line.tools);
       this.turn?.charged(open.day, added);
       this.tally.day(open.day).w += added;
@@ -235,8 +244,8 @@ class TranscriptFold {
     }
     const day = dayOf(line.at);
     const hour = formatUtcHour(new Date(line.at));
-    const w = weightOf(line.usage) * this.multiplier(line);
-    const context = contextTokens(line.usage);
+    const w = this.usage.ofCall(line.usage) * this.multiplier(line);
+    const context = this.usage.contextReading(line.usage);
     const totals = this.tally.day(day);
     totals.w += w;
     totals.calls += 1;
@@ -309,7 +318,7 @@ export async function runMeter(deps: MeterDeps, run: MeterRun): Promise<MeterRes
     budget -= batch.bytes;
     bytesRead += batch.bytes;
     catchingUp ||= batch.capped;
-    const fold = new TranscriptFold(cursor, tally, transcript);
+    const fold = new TranscriptFold(cursor, tally, transcript, deps);
     for (const line of batch.lines) {
       fold.line(line);
     }

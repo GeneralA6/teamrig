@@ -7,6 +7,7 @@ import { sessionIdOf } from "../../inbox/inbox.js";
 import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { noPositionals } from "../args.js";
+import { transcriptsOf, usageIfMetered } from "../host.js";
 import { openKit, rosterOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { meterTabMidTurn } from "./hook-budget.js";
@@ -45,10 +46,11 @@ async function promptTaskOwners(runtime, kit, config, tasks) {
  * it generic.
  */
 async function leadBoundaryLine(runtime, kit, config, text, cut, current) {
-    const turn = turnToolsOf(text, cut, current);
+    const reader = transcriptsOf(runtime);
+    const turn = turnToolsOf(reader, text, cut, current);
     const paths = await turnLeadPathsOf(runtime, kit, config, await loadTree(runtime), turn);
     const research = leadWorkOf(current, paths) === 'research';
-    const owners = research ? await promptTaskOwners(runtime, kit, config, turnTasksOf(text, cut)).catch(() => []) : [];
+    const owners = research ? await promptTaskOwners(runtime, kit, config, turnTasksOf(reader, text, cut)).catch(() => []) : [];
     return leadNudgeLine(turn, current, paths, config.leadBoundary.searchNudgeAt, owners);
 }
 /**
@@ -80,7 +82,9 @@ async function loopNudgeLines(payload, runtime) {
     }
     const cut = Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES;
     const current = currentToolOf(payload);
-    const chain = at > 0 ? nudgeLine(chainOf(text, cut, current), at) : undefined;
+    // A host whose calls teamrig cannot price gets no chain nudge: the line is the price of the re-reads.
+    const usage = at > 0 ? usageIfMetered(runtime) : undefined;
+    const chain = usage === undefined ? undefined : nudgeLine(usage, chainOf(transcriptsOf(runtime), usage, text, cut, current), at);
     const boundary = lead && current !== undefined ? await leadBoundaryLine(runtime, kit, config, text, cut, current) : undefined;
     return [chain, boundary].filter((line) => line !== undefined);
 }

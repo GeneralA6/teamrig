@@ -16,20 +16,50 @@ const TEMP = tmpdir();
 
 after(() => rmSync(DIR, { recursive: true, force: true }));
 
-/** Waits up to 5 s for a file a background program writes. */
-async function waitForFile(path: string): Promise<void> {
-  for (let tries = 0; tries < 100 && !existsSync(path); tries += 1) {
+/**
+ * How long a spec waits on a background program it started. A pass takes a second or so here, while Windows PowerShell
+ * took past 5 s under the whole suite's load and 25 s for the spec alone (#1977), so this catches a hang, never a slow
+ * host; the same bound `REAL_WAIT_MS` gives a real chain of processes in `starter-watch.test.ts`, and short of the
+ * suite's 300 s idle kill, so a program that never writes still fails with what it wrote.
+ */
+const WAIT_MS = 60_000;
+
+/** When a spec's whole wait on its background program ends: one deadline for every file it reads, not one per file. */
+const deadlineIn = (ms: number = WAIT_MS): number => Date.now() + ms;
+
+/** What a file holds, or nothing when it is not there yet. */
+function textIn(path: string): string {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Polls `check` every 50 ms until it holds, or throws `why` past `end`. A background program is not done when its
+ * start returns: `startHidden` says `spawned` once its launcher has started it, while Windows PowerShell can take
+ * seconds to load before it runs a line, so a spec waits on what the program itself wrote. `why` is called then, and
+ * carries the files as they last read, so a failure shows what the program had written rather than a bare timeout.
+ */
+async function waitUntil(check: () => boolean, why: () => string, end: number = deadlineIn()): Promise<void> {
+  while (!check()) {
+    if (Date.now() > end) {
+      throw new Error(why());
+    }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
 }
 
-/** Waits up to 5 s for a file a background program writes to hold `text`, then gives what it holds. */
-async function waitForText(path: string, text: string): Promise<string> {
-  const read = (): string => (existsSync(path) ? readFileSync(path, 'utf8') : '');
-  for (let tries = 0; tries < 100 && !read().includes(text); tries += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  return read();
+/** Waits until a background program has made `path`; a run that never does fails, naming the file and the bound. */
+async function waitForFile(path: string, end: number = deadlineIn()): Promise<void> {
+  await waitUntil(() => existsSync(path), () => `no file at ${path} within ${WAIT_MS} ms`, end);
+}
+
+/** Waits until what `path` holds matches `holds`, then gives it; a run that never does fails with what it holds. */
+async function waitForText(path: string, holds: (text: string) => boolean, near: string, end: number = deadlineIn()): Promise<string> {
+  await waitUntil(() => holds(textIn(path)), () => `${path} held nothing matching ${near} within ${WAIT_MS} ms; it held ${JSON.stringify(textIn(path))}`, end);
+  return textIn(path);
 }
 
 /** The process ids under `pid` in a `ps -A -o pid= -o ppid=` listing, children before their own children. */
@@ -106,10 +136,11 @@ describe('nodeProcesses', () => {
     // Written after the launcher has exited (startHidden resolves only then), so through the program's own handle.
     const first = 'setTimeout(() => { console.log("out line"); console.error("error line"); }, 300)';
     assert.deepEqual(await processes.startHidden({ command: NODE, args: ['-e', first], cwd: TEMP, env: process.env, log }), { kind: 'started', end: 'spawned' });
-    assert.match(await waitForText(log, 'error line'), /^out line\r?\nerror line\r?\n$/);
+    const end = deadlineIn();
+    assert.match(await waitForText(log, (text) => /^out line\r?\nerror line\r?\n$/.test(text), 'both lines', end), /^out line\r?\nerror line\r?\n$/);
     const second = 'console.log("second run")';
     assert.deepEqual(await processes.startHidden({ command: NODE, args: ['-e', second], cwd: TEMP, env: process.env, log }), { kind: 'started', end: 'spawned' });
-    assert.match(await waitForText(log, 'second run'), /^out line\r?\nerror line\r?\nsecond run\r?\n$/);
+    assert.match(await waitForText(log, (text) => /^out line\r?\nerror line\r?\nsecond run\r?\n$/.test(text), 'the second line', end), /^out line\r?\nerror line\r?\nsecond run\r?\n$/);
   });
 
   // T2517: a detached start gave Windows PowerShell no console, and it exited at once having run nothing. The script
@@ -121,7 +152,7 @@ describe('nodeProcesses', () => {
         ? { command: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command', "Start-Sleep -Milliseconds 500; 'shell ran in ' + (Get-Location).Path"] }
         : { command: 'sh', args: ['-c', 'sleep 0.5; echo "shell ran in $(pwd)"'] };
     assert.deepEqual(await processes.startHidden({ ...request, cwd: DIR, env: process.env, log, needsConsole: true }), { kind: 'started', end: 'spawned' });
-    assert.match(await waitForText(log, 'shell ran'), /shell ran in .*teamrig-processes-/);
+    assert.match(await waitForText(log, (text) => /shell ran in .*teamrig-processes-/.test(text), 'the shell to run'), /shell ran in .*teamrig-processes-/);
   });
 
   it('reports a program that needs a console and is not installed as missing, by name or by path', async () => {
@@ -142,10 +173,11 @@ describe('nodeProcesses', () => {
   // On Windows cmd starts it, whose command line holds 8191 characters and changes `%`, `!` and quotes.
   it('passes a program that needs a console every argument unchanged, a longer one than cmd takes among them', async () => {
     const words = ['two words', 'C:\\folder with space\\', '%PATH%', 'say "hi"', 'wow!', 'two\nlines', 'long'.repeat(2500)];
+    const end = deadlineIn();
     for (const [index, word] of words.entries()) {
       const marker = join(DIR, `kept-${index}.txt`);
       assert.deepEqual(await processes.startHidden(echoRequest(marker, word)), { kind: 'started', end: 'spawned' }, word.slice(0, 20));
-      assert.equal(await waitForText(marker, word.slice(0, 3)), word);
+      assert.equal(await waitForText(marker, (text) => text === word, JSON.stringify(word.slice(0, 20)), end), word);
     }
   });
 

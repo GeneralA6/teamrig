@@ -10,6 +10,7 @@ import { lackingSections, missingSections, pullBody, pullTitle } from './merge.t
 import { findOpenPull, openPull } from './pulls.ts';
 import { type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
 import { APPROVED_SHA } from './ship-plan.ts';
+import { pullCommitsOf, supersedeFrom } from './superseded.ts';
 import { describeCredential } from './token-check.ts';
 
 /**
@@ -93,10 +94,13 @@ export async function runOpenPull(args: OpenPullArgs, deps: OpenPullDeps): Promi
     return 1;
   }
   const gh = deps.ghFor(credential.secret);
+  // The earlier pushes' pull requests of this change, which the one found or opened replaces (T4780).
+  const supersede = supersedeFrom(gh, repo, profile.main, pullCommitsOf(git, profile.main, profile.regenerated), deps.out);
   const found = findOpenPull(gh, repo, head, profile.main);
   if (found !== null) {
     if (found.headSha !== sha) return refuse(deps, `pull request #${found.number} ${found.url} is at ${found.headSha.slice(0, 9)}, not ${sha.slice(0, 9)}`);
     deps.out(`found pull request #${found.number} ${found.url}`);
+    supersede(found);
     return 0;
   }
   const lacks = missingSections(note, profile.pullSections);
@@ -105,6 +109,7 @@ export async function runOpenPull(args: OpenPullArgs, deps: OpenPullDeps): Promi
   // A push between the read above and the call would open the pull request at a head nobody approved.
   if (pull.headSha !== sha) return refuse(deps, `pull request #${pull.number} ${pull.url} opened at ${pull.headSha.slice(0, 9)}, not the approved ${sha.slice(0, 9)}: ${head} moved, so close it`);
   deps.out(`opened pull request #${pull.number} ${pull.url}`);
+  supersede(pull);
   return 0;
 }
 

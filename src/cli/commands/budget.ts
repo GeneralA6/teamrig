@@ -72,6 +72,8 @@ import type { RepoState } from '../../push-guard/push.ts';
 import { TASK_ID } from '../../register/model.ts';
 import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount, peerMarksOf } from '../account-teams.ts';
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
+import { hostOf, transcriptsOf, usageIfMetered, usageOf } from '../host.ts';
+import { isUnsupported } from '../../ports/host/index.ts';
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { rushLine, rushSegment } from '../../budget/rush.ts';
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
@@ -126,10 +128,13 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   const { marks } = await new JsonlMarkLog(new PlainLogFile(files, kit.paths.inboxMarks)).read();
   const account = recount ? undefined : await accountWeekOn(runtime, config.budget, kit.paths, now);
   const peers = account === undefined ? [] : await peerMarksOf(files, account.peers);
+  const reader = transcriptsOf(runtime);
   const measured = await measure(
     {
       transcripts: runtime.transcripts,
-      titleOf: (path) => transcriptTitleOf(runtime.transcripts, path),
+      reader,
+      usage: usageOf(runtime),
+      titleOf: (path) => transcriptTitleOf(reader, runtime.transcripts, path),
       team: recount ? new MemoryUsageStore() : new UsageStore(files, kit.paths.usage),
       outside: recount ? new MemoryUsageStore() : new UsageStore(files, outsideUsageDir(kit.paths.usage)),
       clock,
@@ -839,7 +844,9 @@ async function pruneQuietly(runtime: CliRuntime, dir: string): Promise<void> {
  * session's folder and branch, and the plan's use, the week's beside where the team's pace line stands, as the
  * team's `statusLine` config shows them. It always exits 0, so a bad input or a full disk never breaks the status bar; what
  * went wrong goes to stderr. With --pass it prints the status input again instead of its own status, for
- * the status line after it in a pipe (`statusline install` puts it in front of one already there).
+ * the status line after it in a pipe (`statusline install` puts it in front of one already there). The host's
+ * ports read the status input: on a host that draws no status line it saves nothing and prints the host's reason,
+ * still exiting 0, and on one whose meter reads no plan window the snapshot holds no reading of the week.
  */
 export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const [extra] = args.positionals;
@@ -849,7 +856,13 @@ export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise
   const input = await runtime.readStdin();
   const pass = args.switches.has('pass');
   const passed = input.replace(/\r?\n$/, '');
-  const snapshot = snapshotOfStatus(input, runtime.clock.now());
+  const { statusLine } = hostOf(runtime);
+  if (isUnsupported(statusLine)) {
+    runtime.out.stdout(pass ? passed : statusLine.notice);
+    runtime.out.stderr(`teamrig statusline: ${statusLine.notice}; nothing saved`);
+    return EXIT.ok;
+  }
+  const snapshot = snapshotOfStatus({ statusLine, usage: usageIfMetered(runtime) }, input, runtime.clock.now());
   if (snapshot === undefined) {
     runtime.out.stdout(pass ? passed : 'Claude');
     runtime.out.stderr('teamrig statusline: the status input is not Claude Code status JSON with a session id; nothing saved');
@@ -874,7 +887,7 @@ export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise
   }
   const dir = snapshot.cwd === '' ? runtime.cwd : snapshot.cwd;
   const reading: StatusLineReading = {
-    effort: effortOfStatus(input),
+    effort: effortOfStatus(statusLine, input),
     pacePct: await pacePctOf(runtime, snapshot, shown),
     meeting: await meetingMarkOf(runtime, shown.team, snapshot.sessionId),
     rush: rushSegmentOf(runtime, shown.team),

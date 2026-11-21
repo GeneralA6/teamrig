@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { DESIGN_LABEL, DESIGN_LABEL_SPEC } from './design-label.ts';
-import { managedLabel, MANAGED_LABEL_SPECS } from './managed-labels.ts';
+import { managedLabel, MANAGED_LABEL_SPECS, specHeldAs } from './managed-labels.ts';
 import { STATUS_LABEL_PREFIX, STATUS_LABEL_SPECS } from './status-push.ts';
 
 describe('the labels teamrig makes (T3096)', () => {
@@ -27,5 +27,14 @@ describe('the labels teamrig makes (T3096)', () => {
     assert.equal(managedLabel('status:claimed')?.color, '1d76db');
     assert.equal(managedLabel('Design'), undefined);
     assert.equal(managedLabel('bug'), undefined);
+  });
+
+  it('finds the spec a tracker holds under another name by that name, and gives it under it (T4754)', () => {
+    const hyphens = (label: string): string => label.replace(/\s+/gu, '-');
+    const spaced = STATUS_LABEL_SPECS.find((spec) => spec.name === 'status:in progress');
+    assert.ok(spaced !== undefined);
+    assert.deepEqual(specHeldAs(STATUS_LABEL_SPECS, 'status:in-progress', hyphens), { ...spaced, name: 'status:in-progress' });
+    assert.equal(specHeldAs(STATUS_LABEL_SPECS, 'status:in progress', hyphens), undefined);
+    assert.equal(specHeldAs(STATUS_LABEL_SPECS, 'bug', hyphens), undefined);
   });
 });

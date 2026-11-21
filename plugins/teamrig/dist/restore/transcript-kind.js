@@ -1,29 +1,27 @@
-import { stringField } from "../core/guards.js";
-import { parseObject } from "../core/jsonl.js";
 /**
- * How much of a transcript's end is read for its kind: its last turn's records and any `continued-in` after them sit
- * there, short of one tool result larger than this, which leaves the session judged as before.
+ * How much of a transcript's end is read for its kind: its last turn's entries and any `continued` one after them
+ * sit there, short of one tool result larger than this, which leaves the session judged as before.
  */
 export const KIND_TAIL_BYTES = 1024 * 1024;
-const CONTINUED_IN = 'continued-in';
-const ENTRYPOINT = '"entrypoint"';
-/** The transcript's kind, read from its end; a torn first line of a tail fails to parse and is skipped. */
-export function transcriptKindOf(text) {
+/**
+ * The transcript's kind, read from its end through the host's `reader`: the last entry that says where it ran is the
+ * last turn's, and only the few lines after it (titles, modes, snapshots) are read on the way. A torn first line of
+ * a tail is unread and skipped.
+ */
+export function transcriptKindOf(reader, text) {
     const lines = text.split('\n');
     let continuedIn;
     for (let index = lines.length - 1; index >= 0; index -= 1) {
-        const line = lines[index] ?? '';
-        // Most records at a transcript's end (titles, modes, snapshots) name neither; only these two are parsed.
-        const record = line.includes(ENTRYPOINT) || line.includes(CONTINUED_IN) ? parseObject(line) : undefined;
-        if (record === undefined) {
+        const entry = reader.entry(lines[index] ?? '');
+        if (entry === undefined || entry.kind === 'unread') {
             continue;
         }
-        if (record['type'] === CONTINUED_IN) {
-            continuedIn ??= stringField(record, 'continuedInSessionId');
+        if (entry.kind === 'continued') {
+            continuedIn ??= entry.into;
             continue;
         }
-        if (stringField(record, 'entrypoint') !== undefined) {
-            return { background: stringField(record, 'sessionKind') === 'bg', continuedIn };
+        if (entry.job !== undefined) {
+            return { background: entry.job, continuedIn };
         }
     }
     return { background: false, continuedIn };

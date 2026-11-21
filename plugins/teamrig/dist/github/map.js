@@ -1,6 +1,6 @@
 import { MAX_DESCRIPTION } from "../config/defaults.js";
 import { SecretScanner } from "../core/secrets.js";
-import { ISSUE_REF_PREFIX } from "../register/model.js";
+import { refOf } from "../issues/ref.js";
 import { plainLine } from "./issues.js";
 /** The priority of an issue with no priority label of the team's: p2, or the team's least urgent level when it has no p2. */
 export const ISSUE_PRIORITY = 2;
@@ -24,7 +24,7 @@ export function importRules(config) {
 }
 /** The ref of an issue's task: one per issue, whatever its title or state. */
 export function issueRef(repo, number) {
-    return `${ISSUE_REF_PREFIX}${repo}#${number}`;
+    return refOf({ repo, number });
 }
 export function issueTask(issue, rules) {
     return {

@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { promptLine, replyLine, resultsLine, transcript, type FixtureTool } from '../testing/transcript-lines.ts';
+import type { UsageMeter } from '../ports/host/index.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
+import { shippedUsage } from '../testing/shipped-usage.ts';
 import { chainOf, nudgeLine, type Chain } from './loop-nudge.ts';
 
+const reader = shippedTranscripts();
+const METER = shippedUsage();
+/** A meter whose context and cached-token price differ from the shipped ones, so a case fails if the code prices by itself. */
+const STUB: UsageMeter = { ...METER, weights: { ...METER.weights, cacheRead: 2 }, contextReading: (each) => each.output };
 const AT = '2026-10-15T10:00:00.000Z';
 const CONTEXT = 100_000;
 
@@ -20,7 +27,7 @@ function call(...tools: FixtureTool[]): string[] {
 }
 
 function chain(lines: readonly string[]): Chain {
-  return chainOf(transcript(lines), false, undefined);
+  return chainOf(reader, METER, transcript(lines), false, undefined);
 }
 
 const read = (): FixtureTool => tool('Read');
@@ -65,21 +72,27 @@ describe('chainOf', () => {
   it('counts the tool the hook fires for when its reply is not written yet, once', () => {
     const lines = [promptLine(AT), ...call(read()), ...call(read())];
     const current = { id: 'tNew', name: 'Grep', command: undefined };
-    assert.deepEqual(chainOf(transcript(lines), false, current), { length: 3, editThenTest: false, context: CONTEXT });
+    assert.deepEqual(chainOf(reader, METER, transcript(lines), false, current), { length: 3, editThenTest: false, context: CONTEXT });
     const written = read();
     const withReply = [...lines, ...call(written)];
-    assert.equal(chainOf(transcript(withReply), false, { id: written.id, name: 'Read', command: undefined }).length, 3);
+    assert.equal(chainOf(reader, METER, transcript(withReply), false, { id: written.id, name: 'Read', command: undefined }).length, 3);
   });
 
   it('skips the first line of a cut tail, which may start mid-line', () => {
     const lines = [promptLine(AT), ...call(read()), ...call(read())];
     const text = transcript(lines);
-    assert.equal(chainOf(text.slice(10), true, undefined).length, 2);
-    assert.equal(chainOf(transcript([...call(read()), ...lines.slice(1)]), true, undefined).length, 2);
+    assert.equal(chainOf(reader, METER, text.slice(10), true, undefined).length, 2);
+    assert.equal(chainOf(reader, METER, transcript([...call(read()), ...lines.slice(1)]), true, undefined).length, 2);
   });
 
   it('is empty for a turn with no calls, with context 0', () => {
-    assert.deepEqual(chainOf('', false, undefined), { length: 0, editThenTest: false, context: 0 });
+    assert.deepEqual(chainOf(reader, METER, '', false, undefined), { length: 0, editThenTest: false, context: 0 });
+  });
+
+  it('reads the context of the last reply from the meter it is given, for the tool not written yet too', () => {
+    const lines = [promptLine(AT), ...call(read())];
+    assert.equal(chainOf(reader, STUB, transcript(lines), false, undefined).context, 50);
+    assert.equal(chainOf(reader, STUB, transcript(lines), false, { id: 'tStub', name: 'Grep', command: undefined }).context, 50);
   });
 });
 
@@ -88,21 +101,25 @@ describe('nudgeLine', () => {
 
   it('speaks once, as the run reaches the threshold, pricing the re-reads after the first call and naming the one-call form', () => {
     assert.equal(
-      nudgeLine(run, 3),
+      nudgeLine(METER, run, 3),
       'teamrig: 3 single-step calls in a row this turn (about 26k W of re-reads at this context); send independent reads and lookups as several tool calls in one message, join shell steps into one command, and send an edit with its re-test.',
     );
-    assert.equal(nudgeLine({ ...run, length: 2 }, 3), undefined);
-    assert.equal(nudgeLine({ ...run, length: 4 }, 3), undefined);
+    assert.equal(nudgeLine(METER, { ...run, length: 2 }, 3), undefined);
+    assert.equal(nudgeLine(METER, { ...run, length: 4 }, 3), undefined);
+  });
+
+  it('prices a re-read at what the meter it is given charges a cached token', () => {
+    assert.match(nudgeLine(STUB, run, 3) ?? '', /\(about 520k W of re-reads at this context\)/);
   });
 
   it('names the edit and test split when it saw one', () => {
     assert.match(
-      nudgeLine({ ...run, editThenTest: true }, 3) ?? '',
+      nudgeLine(METER, { ...run, editThenTest: true }, 3) ?? '',
       /an edit and then its test went in separate calls: send an edit with its re-test in one message, and independent reads as several tool calls in one\.$/,
     );
   });
 
   it('never speaks when the threshold is 0', () => {
-    assert.equal(nudgeLine({ ...run, length: 0 }, 0), undefined);
+    assert.equal(nudgeLine(METER, { ...run, length: 0 }, 0), undefined);
   });
 });

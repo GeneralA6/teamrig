@@ -1,5 +1,5 @@
-import { basename, isAbsolute, join } from 'node:path';
-import { isRecord, recordField, stringField } from "../core/guards.js";
+import { isAbsolute, join } from 'node:path';
+import { isRecord, stringField } from "../core/guards.js";
 import { parseObject } from "../core/jsonl.js";
 import { isTemporaryName } from "../core/files.js";
 import { MS_PER_DAY, MS_PER_HOUR } from "../core/time.js";
@@ -12,7 +12,7 @@ function finite(value) {
 function textOrNull(value) {
     return typeof value === 'string' && value.trim() !== '' ? value : null;
 }
-/** A window in the stored or Claude Code shape: `used_percentage` and `resets_at` in epoch seconds. */
+/** A window in the stored shape: `used_percentage` and `resets_at` in epoch seconds. */
 function rateWindowOf(value) {
     if (!isRecord(value)) {
         return null;
@@ -29,48 +29,39 @@ function rateLimitsOf(value) {
     const sevenDay = rateWindowOf(value['seven_day']);
     return fiveHour === null && sevenDay === null ? null : { fiveHour, sevenDay };
 }
-/** The Claude Code session id of a status input: `session_id`, else the transcript's file name. */
-function sessionIdOf(status) {
-    const transcript = stringField(status, 'transcript_path');
-    const id = stringField(status, 'session_id') ?? (transcript === undefined ? undefined : basename(transcript, '.jsonl'));
-    return id !== undefined && CLAUDE_SESSION_ID.test(id) ? id : undefined;
-}
 /**
- * The snapshot of Claude Code's status line input (its JSON on stdin), taken at `now`; undefined when
- * the input is not a JSON object or names no valid session id, which also keeps the file name safe.
+ * The snapshot of the host's status input as `source` reads it, taken at `now`; undefined when the status line
+ * reads nothing in it or the session id it reads is not a valid one. The id is tested here, not left to the host,
+ * as it becomes the snapshot's file name.
  */
-export function snapshotOfStatus(input, now) {
-    const status = parseObject(input.trim());
-    const sessionId = status === undefined ? undefined : sessionIdOf(status);
-    if (status === undefined || sessionId === undefined) {
+export function snapshotOfStatus(source, input, now) {
+    const reading = source.statusLine.parse(input);
+    const sessionId = reading?.sessionId;
+    if (reading === undefined || sessionId === undefined || !CLAUDE_SESSION_ID.test(sessionId)) {
         return undefined;
     }
-    const workspace = recordField(status, 'workspace');
-    const context = recordField(status, 'context_window');
     const ts = new Date(now).toISOString();
-    const rateLimits = rateLimitsOf(status['rate_limits']);
+    const rateLimits = source.usage?.weekReading(input) ?? null;
     return {
         ts,
         sessionId,
-        cwd: (workspace === undefined ? undefined : stringField(workspace, 'current_dir')) ?? stringField(status, 'cwd') ?? '',
-        agentName: textOrNull(recordField(status, 'agent')?.['name']),
-        model: textOrNull(recordField(status, 'model')?.['display_name']),
+        cwd: reading.cwd,
+        agentName: reading.agentName ?? null,
+        model: reading.model ?? null,
         rateLimits,
         rateLimitsSince: rateLimits === null ? null : ts,
         rateLimitsAfter: null,
-        costUsd: finite(recordField(status, 'cost')?.['total_cost_usd']),
-        contextUsedPct: finite(context?.['used_percentage']),
-        contextInputTokens: finite(context?.['total_input_tokens']),
+        costUsd: reading.costUsd ?? null,
+        contextUsedPct: reading.contextUsedPct ?? null,
+        contextInputTokens: reading.contextInputTokens ?? null,
     };
 }
 /**
- * The session's effort level in Claude Code's status line input (`effort.level`, which Claude Code sends only
- * for a model that takes one); undefined without it. The status line shows it; the snapshot does not keep it.
+ * The session's effort level as the host's status line reads it in its status input; undefined without one, as for
+ * a model that takes none. The status line shows it; the snapshot does not keep it.
  */
-export function effortOfStatus(input) {
-    const status = parseObject(input.trim());
-    const effort = status === undefined ? undefined : recordField(status, 'effort');
-    return textOrNull(effort?.['level']) ?? undefined;
+export function effortOfStatus(statusLine, input) {
+    return statusLine.parse(input)?.effort;
 }
 function storedWindow(window) {
     return window === null ? null : { used_percentage: window.usedPct, resets_at: Math.round(window.resetsAt / MS_PER_SECOND) };

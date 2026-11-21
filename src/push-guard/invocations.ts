@@ -72,7 +72,7 @@ export interface FinderContext {
 }
 
 /** Git's own commands; an alias never overrides one. */
-const BUILTINS: ReadonlySet<string> = new Set(
+export const GIT_BUILTINS: ReadonlySet<string> = new Set(
   (
     'add am annotate apply archive backfill bisect blame branch bugreport bundle cat-file check-attr check-ignore check-mailmap ' +
     'check-ref-format checkout checkout-index cherry cherry-pick citool clean clone column commit commit-graph commit-tree config ' +
@@ -91,7 +91,7 @@ const BUILTINS: ReadonlySet<string> = new Set(
 /** Git options that only print something and run no command. */
 const GIT_INFO_OPTIONS: ReadonlySet<string> = new Set(['--help', '-h', '--version', '-v', '--html-path', '--man-path', '--info-path', '--exec-path']);
 /** Git options that take a value, as the next word or after `=`. */
-const GIT_VALUED_OPTIONS: ReadonlySet<string> = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix', '--attr-source']);
+export const GIT_VALUED_OPTIONS: ReadonlySet<string> = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix', '--attr-source']);
 /** Config sections that change which remote branch a push updates. */
 const PUSH_CONFIG = /^(?:remote|push|branch)\./i;
 /** `git config` forms that read or remove, never set. */
@@ -428,7 +428,7 @@ class GitInvocationFinder {
           break;
         }
         const subcommand = name.startsWith('git-') ? name.slice(4) : undefined;
-        if (name !== 'git' && (subcommand === undefined || !BUILTINS.has(subcommand))) {
+        if (name !== 'git' && (subcommand === undefined || !GIT_BUILTINS.has(subcommand))) {
           break;
         }
         const inner = location.child();
@@ -580,7 +580,7 @@ class GitInvocationFinder {
     }
     const state: GitState = { dir, gitDir, configOverride, aliases, aliasesUnknown, hooksOverride };
     const args = words.slice(index + 1);
-    if (BUILTINS.has(sub.text)) {
+    if (GIT_BUILTINS.has(sub.text)) {
       const hooks = hooksOverride === undefined ? {} : { hooksOverride };
       this.builtin({ dir: this.repoDir(state), subcommand: sub.text, args, configOverride, ...hooks }, depth);
     } else {

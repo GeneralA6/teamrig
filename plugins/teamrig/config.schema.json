@@ -466,7 +466,7 @@
           "default": "on"
         },
         "serviceRoleDailyCap": {
-          "description": "How many calls one service role (serviceRoles) lets run with no permission check in 24 hours, a migrate counting each issue row, so a holder steered by text from outside closes, comments or migrates only so much; past it, the role's next call is refused. 0 lets none through. Each allowed call is a line of state/prompt-answers.jsonl naming the role, command and target, never the text.",
+          "description": "How many calls one service role (serviceRoles) lets run with no permission check in 24 hours, a migrate counting each issue row, so a holder steered by text from outside closes or migrates only so much; past it, the role's next call is refused. 0 lets none through. Each allowed call is a line of state/prompt-answers.jsonl naming the role, command and target, never the text.",
           "type": "integer",
           "minimum": 0,
           "maximum": 200,
@@ -1354,7 +1354,7 @@
       }
     },
     "github": {
-      "description": "The team's GitHub repositories. teamrig issue sync reads their issues into the register as tasks of source github, and never writes to GitHub; local tasks stay local. teamrig issue migrate, teamrig issue comment, teamrig issue label, teamrig issue edit and teamrig issue close, run by hand, write only to these repositories. Each owner's repositories are reached with the token saved as teamrig-gh-<owner> in the system's credential store, never the gh login; no saved token, or one that cannot be read, stops the read or write for that owner (docs/github-sync.md).",
+      "description": "The team's GitHub repositories. teamrig issue sync reads their issues into the register as tasks of source github, and never writes to GitHub; local tasks stay local. teamrig issue migrate, teamrig issue reply, teamrig issue assign, teamrig issue label, teamrig issue edit and teamrig issue close, run by hand, write only to these repositories. Each owner's repositories are reached with the token saved as teamrig-gh-<owner> in the system's credential store, never the gh login; no saved token, or one that cannot be read, stops the read or write for that owner (docs/github-sync.md).",
       "type": "object",
       "properties": {
         "repos": {
@@ -1529,7 +1529,7 @@
           "default": 20
         },
         "watcher": {
-          "description": "The session that hears the pull request news no task owner takes: a pull request from a fork or by an author outside the repository, or from a branch that names no task, and a mention no one else takes. Unset, the first holder of a service role holding issue comment, the session that answers on GitHub, else the lead. Who watches is staffing, so the lead may set it with teamrig config set, to one of the sessions.",
+          "description": "The session that hears the pull request news no task owner takes: a pull request from a fork or by an author outside the repository, or from a branch that names no task, and a mention no one else takes. Unset, the first holder of a service role holding issue close, the session that answers on GitHub, else the lead. Who watches is staffing, so the lead may set it with teamrig config set, to one of the sessions.",
           "$ref": "#/$defs/sessionName"
         },
         "issueAtAdd": {
@@ -1565,9 +1565,9 @@
             ]
           },
           "commands": {
-            "description": "The commands the role holds: issue close (teamrig issue close on a repository of github.repos), issue comment (teamrig issue comment on one), issue migrate (teamrig issue migrate --yes on a rows file in one of the team's task folders, opening an issue for each row's task and pointing that task's ref at it, any session's task of the team, never one kept local), queue ship and queue merge (teamrig queue --kind test, or --kind ship or merge for a merge, running the shipTool of a delivery repository on a worktree whose task branch the holding session owns, so a role of holders team gives each session its own ships only). The daily cap counts closes, comments and the issue rows of each migrate.",
+            "description": "The commands the role holds: issue close (teamrig issue close on a repository of github.repos), issue migrate (teamrig issue migrate --yes on a rows file in one of the team's task folders, opening an issue for each row's task and pointing that task's ref at it, any session's task of the team, never one kept local), queue ship and queue merge (teamrig queue --kind test, or --kind ship or merge for a merge, running the shipTool of a delivery repository on a worktree whose task branch the holding session owns, so a role of holders team gives each session its own ships only). The daily cap counts closes, comments and the issue rows of each migrate.",
             "type": "array",
-            "items": { "enum": ["issue close", "issue comment", "issue migrate", "queue ship", "queue merge"] },
+            "items": { "enum": ["issue close", "issue migrate", "queue ship", "queue merge"] },
             "minItems": 1,
             "uniqueItems": true
           }

@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isRecord, recordField, type JsonRecord } from '../core/guards.ts';
+import { toJsonlLine } from '../core/jsonl.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { ASK_REFUSED_NOTE } from './permission.ts';
 import {
@@ -96,6 +97,14 @@ describe('promptAnswerRecord', () => {
   it('keeps who answered, the tool, the answer and the command', () => {
     const record = promptAnswerRecord({ at: AT, session: 'alpha', claudeSession: 'c1', tool: 'Bash', answer: { kind: 'rerun', form: 'git -C /w status' }, payload: bashRequest('cd /w && git status') }, SCANNER);
     assert.deepEqual(record, { v: 1, at: '2030-01-08T10:00:00.000Z', session: 'alpha', claudeSession: 'c1', tool: 'Bash', answer: 'rerun', command: 'cd /w && git status' });
+  });
+
+  it('writes the line as it does today, naming the tab claudeSession: no code reads the id back, so the rename moves it in one release (T4762)', () => {
+    const record = promptAnswerRecord({ at: AT, session: 'alpha', claudeSession: 'c1', tool: 'Bash', answer: { kind: 'route', route: 'merge' }, payload: bashRequest('teamrig merge') }, SCANNER);
+    assert.equal(
+      toJsonlLine(record),
+      '{"v":1,"at":"2030-01-08T10:00:00.000Z","session":"alpha","claudeSession":"c1","tool":"Bash","answer":"route","route":"merge","command":null}\n',
+    );
   });
 
   it("keeps a route's id and never its command, whose commit message is free text", () => {

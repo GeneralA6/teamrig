@@ -1,8 +1,9 @@
 import { basename, dirname, join } from 'node:path';
 import type { Files } from '../core/files.ts';
-import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
+import { isRecord, stringField } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import type { TimeZone } from '../core/zone.ts';
+import type { EntryKind, ReplyCall, ToolOutcome, TranscriptEntry, TranscriptReader, UnreadLine } from '../ports/host/index.ts';
 import { ownerTurnsOf, type OwnerTurn } from './owner-turns.ts';
 import { REFRESH_FORMAT } from './state.ts';
 
@@ -11,7 +12,7 @@ import { REFRESH_FORMAT } from './state.ts';
  * snapshot the jobs are counted from. A job made before that and never compacted since is missed.
  */
 export const CARRY_TAIL_BYTES = 64 * 1024 * 1024;
-/** Claude Code ends a recurring session job 7 days after it was made. */
+/** The host ends a recurring session job 7 days after it was made. */
 export const RECURRING_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 /** ScheduleWakeup's shortest delay. */
 const WAKE_MIN_SECONDS = 60;
@@ -59,18 +60,20 @@ export interface Carry extends TranscriptCarry {
   readonly ownerTurns?: readonly OwnerTurn[];
 }
 
-/** Where Claude Code keeps a session's files outside its transcript. */
+/** Where the host keeps a session's files outside its transcript. */
 export interface CarryPlaces {
   /** The system's temporary folder: a scratchpad the transcript does not name is `<it>/claude/<project>/<session>/scratchpad`. */
   readonly tempDir: string;
-  /** Claude Code's config folder: plans are `<it>/plans/<slug>.md`. */
+  /** The host's config folder: plans are `<it>/plans/<slug>.md`. */
   readonly claudeDir: string;
 }
 
 /** Lines that can matter; the rest of a large transcript is never parsed. */
 const MARKERS: readonly string[] = ['session_cron_carry', '"CronCreate"', '"CronDelete"', '"ScheduleWakeup"', '"humanSchedule"', '"scheduledFor"', '"is_error":true', '"queue-operation"'];
+/** The entries the schedule is followed through: the calls, their results, a compaction's snapshot and a queued prompt. */
+const KINDS: readonly EntryKind[] = ['input', 'reply', 'scheduled-carry', 'queued-prompt'];
+const ENVIRONMENT: readonly EntryKind[] = ['environment'];
 const SLUG_KEY = '"slug":"';
-const ENVIRONMENT_KEY = '"type":"environment"';
 const SLUG = /^[A-Za-z0-9_-]+$/;
 
 /** A pending CronCreate call: what it asked for, until its result names the job. */
@@ -81,13 +84,7 @@ interface CronAsk {
   readonly at: number;
 }
 
-function blocksOf(entry: JsonRecord): readonly JsonRecord[] {
-  const message = entry['message'];
-  const content = isRecord(message) ? message['content'] : undefined;
-  return Array.isArray(content) ? content.filter(isRecord) : [];
-}
-
-/** The jobs of a compaction's `session_cron_carry` snapshot, or of a carried-jobs file. */
+/** The jobs of a carried-jobs file. */
 function snapshotOf(tasks: unknown): Map<string, CarriedCron> {
   const crons = new Map<string, CarriedCron>();
   for (const task of Array.isArray(tasks) ? tasks.filter(isRecord) : []) {
@@ -100,14 +97,6 @@ function snapshotOf(tasks: unknown): Map<string, CarriedCron> {
     }
   }
   return crons;
-}
-
-/**
- * The jobs live in the process when Claude Code wrote a `session_cron_carry` snapshot: the session's own (`tasks`)
- * and those an earlier session in the process armed (`otherArmed`, Claude Code 2.1.310), which CronList lists too.
- */
-function cronSnapshotOf(attachment: JsonRecord): Map<string, CarriedCron> {
-  return new Map([...snapshotOf(attachment['tasks']), ...snapshotOf(attachment['otherArmed'])]);
 }
 
 /** The session's slug, from the last entry that names one: its plan file is named by it. */
@@ -132,27 +121,31 @@ class ScheduleFold {
     this.crons = new Map(inherited.map((cron) => [cron.id, cron]));
   }
 
-  entry(entry: JsonRecord): void {
-    const attachment = entry['attachment'];
-    if (isRecord(attachment) && attachment['type'] === 'session_cron_carry') {
-      this.crons = cronSnapshotOf(attachment);
-      return;
-    }
-    if (entry['type'] === 'queue-operation' && entry['operation'] === 'enqueue') {
-      this.fired(stringField(entry, 'content'));
-      return;
-    }
-    const at = Date.parse(stringField(entry, 'timestamp') ?? '');
-    for (const block of blocksOf(entry)) {
-      if (block['type'] === 'tool_use') {
-        this.call(block, at);
-      } else if (block['type'] === 'tool_result') {
-        this.result(block, entry['toolUseResult']);
-      }
+  entry(entry: TranscriptEntry | UnreadLine): void {
+    switch (entry.kind) {
+      case 'scheduled-carry':
+        // The jobs live in the process at a compaction replace what was counted: the session's own and those an earlier session armed.
+        this.crons = new Map(entry.jobs.map((job) => [job.id, job]));
+        return;
+      case 'queued-prompt':
+        this.fired(entry.text);
+        return;
+      case 'reply':
+        for (const call of entry.calls) {
+          this.call(call, entry.at);
+        }
+        return;
+      case 'input':
+        for (const outcome of entry.results) {
+          this.result(outcome);
+        }
+        return;
+      default:
+        return;
     }
   }
 
-  /** A prompt Claude Code queued: a one-shot job or the wake-up with that prompt has fired. */
+  /** A prompt the host queued: a one-shot job or the wake-up with that prompt has fired. */
   private fired(content: string | undefined): void {
     if (content === undefined) {
       return;
@@ -167,17 +160,17 @@ class ScheduleFold {
     }
   }
 
-  private call(block: JsonRecord, at: number): void {
-    const id = stringField(block, 'id');
-    const input = block['input'];
-    if (id === undefined || !isRecord(input)) {
+  /** A scheduling call; `at` is when its reply was written, undefined when the line gives no time. */
+  private call(call: ReplyCall, at: number | undefined): void {
+    const { id, input } = call;
+    if (input === undefined) {
       return;
     }
-    switch (stringField(block, 'name')) {
+    switch (call.name) {
       case 'CronCreate': {
         const cron = stringField(input, 'cron');
         const prompt = stringField(input, 'prompt');
-        if (cron !== undefined && prompt !== undefined && Number.isFinite(at)) {
+        if (cron !== undefined && prompt !== undefined && at !== undefined) {
           this.asks.set(id, { cron, prompt, recurring: input['recurring'] !== false, at });
         }
         return;
@@ -192,7 +185,7 @@ class ScheduleFold {
       case 'ScheduleWakeup': {
         const prompt = stringField(input, 'prompt');
         const delay = input['delaySeconds'];
-        const scheduled = input['stop'] !== true && prompt !== undefined && typeof delay === 'number' && Number.isFinite(at);
+        const scheduled = input['stop'] !== true && prompt !== undefined && typeof delay === 'number' && at !== undefined;
         this.wake = scheduled ? { dueAt: at + delay * 1000, prompt } : undefined;
         this.wakeCall = scheduled ? id : undefined;
         return;
@@ -202,29 +195,30 @@ class ScheduleFold {
     }
   }
 
-  private result(block: JsonRecord, result: unknown): void {
-    const useId = stringField(block, 'tool_use_id');
+  /** A call's result: one that failed, or that kept no answer beside its text, scheduled nothing. */
+  private result(outcome: ToolOutcome): void {
+    const useId = outcome.call;
     if (useId === undefined) {
       return;
     }
     const ask = this.asks.get(useId);
     this.asks.delete(useId);
-    const failed = block['is_error'] === true || !isRecord(result);
+    const kept = outcome.isError ? undefined : outcome.data;
     if (useId === this.wakeCall) {
-      // Claude Code clamps the delay; its result says when the wake-up is really due.
-      const scheduledFor = isRecord(result) ? result['scheduledFor'] : undefined;
-      if (failed) {
+      // The host clamps the delay; its result says when the wake-up is really due.
+      const scheduledFor = kept?.['scheduledFor'];
+      if (kept === undefined) {
         this.wake = undefined;
       } else if (this.wake !== undefined && typeof scheduledFor === 'number') {
         this.wake = { ...this.wake, dueAt: scheduledFor };
       }
     }
-    const job = isRecord(result) ? stringField(result, 'id') : undefined;
-    if (ask === undefined || failed || job === undefined) {
+    const job = kept === undefined ? undefined : stringField(kept, 'id');
+    if (ask === undefined || kept === undefined || job === undefined) {
       return;
     }
-    const recurring = isRecord(result) && typeof result['recurring'] === 'boolean' ? result['recurring'] : ask.recurring;
-    this.crons.set(job, { id: job, cron: ask.cron, prompt: ask.prompt, recurring, createdAt: ask.at });
+    const recurring = kept['recurring'];
+    this.crons.set(job, { id: job, cron: ask.cron, prompt: ask.prompt, recurring: typeof recurring === 'boolean' ? recurring : ask.recurring, createdAt: ask.at });
   }
 }
 
@@ -233,13 +227,13 @@ class ScheduleFold {
  * live in its process) or, from its last compaction on, that compaction's snapshot, and the CronCreate calls after
  * them, less those deleted, fired once or past their 7 days, and the last wake-up asked for, if it is still to come.
  */
-export function carryOf(text: string, now: number, inherited: readonly CarriedCron[]): TranscriptCarry {
+export function carryOf(reader: TranscriptReader, text: string, now: number, inherited: readonly CarriedCron[]): TranscriptCarry {
   const fold = new ScheduleFold(inherited);
   for (const line of text.split('\n')) {
     if (!MARKERS.some((marker) => line.includes(marker))) {
       continue;
     }
-    const entry = parseObject(line.trim());
+    const entry = reader.entry(line, KINDS);
     if (entry !== undefined) {
       fold.entry(entry);
     }
@@ -250,27 +244,20 @@ export function carryOf(text: string, now: number, inherited: readonly CarriedCr
 }
 
 /**
- * The scratchpad Claude Code last gave the session, from its last `environment` attachment. It can sit under
- * another project folder than the transcript: a session that moved into a worktree keeps its transcript in
- * the new project folder and its scratchpad where it was. A quoted copy in a tool result is JSON-escaped, so
- * only a real attachment matches the key.
+ * The scratchpad the host last gave the session, from the last entry that tells it of its machine. It can sit
+ * under another project folder than the transcript: a session that moved into a worktree keeps its transcript
+ * in the new project folder and its scratchpad where it was. A quoted copy in a tool result is no such entry,
+ * and a cut first line cannot be read, so neither is taken.
  */
-export function toldScratchpadOf(text: string): string | undefined {
+export function toldScratchpadOf(reader: TranscriptReader, text: string): string | undefined {
   let end = text.length;
   while (end > 0) {
-    const at = text.lastIndexOf(ENVIRONMENT_KEY, end - 1);
-    if (at < 0) {
-      return undefined;
+    const start = text.lastIndexOf('\n', end - 1) + 1;
+    const entry = reader.entry(text.slice(start, end), ENVIRONMENT);
+    if (entry?.kind === 'environment' && entry.scratchpad !== undefined) {
+      return entry.scratchpad;
     }
-    const start = text.lastIndexOf('\n', at) + 1;
-    const stop = text.indexOf('\n', at);
-    const attachment = parseObject(text.slice(start, stop < 0 ? text.length : stop).trim())?.['attachment'];
-    const snapshot = isRecord(attachment) && attachment['type'] === 'environment' ? attachment['snapshot'] : undefined;
-    const told = isRecord(snapshot) ? stringField(snapshot, 'scratchpadDirectory') : undefined;
-    if (told !== undefined) {
-      return told;
-    }
-    end = start;
+    end = start - 1;
   }
   return undefined;
 }
@@ -285,6 +272,7 @@ export function scratchpadOf(transcript: string, tempDir: string): string {
  * `handoverPath` what the owner typed in it; undefined when the transcript is gone.
  */
 export async function readCarry(
+  reader: TranscriptReader,
   files: Files,
   transcript: string,
   now: number,
@@ -296,12 +284,12 @@ export async function readCarry(
   if (text === undefined) {
     return undefined;
   }
-  const found = carryOf(text, now, inherited);
-  const scratchpad = toldScratchpadOf(text) ?? scratchpadOf(transcript, places.tempDir);
+  const found = carryOf(reader, text, now, inherited);
+  const scratchpad = toldScratchpadOf(reader, text) ?? scratchpadOf(transcript, places.tempDir);
   const entries = (await files.list(scratchpad)).length;
   const plan = found.planSlug === undefined ? undefined : join(places.claudeDir, 'plans', `${found.planSlug}.md`);
   const planText = plan === undefined ? undefined : await files.read(plan);
-  const owner = handoverPath === undefined ? {} : { ownerTurns: ownerTurnsOf(text, handoverPath, [...inherited.map((cron) => cron.prompt)]) };
+  const owner = handoverPath === undefined ? {} : { ownerTurns: ownerTurnsOf(reader, text, handoverPath,[...inherited.map((cron) => cron.prompt)]) };
   return { ...found, scratchpad: entries > 0 ? { path: scratchpad, entries } : undefined, plan: planText === undefined ? undefined : plan, ...owner };
 }
 

@@ -5,6 +5,7 @@ import { lastClaudeSessionOf } from "../../inbox/marks.js";
 import { JsonlMarkLog } from "../../inbox/store.js";
 import { resumeVerdict } from "../../hiring/rehire.js";
 import { readContextTokens } from "../../refresh/usage.js";
+import { contextSourceIfTold } from "../host.js";
 /**
  * Measures whether rehired session `id` resumes its last Claude Code session in `project`: that session is the
  * one that last read its inbox, its transcript is `<projects>/<project slug>/<session>.jsonl`, its idle time
@@ -39,7 +40,8 @@ export function lastSessionOf(runtime, claudeSession, project) {
 /** Measures the Claude Code transcript at `transcript`, in whatever folder it sits. It throws when a read fails. */
 export async function measureTranscript(runtime, transcript) {
     const changedAt = await runtime.transcripts.changedAt(transcript);
-    const tokens = changedAt === undefined ? undefined : await readContextTokens(runtime.files, transcript);
+    const source = contextSourceIfTold(runtime);
+    const tokens = changedAt === undefined || source === undefined ? undefined : await readContextTokens(source, runtime.files, transcript);
     return { transcript, changedAt, tokens };
 }
 /** How a fresh open starts: a rehired session's on the handover its retire left, when it left one; any other's plainly. */

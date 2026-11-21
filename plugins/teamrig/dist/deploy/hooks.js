@@ -5,7 +5,7 @@ import { NOT_STARTED_EXIT } from "../delivery/recorded-step.js";
 import { exitCodeOf } from "../delivery/steps.js";
 import { nodeTreeKill } from "../delivery/tree-kill.js";
 import { withoutCredentials } from "../core/child-env.js";
-import { endOf } from "../test-run/shell.js";
+import { endOf } from "../core/shell-end.js";
 /**
  * Every hook's exit codes say the same: 0 done, this one (`EX_TEMPFAIL`) wait and come back later, anything else
  * failed; a deploy check also reads 2 as a refusal.

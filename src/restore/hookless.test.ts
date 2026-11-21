@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import { TimeZone } from '../core/zone.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { promptLine, replyLine, systemLine } from '../testing/transcript-lines.ts';
 import type { RestoreEntry } from './entry.ts';
 import {
@@ -143,6 +144,8 @@ describe('workedPastHook', () => {
 });
 
 describe('lastReplyAt', () => {
+  const reader = shippedTranscripts();
+
   it("reads the main thread's last reply, whichever lines come after it", () => {
     const lines = [
       replyLine({ at: iso(NOW - 40 * MS_PER_MINUTE), usage: { output: 1 } }),
@@ -151,7 +154,7 @@ describe('lastReplyAt', () => {
       promptLine(iso(NOW - 10 * MS_PER_MINUTE), RELOAD),
       systemLine(iso(NOW - 5 * MS_PER_MINUTE)),
     ];
-    assert.equal(lastReplyAt(lines), NOW - 20 * MS_PER_MINUTE);
+    assert.equal(lastReplyAt(reader, lines), NOW - 20 * MS_PER_MINUTE);
   });
 
   it("leaves out a helper's reply, prompts, a reload, undated and damaged lines", () => {
@@ -163,7 +166,7 @@ describe('lastReplyAt', () => {
       promptLine(iso(NOW - MS_PER_MINUTE), RELOAD),
       systemLine(iso(NOW)),
     ];
-    assert.equal(lastReplyAt(lines), undefined);
+    assert.equal(lastReplyAt(reader, lines), undefined);
   });
 });
 

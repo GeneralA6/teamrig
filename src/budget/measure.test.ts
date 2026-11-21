@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { Roster } from '../config/roster.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
+import { shippedUsage } from '../testing/shipped-usage.ts';
 import { replyLine, transcript, type FixtureReply } from '../testing/transcript-lines.ts';
 import { measure, OUTSIDE_ID, type MeasureDeps, type MeasureInput } from './measure.ts';
 import { emptyPatterns } from './patterns.ts';
@@ -55,7 +57,7 @@ function world(input: Partial<MeasureInput> = {}): World {
   const team = new MemoryUsageStore();
   const outside = new MemoryUsageStore();
   return {
-    deps: { transcripts, titleOf: async (file) => TITLES[file], team, outside, clock: new FakeClock(NOW) },
+    deps: { transcripts, reader: shippedTranscripts(), usage: shippedUsage(), titleOf: async (file) => TITLES[file], team, outside, clock: new FakeClock(NOW) },
     team,
     outside,
     input: {
@@ -100,7 +102,7 @@ describe('measure: the outside sessions of one UTC day (#75)', () => {
     transcripts.set(path(STALE), transcript([replyOn(DAY_BEFORE, 'o1', 9_000)]), Date.parse('2030-01-07T20:00:00Z'));
     transcripts.set(path(UNTITLED), transcript([replyOn(DAY, 'u1', 3)]), changed);
     const { input } = world();
-    return { deps: { transcripts, titleOf: async (file) => names[file], team: new MemoryUsageStore(), outside: new MemoryUsageStore(), clock: new FakeClock(clock) }, input: { ...input, areaBySession: new Map() } };
+    return { deps: { transcripts, reader: shippedTranscripts(), usage: shippedUsage(), titleOf: async (file) => names[file], team: new MemoryUsageStore(), outside: new MemoryUsageStore(), clock: new FakeClock(clock) }, input: { ...input, areaBySession: new Map() } };
   }
 
   it('counts and names only the sessions with a call that day, each with that day\'s W', async () => {

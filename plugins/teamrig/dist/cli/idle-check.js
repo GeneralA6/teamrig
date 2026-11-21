@@ -21,6 +21,7 @@ import { asksNowOf, urgentLinesText, WakeAsks } from "../wake/asks.js";
 import { startableTasks } from "../wake/day-start.js";
 import { inboxDepsOf } from "./commands/inbox.js";
 import { measureTranscript } from "./commands/rehire.js";
+import { transcriptsIfKept } from "./host.js";
 import { teamZone } from "./kit.js";
 import { RefusedError } from "./runtime.js";
 import { teamRegister } from "./team-register.js";
@@ -84,15 +85,20 @@ async function transcriptTailOf(runtime, transcript) {
 }
 /**
  * Where `record`'s tab stands now, read from its transcript's last turn as the idle check reads it: undefined when no
- * transcript of its Claude Code session is found.
+ * transcript of its host session is found, or on a host whose transcript teamrig cannot read. `owner wake` then posts
+ * its line: with the tab's state unknown, the wake waits for the tab's next prompt as any inbox line does.
  */
 export async function tabActivityNow(runtime, record, project) {
+    const reader = transcriptsIfKept(runtime);
+    if (reader === undefined) {
+        return undefined;
+    }
     const last = await measuredTranscriptOf(runtime, record, claudeProjectsDir(runtime.env, runtime.userHome), project);
     if (last === undefined) {
         return undefined;
     }
     const { tail, cut } = await transcriptTailOf(runtime, last.transcript);
-    return tabActivityOf(tail, cut);
+    return tabActivityOf(reader, tail, cut);
 }
 /**
  * Why `id` stays open as a leader (the lead or a sub-lead) that would otherwise close: a task waiting on its answer,
@@ -177,9 +183,14 @@ export async function idleVerdictOf(runtime, config, roster, facts, id, options)
     if (last === undefined) {
         return keep(`has no transcript of Claude Code session ${record.claudeSession} in any project folder, so its idle time is unknown`);
     }
+    // Unread, a transcript shows no work running: a close then could cut some off.
+    const reader = transcriptsIfKept(runtime);
+    if (reader === undefined) {
+        return keep('runs on a host whose transcript teamrig cannot read, so what it still runs is unknown');
+    }
     const { tail, cut } = await transcriptTailOf(runtime, last.transcript);
     // A tail with no timed own entry falls back to the file's last change, which is never earlier.
-    const idleMinutes = Math.floor((now - (lastTurnAtOf(tail, cut) ?? last.changedAt)) / MINUTE_MS);
+    const idleMinutes = Math.floor((now - (lastTurnAtOf(reader, tail, cut) ?? last.changedAt)) / MINUTE_MS);
     const needed = config.open.headroom.closeIdleMinutes;
     if (idleMinutes < needed) {
         return keep(`has been quiet ${idleMinutes} min; it closes after ${needed} (open.headroom.closeIdleMinutes)`);
@@ -188,11 +199,11 @@ export async function idleVerdictOf(runtime, config, roster, facts, id, options)
     if (folder === undefined) {
         return keep(`could not be resumed once closed (its transcript is in ${dirname(last.transcript)}, the project folder of neither ${options.project} nor a folder it ran in)`);
     }
-    const activity = tabActivityOf(tail, cut);
+    const activity = tabActivityOf(reader, tail, cut);
     if (activity !== 'idle') {
         return keep(TAB_ACTIVITY_CLAUSES[activity]);
     }
-    if ((await readRunningWork(runtime.files, last.transcript, now)) > 0) {
+    if ((await readRunningWork(reader, runtime.files, last.transcript, now)) > 0) {
         return keep('still runs background work its transcript shows');
     }
     const resume = resumeVerdict({ claudeSession: record.claudeSession, changedAt: last.changedAt, tokens: last.tokens }, config.hiring, now);

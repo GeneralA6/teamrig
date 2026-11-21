@@ -1,5 +1,6 @@
 import { withStampFooter } from "../core/stamp.js";
 import { targetText, } from "../issues/host.js";
+import { isRecord } from "../core/guards.js";
 import { LABEL_FILE, parseLabelFile } from "../issues/label-file.js";
 import { MAX_COMMENT } from "../issues/write.js";
 import { exitText } from "../open/processes.js";
@@ -196,6 +197,24 @@ export class GitHubIssueHost {
         }
         const id = issueIdIn(result.stdout);
         return id === undefined ? { kind: 'failed', reason: `gh printed no id for ${shown}` } : { kind: 'found', id };
+    }
+    /** A label here takes any name, a space too, so each is held as it is. */
+    labelName(label) {
+        return label;
+    }
+    /**
+     * Reads one issue or pull request through the same REST read as its id (an issue's path serves a pull request too):
+     * read with its state, labels, assignees, kind and body; missing on Not Found; else failed with gh's own line, or
+     * when the answer has no issue's shape.
+     */
+    async thread(target) {
+        const shown = targetText(target);
+        const read = await this.read(target.repo, issueReadArgs(target), shown);
+        if (read.kind !== 'found') {
+            return read;
+        }
+        const thread = threadIn(read.stdout);
+        return thread === undefined ? { kind: 'failed', reason: `gh printed no issue for ${shown}` } : { kind: 'read', thread };
     }
     /**
      * Reads the one label: found when gh ends well, missing when GitHub answers Not Found (no such label, or a
@@ -501,6 +520,45 @@ export function loginIn(stdout) {
     }
     const { login } = parsed;
     return typeof login === 'string' && isLogin(login) ? login : undefined;
+}
+/**
+ * An issue or pull request as GitHub's REST API prints it (`state` open or closed, `labels` of names, `assignees` of
+ * logins, a `pull_request` field on a pull request only, `body` null when empty), else undefined.
+ */
+export function threadIn(stdout) {
+    let parsed;
+    try {
+        parsed = JSON.parse(stdout);
+    }
+    catch {
+        return undefined;
+    }
+    if (!isRecord(parsed)) {
+        return undefined;
+    }
+    const { state, labels, assignees, body } = parsed;
+    const names = namesIn(labels, 'name');
+    const logins = namesIn(assignees, 'login');
+    if ((state !== 'open' && state !== 'closed') || names === undefined || logins === undefined || (body !== null && body !== undefined && typeof body !== 'string')) {
+        return undefined;
+    }
+    const pull = parsed['pull_request'];
+    return { state, labels: names, assignees: logins, pull: pull !== undefined && pull !== null, body: body ?? '' };
+}
+/** The string `key` of each record of a REST list, or undefined when it is no list or one item has none. */
+function namesIn(list, key) {
+    if (!Array.isArray(list)) {
+        return undefined;
+    }
+    const names = [];
+    for (const item of list) {
+        const name = isRecord(item) ? item[key] : undefined;
+        if (typeof name !== 'string') {
+            return undefined;
+        }
+        names.push(name);
+    }
+    return names;
 }
 /** The `id` of an issue as GitHub's REST API prints it: a positive safe integer, else undefined. */
 export function issueIdIn(stdout) {

@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { CallUsage, UsageMeter } from '../ports/host/index.ts';
+import { shippedUsage } from '../testing/shipped-usage.ts';
 import type { ToolResult, ToolUse } from './line.ts';
-import { contextTokens, WEIGHTS, type Usage } from './weights.ts';
 import {
   emptyPatterns,
   INITIAL_PATTERN_STATE,
@@ -118,7 +119,7 @@ function result(id: string, text: string, isError = false): ToolResult {
 }
 
 /** A call that reads its whole context from the cache. */
-function warm(context: number): Usage {
+function warm(context: number): CallUsage {
   return { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheWriteUnsplit: 0, cacheRead: context, output: 0 };
 }
 
@@ -130,6 +131,7 @@ function call(tracker: PatternTracker, count: Count, context: number, tools: rea
   tracker.callClosed(context, 10, count);
 }
 
+const METER = shippedUsage();
 const PASS = 'ℹ pass 3\nℹ fail 0';
 const FAIL = 'ℹ pass 2\nℹ fail 1';
 
@@ -140,7 +142,7 @@ function near(actual: number, expected: number): void {
 describe('PatternTracker', () => {
   it('counts a lookup that follows a lookup in the same turn, never across turns', () => {
     const { count, counts } = recorder();
-    const tracker = new PatternTracker(INITIAL_PATTERN_STATE);
+    const tracker = new PatternTracker(INITIAL_PATTERN_STATE, METER);
     tracker.prompt('owner', count);
     call(tracker, count, 1_000, [tool('a', 'Read')]);
     call(tracker, count, 1_000, [bash('b', 'git status')]);
@@ -154,7 +156,7 @@ describe('PatternTracker', () => {
 
   it('counts single edits in a row and prices each at a re-read of its context', () => {
     const { count, counts } = recorder();
-    const tracker = new PatternTracker(INITIAL_PATTERN_STATE);
+    const tracker = new PatternTracker(INITIAL_PATTERN_STATE, METER);
     call(tracker, count, 1_000, [tool('a', 'Edit')]);
     call(tracker, count, 2_000, [tool('b', 'Write')]);
     call(tracker, count, 3_000, [tool('c', 'Edit'), tool('d', 'Edit')]);
@@ -164,7 +166,7 @@ describe('PatternTracker', () => {
 
   it('counts a test run right after a single edit, and a call that did both', () => {
     const { count, counts } = recorder();
-    const tracker = new PatternTracker(INITIAL_PATTERN_STATE);
+    const tracker = new PatternTracker(INITIAL_PATTERN_STATE, METER);
     call(tracker, count, 1_000, [tool('a', 'Edit')]);
     call(tracker, count, 4_000, [bash('b', 'npm test')], [result('b', PASS)]);
     call(tracker, count, 1_000, [tool('c', 'Edit'), bash('d', 'npm test')]);
@@ -176,7 +178,7 @@ describe('PatternTracker', () => {
 
   it('sorts a re-run with no edit by how the run before it ended', () => {
     const { count, counts } = recorder();
-    const tracker = new PatternTracker(INITIAL_PATTERN_STATE);
+    const tracker = new PatternTracker(INITIAL_PATTERN_STATE, METER);
     call(tracker, count, 1_000, [bash('a', 'npm test 2>&1 | tail -5')], [result('a', FAIL)]);
     call(tracker, count, 1_000, [bash('b', 'npm test')], [result('b', 'boom', true)]);
     call(tracker, count, 1_000, [bash('c', 'npm test')], [result('c', PASS)]);
@@ -191,7 +193,7 @@ describe('PatternTracker', () => {
 
   it('counts no re-run after an edit or in a new turn', () => {
     const { count, counts } = recorder();
-    const tracker = new PatternTracker(INITIAL_PATTERN_STATE);
+    const tracker = new PatternTracker(INITIAL_PATTERN_STATE, METER);
     call(tracker, count, 1_000, [bash('a', 'npm test')], [result('a', FAIL)]);
     call(tracker, count, 1_000, [tool('b', 'Edit')]);
     call(tracker, count, 1_000, [bash('c', 'npm test')], [result('c', FAIL)]);
@@ -202,7 +204,7 @@ describe('PatternTracker', () => {
 
   it('charges passing test output a cache write, then a re-read per later call until a compaction', () => {
     const { count, counts } = recorder();
-    const tracker = new PatternTracker(INITIAL_PATTERN_STATE);
+    const tracker = new PatternTracker(INITIAL_PATTERN_STATE, METER);
     const text = 'x'.repeat(2_280);
     call(tracker, count, 100_000, [bash('a', 'node --test src/a.test.ts')], [result('a', text), result('zz', text)]);
     assert.equal(counts.passRuns, 1);
@@ -219,7 +221,7 @@ describe('PatternTracker', () => {
 
   it('settles a result that arrives after its call closed, and ignores results of other tools', () => {
     const { count, counts } = recorder();
-    const tracker = new PatternTracker(INITIAL_PATTERN_STATE);
+    const tracker = new PatternTracker(INITIAL_PATTERN_STATE, METER);
     tracker.callStarted(warm(1_000), [bash('a', 'npm test'), tool('b', 'Read')], count);
     tracker.callJoined([tool('c', 'Grep')]);
     tracker.callClosed(1_000, 10, count);
@@ -232,7 +234,7 @@ describe('PatternTracker', () => {
 
   it('counts each turn and its W under what started it, a resumed turn under the turn it compacted', () => {
     const { count, counts } = recorder();
-    const tracker = new PatternTracker(INITIAL_PATTERN_STATE);
+    const tracker = new PatternTracker(INITIAL_PATTERN_STATE, METER);
     tracker.prompt('owner', count);
     call(tracker, count, 1_000, [tool('a', 'Read')]);
     tracker.prompt('continuation', count);
@@ -247,25 +249,46 @@ describe('PatternTracker', () => {
 
   it('counts a call that re-wrote most of its context to the cache as cold, with the W of those writes', () => {
     const { count, counts } = recorder();
-    const tracker = new PatternTracker(INITIAL_PATTERN_STATE);
+    const tracker = new PatternTracker(INITIAL_PATTERN_STATE, METER);
     tracker.prompt('owner', count);
-    const usage = (written: number, read: number): Usage => ({ ...warm(read), cacheWrite1h: written });
+    const usage = (written: number, read: number): CallUsage => ({ ...warm(read), cacheWrite1h: written });
     for (const [index, each] of [usage(30_000, 10_000), usage(5_000, 1_000), usage(25_000, 75_000)].entries()) {
       tracker.callStarted(each, [tool(`t${index}`, 'Read')], count);
-      tracker.callClosed(contextTokens(each), 10, count);
+      tracker.callClosed(METER.contextReading(each), 10, count);
     }
     assert.equal(counts.coldCalls, 1);
-    near(counts.coldW, 30_000 * WEIGHTS.cacheWrite1h);
+    near(counts.coldW, 30_000 * METER.weights.cacheWrite1h);
+  });
+
+  it("prices a saving, a cold write and kept test output by the host's usage meter", () => {
+    // A meter unlike the shipped one: a re-read costs half an input token, an hour's cache write 3, a token is 10 characters.
+    const dear: UsageMeter = {
+      ...METER,
+      weights: { ...METER.weights, cacheRead: 0.5, cacheWrite1h: 3 },
+      charsPerToken: 10,
+    };
+    const { count, counts } = recorder();
+    const tracker = new PatternTracker(INITIAL_PATTERN_STATE, dear);
+    const cold: CallUsage = { ...warm(10_000), cacheWrite1h: 30_000 };
+    tracker.callStarted(cold, [tool('a', 'Edit')], count);
+    tracker.callClosed(dear.contextReading(cold), 10, count);
+    call(tracker, count, 2_000, [tool('b', 'Edit')]);
+    call(tracker, count, 4_000, [bash('c', 'npm test')], [result('c', 'x'.repeat(1_000))]);
+    near(counts.coldW, 30_000 * 3);
+    near(counts.editChainSavedW, 2_000 * 0.5);
+    near(counts.editThenTestSavedW, 4_000 * 0.5);
+    near(counts.passTokens, 100);
+    near(counts.passRentW, 100 * 3);
   });
 
   it('multiplies the W it works out by its weight, and keeps the W the meter charged as given', () => {
     const counted = (weight: number): Record<PatternField, number> => {
       const { count, counts } = recorder();
-      const tracker = new PatternTracker(INITIAL_PATTERN_STATE, weight);
-      const cold: Usage = { ...warm(10_000), cacheWrite1h: 30_000 };
+      const tracker = new PatternTracker(INITIAL_PATTERN_STATE, METER, weight);
+      const cold: CallUsage = { ...warm(10_000), cacheWrite1h: 30_000 };
       tracker.callStarted(cold, [tool('a', 'Read')], count);
       tracker.charged(10, count);
-      tracker.callClosed(contextTokens(cold), 10, count);
+      tracker.callClosed(METER.contextReading(cold), 10, count);
       call(tracker, count, 1_000, [tool('b', 'Read')]);
       call(tracker, count, 1_000, [tool('c', 'Edit')]);
       call(tracker, count, 1_000, [tool('d', 'Edit')]);
@@ -284,12 +307,12 @@ describe('PatternTracker', () => {
 
   it('resumes from a stored state exactly where it stopped', () => {
     const { count, counts } = recorder();
-    const first = new PatternTracker(INITIAL_PATTERN_STATE);
+    const first = new PatternTracker(INITIAL_PATTERN_STATE, METER);
     first.prompt('owner', count);
     first.callStarted(warm(1_000), [tool('a', 'Edit')], count);
     const stored = parsePatternState(JSON.parse(JSON.stringify(first.state())));
     assert.deepEqual(stored, first.state());
-    const resumed = new PatternTracker(stored ?? INITIAL_PATTERN_STATE);
+    const resumed = new PatternTracker(stored ?? INITIAL_PATTERN_STATE, METER);
     resumed.callClosed(1_000, 10, count);
     call(resumed, count, 1_000, [tool('b', 'Edit')]);
     assert.equal(counts.editChain, 1);

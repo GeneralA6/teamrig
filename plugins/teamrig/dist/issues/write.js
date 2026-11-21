@@ -2,7 +2,7 @@ import { KIT_NAME } from "../core/home.js";
 import { privateShapeIn } from "../core/private-shapes.js";
 import { targetText } from "./host.js";
 import { LABEL_FILE } from "./label-file.js";
-import { areaLabelSpec, managedLabel } from "./managed-labels.js";
+import { areaLabelSpec, MANAGED_LABEL_SPECS, specHeldAs } from "./managed-labels.js";
 import { taskIdIn } from "./posted.js";
 /** The longest comment GitHub takes; another host's limit is checked by the host itself. */
 export const MAX_COMMENT = 65_536;
@@ -47,27 +47,28 @@ function labelsText(labels) {
     return labels.map((label) => JSON.stringify(label)).join(', ');
 }
 /**
- * How `label`, which `repo` lacks, is made: as teamrig's own (managedLabel, its case exact), else as the repository's
- * label file names it (its case aside, as GitHub's label names ignore case), else in the area look when it is one of
- * `areaLabels` (lowercase, as the config keeps them). Else the reason it is not made, so a typo never makes a new
- * label. `labelFile` reads that file, at most once a run.
+ * How `label`, which `repo` lacks, is made: as teamrig's own (MANAGED_LABEL_SPECS, its case exact), else as the
+ * repository's label file names it (its case aside, as GitHub's label names ignore case), else in the area look when
+ * it is one of `from.areaLabels` (lowercase, as the config keeps them). Else the reason it is not made, so a typo
+ * never makes a new label. `label` is named as the tracker holds it (`labelName`), so each spec is found, and made,
+ * under the name it has there.
  */
-async function missingLabel(repo, label, labelFile, areaLabels) {
-    const managed = managedLabel(label);
+async function missingLabel(repo, label, from, labelName) {
+    const managed = specHeldAs(MANAGED_LABEL_SPECS, label, labelName);
     if (managed !== undefined) {
         return { label: managed, source: 'one teamrig makes' };
     }
-    const file = await labelFile();
+    const file = await from.labelFile();
     if (file.kind === 'failed') {
         return file.reason;
     }
-    const named = file.kind === 'read' ? file.labels.find((spec) => spec.name.toLowerCase() === label.toLowerCase()) : undefined;
+    const named = file.kind === 'read' ? file.labels.find((spec) => labelName(spec.name).toLowerCase() === label.toLowerCase()) : undefined;
     if (named !== undefined) {
-        return { label: named, source: `as its ${LABEL_FILE} names it` };
+        return { label: { ...named, name: labelName(named.name) }, source: `as its ${LABEL_FILE} names it` };
     }
-    const area = areaLabels.find((name) => name === label.toLowerCase());
+    const area = from.areaLabels.find((name) => labelName(name) === label.toLowerCase());
     if (area !== undefined) {
-        return { label: areaLabelSpec(area), source: "as the team config's github.areaOwners names it" };
+        return { label: areaLabelSpec(labelName(area)), source: "as the team config's github.areaOwners names it" };
     }
     const where = file.kind === 'read' ? `its ${LABEL_FILE} does not name it` : `it has no ${LABEL_FILE}`;
     return `${repo} has no label ${JSON.stringify(label)}, and ${where}: add it to that file or make it there first, as adding it here would make a new one`;
@@ -77,8 +78,10 @@ async function missingLabel(repo, label, labelFile, areaLabels) {
  * FAILED with the reason. Every label to add must already be one of the repository's, read before any write, or one
  * teamrig makes, or one its label file or the team's github.areaOwners names (made first), so a typo never makes a
  * new label; the first failure stops it, and a failure after a write says what was done. True when every step was done.
+ * The label file is a file of the repository, so it is read through `files`, the code host, which may be another host
+ * than the tracker.
  */
-export async function labelIssue(host, write, say) {
+export async function labelIssue(host, files, write, say) {
     const shown = targetText(write.target);
     const reach = await host.reach(write.target.repo, 'write');
     if (reach.kind === 'unreachable') {
@@ -88,13 +91,17 @@ export async function labelIssue(host, write, say) {
     say(`ACCESS ${reach.access}`);
     const toMake = [];
     let fileRead;
-    const labelFile = () => (fileRead ??= host.labelFile(write.target.repo));
-    for (const label of write.add) {
+    const from = { labelFile: () => (fileRead ??= files.labelFile(write.target.repo)), areaLabels: write.areaLabels ?? [] };
+    // Each label goes by the name the tracker holds it under, which every line below says: what the issue will show.
+    const labelName = (label) => host.labelName(label);
+    const add = write.add.map(labelName);
+    const remove = write.remove.map(labelName);
+    for (const label of add) {
         const found = await host.labelExists(write.target.repo, label);
         if (found.kind === 'found') {
             continue;
         }
-        const make = found.kind === 'failed' ? found.reason : await missingLabel(write.target.repo, label, labelFile, write.areaLabels ?? []);
+        const make = found.kind === 'failed' ? found.reason : await missingLabel(write.target.repo, label, from, labelName);
         if (typeof make === 'string') {
             say(`FAILED ${shown}: ${make}; nothing was changed`);
             return false;
@@ -115,15 +122,15 @@ export async function labelIssue(host, write, say) {
         say(`MADE ${write.target.repo}: the label ${JSON.stringify(label.name)}, ${source}`);
         done.push(`made the label ${JSON.stringify(label.name)}`);
     }
-    if (write.add.length > 0) {
-        const added = await host.addLabels(write.target, write.add);
+    if (add.length > 0) {
+        const added = await host.addLabels(write.target, add);
         if (added.kind === 'failed') {
             return failed(added.reason);
         }
-        say(`LABELED ${shown}: ${labelsText(write.add)}`);
-        done.push(`added ${labelsText(write.add)}`);
+        say(`LABELED ${shown}: ${labelsText(add)}`);
+        done.push(`added ${labelsText(add)}`);
     }
-    for (const label of write.remove) {
+    for (const label of remove) {
         const removed = await host.removeLabel(write.target, label);
         if (removed.kind === 'failed') {
             say(`FAILED ${shown}: ${removed.reason}${done.length === 0 ? '' : `; it already ${done.join(', ')}`}`);

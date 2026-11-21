@@ -16,6 +16,7 @@ import { TURN_TAIL_BYTES, turnErrorOf } from "../../restore/turn-error.js";
 import { LAUNCHER_SCRIPT, launcherPath } from "../../statusline/launcher.js";
 import { noPositionals } from "../args.js";
 import { fileLockOf } from "../file-locks.js";
+import { transcriptsIfKept } from "../host.js";
 import { loginPageLogLine, loginPageOf, sendLoginPage } from "../login-page.js";
 import { EXIT } from "../runtime.js";
 import { parseJson } from "./hook-input.js";
@@ -88,7 +89,7 @@ async function codedEvent(payload, event, facts, runtime) {
         return event;
     }
     const tailOf = async () => (transcriptPath === undefined ? undefined : runtime.files.readTail(transcriptPath, TURN_TAIL_BYTES));
-    return { kind: 'error', code: await turnErrorOf(payload, tailOf).catch(() => undefined) };
+    return { kind: 'error', code: await turnErrorOf(transcriptsIfKept(runtime), payload, tailOf).catch(() => undefined) };
 }
 /** The login event a turn end reports: a good one answered, a failed one failed on the login; undefined for any other. */
 function loginEventOf(event, facts) {

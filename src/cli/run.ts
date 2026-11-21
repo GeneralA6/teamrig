@@ -238,7 +238,11 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'issue sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto', 'push'], load: async () => (await issueSyncCommands()).issueSync },
   'issue watch': { effect: 'internal', flags: [], load: async () => (await issueWatchCommands()).issueWatch },
   'issue migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await issueMigrateCommands()).issueMigrate },
-  'issue comment': { effect: 'write', flags: ['session', 'body'], load: async () => (await issueCommands()).issueComment },
+  'issue reply': {
+    effect: 'write',
+    flags: ['session', 'body-file', 'status', 'pr', 'followup', 'followup-body-file', 'assign', 'note', 'evidence', 'skill', 'followups', 'waits', 'proof'],
+    load: async () => (await issueCommands()).issueReply,
+  },
   'issue edit': { effect: 'write', flags: ['session', 'body-file'], load: async () => (await issueCommands()).issueEdit },
   'issue close': { effect: 'write', flags: ['session', 'comment', 'reason', 'duplicate-of'], load: async () => (await issueCommands()).issueClose },
   'issue label': { effect: 'write', flags: ['session', 'add', 'remove'], load: async () => (await issueCommands()).issueLabel },
@@ -719,9 +723,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   demote <id|name> [--yes]     (its own leader) takes a sub-lead's members back; without --yes it shows it
   roles grant <role> --holder <id|name|team> [--commands <a,b>] [--yes]
       (the owner) lets the holder run a service role's teamrig commands past every permission check, from its
-      own tab only: names from teamrig's table (issue close, issue comment, issue migrate, queue ship, queue
-      merge); team for every session only where each command checks its caller; teamrig's guard asks before a
-      session's call; without --yes it writes nothing
+      own tab only: names from teamrig's table (issue close, issue migrate, queue ship, queue merge); team for
+      every session only where each command checks its caller; teamrig's guard asks before a session's call;
+      without --yes it writes nothing
   roles revoke <role> [--holder <id|name>] [--yes]   (the owner) takes the role off one holder, or off the
       team when no --holder; the next call reads it; without --yes it shows the change and writes nothing
   roles list                   each service role, who holds it and what it runs
@@ -781,13 +785,21 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       nothing but the --out preview of every issue in full; --yes opens each issue through gh and
       sets the task's ref to it, so issue sync adds no second task; stops at the first failure, and a
       rerun skips each task already holding its issue
-  issue comment <owner/name#n> --body <text>   posts one comment on an issue or pull request of the
-      team's repositories (github.repos; GitHub is the only host so far), with the token saved for the
-      owner, never the gh login; refuses an empty body, a secret shape, private data (a home folder
+  issue reply <owner/name#n> --body-file <path> [--status <status>] [--pr <n>] [--followup <title>
+      [--followup-body-file <path>]] [--assign <login,...>]   a maintainer's reply that takes the
+      thread's state with its words, on an issue or pull request of the team's repositories
+      (github.repos; GitHub is the only host so far), with the token saved for the owner, never the gh
+      login: reads first and writes nothing on a refusal, then --status sets the task holding the issue
+      (teamrig set, with --note, --evidence, --skill, --followups, --waits, --proof; status words as the
+      label shows them, such as 'in review', also go), and it sends the issue's status label and
+      assignee from the register, --assign, the --pr link (a closing line in its body, the issue's
+      labels on it), the --followup issue (named in the comment), then the comment last; the first
+      failure stops it, saying what was done, the comment not posted; a pull request needs labels and
+      takes no --status or --pr; refuses an empty text, a secret shape, private data (a home folder
       path, an e-mail address) or a task id in it; no saved token, or one that cannot be read, stops it
   issue edit <owner/name#n> --body-file <path>   replaces the body (the description) of one issue or
       pull request of the team's repositories with the file's text, with the same access and checks as
-      issue comment; the title, state, labels and assignees stay; the host keeps the old body in its
+      issue reply; the title, state, labels and assignees stay; the host keeps the old body in its
       edit history
   issue close <owner/name#n> [--comment <text>] [--reason completed|not-planned|duplicate]
       [--duplicate-of <owner/name#n>]   closes one issue or pull request of the team's repositories,

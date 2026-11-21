@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { TempRepo } from '../lib/temp-repo.ts';
+import { teamrigShipWritesOf } from './approval.ts';
 import { releaseRefusal } from './release-pull.ts';
-import type { ReleasePull } from './repos.ts';
+import { profileFor, readProfiles, type ReleasePull } from './repos.ts';
 import { TEAMRIG_SHIP_VERSION_FILES } from './version-bump.ts';
 
 const PLUGIN = 'plugins/teamrig/.claude-plugin/plugin.json';
@@ -100,5 +101,45 @@ describe('releaseRefusal: the release pull request merges only when it holds onl
   it('refuses a head that changes nothing over main', () => {
     const sha = repo.git('rev-parse', 'HEAD').trim();
     assert.equal(refusal(sha), `the release pull request's head ${sha} changes nothing over main`);
+  });
+});
+
+describe("releaseRefusal on teamrig-pane's release, read by the shipped repos.json as ship.ts merge reads it (T4821)", () => {
+  const profile = profileFor(readProfiles(), 'teamrig/teamrig-pane');
+  const PANE_PLUGIN = 'plugins/teamrig-pane/.claude-plugin/plugin.json';
+  let repo: TempRepo;
+  const commitFiles = (files: Readonly<Record<string, string>>): string => {
+    for (const [path, text] of Object.entries(files)) repo.write(path, text);
+    repo.git('add', '--', ...Object.keys(files));
+    repo.git('commit', '-q', '-m', 'commit');
+    return repo.git('rev-parse', 'HEAD').trim();
+  };
+  const paneVersions = (version: string): Record<string, string> => ({ [PANE_PLUGIN]: plugin(version), [RELEASE_MANIFEST]: releaseManifest(version) });
+  const refusal = (sha: string): string | null => {
+    if (profile.release === null) throw new Error('the shipped repos.json names no teamrig-pane release');
+    return releaseRefusal((args) => repo.git(...args), 'main', sha, profile.release, teamrigShipWritesOf(profile.regenerated).versionFiles);
+  };
+
+  beforeEach(() => {
+    repo = new TempRepo('release-pull-pane').init();
+    repo.git('symbolic-ref', 'HEAD', 'refs/heads/main');
+    commitFiles({ ...paneVersions('0.76.0'), [CHANGELOG]: NOTES_BASE, 'src/a.ts': 'a\n' });
+    repo.git('checkout', '-q', '-b', profile.release?.head ?? 'release');
+  });
+
+  afterEach(() => repo.remove());
+
+  it('clears a head that raises the plugin manifest and the release manifest to one version and adds the notes', () => {
+    assert.equal(refusal(commitFiles({ ...paneVersions('0.77.0'), [CHANGELOG]: notesWith('0.77.0') })), null);
+  });
+
+  it('refuses a head that leaves the release manifest unraised', () => {
+    const sha = commitFiles({ [PANE_PLUGIN]: plugin('0.77.0'), [CHANGELOG]: notesWith('0.77.0') });
+    assert.equal(refusal(sha), `the release pull request leaves the version of ${RELEASE_MANIFEST} as it was: a release raises every version file`);
+  });
+
+  it('refuses a head that also changes code', () => {
+    const sha = commitFiles({ ...paneVersions('0.77.0'), [CHANGELOG]: notesWith('0.77.0'), 'src/a.ts': 'a2\n' });
+    assert.match(refusal(sha) ?? '', /^src\/a\.ts is neither a version file nor the changelog CHANGELOG\.md/);
   });
 });

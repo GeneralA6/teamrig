@@ -1,17 +1,28 @@
 import { join } from 'node:path';
-import { isStringArray, stringField } from "../core/guards.js";
+import { isStringArray } from "../core/guards.js";
+import { hostSessionOf } from "../core/host-session.js";
 import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
-/** The format of the notice files this code reads and writes; a file in another format reads as none told. */
+/** The format of the notice files this code writes; a file in a format it does not read reads as none told. */
 export const MODEL_NOTICES_FORMAT = 1;
+/**
+ * The format a later teamrig writes, naming the tab `hostSession` where this one names it `claude` (T4762,
+ * src/core/host-session.ts): read from now on and written by none yet, so every tab reads it before the first one
+ * writes it.
+ */
+export const MODEL_NOTICES_NEXT_FORMAT = 2;
 /** At most this many notices are remembered per Claude Code session; the oldest go first. */
 export const MAX_TOLD = 20;
-/** A notice file's content; undefined when it is damaged or from another format. */
+/** A notice file's content; undefined when it is damaged or from a format this code does not read. */
 export function parseToldNotices(text) {
     const record = parseObject(text.trim());
-    if (record === undefined || record[VERSION_FIELD] !== MODEL_NOTICES_FORMAT) {
+    if (record === undefined) {
         return undefined;
     }
-    const claude = stringField(record, 'claude');
+    const format = record[VERSION_FIELD];
+    if (format !== MODEL_NOTICES_FORMAT && format !== MODEL_NOTICES_NEXT_FORMAT) {
+        return undefined;
+    }
+    const claude = hostSessionOf(record, 'claude');
     const told = record['told'];
     return claude === undefined || !isStringArray(told) ? undefined : { claude, told };
 }

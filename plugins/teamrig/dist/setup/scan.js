@@ -29,7 +29,7 @@ export async function scanSetup(ports, at) {
     const context = await readSessionContext(ports.files, ports.probe, at);
     const rules = await scanRules(ports.files, ports.probe, at, at.conflicts);
     const [usage, doctor] = await Promise.all([
-        readTranscriptUse(ports.transcripts, at.projectsDir, { since: at.since, maxBytes: at.maxBytes }),
+        readTranscriptUse({ source: ports.transcripts, reader: ports.reader }, at.projectsDir, { since: at.since, maxBytes: at.maxBytes }),
         ports.doctor.read(at.project),
     ]);
     const recorded = await readSessionLists(ports.transcripts, at.projectsDir, at.project);

@@ -1,0 +1,40 @@
+[
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "hook_event_name": "SessionStart",
+    "source": "startup"
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "hook_event_name": "SessionStart",
+    "source": "resume",
+    "seconds_since_last_response": 2,
+    "context_tokens": 27029,
+    "prompt_cache_likely_expired": false,
+    "estimated_cache_write_usd": 0.0054
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "hook_event_name": "SessionStart",
+    "source": "resume",
+    "seconds_since_last_response": 3,
+    "context_tokens": 27067,
+    "prompt_cache_likely_expired": false,
+    "estimated_cache_write_usd": 0.0054
+  },
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000004",
+    "hook_event_name": "SessionStart",
+    "source": "compact",
+    "model": "claude-haiku-5-5"
+  }
+]

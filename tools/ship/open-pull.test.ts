@@ -31,7 +31,14 @@ interface Fixture {
   clearance?: MergeClearance;
   credential?: Credential;
   note?: string | null;
+  /** An earlier push's open pull request #5, on `${BRANCH}-2` at OLDER, carrying these commit subjects. */
+  older?: readonly string[];
 }
+
+const OLDER = 'ddd5555ccc1111';
+const LIST_PULLS = `repos/${REPO}/pulls?state=open&base=main&per_page=100`;
+const workLog = (subjects: readonly string[]): string => subjects.map(subject => `\0base000\t${subject}\n\nsrc/${subject.length}.ts\n`).join('');
+const workOf = (sha: string): string => `log --right-only --cherry-pick --format=%x00%P%x09%s --name-only refs/remotes/origin/main...${sha}`;
 
 /** A repo dir whose git answers from a table, GitHub with at most one open pull request, and a recorded caller. */
 function fixture(options: Fixture = {}): {
@@ -49,13 +56,19 @@ function fixture(options: Fixture = {}): {
     [`fetch --quiet origin ${BRANCH} main`]: '',
     [`rev-parse refs/remotes/origin/${BRANCH}`]: pushed,
     [`log --reverse --format=%s refs/remotes/origin/main..${pushed}`]: options.subjects ?? 'cli: a\ndocs: b',
+    'fetch --quiet origin refs/pull/5/head': '',
+    [workOf(pushed)]: workLog((options.subjects ?? 'cli: a\ndocs: b').split('\n')),
+    [workOf(OLDER)]: workLog(options.older ?? []),
   };
   const writes: string[][] = [];
+  const older = { number: 5, html_url: `https://github.com/${REPO}/pull/5`, head: { ref: `${BRANCH}-2`, sha: OLDER, repo: { full_name: REPO } }, base: { ref: 'main' } };
   const gh = mock.fn<Gh>(args => {
     const path = args[1] ?? '';
     if (args.includes('-X')) writes.push([...args]);
     if (path === OPEN_PULLS) return options.openSha === undefined ? '[]' : `[${pullJson(options.openSha)}]`;
     if (path === `repos/${REPO}/pulls`) return pullJson(options.openedSha ?? pushed);
+    if (path === LIST_PULLS) return `[${pullJson(pushed)}${options.older === undefined ? '' : `,${JSON.stringify(older)}`}]`;
+    if (path === `repos/${REPO}/issues/5/comments` || path === `repos/${REPO}/pulls/5`) return '{}';
     throw new Error(`unexpected gh ${args.join(' ')}`);
   });
   const ghFor = mock.fn<OpenPullDeps['ghFor']>(() => gh);
@@ -101,6 +114,19 @@ test('prints the open pull request of the approved head and opens no second one'
   assert.equal(await runOpenPull(ARGS, deps), 0);
   assert.deepEqual(writes, []);
   assert.deepEqual(out, [`found pull request #7 https://github.com/${REPO}/pull/7`]);
+});
+
+test('closes the earlier push\'s pull request that the one it opened or found replaces (T4780)', async () => {
+  for (const open of [{}, { openSha: SHA }]) {
+    const { deps, out, writes } = fixture({ ...open, older: ['docs: b'] });
+    assert.equal(await runOpenPull(ARGS, deps), 0);
+    assert.deepEqual(writes.slice(-2).map(write => write[1]), [`repos/${REPO}/issues/5/comments`, `repos/${REPO}/pulls/5`]);
+    assert.deepEqual(out, [`${'openSha' in open ? 'found' : 'opened'} pull request #7 https://github.com/${REPO}/pull/7`, `closed pull request #5 https://github.com/${REPO}/pull/5: superseded by #7`]);
+  }
+  const kept = fixture({ older: ['docs: b', 'feat: c'] });
+  assert.equal(await runOpenPull(ARGS, kept.deps), 0);
+  assert.equal(kept.writes.length, 1);
+  assert.deepEqual(kept.out.slice(1), [`warning: pull request #5 https://github.com/${REPO}/pull/5 stays open: #7 lacks its "feat: c"`]);
 });
 
 test('refuses an open pull request at another head', async () => {

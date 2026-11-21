@@ -14,11 +14,11 @@ describe('granted', () => {
   });
 
   it('adds a holder and new commands to a role, each once, and keeps the other roles', () => {
-    const roles: ServiceRoles = { ...GITHUB, ship: { holders: 'team', commands: ['issue comment'] } };
-    const next = granted(roles, 'github', { kind: 'session', id: 'charlie' }, ['issue close', 'issue comment']);
+    const roles: ServiceRoles = { ...GITHUB, ship: { holders: 'team', commands: ['issue close'] } };
+    const next = granted(roles, 'github', { kind: 'session', id: 'charlie' }, ['issue close']);
     assert.deepEqual(next, {
       ok: true,
-      value: { github: { holders: ['bravo', 'charlie'], commands: ['issue close', 'issue comment'] }, ship: { holders: 'team', commands: ['issue comment'] } },
+      value: { github: { holders: ['bravo', 'charlie'], commands: ['issue close'] }, ship: { holders: 'team', commands: ['issue close'] } },
     });
   });
 
@@ -49,7 +49,7 @@ describe('revoked', () => {
 describe('describeRole', () => {
   it('names the holders and commands, every session for team', () => {
     assert.equal(describeRole('github', GITHUB['github']), 'github: held by bravo; runs issue close');
-    assert.equal(describeRole('ship', { holders: 'team', commands: ['issue comment'] }), 'ship: held by every session of the team; runs issue comment');
+    assert.equal(describeRole('ship', { holders: 'team', commands: ['issue close'] }), 'ship: held by every session of the team; runs issue close');
     assert.equal(describeRole('gone', undefined), 'gone: no role');
   });
 });

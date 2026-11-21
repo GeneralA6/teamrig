@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { isRecord } from '../lib/guards.ts';
-import { DEFAULT_BASE, changedSpecs, localChecks, prePushChecks, shortChecks } from './local-checks.ts';
+import { DEFAULT_BASE, changedSpecs, gateChanges, localChecks, prePushChecks, shortChecks } from './local-checks.ts';
 
 const read = (path: string): string => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 
@@ -69,10 +69,10 @@ describe('prePushChecks (T4344)', () => {
   const full = new Map(localChecks('upstream/main').map((check) => [check.name, check]));
   const checks = prePushChecks('upstream/main');
 
-  it('runs the scrubs, the commit checks, the typecheck, the build, the plugin tests and the docs checks, in that order', () => {
+  it('runs the scrubs, the commit checks, the typecheck, the boundaries, the build, the plugin tests and the docs checks, in that order', () => {
     assert.deepEqual(
       checks.map((check) => check.name),
-      ['scrub: tree', 'scrub: commits', 'DCO', 'size rule', 'commit subjects', 'typecheck', 'build: clean', 'build: compile', 'build: integrity', 'plugin tests', 'doc pictures', 'doc config reference', 'doc links'],
+      ['scrub: tree', 'scrub: commits', 'DCO', 'size rule', 'commit subjects', 'typecheck', 'boundaries', 'build: clean', 'build: compile', 'build: integrity', 'plugin tests', 'doc pictures', 'doc config reference', 'doc parity page', 'doc links'],
     );
   });
 
@@ -97,22 +97,33 @@ describe('prePushChecks (T4344)', () => {
 });
 
 describe('shortChecks (T3414)', () => {
-  it('runs the scrub, the DCO sign-off and the typecheck of the full list, then the given specs, and no suite or build', () => {
+  it('runs the scrub, the DCO sign-off, the size rule, the commit subjects and the typecheck of the full list, then the given specs, and no suite or build (T4080 C1)', () => {
     const full = new Map(localChecks('upstream/main').map((check) => [check.name, check]));
     const checks = shortChecks('upstream/main', ['src/a.test.ts', 'tools/b.test.ts']);
     assert.deepEqual(
       checks.map((check) => check.name),
-      ['scrub: tree', 'scrub: commits', 'DCO', 'typecheck', 'changed specs'],
+      ['scrub: tree', 'scrub: commits', 'DCO', 'size rule', 'commit subjects', 'typecheck', 'changed specs'],
     );
-    for (const check of checks.slice(0, 4)) assert.deepEqual(check, full.get(check.name), check.name);
+    for (const check of checks.slice(0, 6)) assert.deepEqual(check, full.get(check.name), check.name);
     assert.deepEqual(checks.at(-1)?.argv, ['node', '--test', 'src/a.test.ts', 'tools/b.test.ts']);
   });
 
   it('leaves the specs out when no changed file has one', () => {
     assert.deepEqual(
       shortChecks(DEFAULT_BASE, []).map((check) => check.name),
-      ['scrub: tree', 'scrub: commits', 'DCO', 'typecheck'],
+      ['scrub: tree', 'scrub: commits', 'DCO', 'size rule', 'commit subjects', 'typecheck'],
     );
+  });
+});
+
+describe('gateChanges (T4080 C2)', () => {
+  it('names each changed file of the gate itself, the package and the TypeScript configs, in the order given', () => {
+    const gate = ['.githooks/pre-push', '.github/workflows/ci.yml', 'tools/ci/local.ts', 'tools/ship/repos.json', 'src/push-guard/pass-record.ts', 'package.json', 'package-lock.json', 'tsconfig.json', 'tsconfig.build.json'];
+    assert.deepEqual(gateChanges(['src/a.ts', ...gate, 'docs/a.md']), gate);
+  });
+
+  it('names none for source, specs, docs or a look-alike path', () => {
+    assert.deepEqual(gateChanges(['src/a.ts', 'src/a.test.ts', 'docs/tools/ci/x.md', 'plugins/teamrig/package.json', 'src/push-guards/x.ts', 'tsconfig/x.json']), []);
   });
 });
 

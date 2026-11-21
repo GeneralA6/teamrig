@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { TimeZone } from '../core/zone.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { VERSION_FIELD } from '../core/jsonl.ts';
 import { carryLines, carryOf, carryStartOf, formatCarriedJobs, parseCarriedJobs, readCarry, RECURRING_MAX_AGE_MS, scratchpadOf, toldScratchpadOf, type Carry } from './carry.ts';
@@ -10,6 +11,7 @@ import { REFRESH_FORMAT } from './state.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00.000Z');
 const MINUTE = 60_000;
+const reader = shippedTranscripts();
 const iso = (ms: number): string => new Date(ms).toISOString();
 const lines = (...entries: readonly object[]): string => `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`;
 
@@ -53,11 +55,11 @@ describe('carryOf', () => {
       { type: 'queue-operation', operation: 'enqueue', content: 'look once' },
     );
     assert.deepEqual(
-      carryOf(text, NOW, [kept, deleted, once, stale]).crons.map((cron) => cron.id),
+      carryOf(reader, text, NOW,[kept, deleted, once, stale]).crons.map((cron) => cron.id),
       ['kept1', 'new1'],
     );
     assert.deepEqual(
-      carryOf(lines(SNAPSHOT), NOW, [kept]).crons.map((cron) => cron.id),
+      carryOf(reader, lines(SNAPSHOT), NOW, [kept]).crons.map((cron) => cron.id),
       ['old1', 'old2'],
       "a compaction's snapshot replaces them",
     );
@@ -71,7 +73,7 @@ describe('carryOf', () => {
       ...cronCreate('toolu_1', 'new1', '30 11 * * *', 'check the roll', true, NOW - 10 * MINUTE),
       call('toolu_2', 'CronDelete', { id: 'old2' }, NOW - 5 * MINUTE),
     );
-    const carry = carryOf(text, NOW, []);
+    const carry = carryOf(reader, text, NOW,[]);
     assert.deepEqual(
       carry.crons.map((cron) => [cron.id, cron.cron, cron.prompt, cron.recurring]),
       [
@@ -86,12 +88,12 @@ describe('carryOf', () => {
     const armed = { id: 'armed1', cron: '17 5 26 10 *', prompt: 'test job', createdAt: NOW - 60 * MINUTE, recurring: false };
     const snapshot = { type: 'attachment', attachment: { type: 'session_cron_carry', tasks: [], otherArmed: [armed] } };
     assert.deepEqual(
-      carryOf(lines(snapshot), NOW, [{ ...armed }]).crons.map((cron) => [cron.id, cron.recurring]),
+      carryOf(reader, lines(snapshot), NOW, [{ ...armed }]).crons.map((cron) => [cron.id, cron.recurring]),
       [['armed1', false]],
     );
     const both = { type: 'attachment', attachment: { type: 'session_cron_carry', tasks: SNAPSHOT.attachment.tasks.slice(0, 1), otherArmed: [armed] } };
     assert.deepEqual(
-      carryOf(lines(both), NOW, []).crons.map((cron) => cron.id),
+      carryOf(reader, lines(both), NOW, []).crons.map((cron) => cron.id),
       ['old1', 'armed1'],
     );
   });
@@ -104,7 +106,7 @@ describe('carryOf', () => {
       { type: 'queue-operation', operation: 'enqueue', content: 'daily check' },
     );
     assert.deepEqual(
-      carryOf(text, NOW, []).crons.map((cron) => cron.id),
+      carryOf(reader, text, NOW,[]).crons.map((cron) => cron.id),
       ['daily'],
     );
   });
@@ -115,7 +117,7 @@ describe('carryOf', () => {
       call('toolu_2', 'CronCreate', { cron: 'bad', prompt: 'x', recurring: true }, NOW - MINUTE),
       result('toolu_2', { id: 'never' }, true),
     );
-    assert.deepEqual(carryOf(text, NOW, []).crons, []);
+    assert.deepEqual(carryOf(reader, text, NOW,[]).crons, []);
   });
 
   it('keeps the last wake-up still to come, at the time its result says', () => {
@@ -124,21 +126,21 @@ describe('carryOf', () => {
       call('toolu_2', 'ScheduleWakeup', { delaySeconds: 1200, prompt: 'check CI', reason: 'r' }, NOW - 5 * MINUTE),
       result('toolu_2', { scheduledFor: NOW + 16 * MINUTE, clampedDelaySeconds: 1200, wasClamped: false }),
     );
-    assert.deepEqual(carryOf(text, NOW, []).wake, { dueAt: NOW + 16 * MINUTE, prompt: 'check CI' });
+    assert.deepEqual(carryOf(reader, text, NOW,[]).wake, { dueAt: NOW + 16 * MINUTE, prompt: 'check CI' });
   });
 
   it('has no wake-up once it is due, fired, stopped or refused', () => {
     const asked = call('toolu_1', 'ScheduleWakeup', { delaySeconds: 600, prompt: 'check CI', reason: 'r' }, NOW - 5 * MINUTE);
-    assert.equal(carryOf(lines(asked), NOW + 10 * MINUTE, []).wake, undefined);
-    assert.equal(carryOf(lines(asked, { type: 'queue-operation', operation: 'enqueue', content: 'check CI' }), NOW, []).wake, undefined);
-    assert.equal(carryOf(lines(asked, call('toolu_2', 'ScheduleWakeup', { stop: true }, NOW - MINUTE)), NOW, []).wake, undefined);
-    assert.equal(carryOf(lines(asked, result('toolu_1', {}, true)), NOW, []).wake, undefined);
+    assert.equal(carryOf(reader, lines(asked), NOW + 10 * MINUTE, []).wake, undefined);
+    assert.equal(carryOf(reader, lines(asked, { type: 'queue-operation', operation: 'enqueue', content: 'check CI' }), NOW, []).wake, undefined);
+    assert.equal(carryOf(reader, lines(asked, call('toolu_2', 'ScheduleWakeup', { stop: true }, NOW - MINUTE)), NOW, []).wake, undefined);
+    assert.equal(carryOf(reader, lines(asked, result('toolu_1', {}, true)), NOW, []).wake, undefined);
   });
 
   it("names the session's slug from its last entry, and skips lines it cannot read", () => {
     const text = `{"cut":\n${lines({ type: 'user', slug: 'first-slug' }, { type: 'assistant', slug: 'quiet-river-otter' })}`;
-    assert.deepEqual(carryOf(text, NOW, []), { crons: [], wake: undefined, planSlug: 'quiet-river-otter' });
-    assert.equal(carryOf(lines({ type: 'user', slug: '../bad' }), NOW, []).planSlug, undefined);
+    assert.deepEqual(carryOf(reader, text, NOW,[]), { crons: [], wake: undefined, planSlug: 'quiet-river-otter' });
+    assert.equal(carryOf(reader, lines({ type: 'user', slug: '../bad' }), NOW, []).planSlug, undefined);
   });
 });
 
@@ -157,15 +159,15 @@ describe('readCarry', () => {
       [join(scratchpad, 'tools', 'a.cjs')]: 'a',
       [join(CLAUDE, 'plans', 'quiet-river-otter.md')]: '# plan',
     });
-    const carry = await readCarry(files, TRANSCRIPT, NOW, PLACES, []);
+    const carry = await readCarry(reader, files,TRANSCRIPT, NOW, PLACES, []);
     assert.deepEqual(carry?.scratchpad, { path: scratchpad, entries: 2 });
     assert.equal(carry?.plan, join(CLAUDE, 'plans', 'quiet-river-otter.md'));
   });
 
   it('leaves out an empty scratchpad and a missing plan, and reads nothing from a missing transcript', async () => {
     const files = new MemoryFiles({ [TRANSCRIPT]: lines({ type: 'assistant', slug: 'quiet-river-otter' }) });
-    assert.deepEqual(await readCarry(files, TRANSCRIPT, NOW, PLACES, []), { crons: [], wake: undefined, planSlug: 'quiet-river-otter', scratchpad: undefined, plan: undefined });
-    assert.equal(await readCarry(new MemoryFiles(), TRANSCRIPT, NOW, PLACES, []), undefined);
+    assert.deepEqual(await readCarry(reader, files,TRANSCRIPT, NOW, PLACES, []), { crons: [], wake: undefined, planSlug: 'quiet-river-otter', scratchpad: undefined, plan: undefined });
+    assert.equal(await readCarry(reader, new MemoryFiles(),TRANSCRIPT, NOW, PLACES, []), undefined);
   });
 
   it('names the scratchpad Claude Code last gave the session, though its transcript moved to another project folder', async () => {
@@ -179,7 +181,7 @@ describe('readCarry', () => {
       ),
       [join(told, 'notes.md')]: 'n',
     });
-    const carry = await readCarry(files, TRANSCRIPT, NOW, PLACES, []);
+    const carry = await readCarry(reader, files,TRANSCRIPT, NOW, PLACES, []);
     assert.deepEqual(carry?.scratchpad, { path: told, entries: 1 });
   });
 });
@@ -203,9 +205,9 @@ describe('toldScratchpadOf', () => {
   it('skips an environment entry with no scratchpad and a cut first line, and finds none in a transcript without one', () => {
     const told = join('/', 'tmp', 'claude', 'C--work', 'a1', 'scratchpad');
     const cut = JSON.stringify(environment({ scratchpadDirectory: '/elsewhere' })).slice(20);
-    assert.equal(toldScratchpadOf(`${cut}\n${lines(environment({ scratchpadDirectory: told }), environment({ workingDirectory: '/work' }))}`), told);
-    assert.equal(toldScratchpadOf(`${cut}\n`), undefined);
-    assert.equal(toldScratchpadOf(lines({ type: 'assistant', slug: 'quiet-river-otter' })), undefined);
+    assert.equal(toldScratchpadOf(reader, `${cut}\n${lines(environment({ scratchpadDirectory: told }), environment({ workingDirectory: '/work' }))}`), told);
+    assert.equal(toldScratchpadOf(reader, `${cut}\n`), undefined);
+    assert.equal(toldScratchpadOf(reader, lines({ type: 'assistant', slug: 'quiet-river-otter' })), undefined);
   });
 });
 

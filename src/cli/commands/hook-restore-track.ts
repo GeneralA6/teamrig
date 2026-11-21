@@ -16,6 +16,7 @@ import { TURN_TAIL_BYTES, turnErrorOf } from '../../restore/turn-error.ts';
 import { LAUNCHER_SCRIPT, launcherPath } from '../../statusline/launcher.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { fileLockOf } from '../file-locks.ts';
+import { transcriptsIfKept } from '../host.ts';
 import { loginPageLogLine, loginPageOf, sendLoginPage, type LoginPage } from '../login-page.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { parseJson } from './hook-input.ts';
@@ -93,7 +94,7 @@ async function codedEvent(payload: JsonRecord, event: TrackEvent, facts: TrackFa
     return event;
   }
   const tailOf = async (): Promise<string | undefined> => (transcriptPath === undefined ? undefined : runtime.files.readTail(transcriptPath, TURN_TAIL_BYTES));
-  return { kind: 'error', code: await turnErrorOf(payload, tailOf).catch(() => undefined) };
+  return { kind: 'error', code: await turnErrorOf(transcriptsIfKept(runtime), payload, tailOf).catch(() => undefined) };
 }
 
 /** The login event a turn end reports: a good one answered, a failed one failed on the login; undefined for any other. */

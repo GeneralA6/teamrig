@@ -4,6 +4,7 @@ import type { Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
+import type { TranscriptReader } from '../ports/host/index.ts';
 import { RestartLog, type RestartRow } from '../refresh/restart-log.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { runsClaude, type SessionProcesses } from '../open/session-processes.ts';
@@ -28,27 +29,35 @@ interface Stalled {
 
 /**
  * When the session's tab went quiet: its transcript's last own entry, never before its handover was ready; undefined
- * while a turn runs or waits at a tool call. A transcript it cannot read counts from the ready state.
+ * while a turn runs or waits at a tool call. A transcript it cannot read counts from the ready state, and so does
+ * every transcript of a host that gives no `reader`.
  */
-async function quietSinceOf(files: Files, transcript: string | null, readyAt: number): Promise<number | undefined> {
-  const tail = transcript === null ? undefined : await files.readTail(transcript, REPLY_TAIL_BYTES);
-  if (tail === undefined) {
+async function quietSinceOf(reader: TranscriptReader | undefined, files: Files, transcript: string | null, readyAt: number): Promise<number | undefined> {
+  const tail = reader === undefined || transcript === null ? undefined : await files.readTail(transcript, REPLY_TAIL_BYTES);
+  if (reader === undefined || tail === undefined) {
     return readyAt;
   }
   const cut = Buffer.byteLength(tail, 'utf8') >= REPLY_TAIL_BYTES;
-  const activity = tabActivityOf(tail, cut);
-  return activity === 'turn' || activity === 'call' ? undefined : Math.max(readyAt, lastTurnAtOf(tail, cut) ?? readyAt);
+  const activity = tabActivityOf(reader, tail, cut);
+  return activity === 'turn' || activity === 'call' ? undefined : Math.max(readyAt, lastTurnAtOf(reader, tail, cut) ?? readyAt);
 }
 
 type ClaudeProcesses = Pick<SessionProcesses, 'alive' | 'describe'>;
 
-async function stalledOf(files: Files, processes: ClaudeProcesses, store: RefreshStore, log: RestartLog, session: string, now: number, waitMs: number): Promise<Stalled | undefined> {
+/** What the check reads a session's state from: the host's transcript reader (undefined: it keeps none teamrig reads), files and processes. */
+interface StalledSources {
+  readonly reader: TranscriptReader | undefined;
+  readonly files: Files;
+  readonly processes: ClaudeProcesses;
+}
+
+async function stalledOf({ reader, files, processes }: StalledSources, store: RefreshStore, log: RestartLog, session: string, now: number, waitMs: number): Promise<Stalled | undefined> {
   const state = await store.state(session);
   if (state?.phase !== 'ready' || !state.noticed || (await store.restart(session)) !== undefined || (await store.parked(session)) !== undefined) {
     return undefined;
   }
   const readyAt = Date.parse(state.at);
-  const quietSince = Number.isNaN(readyAt) ? undefined : await quietSinceOf(files, state.transcript, readyAt);
+  const quietSince = Number.isNaN(readyAt) ? undefined : await quietSinceOf(reader, files, state.transcript, readyAt);
   if (quietSince === undefined || now - quietSince <= waitMs) {
     return undefined;
   }
@@ -78,6 +87,7 @@ function rowText(row: RestartRow | undefined, zone: TimeZone): string {
  * its tab is gone, and its next start takes the handover.
  */
 export async function restartStalledWarnings(
+  reader: TranscriptReader | undefined,
   files: Files,
   processes: ClaudeProcesses,
   paths: Pick<TeamPaths, 'refresh' | 'handover' | 'team'>,
@@ -90,7 +100,7 @@ export async function restartStalledWarnings(
   const { restartDelaySeconds } = config.refresh;
   const waitMs = restartDelaySeconds * 1000 + STALLED_MARGIN_MINUTES * MS_PER_MINUTE;
   const covered = config.sessions.filter((session) => autoRestartOf(config, session));
-  const stalled = await Promise.all(covered.map((session) => stalledOf(files, processes, store, log, session, now, waitMs)));
+  const stalled = await Promise.all(covered.map((session) => stalledOf({ reader, files, processes }, store, log, session, now, waitMs)));
   return stalled.flatMap((each) => {
     if (each === undefined) {
       return [];

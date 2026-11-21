@@ -41,7 +41,7 @@ import {
   type GhResult,
   type GhRunner,
 } from './gh.ts';
-import { GitHubIssueHost, issueIdIn, labelNamesIn, loginIn } from './host.ts';
+import { GitHubIssueHost, issueIdIn, labelNamesIn, loginIn, threadIn } from './host.ts';
 import { ISSUE_LIMIT, issuePageArgs } from './issues.ts';
 import { CLOSED_ISSUES_QUERY, PULL_PAGE_SIZE } from './queries.ts';
 import { PULL_LIMIT } from './pulls.ts';
@@ -344,6 +344,12 @@ describe('GitHubIssueHost', () => {
     assert.ok(odd.kind === 'failed' && !odd.reason.includes(secret) && odd.reason.startsWith('gh api to read the label "p1" of acme/web exited with code 1: gh: HTTP 502 [redacted'), JSON.stringify(odd));
   });
 
+  it('holds every label under its own name, with no request (T4754)', () => {
+    const gh = new FakeGh();
+    assert.equal(hostWith(gh).labelName('status:in progress'), 'status:in progress');
+    assert.deepEqual(gh.ran, []);
+  });
+
   it("reads an issue's id: found, missing on Not Found, else failed with gh's line redacted, or with no id printed", async () => {
     const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7)]);
     const host = hostWith(gh);
@@ -365,6 +371,28 @@ describe('GitHubIssueHost', () => {
     const locked = await hostWith(lockedGh, new FakeCredentials().failsOn('teamrig-gh-acme', 'the keyring is locked')).issueId(TARGET);
     assert.equal(locked.kind, 'failed');
     assert.deepEqual(lockedGh.ran, []);
+  });
+
+  it("reads an issue as it is now through the id's allowlisted read: missing on Not Found, failed when gh prints no issue", async () => {
+    const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7, { labels: ['bug', 'status:open'], assignees: ['octo'], body: 'Steps' })]);
+    const host = hostWith(gh);
+    assert.deepEqual(await host.thread(TARGET), { kind: 'read', thread: { state: 'open', labels: ['bug', 'status:open'], assignees: ['octo'], pull: false, body: 'Steps' } });
+    assert.deepEqual(await host.thread({ repo: 'acme/web', number: 8 }), { kind: 'missing' });
+    assert.ok(gh.ran.every((request) => isIssueRead(request.args)));
+    const blank = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 0 }, stdout: '{"id":7}', stderr: '' });
+    assert.deepEqual(await hostWith(blank).thread(TARGET), { kind: 'failed', reason: 'gh printed no issue for acme/web#7' });
+  });
+
+  it('takes a printed issue only in the REST shape, telling a pull request by its pull_request field', () => {
+    const rest = { state: 'closed', labels: [{ name: 'p1' }], assignees: [{ login: 'octo' }], body: null, pull_request: { url: 'x' } };
+    assert.deepEqual(threadIn(JSON.stringify(rest)), { state: 'closed', labels: ['p1'], assignees: ['octo'], pull: true, body: '' });
+    assert.deepEqual(threadIn(JSON.stringify({ ...rest, pull_request: null, body: 'b' })), { state: 'closed', labels: ['p1'], assignees: ['octo'], pull: false, body: 'b' });
+    for (const odd of [{ ...rest, state: 'OPEN' }, { ...rest, labels: [{}] }, { ...rest, labels: 'p1' }, { ...rest, assignees: [{ login: 3 }] }, { ...rest, body: 4 }]) {
+      assert.equal(threadIn(JSON.stringify(odd)), undefined, JSON.stringify(odd));
+    }
+    for (const stdout of ['', 'not json', 'null', '[]']) {
+      assert.equal(threadIn(stdout), undefined, stdout);
+    }
   });
 
   it('takes as an id only a positive whole number in the printed issue', () => {

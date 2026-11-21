@@ -1,9 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import type { HostSource } from '../composition/host-ports.ts';
 import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { promptLine, textLine, transcript } from '../testing/transcript-lines.ts';
@@ -61,6 +63,17 @@ describe('turn log hooks', () => {
     assert.deepEqual(
       entriesOf(kit).map(({ kind, text }) => ({ kind, text })),
       [{ kind: 'reply', text: 'Looking.\n\nFixed.' }],
+    );
+  });
+
+  it('logs that message alone, taking no transcript entry, on a host whose transcript teamrig cannot read', async () => {
+    const bare: HostSource = bareHost;
+    const kit = new CliHarness(TEAM);
+    await kit.files.write(TRANSCRIPT, transcript([promptLine(AT, 'fix the build'), textLine('a1', ['Looking.'])]));
+    await kit.run(['hook', 'stop'], { stdin: payload('Stop', { last_assistant_message: 'Fixed.' }), env: ALPHA, host: bare });
+    assert.deepEqual(
+      entriesOf(kit).map(({ kind, text, upTo }) => ({ kind, text, upTo })),
+      [{ kind: 'reply', text: 'Fixed.', upTo: undefined }],
     );
   });
 

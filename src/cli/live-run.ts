@@ -4,8 +4,12 @@ import { runsClaude } from '../open/session-processes.ts';
 import { KIND_TAIL_BYTES, transcriptKindOf } from '../restore/transcript-kind.ts';
 import { measureSessions, runningPlaces } from '../sessions/measure.ts';
 import { SessionRecordStore, type SessionRecord } from '../sessions/record.ts';
+import { transcriptsIfKept } from './host.ts';
 import { backgroundJobSessionOf, isForkOf } from './same-session.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
+
+/** What telling a tab's own background job takes: its transcript's end, the host's reader of it, the process list. */
+type HandOffRuntime = Pick<CliRuntime, 'files' | 'sessionProcesses' | 'host' | 'env' | 'platform'>;
 
 /**
  * Session `id`'s start record while its Claude Code runs now, of a team whose sessions are `ids`; undefined when it runs
@@ -66,7 +70,7 @@ export function liveRunText(name: string, id: string, run: LiveRun): string {
  * worker (`--fork-session --resume <the record's session or transcript>`, which Claude Code runs a /clear in, outside
  * the tab's process tree), or the background job the tab handed its conversation to (`isHandedOffJob`).
  */
-export async function isLiveRunOwn(runtime: Pick<CliRuntime, 'files' | 'sessionProcesses'>, live: LiveRun, pid: number): Promise<boolean> {
+export async function isLiveRunOwn(runtime: HandOffRuntime, live: LiveRun, pid: number): Promise<boolean> {
   if (live.tree.has(pid)) {
     return true;
   }
@@ -78,19 +82,21 @@ export async function isLiveRunOwn(runtime: Pick<CliRuntime, 'files' | 'sessionP
 
 /**
  * Whether the Claude Code process `pid` is the background job the live run's tab handed its conversation to (`claude
- * --bg`, or /bg in the tab): the tab's transcript ends in Claude Code's `continued-in` record (`transcriptKindOf`, so not
- * once the tab had a turn since), and it names the session the job runs as under Claude Code's background host
- * (`backgroundJobSessionOf`). The process tree does not tell this job: once the daemon that started its host is
- * replaced (a Claude Code update does that), init adopts the host, out of the tab's tree. False when the record names no
- * transcript, the transcript cannot be read, or the host's processes cannot be listed.
+ * --bg`, or /bg in the tab): the tab's transcript ends in the host's mark that it carries on in another session
+ * (`transcriptKindOf`, so not once the tab had a turn since), and it names the session the job runs as under Claude
+ * Code's background host (`backgroundJobSessionOf`). The process tree does not tell this job: once the daemon that
+ * started its host is replaced (a Claude Code update does that), init adopts the host, out of the tab's tree. False when
+ * the record names no transcript, the host keeps none teamrig can read, the transcript cannot be read, or the host's
+ * processes cannot be listed.
  */
-export async function isHandedOffJob(runtime: Pick<CliRuntime, 'files' | 'sessionProcesses'>, live: LiveRun, pid: number): Promise<boolean> {
+export async function isHandedOffJob(runtime: HandOffRuntime, live: LiveRun, pid: number): Promise<boolean> {
   const transcript = live.record.transcript;
-  if (transcript === undefined) {
+  const reader = transcriptsIfKept(runtime);
+  if (transcript === undefined || reader === undefined) {
     return false;
   }
   const tail = await runtime.files.readTail(transcript, KIND_TAIL_BYTES).catch(() => undefined);
-  const handedTo = transcriptKindOf(tail ?? '').continuedIn;
+  const handedTo = transcriptKindOf(reader, tail ?? '').continuedIn;
   if (handedTo === undefined) {
     return false;
   }

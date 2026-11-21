@@ -3,10 +3,11 @@ import { ENV, KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { issueRef } from "../../github/map.js";
 import { countsLine, parseMigrateRows, planMigration, previewMarkdown, replacedRefNote } from "../../github/migrate.js";
+import { GITHUB_REPOS_HOST } from "../../issues/host.js";
 import { RegisterPolicy } from "../../register/policy.js";
 import { onePositional } from "../args.js";
 import { callerOf } from "../inputs.js";
-import { hostOf } from "../issue-hosts.js";
+import { hostsOf } from "../issue-hosts.js";
 import { sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { GITHUB_OFF, githubOff } from "./issue-sync-auto.js";
@@ -91,8 +92,8 @@ function planLines(plan) {
 /** Opens each issue and sets its task's ref, in order, stopping at the first failure. */
 async function openIssues(runtime, team, by, creates, scanner) {
     const say = (line) => runtime.out.stdout(line);
-    // planMigration plans issues only for github.repos, GitHub's list, so every one is GitHub's.
-    const host = hostOf('github', runtime, scanner, team.config.github.stamp);
+    // planMigration plans issues only for github.repos, GitHub's list, so every one opens on GitHub's tracker.
+    const host = (await hostsOf(GITHUB_REPOS_HOST, runtime, scanner, team.config.github.stamp)).tracker;
     const told = new Set();
     let opened = 0;
     const stopped = (id) => `STOPPED at ${id} after opening ${opened} issue(s); fix the cause and rerun: tasks holding their issue are skipped`;

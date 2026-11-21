@@ -22,6 +22,7 @@ export function testTask(overrides: Partial<Task> = {}): Task {
     workClass: null,
     prepares: null,
     status: 'open',
+    descriptionCut: null,
     note: null,
     evidence: null,
     skill: null,

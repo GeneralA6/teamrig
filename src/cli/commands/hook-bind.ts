@@ -10,6 +10,7 @@ import { claudeProcessOf } from '../../refresh/restart.ts';
 import type { RefreshState } from '../../refresh/state.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { hookLogOf } from '../hook-logs.ts';
+import { transcriptsIfKept } from '../host.ts';
 import type { Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
@@ -21,13 +22,16 @@ import { inboxDepsOf } from './inbox.ts';
  * calls these; the decisions themselves live in hooks/bind.ts and inbox/inject.ts.
  */
 
-/** The tab's Claude Code title as the user set it (names/title.ts), or why it could not be read. */
+/** The tab's title as the user set it on the host (names/title.ts), or why it could not be read. */
 export type TitleRead = { readonly kind: 'read'; readonly title: string | undefined } | { readonly kind: 'failed'; readonly error: string };
 
-/** Reads the title once for everything a hook does with it; it never throws. */
+/**
+ * Reads the title once for everything a hook does with it; it never throws. On a host that keeps no transcript
+ * teamrig can read, only the payload's own title counts.
+ */
 export async function readTitle(runtime: CliRuntime, payload: unknown): Promise<TitleRead> {
   try {
-    return { kind: 'read', title: await sessionTitleOf(payload, runtime.files) };
+    return { kind: 'read', title: await sessionTitleOf(transcriptsIfKept(runtime), payload, runtime.files) };
   } catch (error) {
     return { kind: 'failed', error: errorMessage(error) };
   }

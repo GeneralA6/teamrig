@@ -3,6 +3,8 @@ import type { Files } from '../core/files.ts';
 import { toJsonlLine } from '../core/jsonl.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { compactRegister, type Compaction } from './compaction.ts';
+import { cutTask } from './description-cut.ts';
+import type { Task } from './fold.ts';
 import { assemble, historyPlan, readPlan, readSnapshotText, workingSetPlan, type LayoutPaths } from './layout.ts';
 import { markerRecord } from './marker.ts';
 import { isWritable, readEvents, type EventLogRead, type RegisterSnapshot } from './snapshot.ts';
@@ -125,6 +127,16 @@ function countProblems(what: string, actual: RegisterSnapshot, expected: Registe
 }
 
 /**
+ * True when two folds of a task are the same task: equal on every field once each has its description cut. A task
+ * line holds a description as its mark (description-cut.ts, T4781), so a working set holds cut what the history, or
+ * the source of a compaction, holds whole; the mark is the whole text's length and hash, so a text that differs
+ * still tells.
+ */
+function sameButCut(a: Task, b: Task): boolean {
+  return isDeepStrictEqual(cutTask(a), cutTask(b));
+}
+
+/**
  * The new files read back as a reader reads them (the snapshot, then the marker alone as the tail), held
  * against the source on every task and count: any difference is a problem that refuses the rotation.
  */
@@ -143,7 +155,7 @@ export function readBack(source: RegisterSnapshot, compaction: Compaction, marke
     const after = rebuilt.state.tasks.get(id);
     if (retired.has(id)) {
       if (after !== undefined) problems.push(`${id} is retired and still in the new working set`);
-    } else if (isDeepStrictEqual(after, task)) {
+    } else if (after !== undefined && sameButCut(after, task)) {
       unchanged += 1;
     } else {
       problems.push(`${id} folds otherwise from the new files`);
@@ -161,7 +173,7 @@ function historyProblems(working: RegisterSnapshot, history: RegisterSnapshot): 
     const kept = working.state.tasks.get(id);
     if (kept === undefined) {
       if (task.status !== 'done' && task.status !== 'dropped') problems.push(`${id} is ${task.status} in the history and missing from the working set`);
-    } else if (!isDeepStrictEqual(kept, task)) {
+    } else if (!sameButCut(kept, task)) {
       problems.push(`${id} folds otherwise in the working set than in the history`);
     }
   }

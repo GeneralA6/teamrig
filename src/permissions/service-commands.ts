@@ -1,11 +1,12 @@
 /**
  * The teamrig commands a service role may hold (T2984), by name. A team's `serviceRoles` picks among these names and
  * adds none: each name stands for one call shape teamrig's own code reads, with typed slots instead of wildcards, so a
- * config never widens what a role lets run. A new name needs its shape and a security review in the same change.
+ * config never widens what a role lets run. A new name needs its shape and a security review in the same change. No
+ * name posts a bare comment (T3169): a reply goes through `issue reply`, which takes the thread's state with its words.
  */
 
 /** The commands that act on one issue or pull request, named by its `owner/name#n`, as whoever runs them. */
-export const ISSUE_COMMANDS = ['issue close', 'issue comment'] as const;
+export const ISSUE_COMMANDS = ['issue close'] as const;
 
 /**
  * `issue migrate`, run with `--yes` on a rows file in the team's task files (T4606): it opens an issue for each row's
@@ -44,19 +45,18 @@ export function isCappedCommand(text: unknown): text is CappedCommand {
  * The commands whose own checks hold every caller to its own work, so a role may give them to every session of the team
  * (`holders: "team"`). A ship or merge runs only on a worktree whose task branch the tab's bound session owns, with the
  * team's ship tool from a clean checkout on main (ship-role-check.ts), and the tool clears a merge for that same
- * session alone (tools/ship/approval.ts). `issue close`, `issue comment` and `issue migrate` act as whoever runs them,
- * and a migrate links any session's task of the team, so each needs named holders.
+ * session alone (tools/ship/approval.ts). `issue close` and `issue migrate` act as whoever runs them, and a migrate
+ * links any session's task of the team, so each needs named holders.
  */
 export const TEAM_HELD_COMMANDS: ReadonlySet<ServiceCommand> = new Set<ServiceCommand>(SHIP_COMMANDS);
 
 /**
  * What each command reaches, which a grant shows the owner before and as it writes (T2984): GitHub numbers issues
- * and pull requests as one, so both issue commands act on any pull request of the team's repositories too, an outside
+ * and pull requests as one, so `issue close` acts on any pull request of the team's repositories too, an outside
  * author's included, and a holder steered by outside text could close one with no prompt, up to the daily cap.
  */
 export const SERVICE_COMMAND_REACH: Readonly<Record<ServiceCommand, string>> = {
   'issue close': "closes any issue or pull request of github.repos, an outside author's too (a pull request closes unmerged), posting its --comment first",
-  'issue comment': "posts a comment on any issue or pull request of github.repos, an outside author's too",
   'issue migrate':
     "opens an issue on github.repos for each row of a rows file in the team's task files, with the row's public wording, and points that task's ref at it, any session's task of the team, never one kept local; each issue row counts toward the daily cap",
   'queue ship': "queues the team's ship tool on a worktree of the holder's own task branch: it builds, checks and commits there, and pushes nothing",

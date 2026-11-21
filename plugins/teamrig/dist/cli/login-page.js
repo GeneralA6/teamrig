@@ -1,6 +1,6 @@
 import { KIT_NAME } from "../core/home.js";
 import { secretValueOf } from "../core/secret-key.js";
-import { isHttpsUrl } from "../core/webhook.js";
+import { isHttpsUrl } from "../core/http.js";
 import { loginPageText } from "../restore/login.js";
 import { openKit, teamZone } from "./kit.js";
 /**

@@ -1,6 +1,6 @@
-import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import { parseObject } from '../core/jsonl.ts';
+import { stringField, type JsonRecord } from '../core/guards.ts';
 import { aiTitleOf, customTitleOf } from '../names/title.ts';
+import type { EntryKind, InputEntry, TranscriptReader } from '../ports/host/index.ts';
 import type { BackgroundKind } from '../refresh/running.ts';
 
 /**
@@ -40,6 +40,9 @@ export const FALLBACK_TOPIC = 'Claude Code';
 
 /** The background work that keeps a tab working past its turn's end: helpers, and the workflows that run them. */
 const HELPER_KINDS: ReadonlySet<BackgroundKind> = new Set(['helper', 'workflow']);
+
+/** The one kind of transcript entry a first prompt can be. */
+const KINDS: readonly EntryKind[] = ['input'];
 
 /** The tools that stop a turn to ask the user: a question, or a plan to approve. */
 const ASKING_TOOLS: ReadonlySet<string> = new Set(['AskUserQuestion', 'ExitPlanMode']);
@@ -154,25 +157,20 @@ function topicalPrompt(prompt: string | undefined): string | undefined {
   return text === '' || text.startsWith('/') || text.startsWith('<') ? undefined : text;
 }
 
-/** The text of a user entry's message: its string content, else its first text block. */
-export function messageTextOf(entry: JsonRecord): string | undefined {
-  const content = recordField(entry, 'message')?.['content'];
-  if (typeof content === 'string') {
-    return content;
-  }
-  const block = Array.isArray(content) ? content.find((item) => isRecord(item) && item['type'] === 'text') : undefined;
-  return isRecord(block) ? stringField(block, 'text') : undefined;
+/** The text of an input the host's transcript reader read: its string content, else its first text block. */
+export function inputTextOf(entry: InputEntry): string | undefined {
+  return entry.text ?? entry.parts[0];
 }
 
 /**
  * The session's first topical prompt in a whole transcript: the first message the user typed, past
- * slash commands, Claude Code's own messages (meta, a compaction's summary, tool results) and helpers'.
+ * slash commands, the host's own messages (meta, a compaction's summary, tool results) and helpers'.
  */
-export function firstPromptOf(text: string): string | undefined {
+export function firstPromptOf(reader: TranscriptReader, text: string): string | undefined {
   for (const line of text.split('\n')) {
-    const entry = line.includes('"user"') ? parseObject(line) : undefined;
-    const typed = entry !== undefined && entry['type'] === 'user' && entry['isMeta'] !== true && entry['isSidechain'] !== true && entry['isCompactSummary'] !== true;
-    const prompt = typed ? topicalPrompt(messageTextOf(entry)) : undefined;
+    const entry = reader.entry(line, KINDS);
+    const typed = entry?.kind === 'input' && !entry.meta && entry.thread !== 'helper' && !entry.continuation;
+    const prompt = typed ? topicalPrompt(inputTextOf(entry)) : undefined;
     if (prompt !== undefined) {
       return prompt;
     }
@@ -194,14 +192,16 @@ function folderNameOf(path: string): string | undefined {
 /**
  * What the tab calls the session, the first of: the session's title (the payload's, else the newest
  * the user gave in the transcript), the title Claude Code made up, the first prompt (from a whole
- * transcript, else this event's own), the folder's name, then `FALLBACK_TOPIC`.
+ * transcript, else this event's own), the folder's name, then `FALLBACK_TOPIC`. With no `reader` (a
+ * host that keeps no transcript teamrig can read) the transcript's candidates are skipped.
  */
-export function topicOf(payload: JsonRecord, tail: TranscriptTail | undefined): string {
+export function topicOf(reader: TranscriptReader | undefined, payload: JsonRecord, tail: TranscriptTail | undefined): string {
+  const read = reader === undefined || tail === undefined ? undefined : { reader, tail };
   const candidates = [
     () => stringField(payload, 'session_title'),
-    () => (tail === undefined ? undefined : customTitleOf(tail.text)),
-    () => (tail === undefined ? undefined : aiTitleOf(tail.text)),
-    () => (tail?.whole === true ? firstPromptOf(tail.text) : undefined),
+    () => (read === undefined ? undefined : customTitleOf(read.reader, read.tail.text)),
+    () => (read === undefined ? undefined : aiTitleOf(read.reader, read.tail.text)),
+    () => (read?.tail.whole === true ? firstPromptOf(read.reader, read.tail.text) : undefined),
     () => topicalPrompt(stringField(payload, 'prompt')),
     () => folderNameOf(stringField(payload, 'cwd') ?? ''),
   ];

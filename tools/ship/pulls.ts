@@ -1,5 +1,5 @@
 import type { Gh } from './github.ts';
-import { arrayOf, booleanAt, numberAt, recordAt, recordOf, stringAt } from './json.ts';
+import { arrayOf, booleanAt, isRecord, numberAt, recordAt, recordOf, stringAt } from './json.ts';
 
 /** The pull request calls ship makes (Pull requests: read and write). */
 
@@ -34,6 +34,25 @@ export function findOpenPull(gh: Gh, repo: string, head: string, base: string): 
 export function openPull(gh: Gh, repo: string, head: string, base: string, title: string, body: string): PullRequest {
   const created = gh(['api', `repos/${repo}/pulls`, '-X', 'POST', '-f', `title=${title}`, '-f', `head=${head}`, '-f', `base=${base}`, '-f', `body=${body}`]);
   return parsePull(recordOf(created, 'new pull request'));
+}
+
+/** An open pull request with the repo its head branch lives in (`owner/name`); null when that repo was deleted. */
+export interface OpenPull extends PullRequest {
+  headRepo: string | null;
+}
+
+/** Every open pull request into `base`, from any branch or fork (the first 100, which GitHub lists newest first). */
+export function openPullsInto(gh: Gh, repo: string, base: string): OpenPull[] {
+  return arrayOf(gh(['api', `repos/${repo}/pulls?state=open&base=${base}&per_page=100`]), 'open pull requests').map(item => {
+    const headRepo = recordAt(item, 'head', 'pull request')['repo'];
+    return { ...parsePull(item), headRepo: isRecord(headRepo) ? stringAt(headRepo, 'full_name', 'pull request head repo') : null };
+  });
+}
+
+/** Comments `comment` on pull request `number`, then closes it unmerged; GitHub keeps its branch and a Reopen button. */
+export function closePull(gh: Gh, repo: string, number: number, comment: string): void {
+  gh(['api', `repos/${repo}/issues/${number}/comments`, '-X', 'POST', '-f', `body=${comment}`]);
+  gh(['api', `repos/${repo}/pulls/${number}`, '-X', 'PATCH', '-f', 'state=closed']);
 }
 
 export type MergeOutcome = { merged: true; sha: string } | { merged: false; message: string };

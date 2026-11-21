@@ -1,0 +1,11 @@
+[
+  {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "transcript_path": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "cwd": "{{cwd}}",
+    "prompt_id": "00000000-0000-4000-8000-000000000004",
+    "hook_event_name": "PreCompact",
+    "trigger": "manual",
+    "custom_instructions": null
+  }
+]

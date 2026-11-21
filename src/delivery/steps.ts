@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { closeSync, openSync } from 'node:fs';
 import type { Env } from '../core/home.ts';
-import { endOf, type ShellEnd } from '../test-run/shell.ts';
+import { endOf, type ShellEnd } from '../core/shell-end.ts';
 import { constants } from 'node:os';
 import { lowerStep, NODE_PRIORITIES, STEP_PRIORITY, type Priorities } from './priority.ts';
 import { nodeTreeKill, type RunKill, type TreeKill } from './tree-kill.ts';

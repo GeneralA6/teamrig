@@ -1,7 +1,8 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer, type IncomingMessage, type Server } from 'node:http';
-import { chatWebhook, httpsOnly, httpWebhook, isHttpsUrl, WEBHOOK_MAX_CONTENT, type ChatWebhook } from './webhook.ts';
+import { createServer, type Server } from 'node:http';
+import { listening, readBody, stopped } from '../testing/local-server.ts';
+import { chatWebhook, httpsOnly, httpWebhook, WEBHOOK_MAX_CONTENT, type ChatWebhook } from './webhook.ts';
 
 /** What the local webhook heard: each request's method, path, content type and parsed body. */
 interface Heard {
@@ -9,24 +10,6 @@ interface Heard {
   readonly path: string;
   readonly contentType: string | undefined;
   readonly body: unknown;
-}
-
-function readBody(request: IncomingMessage): Promise<string> {
-  return new Promise((done) => {
-    let body = '';
-    request.setEncoding('utf8');
-    request.on('data', (chunk: string) => {
-      body += chunk;
-    });
-    request.on('end', () => done(body));
-  });
-}
-
-async function listening(server: Server): Promise<string> {
-  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
-  const address = server.address();
-  assert.ok(address !== null && typeof address === 'object', 'a TCP server has a port');
-  return `http://127.0.0.1:${address.port}`;
 }
 
 describe('httpWebhook', () => {
@@ -55,8 +38,7 @@ describe('httpWebhook', () => {
   });
 
   after(async () => {
-    server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    await stopped(server);
   });
 
   it('posts the content as JSON with every mention turned off', async () => {
@@ -88,7 +70,7 @@ describe('httpWebhook', () => {
     assert.equal(await httpWebhook().post('not a url/with-token', 'RAN R1'), 'the webhook address is not a URL');
     const closed = createServer();
     const gone = await listening(closed);
-    await new Promise<void>((done) => closed.close(() => done()));
+    await stopped(closed);
     const problem = await httpWebhook().post(`${gone}/hook-token`, 'RAN R1');
     assert.match(problem ?? '', /^the webhook could not be reached/);
     assert.doesNotMatch(problem ?? '', /hook-token|127\.0\.0\.1/);
@@ -122,14 +104,5 @@ describe('httpsOnly', () => {
       assert.equal(await httpsOnly(inner.webhook).post(url, 'RAN R1'), 'the webhook address is not an https URL', url);
     }
     assert.deepEqual(inner.posts, []);
-  });
-});
-
-describe('isHttpsUrl', () => {
-  it('is true only for an absolute https URL', () => {
-    assert.deepEqual(
-      ['https://chat.example/hook', 'HTTPS://chat.example/hook', 'http://chat.example/hook', 'https:/', '//chat.example/hook', ''].map(isHttpsUrl),
-      [true, true, false, false, false, false],
-    );
   });
 });

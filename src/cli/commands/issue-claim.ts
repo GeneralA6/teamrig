@@ -1,6 +1,6 @@
 import type { KitConfig } from '../../config/types.ts';
 import { CLAIM_DAYS, CLAIM_READS, claimCandidates, claimKey, formatClaims, parseClaims, planClaims, type Claim, type ClaimCandidate, type ClaimState } from '../../issues/claim.ts';
-import { targetText, type IssueHost, type IssueTarget } from '../../issues/host.ts';
+import { targetText, type Assignees, type Comments, type HostAccess, type IssueTarget, type LabelFiles, type Labels } from '../../issues/host.ts';
 import type { HostIssue, ReadComment } from '../../issues/issue.ts';
 import { STATUS_LABELS } from '../../issues/status-push.ts';
 import { labelIssue } from '../../issues/write.ts';
@@ -22,9 +22,17 @@ export const CLAIM_REPLY = `Assigned to you. A claim holds for ${CLAIM_DAYS} day
 /** The reply on an issue whose claim ran out. */
 export const RELEASE_REPLY = `This claim ran ${CLAIM_DAYS} days with no linked pull request, so the assignment was taken off and the issue is free to take again. A new /take comment claims it again.`;
 
-/** One claim pass: the host to write through, the issues of each repository read this run, and when the run started. */
-export interface ClaimRun {
-  readonly host: IssueHost;
+/**
+ * What a claim is written through: the tracker's comments, assignees and labels, and the code host's read of a
+ * repository's label file, which the status swap needs when the repository lacks the label it adds.
+ */
+export interface ClaimVia {
+  readonly host: HostAccess & Comments & Assignees & Labels;
+  readonly labelFiles: LabelFiles;
+}
+
+/** One claim pass: what to write through, the issues of each repository read this run, and when the run started. */
+export interface ClaimRun extends ClaimVia {
   readonly read: ReadonlyMap<string, readonly HostIssue[]>;
   /** Taken before any read, so the next pass reads every comment posted after this run's reads began. */
   readonly started: number;
@@ -95,14 +103,14 @@ export async function recordClaims(runtime: CliRuntime, kit: Kit, config: KitCon
     claims.push(...plan.kept);
     let held = false;
     for (const claim of plan.made) {
-      if (!spend(claim, labelsOf(claim), STATUS_LABELS.open)) {
+      if (!spend(claim, labelsOf(claim), run.host.labelName(STATUS_LABELS.open))) {
         held = true;
-      } else if (await makeClaim(run.host, claim, labelsOf(claim), say)) {
+      } else if (await makeClaim(run, claim, labelsOf(claim), say)) {
         claims.push(claim);
       }
     }
     for (const claim of plan.expired) {
-      if (!spend(claim, labelsOf(claim), STATUS_LABELS.claimed) || !(await endClaim(run.host, claim, labelsOf(claim), say))) {
+      if (!spend(claim, labelsOf(claim), run.host.labelName(STATUS_LABELS.claimed)) || !(await endClaim(run, claim, labelsOf(claim), say))) {
         claims.push(claim);
       }
     }
@@ -123,7 +131,7 @@ interface CandidateRead {
  * Reads the new comments of the first CLAIM_READS candidates, oldest new comment first. A failed read, and each
  * candidate past the bound, is left for the next pass, which starts from its oldest new comment.
  */
-async function readCandidates(host: IssueHost, candidates: readonly ClaimCandidate[], since: number, say: (line: string) => void): Promise<CandidateRead> {
+async function readCandidates(host: Comments, candidates: readonly ClaimCandidate[], since: number, say: (line: string) => void): Promise<CandidateRead> {
   const comments = new Map<string, readonly ReadComment[]>();
   const later: number[] = [];
   for (const candidate of candidates.slice(0, CLAIM_READS)) {
@@ -150,41 +158,45 @@ function targetOf(claim: Claim): IssueTarget {
 }
 
 /** Assigns the claimer, swaps the status label when the issue shows `status:open`, and replies; true once assigned. */
-async function makeClaim(host: IssueHost, claim: Claim, labels: readonly string[], say: (line: string) => void): Promise<boolean> {
+async function makeClaim(via: ClaimVia, claim: Claim, labels: readonly string[], say: (line: string) => void): Promise<boolean> {
   const target = targetOf(claim);
-  const assigned = await host.assign(target, [claim.login]);
+  const assigned = await via.host.assign(target, [claim.login]);
   if (assigned.kind === 'failed') {
     say(`FAILED ${targetText(target)}: ${claim.login}'s claim: ${assigned.reason}; no claim was made, a person may assign by hand`);
     return false;
   }
   say(`CLAIMED ${targetText(target)}: ${claim.login} took it by a comment and is assigned for ${CLAIM_DAYS} days, or until a linked pull request lands`);
-  await swapStatus(host, target, labels, { from: STATUS_LABELS.open, to: STATUS_LABELS.claimed }, say);
-  await reply(host, target, CLAIM_REPLY, say);
+  await swapStatus(via, target, labels, { from: STATUS_LABELS.open, to: STATUS_LABELS.claimed }, say);
+  await reply(via.host, target, CLAIM_REPLY, say);
   return true;
 }
 
 /** Takes the claimer off, swaps the status label back when the issue shows `status:claimed`, and replies; true once taken off. */
-async function endClaim(host: IssueHost, claim: Claim, labels: readonly string[], say: (line: string) => void): Promise<boolean> {
+async function endClaim(via: ClaimVia, claim: Claim, labels: readonly string[], say: (line: string) => void): Promise<boolean> {
   const target = targetOf(claim);
-  const removed = await host.unassign(target, claim.login);
+  const removed = await via.host.unassign(target, claim.login);
   if (removed.kind === 'failed') {
     say(`FAILED ${targetText(target)}: ending ${claim.login}'s claim: ${removed.reason}; tried again on the next run`);
     return false;
   }
   say(`RELEASED ${targetText(target)}: ${claim.login}'s claim ran ${CLAIM_DAYS} days with no linked pull request; the assignee is taken off`);
-  await swapStatus(host, target, labels, { from: STATUS_LABELS.claimed, to: STATUS_LABELS.open }, say);
-  await reply(host, target, RELEASE_REPLY, say);
+  await swapStatus(via, target, labels, { from: STATUS_LABELS.claimed, to: STATUS_LABELS.open }, say);
+  await reply(via.host, target, RELEASE_REPLY, say);
   return true;
 }
 
-/** Swaps `from` for `to` only on an issue showing `from`: one with another status, or none, is the status push's. */
-async function swapStatus(host: IssueHost, target: IssueTarget, labels: readonly string[], swap: { readonly from: string; readonly to: string }, say: (line: string) => void): Promise<void> {
-  if (labels.includes(swap.from)) {
-    await labelIssue(host, { target, add: [swap.to], remove: [swap.from] }, say);
+/**
+ * Swaps `from` for `to` only on an issue showing `from`: one with another status, or none, is the status push's. The
+ * issue's labels are as the tracker holds them, so `from` is looked for under the name it has there (labelIssue names
+ * the two it writes itself).
+ */
+async function swapStatus(via: ClaimVia, target: IssueTarget, labels: readonly string[], swap: { readonly from: string; readonly to: string }, say: (line: string) => void): Promise<void> {
+  if (labels.includes(via.host.labelName(swap.from))) {
+    await labelIssue(via.host, via.labelFiles, { target, add: [swap.to], remove: [swap.from] }, say);
   }
 }
 
-async function reply(host: IssueHost, target: IssueTarget, body: string, say: (line: string) => void): Promise<void> {
+async function reply(host: Comments, target: IssueTarget, body: string, say: (line: string) => void): Promise<void> {
   const posted = await host.comment(target, body);
   say(posted.kind === 'done' ? `REPLIED ${targetText(target)}` : `FAILED ${targetText(target)}: the reply: ${posted.reason}`);
 }

@@ -1,6 +1,6 @@
 import { findLineAtOrAfter, readLines } from "../budget/cursor.js";
 import { discoverTranscripts } from "../budget/discover.js";
-import { parseTranscriptLine } from "../budget/line.js";
+import { transcriptLineOf } from "../budget/line.js";
 import { formatUtcDay, MS_PER_DAY } from "../core/time.js";
 import { newThread, ScorecardTally, ThreadFold } from "./scorecard.js";
 /** Days and cursors a scorecard keeps: about a quarter, so a trend across skill changes stays readable. */
@@ -44,7 +44,7 @@ export async function scanTranscripts(deps, run) {
             budget -= batch.bytes;
             bytesRead += batch.bytes;
             for (const raw of batch.lines) {
-                const line = parseTranscriptLine(raw);
+                const line = transcriptLineOf(deps.reader, raw);
                 if (line !== undefined) {
                     fold.line(line);
                 }

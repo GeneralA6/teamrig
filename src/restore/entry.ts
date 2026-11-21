@@ -1,4 +1,5 @@
 import { isNonNegativeInteger, isRecord, stringField, type JsonRecord } from '../core/guards.ts';
+import { hostSessionOf } from '../core/host-session.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';
@@ -245,9 +246,12 @@ export function parseEntry(text: string): RestoreEntry | undefined {
   return record === undefined ? undefined : entryOfRecord(record);
 }
 
-/** The entry an `entryRecord` object holds; undefined when it is of another shape. */
+/**
+ * The entry an `entryRecord` object holds; undefined when it is of another shape. The files carry no format, so a
+ * later teamrig's entry, naming the session `hostSession` (T4762), is told by that field alone.
+ */
 export function entryOfRecord(record: JsonRecord): RestoreEntry | undefined {
-  const claudeSession = stringField(record, 'claudeSession');
+  const claudeSession = hostSessionOf(record, 'claudeSession');
   const projectDir = stringField(record, 'projectDir');
   const state = activityOf(stringField(record, 'state'));
   const createdAt = instantField(record, 'createdAt');

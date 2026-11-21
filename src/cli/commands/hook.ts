@@ -51,6 +51,7 @@ import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
+import { contextSourceIfTold, transcriptsIfKept, transcriptsOf } from '../host.ts';
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { keptRulesAboveOf, readTeamRules } from '../team-rules.ts';
@@ -550,10 +551,19 @@ interface CarryRead {
   readonly inherited: readonly CarriedCron[];
 }
 
+/**
+ * What the session of `transcript` leaves. On a host whose transcript teamrig cannot read there is none to read, so
+ * this is undefined as for a transcript that is gone, and the jobs on record stay as they were.
+ */
+async function carryOfTranscript(runtime: CliRuntime, transcript: string, now: number, inherited: readonly CarriedCron[], handoverPath?: string): Promise<Carry | undefined> {
+  const reader = transcriptsIfKept(runtime);
+  return reader === undefined ? undefined : readCarry(reader, runtime.files, transcript, now, carryPlaces(runtime), inherited, handoverPath);
+}
+
 async function carryFrom(runtime: CliRuntime, store: RefreshStore, id: string, transcript: string, now: number): Promise<CarryRead> {
   const record = await store.carried(id);
   const inherited = record?.transcript === transcript ? record.crons : [];
-  return { carry: await readCarry(runtime.files, transcript, now, carryPlaces(runtime), inherited, store.handoverPath(id)), inherited };
+  return { carry: await carryOfTranscript(runtime, transcript, now, inherited, store.handoverPath(id)), inherited };
 }
 
 /**
@@ -629,7 +639,7 @@ async function carryRecordAt(runtime: CliRuntime, store: RefreshStore, id: strin
     }
     const record = await store.carried(id);
     if (record !== undefined) {
-      const carry = await readCarry(runtime.files, record.transcript, runtime.clock.now(), carryPlaces(runtime), record.crons);
+      const carry = await carryOfTranscript(runtime, record.transcript, runtime.clock.now(), record.crons);
       await keepCarried(store, id, carry?.crons ?? record.crons, 'same-process', startTranscriptOf(payload));
     }
     return undefined;
@@ -701,9 +711,11 @@ async function stopFactsOf(runtime: CliRuntime, scope: SessionScope, store: Refr
   const { roster, id } = scope;
   const request = await store.request(id);
   const transcript = stringField(payload, 'transcript_path');
+  // A host that keeps no readable transcript or prices no call tells no context size: the lead's request and the meeting still count.
+  const source = contextSourceIfTold(runtime);
   return {
     requestedBy: request === undefined ? undefined : (roster.nameOf(request.by) ?? request.by),
-    tokens: transcript === undefined ? undefined : await readContextTokens(runtime.files, transcript),
+    tokens: transcript === undefined || source === undefined ? undefined : await readContextTokens(source, runtime.files, transcript),
     meeting: await inMeetingNow(runtime, scope),
     due: undefined,
   };
@@ -724,7 +736,7 @@ async function leadStopLines(runtime: CliRuntime, scope: SessionScope, transcrip
   if (text === undefined) {
     return [];
   }
-  const turn = turnToolsOf(text, Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES, undefined);
+  const turn = turnToolsOf(transcriptsOf(runtime), text, Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES, undefined);
   const line = leadStopLine(leadTallyOf(turn, await turnLeadPathsOf(runtime, kit, config, await loadTree(runtime), turn)), config.leadBoundary.searchNudgeAt);
   return line === undefined ? [] : [line];
 }
@@ -790,7 +802,7 @@ async function modelNoticesOf(runtime: CliRuntime, scope: SessionScope, payload:
     return [];
   }
   const { kit, config, roster, id } = scope;
-  return stopModelNotices(runtime.files, new ModelNoticeStore(runtime.files, kit.paths.modelNotices), {
+  return stopModelNotices(transcriptsIfKept(runtime), runtime.files, new ModelNoticeStore(runtime.files, kit.paths.modelNotices), {
     id,
     name: roster.nameOf(id) ?? id,
     launch: launchOf(config, id),

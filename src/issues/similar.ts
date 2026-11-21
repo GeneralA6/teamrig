@@ -1,5 +1,5 @@
 import { SECRET_BODY } from '../github/map.ts';
-import { ACTIVE_STATUSES, ISSUE_REF_PREFIX } from '../register/model.ts';
+import { ACTIVE_STATUSES, isIssueRef } from '../register/model.ts';
 import type { Task } from '../register/fold.ts';
 
 /**
@@ -145,21 +145,22 @@ export function issueDoc(ref: string, task: Pick<Task, 'title' | 'description'>)
   return { ref, title: task.title, body: task.description === null || task.description === SECRET_BODY ? '' : task.description };
 }
 
+/** A task an issue made: its ref names the issue. */
+export type IssueTask = Task & { readonly ref: string };
+
 /**
- * The issues the register mirrors, as the scorer reads them: each task an issue made (its ref starts with
- * ISSUE_REF_PREFIX) still active, or done or dropped within `closedDays` of `now`, the window a sync reads closed
- * issues in. A body the import left out as a likely secret counts as none, so those issues do not match each other.
+ * Whether a task mirrors an issue the scorer reads: one an issue made (its ref is an issue ref, isIssueRef) still
+ * active, or done or dropped within `closedDays` of `now`, the window a sync reads closed issues in.
+ */
+export function mirrorsIssue(now: Date, closedDays: number): (task: Task) => task is IssueTask {
+  const since = now.getTime() - closedDays * DAY_MS;
+  return (task): task is IssueTask => isIssueRef(task.ref) && (ACTIVE_STATUSES.includes(task.status) || Date.parse(task.statusAt) >= since);
+}
+
+/**
+ * The issues the register mirrors (mirrorsIssue), as the scorer reads them. A body the import left out as a likely
+ * secret counts as none, so those issues do not match each other.
  */
 export function mirroredIssues(tasks: Iterable<Task>, now: Date, closedDays: number): readonly SimilarDoc[] {
-  const since = now.getTime() - closedDays * DAY_MS;
-  const docs: SimilarDoc[] = [];
-  for (const task of tasks) {
-    if (task.ref === null || !task.ref.startsWith(ISSUE_REF_PREFIX)) {
-      continue;
-    }
-    if (ACTIVE_STATUSES.includes(task.status) || Date.parse(task.statusAt) >= since) {
-      docs.push(issueDoc(task.ref, task));
-    }
-  }
-  return docs;
+  return [...tasks].filter(mirrorsIssue(now, closedDays)).map((task) => issueDoc(task.ref, task));
 }

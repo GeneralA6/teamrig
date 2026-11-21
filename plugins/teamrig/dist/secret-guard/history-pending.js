@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { errorMessage, isStringArray, numberField, stringField } from "../core/guards.js";
+import { hostSessionOf } from "../core/host-session.js";
 import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 import { cleanHistory, historyPlaces } from "./history-clean.js";
 const PENDING_FORMAT = 1;
@@ -98,14 +99,18 @@ export class HistoryPending {
         await this.files.append(this.logPath, toJsonlLine({ [VERSION_FIELD]: LOG_FORMAT, at: this.clock.now(), event, ...counts }));
     }
 }
-/** A pending record from its file; undefined for a damaged or foreign one, which the sweep drops. */
+/**
+ * A pending record from its file; undefined for a damaged or foreign one, which the sweep drops. A later teamrig's
+ * record names the session `hostSession` (T4762, src/core/host-session.ts) and is cleaned for all the same: both
+ * share the folder until every tab has reloaded, and a record dropped here would leave its secret in the history.
+ */
 function pendingOf(text) {
     const record = text === undefined ? undefined : parseObject(text);
     if (record === undefined) {
         return undefined;
     }
     const at = numberField(record, 'at');
-    const claude = stringField(record, 'claude');
+    const claude = hostSessionOf(record, 'claude');
     const claudeDir = stringField(record, 'claudeDir');
     const hashes = record['hashes'];
     return at === undefined || claude === undefined || claudeDir === undefined || !isStringArray(hashes) ? undefined : { at, claude, claudeDir, hashes };

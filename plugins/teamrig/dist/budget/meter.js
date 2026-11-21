@@ -1,11 +1,11 @@
 import { formatUtcDay, formatUtcHour, MS_PER_DAY } from "../core/time.js";
 import { findLineAtOrAfter, readLines } from "./cursor.js";
-import { parseTranscriptLine } from "./line.js";
+import { transcriptLineOf } from "./line.js";
 import { MissTracker } from "./misses.js";
 import { emptyPatterns, PatternTracker } from "./patterns.js";
 import { newCursor, pruneUsage, RECENT_KEYS_KEPT, } from "./store.js";
 import { NO_TURN, TurnTasks } from "./tasks.js";
-import { contextTokens, modelWeightOf, WEIGHTS, weightOf } from "./weights.js";
+import { modelWeightOf } from "./weights.js";
 /**
  * Totals while a run counts: per-day sums, W per hour and per task, and the latest call keys across all the
  * session's transcripts, so a call two files both logged counts once.
@@ -103,9 +103,13 @@ class TranscriptFold {
     tally;
     weight;
     modelWeights;
-    constructor(cursor, tally, transcript) {
+    reader;
+    usage;
+    constructor(cursor, tally, transcript, host) {
+        this.reader = host.reader;
+        this.usage = host.usage;
         this.call = cursor.call;
-        this.tracker = new PatternTracker(cursor.patterns, transcript.weight);
+        this.tracker = new PatternTracker(cursor.patterns, host.usage, transcript.weight);
         this.misses = new MissTracker(cursor.misses, (day) => tally.counter(day));
         this.turn = transcript.own ? new TurnTasks(cursor.turn, (day, task, w) => tally.chargeTask(day, task, w)) : undefined;
         this.tally = tally;
@@ -117,7 +121,7 @@ class TranscriptFold {
         return this.weight * modelWeightOf(line.model, this.modelWeights);
     }
     line(raw) {
-        const line = parseTranscriptLine(raw);
+        const line = transcriptLineOf(this.reader, raw);
         if (line === undefined) {
             return;
         }
@@ -148,7 +152,7 @@ class TranscriptFold {
     reply(line) {
         const open = this.call;
         if (open !== null && line.key !== undefined && line.key === open.key) {
-            const added = Math.max(0, line.usage.output - open.output) * WEIGHTS.output * this.multiplier(line);
+            const added = Math.max(0, line.usage.output - open.output) * this.usage.weights.output * this.multiplier(line);
             this.turn?.named(line.tools);
             this.turn?.charged(open.day, added);
             this.tally.day(open.day).w += added;
@@ -165,8 +169,8 @@ class TranscriptFold {
         }
         const day = dayOf(line.at);
         const hour = formatUtcHour(new Date(line.at));
-        const w = weightOf(line.usage) * this.multiplier(line);
-        const context = contextTokens(line.usage);
+        const w = this.usage.ofCall(line.usage) * this.multiplier(line);
+        const context = this.usage.contextReading(line.usage);
         const totals = this.tally.day(day);
         totals.w += w;
         totals.calls += 1;
@@ -236,7 +240,7 @@ export async function runMeter(deps, run) {
         budget -= batch.bytes;
         bytesRead += batch.bytes;
         catchingUp ||= batch.capped;
-        const fold = new TranscriptFold(cursor, tally, transcript);
+        const fold = new TranscriptFold(cursor, tally, transcript, deps);
         for (const line of batch.lines) {
             fold.line(line);
         }

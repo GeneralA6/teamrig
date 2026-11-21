@@ -4,6 +4,7 @@ import { droppedEditReason, droppedEditsOf, type TranscriptThread } from '../../
 import { blockOutput } from '../../hooks/stop.ts';
 import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
+import { transcriptsOf } from '../host.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { parseJson, sessionTeam } from './hook-input.ts';
 
@@ -26,7 +27,7 @@ export async function droppedEditReasonOf(runtime: CliRuntime, payload: JsonReco
   }
   const bytes = thread === 'main' ? TRANSCRIPT_TAIL_BYTES : HELPER_TRANSCRIPT_BYTES;
   const text = await runtime.files.readTail(transcript, bytes);
-  const dropped = text === undefined ? [] : droppedEditsOf(text, Buffer.byteLength(text, 'utf8') >= bytes, thread);
+  const dropped = text === undefined ? [] : droppedEditsOf(transcriptsOf(runtime), text, Buffer.byteLength(text, 'utf8') >= bytes, thread);
   return dropped.length === 0 ? undefined : droppedEditReason(dropped, KIT_NAME);
 }
 

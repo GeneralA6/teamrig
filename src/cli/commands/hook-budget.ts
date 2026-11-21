@@ -27,6 +27,7 @@ import { postLine } from '../../inbox/inbox.ts';
 import { holdBack } from '../../hooks/permission.ts';
 import { helperLaunchReminder } from '../../rules/helper-default.ts';
 import { accountWeekOn, otherTeamsOnAccount } from '../account-teams.ts';
+import { transcriptsOf, usageOf } from '../host.ts';
 import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { peerStatesOf } from '../stored-week.ts';
@@ -64,7 +65,7 @@ async function subagentsOf(folders: TranscriptFolders, transcript: string): Prom
 async function meterTab(runtime: CliRuntime, store: UsageStore, id: string, transcript: string, budget: BudgetConfig): Promise<void> {
   const transcripts = { main: [transcript], subagents: await subagentsOf(runtime.transcripts, transcript) };
   await runMeter(
-    { bytes: runtime.transcripts, store, clock: runtime.clock },
+    { bytes: runtime.transcripts, reader: transcriptsOf(runtime), usage: usageOf(runtime), store, clock: runtime.clock },
     { session: id, transcripts, subagentWeight: budget.subagentWeight, modelWeights: budget.modelWeights, maxBytes: budget.maxBytesPerHook },
   );
 }

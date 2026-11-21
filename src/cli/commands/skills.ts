@@ -7,6 +7,7 @@ import { SCAN_MAX_BYTES, scanTranscripts } from '../../skills/scorecard-scan.ts'
 import { ScorecardStore } from '../../skills/scorecard-store.ts';
 import { signatureOf } from '../../skills/signature.ts';
 import { noPositionals, UsageError, type Flags, type ParsedArgs } from '../args.ts';
+import { transcriptsOf } from '../host.ts';
 import { openTeamKit, requireConfig } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree, skillOwnersElsewhere } from '../tree.ts';
@@ -32,7 +33,7 @@ export async function scorecard(args: ParsedArgs, runtime: CliRuntime): Promise<
   const skills = await skillsToLint(runtime.files, kit.paths.skills, runtime.userHome);
   const signatures = skills.map(signatureOf);
   const result = await scanTranscripts(
-    { source: runtime.transcripts, store: new ScorecardStore(runtime.files, kit.paths.skillsScorecard), clock: runtime.clock },
+    { source: runtime.transcripts, reader: transcriptsOf(runtime), store: new ScorecardStore(runtime.files, kit.paths.skillsScorecard), clock: runtime.clock },
     {
       projectsDir: claudeProjectsDir(runtime.env, runtime.userHome),
       skills: { names: new Set(skills.map((skill) => skill.name)), signatures: signatures.filter((signature) => signature.patterns.length > 0) },

@@ -2,8 +2,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
+import type { HostSource } from '../composition/host-ports.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { MeetingSchedule, type ScheduledMeeting } from '../meeting/schedule.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
@@ -227,6 +229,11 @@ describe('teamrig close', () => {
 
     const helping = await runningAlpha(75, `${reply(40_000)}${backgroundAgent(80)}${reply(40_000)}`);
     assertRefused(await close(helping, ['alpha', '--yes', '--session', 'lead']), /still runs background work its transcript shows/);
+
+    // A host with no transcript teamrig can read hides that work: the session stays open, never closed on a guess.
+    const bare: HostSource = bareHost;
+    const unread = { ...helping, options: { ...helping.options, host: bare } };
+    assertRefused(await close(unread, ['alpha', '--yes', '--session', 'lead']), /runs on a host whose transcript teamrig cannot read, so what it still runs is unknown/);
     for (const kept of [busy, helping]) {
       assert.deepEqual(kept.processes.ends, []);
       assert.deepEqual(kept.processes.described, [], 'a session the cheap checks keep costs no look at its process');

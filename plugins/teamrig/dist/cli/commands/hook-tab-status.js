@@ -6,6 +6,7 @@ import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { readRunningKinds } from "../../refresh/running.js";
 import { helpersRun, readyWaitsOnHelpers, tabChangeOf, tabTitle, topicOf } from "../../tabs/status.js";
 import { noPositionals } from "../args.js";
+import { transcriptsIfKept } from "../host.js";
 import { openKit, rosterOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { parseJson, sessionTeam } from "./hook-input.js";
@@ -27,16 +28,18 @@ async function transcriptTailOf(runtime, payload) {
     const text = transcript === undefined || transcript === '' ? undefined : await runtime.files.readTail(transcript, TRANSCRIPT_TAIL_BYTES);
     return text === undefined ? undefined : { text, whole: Buffer.byteLength(text, 'utf8') < TRANSCRIPT_TAIL_BYTES };
 }
-/** Whether a helper the session started still runs, by its transcript. */
+/** Whether a helper the session started still runs, by its transcript; none on a host that keeps no transcript teamrig can read. */
 async function helpersRunFor(runtime, payload) {
     const transcript = stringField(payload, 'transcript_path');
-    return transcript !== undefined && transcript !== '' && helpersRun(await readRunningKinds(runtime.files, transcript, runtime.clock.now()));
+    const reader = transcriptsIfKept(runtime);
+    return transcript !== undefined && transcript !== '' && reader !== undefined && helpersRun(await readRunningKinds(reader, runtime.files, transcript, runtime.clock.now()));
 }
 /**
  * The title this hook event gives the tab: its state's circle before `label` (a refresh notice's title), else
  * before the session's topic, read from the transcript only when the payload has no session title; a topic
  * naming one session of `own` reads `[<team>] <name>` (tabDisplayOf). A ready state reads as working while a
- * helper still runs. '' gives the title back to the terminal; undefined leaves it.
+ * helper still runs. '' gives the title back to the terminal; undefined leaves it. On a host that keeps no
+ * transcript teamrig can read, the topic comes from the payload alone.
  */
 export async function tabTitleOf(runtime, payload, own, label) {
     const change = tabChangeOf(payload);
@@ -48,7 +51,9 @@ export async function tabTitleOf(runtime, payload, own, label) {
         return tabTitle(state, label);
     }
     const named = stringField(payload, 'session_title')?.trim();
-    return tabTitle(state, tabDisplayOf(own, topicOf(payload, named === undefined || named === '' ? await transcriptTailOf(runtime, payload) : undefined)));
+    const reader = transcriptsIfKept(runtime);
+    const tail = reader !== undefined && (named === undefined || named === '') ? await transcriptTailOf(runtime, payload) : undefined;
+    return tabTitle(state, tabDisplayOf(own, topicOf(reader, payload, tail)));
 }
 /**
  * The tab title this payload sets, as a terminal sequence; undefined with tab status off or no change. A question

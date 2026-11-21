@@ -1,5 +1,6 @@
+import { holdsDescription } from '../register/description-cut.ts';
 import type { Task } from '../register/fold.ts';
-import { ACTIVE_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX } from '../register/model.ts';
+import { ACTIVE_STATUSES, GITHUB_SOURCE, isIssueRef } from '../register/model.ts';
 import type { ImportChanges, ImportInput, StatusInput } from '../register/policy.ts';
 import type { HostIssue } from '../issues/issue.ts';
 import { issueTask, type ImportRules, type IssueTask } from './map.ts';
@@ -55,7 +56,7 @@ export function importedTasks(tasks: Iterable<Task>): Map<string, Task> {
 export function refHolders(tasks: readonly Task[]): Map<string, Task> {
   const held = importedTasks(tasks);
   for (const task of tasks) {
-    if (task.ref !== null && task.ref.startsWith(ISSUE_REF_PREFIX) && !held.has(task.ref)) {
+    if (isIssueRef(task.ref) && !held.has(task.ref)) {
       held.set(task.ref, task);
     }
   }
@@ -70,7 +71,7 @@ export function refHolders(tasks: readonly Task[]): Map<string, Task> {
 export function linkedRefs(tasks: Iterable<Task>): Set<string> {
   const refs = new Set<string>();
   for (const task of tasks) {
-    if (task.source !== GITHUB_SOURCE && task.ref !== null && task.ref.startsWith(ISSUE_REF_PREFIX)) {
+    if (task.source !== GITHUB_SOURCE && isIssueRef(task.ref)) {
       refs.add(task.ref);
     }
   }
@@ -142,11 +143,15 @@ function namesText(names: readonly string[]): string {
   return names.length < 2 ? last : `${names.slice(0, -1).join(', ')} and ${last}`;
 }
 
-/** The priority the issue now gives, and with `followsText` its title and description, where they differ from the task's. */
+/**
+ * The priority the issue now gives, and with `followsText` its title and description, where they differ from the
+ * task's. The description is judged by holdsDescription, as the snapshot's task lines leave descriptions out: a plain
+ * comparison would see every such task as changed and write its body again at each sync.
+ */
 function fieldChanges(task: Task, wanted: IssueTask, followsText: boolean): ImportChanges {
   return {
     ...(!followsText || task.title === wanted.title ? {} : { title: wanted.title }),
-    ...(!followsText || task.description === wanted.description ? {} : { description: wanted.description }),
+    ...(!followsText || holdsDescription(task, wanted.description) ? {} : { description: wanted.description }),
     ...(task.priority === wanted.priority ? {} : { priority: wanted.priority }),
   };
 }

@@ -2,9 +2,11 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
+import type { HostSource } from '../composition/host-ports.ts';
 import type { CommitCharge } from '../delivery/memory.ts';
 import { inboxLineOf } from '../inbox/inbox.ts';
 import { lineHash } from '../inbox/line-hash.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import { SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
@@ -112,6 +114,17 @@ describe('teamrig owner wake (T2298)', () => {
       assert.deepEqual(await asksOf(kit, 'alpha'), []);
       assert.deepEqual(await wakeLinesOf(kit, 'alpha'), []);
       assert.deepEqual(processes.started, []);
+    }
+  });
+
+  it('wakes such a tab on a host whose transcript teamrig cannot read: what it runs is unknown, so the line is posted', async () => {
+    const bare: HostSource = bareHost;
+    for (const [last] of BUSY) {
+      const kit = new CliHarness();
+      await running(kit);
+      const { options } = await hostOf(kit, RUNNING, `${reply(40_000)}${last}\n`);
+      assert.deepEqual(ok(await kit.run(['owner', 'wake', 'alpha'], { ...options, host: bare })).stdout, [WAKES_ALPHA]);
+      assert.equal((await wakeLinesOf(kit, 'alpha')).length, 1);
     }
   });
 

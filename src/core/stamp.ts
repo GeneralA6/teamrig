@@ -31,6 +31,22 @@ export function stampFooter(version: string = KIT_VERSION): string {
   return `<sub>Made with ${STAMP_ICON}[${KIT_NAME}](${STAMP_LINK}) ${version}</sub>\n${STAMP_MARKER}`;
 }
 
+/** The footer's parts: the name a reader sees, where it links and the version after it. */
+export interface StampCredit {
+  readonly name: string;
+  readonly link: string;
+  readonly version: string;
+}
+
+/**
+ * The footer's parts, for a tool whose text is not Markdown but a document format of its own: its writer builds the
+ * link in the tool's own shape from these, so the wording still comes from this module. Such a footer has no marker
+ * line.
+ */
+export function stampCredit(version: string = KIT_VERSION): StampCredit {
+  return { name: KIT_NAME, link: STAMP_LINK, version };
+}
+
 /**
  * A footer the marker ends: the blank lines before it, the `<sub>` line above the marker when there is one (an older
  * footer may say another version or wording), and the marker line. Line ends may be `\r\n`, as in a body file saved

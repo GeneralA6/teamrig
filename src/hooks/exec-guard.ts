@@ -8,6 +8,7 @@ import { PACKAGE_STARTERS } from '../package-guard/packaged.ts';
 import { runsOf, type LineRuns, type OpaqueRun, type ProgramRun, type ProgramsContext } from '../package-guard/programs.ts';
 import { programName } from '../push-guard/launchers.ts';
 import type { ShellWord } from '../push-guard/tokenizer.ts';
+import { ghWriteRefusals, type GhWriteEnv } from './gh-write-refusals.ts';
 import { holdBackOutput } from './permission.ts';
 import { changesVariable } from './variable-change.ts';
 
@@ -36,6 +37,9 @@ import { changesVariable } from './variable-change.ts';
  * And it refuses every `teamrig hook <name>` call (T3081): a hook takes who it runs for, and which tab, from the
  * stdin whoever runs it writes, so only Claude Code's hooks and the teamrig mod run them; a hook is proved in a test,
  * or by a script on a scratch kit home.
+ *
+ * And raw `gh` only reads on the team's GitHub repositories (T4819, hooks/gh-write-refusals.ts): a write there is
+ * refused, naming the teamrig command that writes it with the team's saved key.
  */
 
 /** The `teamrig exec` commands that decide a request. */
@@ -120,6 +124,8 @@ export interface ExecGuardEnv {
   readonly checkClient: (root: string) => Promise<ClientCheck>;
   /** The host's platform: on Windows a Bash line is read as written and as bash receives it (core/bash-tool-readings.ts). */
   readonly platform: NodeJS.Platform;
+  /** The team's GitHub repositories and where a raw `gh` write lands, for the check that refuses one there. */
+  readonly ghWrites: GhWriteEnv;
 }
 
 /** A review a line runs: its action and every `--session` value it names. */
@@ -584,7 +590,7 @@ export function runsOfReadings(readings: readonly string[], context: ProgramsCon
  * inbox read`, through any client, binds it to another session (`bindRefusalOf`); whenever the line changes
  * `$CLAUDECODE`, which tells teamrig a command runs under Claude Code; and when a shell on the line takes its commands
  * from a pipe the guard cannot read, or a package runner hands its line to a shell the line names that the guard
- * cannot read. Else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec`
+ * cannot read; and for each raw `gh` write on the team's GitHub repositories (`ghWriteRefusals`). Else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec`
  * calls start once, and reads the tab's session only for a line that holds a review, or a bind that names a session
  * or runs where the line changes one. A Bash line on Windows is read in each reading bash may run
  * (`toolCommandReadings`), so a call the line as written escapes is still refused. It reads only the line's own words:
@@ -639,12 +645,20 @@ export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Prom
   const cleared = changesVariable(runs, ENV.claudeCode);
   const steered = changesVariable(runs, ENV.session) || changesVariable(runs, ENV.claudeSession);
   const checkedBinds = binds.filter((call) => call.unread || call.sessions.length > 0 || steered);
+  const ghRefusals = ghWriteRefusals(runs, env.ghWrites);
   const quiet =
-    calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0 && opaqueSettings.length === 0 && opaqueHook.length === 0 && checkedBinds.length === 0;
+    calls.length === 0 &&
+    opaque.length === 0 &&
+    opaqueOwner.length === 0 &&
+    opaqueSettings.length === 0 &&
+    opaqueHook.length === 0 &&
+    checkedBinds.length === 0 &&
+    ghRefusals.length === 0;
   if (quiet && !unread && !fed && !foreign && !cleared) {
     return '';
   }
   const reasons: string[] = [...(unread ? [UNREADABLE] : []), ...(fed ? [FED_SHELL] : []), ...(foreign ? [FOREIGN_SHELL] : []), ...(cleared ? [CLAUDE_CODE_CHANGED] : [])];
+  reasons.push(...ghRefusals);
   reasons.push(...opaque.map((run) => opaqueRefusalOf(run.program)));
   reasons.push(...calls.flatMap(({ call }) => (call.kind === 'owner' ? [ownerRefusalOf(call.action)] : call.kind === 'hook' ? [hookRefusalOf(call.name)] : [])));
   reasons.push(...opaqueOwner.map((words) => ownerRefusalOf(ownerActionOf(words))));

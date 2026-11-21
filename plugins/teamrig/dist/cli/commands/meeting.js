@@ -20,6 +20,7 @@ import { currentWeekOf } from "../../register/week.js";
 import { fitLines } from "../../register/fit.js";
 import { noPositionals, UsageError } from "../args.js";
 import { readRunFiles } from "../hand-step-file.js";
+import { withCardTexts } from "../card-texts.js";
 import { callerOf } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { subtreeOf } from "../roll-up.js";
@@ -53,6 +54,15 @@ async function meetingKit(args, runtime, access) {
 /** The registers of the lead's team and of every team under it, depth first, its own first (subtreeOf). */
 async function meetingRegisters(runtime, mk) {
     return subtreeOf(runtime, { kit: mk.kit, config: mk.config, roster: mk.roster }, mk.kitTree);
+}
+/**
+ * The registers the agenda prints from: `meetingRegisters`, each with the description of its cards on the owner, which
+ * the agenda prints as `what and why:` and a snapshot's task line leaves out (withCardTexts).
+ */
+async function agendaRegisters(runtime, mk) {
+    const { own, teams } = await meetingRegisters(runtime, mk);
+    const read = await Promise.all(teams.map((rolled) => withCardTexts(rolled)));
+    return { own: read.find((rolled) => rolled.team === own.team) ?? own, teams: read };
 }
 /** How the lead's end lines name a session of the register: by its id in the lead's own team, by `<team>/<id>` in another. */
 function sessionLabel({ below }, session) {
@@ -159,7 +169,7 @@ async function goalBoard(runtime, mk, { own, teams }) {
  * week's fit (as `plan` gives it).
  */
 async function printAgenda(args, runtime, mk, phase) {
-    const rolled = await meetingRegisters(runtime, mk);
+    const rolled = await agendaRegisters(runtime, mk);
     const { own, teams } = rolled;
     const { snapshot } = own;
     const since = agendaSince(previousEnd(phase), mk.now);

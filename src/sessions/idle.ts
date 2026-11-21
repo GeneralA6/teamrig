@@ -1,12 +1,11 @@
-import { isRecord, recordField, type JsonRecord } from '../core/guards.ts';
-import { parseObject } from '../core/jsonl.ts';
 import { MS_PER_MINUTE, parseDeadline } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
+import type { EntryKind, InputEntry, ReplyEntry, TranscriptReader } from '../ports/host/index.ts';
 import type { Task } from '../register/fold.ts';
 import type { ParkRules } from '../register/park.ts';
 import { TaskTree, type TasksElsewhere, type WaitingOnYou } from '../register/tree.ts';
 import { isRightNow } from '../config/priorities.ts';
-import { asksDecision, messageTextOf } from '../tabs/status.ts';
+import { asksDecision, inputTextOf } from '../tabs/status.ts';
 import { replyOf } from '../turn-log/reply.ts';
 import type { WakeAsk } from '../wake/asks.ts';
 import { startableTasks } from '../wake/day-start.ts';
@@ -27,29 +26,27 @@ export const TIME_WAIT_GUARD_MINUTES = 30;
 /** Where a tab's last turn stands: ended, still running, at a tool call, or ended on a decision put to the person. */
 export type TabActivity = 'idle' | 'turn' | 'call' | 'question';
 
-/** How the lines of a slash command open: Claude Code writes them as user entries, and they start no model turn. */
+/** How the lines of a slash command open: the host writes them as inputs, and they start no model turn. */
 const LOCAL_COMMAND_TAGS: readonly string[] = ['<command-name>', '<command-message>', '<local-command-stdout>', '<local-command-stderr>', '<local-command-caveat>'];
 
-/** How the entry Claude Code writes when the person stops a turn opens. */
+/** How the input the host writes when the person stops a turn opens. */
 const INTERRUPTED = '[Request interrupted by user';
 
-function callsTool(entry: JsonRecord): boolean {
-  const content = recordField(entry, 'message')?.['content'];
-  return Array.isArray(content) && content.some((block) => isRecord(block) && block['type'] === 'tool_use');
-}
+/** The entries a tab's turns are made of. */
+const KINDS: readonly EntryKind[] = ['input', 'reply'];
+
+/** An entry a turn is made of: the person's side or the model's. */
+type TurnEntry = InputEntry | ReplyEntry;
 
 /** True for an entry of the tab's own turns: the person's or the model's, not meta context, a helper's or a slash command's. */
-function isTurnEntry(entry: JsonRecord): boolean {
-  if (entry['isMeta'] === true || entry['isSidechain'] === true) {
+function isTurnEntry(entry: TurnEntry): boolean {
+  if (entry.meta || entry.thread === 'helper') {
     return false;
   }
-  if (entry['type'] === 'assistant') {
+  if (entry.kind === 'reply') {
     return true;
   }
-  if (entry['type'] !== 'user') {
-    return false;
-  }
-  const text = (messageTextOf(entry) ?? '').trimStart();
+  const text = (inputTextOf(entry) ?? '').trimStart();
   return !LOCAL_COMMAND_TAGS.some((tag) => text.startsWith(tag));
 }
 
@@ -59,10 +56,10 @@ function tailLines(text: string, cut: boolean): string[] {
 }
 
 /** The last entry of the tab's own turns among `lines`, and its index. */
-function lastTurnEntryOf(lines: readonly string[]): { readonly entry: JsonRecord; readonly index: number } | undefined {
+function lastTurnEntryOf(reader: TranscriptReader, lines: readonly string[]): { readonly entry: TurnEntry; readonly index: number } | undefined {
   for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const entry = parseObject((lines[index] ?? '').trim());
-    if (entry !== undefined && isTurnEntry(entry)) {
+    const entry = reader.entry(lines[index] ?? '', KINDS);
+    if ((entry?.kind === 'input' || entry?.kind === 'reply') && isTurnEntry(entry)) {
       return { entry, index };
     }
   }
@@ -76,21 +73,21 @@ function lastTurnEntryOf(lines: readonly string[]): { readonly entry: JsonRecord
  * any other reply ended the turn; a person's entry (a prompt or a tool's result) is a turn under way, unless it is
  * the person stopping the turn. No entry: idle.
  */
-export function tabActivityOf(text: string, cut: boolean): TabActivity {
+export function tabActivityOf(reader: TranscriptReader, text: string, cut: boolean): TabActivity {
   const lines = tailLines(text, cut);
-  const last = lastTurnEntryOf(lines);
+  const last = lastTurnEntryOf(reader, lines);
   if (last === undefined) {
     return 'idle';
   }
   const { entry, index } = last;
-  if (entry['type'] === 'user') {
-    return (messageTextOf(entry) ?? '').startsWith(INTERRUPTED) ? 'idle' : 'turn';
+  if (entry.kind === 'input') {
+    return (inputTextOf(entry) ?? '').startsWith(INTERRUPTED) ? 'idle' : 'turn';
   }
-  if (callsTool(entry)) {
+  if (entry.calls.length > 0) {
     return 'call';
   }
   // Up to this reply only: a slash command run after it starts no turn, so the decision still waits.
-  return asksDecision(replyOf(lines.slice(0, index + 1).join('\n'), undefined, !cut)?.text) ? 'question' : 'idle';
+  return asksDecision(replyOf(reader, lines.slice(0, index + 1).join('\n'), undefined, !cut)?.text) ? 'question' : 'idle';
 }
 
 /**
@@ -100,10 +97,8 @@ export function tabActivityOf(text: string, cut: boolean): TabActivity {
  * together, an hour apart, their sizes unchanged: T1417). Undefined with no own entry in the tail, or a last one with
  * no time.
  */
-export function lastTurnAtOf(text: string, cut: boolean): number | undefined {
-  const stamp = lastTurnEntryOf(tailLines(text, cut))?.entry['timestamp'];
-  const at = typeof stamp === 'string' ? Date.parse(stamp) : Number.NaN;
-  return Number.isNaN(at) ? undefined : at;
+export function lastTurnAtOf(reader: TranscriptReader, text: string, cut: boolean): number | undefined {
+  return lastTurnEntryOf(reader, tailLines(text, cut))?.entry.at;
 }
 
 /** A time wait of the session's own that ends soon, and its task. */

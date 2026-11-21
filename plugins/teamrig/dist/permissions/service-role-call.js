@@ -7,9 +7,8 @@ import { isIssueCommand, MIGRATE_COMMAND } from "./service-commands.js";
 import { shipCallOf } from "./ship-role-call.js";
 /**
  * The call shapes a service role lets run (T2984, design 1): each table command as the CLI's own parser reads it, with
- * typed slots and no wildcard. `teamrig issue close <owner/name#n> [--comment "<text>"]` and `teamrig issue comment
- * <owner/name#n> --body "<text>"`, through this install's own launcher, on a repository of `github.repos`, as one plain
- * command. The route gate (route-line.ts) refuses `#` and every joining character even inside quotes, which an issue
+ * typed slots and no wildcard. `teamrig issue close <owner/name#n> [--comment "<text>"]`, through this install's own launcher, on a
+ * repository of `github.repos`, as one plain command. The route gate (route-line.ts) refuses `#` and every joining character even inside quotes, which an issue
  * target and a comment need, so this reader masks exactly those parts first, after proving them literal to bash: the
  * target word as `owner/name#n` (a `#` inside a word starts no comment), and each double-quoted text holding no `"`,
  * `\`, `$`, backtick or control character (bash expands nothing in it). A line with a single quote or a backslash
@@ -20,7 +19,6 @@ import { shipCallOf } from "./ship-role-call.js";
 /** The shape of each issue command; a new table entry adds its shape here, with a security review. */
 const SHAPES = {
     'issue close': { commands: ['issue close'], options: ['session', 'comment'], positionals: 'one' },
-    'issue comment': { commands: ['issue comment'], options: ['session', 'body'], positionals: 'one' },
 };
 /**
  * `issue migrate`'s shape (T4606): the rows file and `--yes`, the run that opens the issues; never `--out`, which

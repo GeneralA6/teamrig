@@ -5,6 +5,7 @@ import type { EndOutcome } from '../open/session-processes.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeCountdown, FakeShutdownLog, FakeStopWatch } from '../testing/fake-restore.ts';
 import { MemoryFiles, MemoryPathProbe } from '../testing/memory-files.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { ARCHIVE_KEEP_MS, RestoreArchive, restoreArchiveDir } from './archive.ts';
 import type { RestoreChoice } from './countdown.ts';
 import type { RestoreEntry } from './entry.ts';
@@ -151,6 +152,7 @@ async function world(
       clock,
       sleep: clock.sleep,
       probe,
+      reader: shippedTranscripts(),
       shutdowns: new FakeShutdownLog({ start: SHUTDOWN, end: SHUTDOWN + 60_000 }),
       countdown,
       stops,

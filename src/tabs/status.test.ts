@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import {
   asksDecision,
   DECISION_MARKER,
@@ -16,6 +17,8 @@ import {
   topicOf,
   type TabChange,
 } from './status.ts';
+
+const reader = shippedTranscripts();
 
 function event(name: string, fields: JsonRecord = {}): JsonRecord {
   return { hook_event_name: name, ...fields };
@@ -170,12 +173,12 @@ describe('firstPromptOf', () => {
       typed([{ type: 'image' }, { type: 'text', text: 'Fix the  login\npage' }]),
       typed('later prompt'),
     );
-    assert.equal(firstPromptOf(text), 'Fix the login page');
+    assert.equal(firstPromptOf(reader, text), 'Fix the login page');
   });
 
   it('finds none in a transcript without a typed prompt, or with damaged lines only', () => {
-    assert.equal(firstPromptOf(entries(typed('/model'), { type: 'assistant', message: { content: 'hi' } })), undefined);
-    assert.equal(firstPromptOf('{"type":"user","message"\n'), undefined);
+    assert.equal(firstPromptOf(reader, entries(typed('/model'), { type: 'assistant', message: { content: 'hi' } })), undefined);
+    assert.equal(firstPromptOf(reader, '{"type":"user","message"\n'), undefined);
   });
 });
 
@@ -183,25 +186,30 @@ describe('topicOf', () => {
   const titled = entries({ type: 'ai-title', aiTitle: 'Fixing the build' }, { type: 'custom-title', customTitle: 'scout' });
 
   it("takes the payload's session title first", () => {
-    assert.equal(topicOf({ session_title: ' ranger ' }, { text: titled, whole: true }), 'ranger');
+    assert.equal(topicOf(reader, { session_title: ' ranger ' }, { text: titled, whole: true }), 'ranger');
   });
 
   it("takes the user's title before Claude Code's in the transcript", () => {
-    assert.equal(topicOf({}, { text: titled, whole: true }), 'scout');
-    assert.equal(topicOf({}, { text: entries({ type: 'ai-title', aiTitle: 'Fixing the build' }), whole: false }), 'Fixing the build');
+    assert.equal(topicOf(reader, {}, { text: titled, whole: true }), 'scout');
+    assert.equal(topicOf(reader, {}, { text: entries({ type: 'ai-title', aiTitle: 'Fixing the build' }), whole: false }), 'Fixing the build');
+  });
+
+  it('skips the transcript on a host that keeps none it can read', () => {
+    assert.equal(topicOf(undefined, { prompt: 'third ask' }, { text: `${titled}${entries(typed('first ask'))}`, whole: true }), 'third ask');
+    assert.equal(topicOf(undefined, { session_title: 'ranger' }, { text: titled, whole: true }), 'ranger');
   });
 
   it("takes the first prompt from a whole transcript only, else this event's prompt", () => {
     const prompts = entries(typed('first ask'), typed('second ask'));
-    assert.equal(topicOf({ prompt: 'third ask' }, { text: prompts, whole: true }), 'first ask');
-    assert.equal(topicOf({ prompt: 'third ask' }, { text: prompts, whole: false }), 'third ask');
-    assert.equal(topicOf({ prompt: '/compact' }, undefined), FALLBACK_TOPIC);
+    assert.equal(topicOf(reader, { prompt: 'third ask' }, { text: prompts, whole: true }), 'first ask');
+    assert.equal(topicOf(reader, { prompt: 'third ask' }, { text: prompts, whole: false }), 'third ask');
+    assert.equal(topicOf(reader, { prompt: '/compact' }, undefined), FALLBACK_TOPIC);
   });
 
   it("falls back to the folder's name, by either separator, then to the fallback", () => {
-    assert.equal(topicOf({ cwd: 'D:\\work\\app' }, undefined), 'app');
-    assert.equal(topicOf({ cwd: '/srv/work/app/' }, undefined), 'app');
-    assert.equal(topicOf({ cwd: '/' }, undefined), FALLBACK_TOPIC);
-    assert.equal(topicOf({ session_title: '\u0007 ' }, undefined), FALLBACK_TOPIC);
+    assert.equal(topicOf(reader, { cwd: 'D:\\work\\app' }, undefined), 'app');
+    assert.equal(topicOf(reader, { cwd: '/srv/work/app/' }, undefined), 'app');
+    assert.equal(topicOf(reader, { cwd: '/' }, undefined), FALLBACK_TOPIC);
+    assert.equal(topicOf(reader, { session_title: '\u0007 ' }, undefined), FALLBACK_TOPIC);
   });
 });

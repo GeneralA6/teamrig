@@ -1,8 +1,9 @@
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
+import { GITHUB_REPOS_HOST } from "../../issues/host.js";
 import { changedIssues, planLinks } from "../../issues/links.js";
 import { noPositionals } from "../args.js";
-import { hostOf, reposOf } from "../issue-hosts.js";
+import { hostsOf, reposOf } from "../issue-hosts.js";
 import { openTeamKit, requireConfig } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { teamRegister } from "../team-register.js";
@@ -31,8 +32,8 @@ export async function issueLinks(args, runtime) {
         return EXIT.ok;
     }
     const tasks = (await teamRegister(runtime, kit.paths, config).snapshot()).state.tasks;
-    // github.repos is GitHub's list, so every repository it names is GitHub's.
-    const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp);
+    // github.repos is GitHub's list, so every repository it names is GitHub's; the links are its tracker's.
+    const host = (await hostsOf(GITHUB_REPOS_HOST, runtime, new SecretScanner(config.register.secretPatterns), config.github.stamp)).tracker;
     const told = new Set();
     let failed = false;
     let added = 0;

@@ -1,4 +1,5 @@
 import { isNonNegativeInteger, stringField, type JsonRecord } from '../core/guards.ts';
+import { hostSessionOf } from '../core/host-session.ts';
 import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 
 /**
@@ -13,6 +14,12 @@ import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from '../core/
  * session as never closed, so only its idle pass leaves it home.
  */
 export const SESSION_LOG_FORMAT = 1;
+/**
+ * The format a later teamrig writes, naming a close's tab `hostSession` (T4762, src/core/host-session.ts): read from
+ * now on and written by none yet. A write beside its lines goes through too, in the format above: every tab reads
+ * both, and a refused close would end a tab unlogged.
+ */
+export const SESSION_LOG_NEXT_FORMAT = 2;
 
 /**
  * Where the log sits under the team's state folder (`<kit home>/teams/<team>/state`, unless the team config's
@@ -82,7 +89,7 @@ export function parseSessionLogRecord(record: JsonRecord): SessionLogRecord | un
     return { kind: 'reopen', session, at, ...(resumed === undefined ? {} : { resumed }) };
   }
   const by = stringField(record, 'by');
-  const claudeSession = stringField(record, 'claudeSession');
+  const claudeSession = hostSessionOf(record, 'claudeSession');
   const idleMinutes = integerField(record, 'idleMinutes');
   const freedMb = integerField(record, 'freedMb');
   if (record['kind'] !== 'close' || by === undefined || idleMinutes === undefined || freedMb === undefined) {
@@ -126,7 +133,7 @@ export function readSessionLog(text: string): SessionLogRead {
   const parse = parseJsonl(text);
   const records: SessionLogRecord[] = [];
   for (const { record, version } of parse.records) {
-    const parsed = version === SESSION_LOG_FORMAT ? parseSessionLogRecord(record) : undefined;
+    const parsed = version === SESSION_LOG_FORMAT || version === SESSION_LOG_NEXT_FORMAT ? parseSessionLogRecord(record) : undefined;
     if (parsed !== undefined) {
       records.push(parsed);
     }
@@ -157,10 +164,10 @@ export class SessionLog {
     return readSessionLog((await this.files.read(this.path)) ?? '');
   }
 
-  /** One whole line in one append; refused beside records from a newer teamrig. */
+  /** One whole line in one append; refused beside records in a format this code does not read. */
   async append(record: SessionLogRecord): Promise<void> {
     const text = (await this.files.read(this.path)) ?? '';
-    assertWritable(this.path, parseJsonl(text), SESSION_LOG_FORMAT);
+    assertWritable(this.path, parseJsonl(text), SESSION_LOG_NEXT_FORMAT);
     const separator = text === '' || text.endsWith('\n') ? '' : '\n';
     await this.files.append(this.path, `${separator}${toJsonlLine(recordOf(record))}`);
   }

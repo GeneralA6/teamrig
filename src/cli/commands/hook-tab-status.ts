@@ -7,6 +7,7 @@ import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { readRunningKinds } from '../../refresh/running.ts';
 import { helpersRun, readyWaitsOnHelpers, tabChangeOf, tabTitle, topicOf, type TranscriptTail } from '../../tabs/status.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
+import { transcriptsIfKept } from '../host.ts';
 import { openKit, rosterOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { parseJson, sessionTeam } from './hook-input.ts';
@@ -33,17 +34,19 @@ async function transcriptTailOf(runtime: CliRuntime, payload: JsonRecord): Promi
   return text === undefined ? undefined : { text, whole: Buffer.byteLength(text, 'utf8') < TRANSCRIPT_TAIL_BYTES };
 }
 
-/** Whether a helper the session started still runs, by its transcript. */
+/** Whether a helper the session started still runs, by its transcript; none on a host that keeps no transcript teamrig can read. */
 async function helpersRunFor(runtime: CliRuntime, payload: JsonRecord): Promise<boolean> {
   const transcript = stringField(payload, 'transcript_path');
-  return transcript !== undefined && transcript !== '' && helpersRun(await readRunningKinds(runtime.files, transcript, runtime.clock.now()));
+  const reader = transcriptsIfKept(runtime);
+  return transcript !== undefined && transcript !== '' && reader !== undefined && helpersRun(await readRunningKinds(reader, runtime.files, transcript, runtime.clock.now()));
 }
 
 /**
  * The title this hook event gives the tab: its state's circle before `label` (a refresh notice's title), else
  * before the session's topic, read from the transcript only when the payload has no session title; a topic
  * naming one session of `own` reads `[<team>] <name>` (tabDisplayOf). A ready state reads as working while a
- * helper still runs. '' gives the title back to the terminal; undefined leaves it.
+ * helper still runs. '' gives the title back to the terminal; undefined leaves it. On a host that keeps no
+ * transcript teamrig can read, the topic comes from the payload alone.
  */
 export async function tabTitleOf(runtime: CliRuntime, payload: JsonRecord, own: TeamRoster, label?: string): Promise<string | undefined> {
   const change = tabChangeOf(payload);
@@ -55,7 +58,9 @@ export async function tabTitleOf(runtime: CliRuntime, payload: JsonRecord, own: 
     return tabTitle(state, label);
   }
   const named = stringField(payload, 'session_title')?.trim();
-  return tabTitle(state, tabDisplayOf(own, topicOf(payload, named === undefined || named === '' ? await transcriptTailOf(runtime, payload) : undefined)));
+  const reader = transcriptsIfKept(runtime);
+  const tail = reader !== undefined && (named === undefined || named === '') ? await transcriptTailOf(runtime, payload) : undefined;
+  return tabTitle(state, tabDisplayOf(own, topicOf(reader, payload, tail)));
 }
 
 /**

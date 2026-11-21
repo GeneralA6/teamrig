@@ -9,6 +9,15 @@ export const MANAGED_LABEL_SPECS = [...STATUS_LABEL_SPECS, DESIGN_LABEL_SPEC];
 export function managedLabel(name) {
     return MANAGED_LABEL_SPECS.find((spec) => spec.name === name);
 }
+/**
+ * The one of `specs` the tracker holds as `name`, under that name, or undefined when it holds none of them so.
+ * `labelName` is the tracker's Labels.labelName: a label read from it, or named through it, is found by the name it
+ * has there, and made under it.
+ */
+export function specHeldAs(specs, name, labelName) {
+    const spec = specs.find((one) => labelName(one.name) === name);
+    return spec === undefined ? undefined : { ...spec, name };
+}
 /** The colour every area label is made in (github.areaOwners): one look for every area, as the label file's areas. */
 export const AREA_LABEL_COLOR = 'c5def5';
 /** The description every area label is made with: what teamrig does with an issue that carries one. */

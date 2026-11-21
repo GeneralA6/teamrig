@@ -1,0 +1,10 @@
+[
+  {
+    "event": "PostCompact",
+    "index": 0,
+    "hook": "hook tab-status",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  }
+]

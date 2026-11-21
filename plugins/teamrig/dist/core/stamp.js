@@ -25,6 +25,14 @@ export function stampFooter(version = KIT_VERSION) {
     return `<sub>Made with ${STAMP_ICON}[${KIT_NAME}](${STAMP_LINK}) ${version}</sub>\n${STAMP_MARKER}`;
 }
 /**
+ * The footer's parts, for a tool whose text is not Markdown but a document format of its own: its writer builds the
+ * link in the tool's own shape from these, so the wording still comes from this module. Such a footer has no marker
+ * line.
+ */
+export function stampCredit(version = KIT_VERSION) {
+    return { name: KIT_NAME, link: STAMP_LINK, version };
+}
+/**
  * A footer the marker ends: the blank lines before it, the `<sub>` line above the marker when there is one (an older
  * footer may say another version or wording), and the marker line. Line ends may be `\r\n`, as in a body file saved
  * on Windows.

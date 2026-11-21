@@ -1,8 +1,9 @@
 import type { Task } from '../register/fold.ts';
-import { ACTIVE_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, type TaskStatus } from '../register/model.ts';
+import { ACTIVE_STATUSES, GITHUB_SOURCE, type TaskStatus } from '../register/model.ts';
 import { DESIGN_LABEL } from './design-label.ts';
-import { parseIssueTarget, targetText, type CloseReason, type IssueTarget, type LabelSpec } from './host.ts';
+import { targetText, type CloseReason, type IssueTarget, type LabelNaming, type LabelSpec } from './host.ts';
 import type { HostIssue } from './issue.ts';
+import { parseRef } from './ref.ts';
 
 /**
  * The status push (T2682): each issue a task holds shows that task's status, so a reader of the issue list sees
@@ -323,7 +324,9 @@ export const SESSION_PUSH: PushLimits = { writesPerRun: PUSH_WRITES_PER_RUN, clo
  * is assigned (assigneeOf); without, the plan assigns nobody. While `who`'s viewer is unread, the plan says where it
  * would count (wantsViewer), for the caller to read it and plan again. A login `who` refuses is never planned, so it takes none
  * of the run's writes and the changes behind it go out (T4581). A number the list left out that is in `openPulls`, the
- * repository's open pull requests, is named as one, not as an issue gone from the list.
+ * repository's open pull requests, is named as one, not as an issue gone from the list. A status label is planned
+ * under the name the tracker holds it by (`labelName`, the tracker's Labels.labelName), as the list gives it back
+ * under that name: planned by its own name, a label the tracker renames would be added again on every run.
  */
 export function planPush(
   repo: string,
@@ -332,6 +335,7 @@ export function planPush(
   limits: PushLimits = SESSION_PUSH,
   who?: PushAssignees,
   openPulls: ReadonlySet<number> = new Set(),
+  labelName: LabelNaming = (label) => label,
 ): PushPlan {
   const listed = new Map(issues.filter((issue) => issue.repo === repo).map((issue) => [issue.number, issue]));
   const planned: IssueChange[] = [];
@@ -344,35 +348,28 @@ export function planPush(
   const held = holders(repo, tasks);
   for (const [target, task] of [...held.speakers].sort(([a], [b]) => a - b).map(([number, holder]) => [{ repo, number }, holder] as const)) {
     const issue = listed.get(target.number);
-    const goal = issueGoal(task, { assigned: issue !== undefined && issue.assignees.length > 0, design: issue?.labels.includes(DESIGN_LABEL) ?? false });
     if (issue === undefined) {
       // The list holds every open issue, so one it left out is closed (or gone): as a closed task wants it. An open
       // pull request is never on it: the push writes only issues, so it leaves that one as it is.
-      if (goal.open) {
+      if (issueGoal(task, { assigned: false, design: false }).open) {
         (openPulls.has(target.number) ? pulls : unlisted).push({ target, task: task.id, status: task.status });
       } else {
         unchanged += 1;
       }
       continue;
     }
-    if (issue.state === 'closed' && goal.open) {
+    const plan = planIssue(target, task, issue, who, labelName);
+    if (plan.kind === 'closed-active') {
       closedActive.push({ target, task: task.id, status: task.status, stateReason: issue.stateReason });
-      continue;
-    }
-    const kept = goal.open || issue.state === 'closed' ? undefined : closeLeft(repo, issue, who);
-    if (kept !== undefined) {
-      wantsViewer ||= kept.kind === 'taken' && who?.viewer.kind === 'unread';
-      keptOpen.push({ target, task: task.id, status: task.status, why: kept });
-      continue;
-    }
-    const assigns = goal.open && goal.claim && who !== undefined && issue.assignees.length === 0;
-    const assign = assigns ? assigneeOf(task.owner, who) : undefined;
-    wantsViewer ||= assigns && assign === undefined && who.viewer.kind === 'unread';
-    const change = changeFor(target, task, issue, goal, assign);
-    if (change === undefined) {
+    } else if (plan.kind === 'kept-open') {
+      wantsViewer ||= plan.wantsViewer;
+      keptOpen.push({ target, task: task.id, status: task.status, why: plan.why });
+    } else if (plan.kind === 'unchanged') {
+      wantsViewer ||= plan.wantsViewer;
       unchanged += 1;
     } else {
-      planned.push(change);
+      wantsViewer ||= plan.wantsViewer;
+      planned.push(plan.change);
     }
   }
   const heldCloses = limits.closes ? [] : planned.filter((change) => change.close !== undefined);
@@ -382,13 +379,18 @@ export function planPush(
   return { repo, changes, deferred, heldCloses, unchanged, closedActive, keptOpen, unlisted, shared, openPulls: pulls, wantsViewer };
 }
 
+/** `goal` with its status label under the name the tracker holds it by. */
+function heldGoal(goal: IssueGoal, labelName: LabelNaming): IssueGoal {
+  return goal.open && goal.label !== undefined ? { ...goal, label: labelName(goal.label) } : goal;
+}
+
 /**
  * Why a finished task's close of the open `issue` is left, or undefined when the close is the task's to send. The
  * team's logins are its sessions' (from `github.owners`), the one the sync runs as, and the repository's owner account,
  * whom pushes before T4581 assigned; GitHub logins match whatever their case. A session two logins map to counts by its
  * first, as assigneeOf assigns it.
  */
-function closeLeft(repo: string, issue: HostIssue, who: PushAssignees | undefined): KeptOpen['why'] | undefined {
+function closeLeft(repo: string, issue: IssueNow, who: PushAssignees | undefined): KeptOpen['why'] | undefined {
   if (issue.labels.includes(DESIGN_LABEL)) {
     return { kind: 'design' };
   }
@@ -397,6 +399,71 @@ function closeLeft(repo: string, issue: HostIssue, who: PushAssignees | undefine
   const team = new Set(ours.map((login) => login.toLowerCase()));
   const outside = issue.assignees.filter((login) => !team.has(login.toLowerCase()));
   return issue.assignees.length > 0 && outside.length === issue.assignees.length ? { kind: 'taken', assignees: outside } : undefined;
+}
+
+/** What one issue's push reads of it now: its state, labels and assignees. */
+export type IssueNow = Pick<HostIssue, 'state' | 'labels' | 'assignees'>;
+
+/**
+ * One issue's push: the change that makes it show its task's status, unchanged when it already does, closed-active
+ * for a closed issue whose task is still active (a person closed it, so it stays closed and the task's owner decides),
+ * or kept-open for an open issue whose close is not its finished task's to send (closeLeft).
+ */
+export type IssuePlan =
+  | { readonly kind: 'change'; readonly change: IssueChange; readonly wantsViewer: boolean }
+  | { readonly kind: 'unchanged'; readonly wantsViewer: boolean }
+  | { readonly kind: 'closed-active' }
+  | { readonly kind: 'kept-open'; readonly why: KeptOpen['why']; readonly wantsViewer: boolean };
+
+/**
+ * The push of the one issue `task` holds, planned against `issue` as the host has it now, the same way planPush plans
+ * each issue of a repository: with `who` an open issue of a scheduled task with no assignee is assigned (assigneeOf),
+ * and without, nobody is. `wantsViewer` says the plan would change once `who`'s unread viewer is known
+ * (PushPlan.wantsViewer). Its status label is planned under the name the tracker holds it by (`labelName`), as
+ * `issue` carries it under that name.
+ */
+export function planIssue(target: IssueTarget, task: Task, issue: IssueNow, who?: PushAssignees, labelName: LabelNaming = (label) => label): IssuePlan {
+  const goal = heldGoal(issueGoal(task, { assigned: issue.assignees.length > 0, design: issue.labels.includes(DESIGN_LABEL) }), labelName);
+  if (issue.state === 'closed' && goal.open) {
+    return { kind: 'closed-active' };
+  }
+  const kept = goal.open || issue.state === 'closed' ? undefined : closeLeft(target.repo, issue, who);
+  if (kept !== undefined) {
+    return { kind: 'kept-open', why: kept, wantsViewer: kept.kind === 'taken' && who?.viewer.kind === 'unread' };
+  }
+  const assigns = goal.open && goal.claim && who !== undefined && issue.assignees.length === 0;
+  const assign = assigns ? assigneeOf(task.owner, who) : undefined;
+  const wantsViewer = assigns && assign === undefined && who.viewer.kind === 'unread';
+  const change = changeFor(target, task, issue, goal, assign);
+  return change === undefined ? { kind: 'unchanged', wantsViewer } : { kind: 'change', change, wantsViewer };
+}
+
+/**
+ * The push of the one issue `task` holds (planIssue) as a plan of its repository, for a write of one issue
+ * (issues/reply.ts): its change alone, or nothing to send, with the issue's `wantsViewer`, so planAssigned picks its
+ * assignee as it does for the repository push and applyPush sends it. A closed issue of an active task sends nothing.
+ */
+export function issuePushPlan(target: IssueTarget, task: Task, issue: IssueNow, who: PushAssignees, labelName?: LabelNaming): PushPlan {
+  const plan = planIssue(target, task, issue, who, labelName);
+  const none = { repo: target.repo, changes: [], deferred: [], heldCloses: [], unchanged: 0, closedActive: [], keptOpen: [], unlisted: [], shared: [], openPulls: [] };
+  if (plan.kind === 'closed-active') {
+    return { ...none, wantsViewer: false };
+  }
+  return plan.kind === 'change' ? { ...none, changes: [plan.change], wantsViewer: plan.wantsViewer } : { ...none, unchanged: 1, wantsViewer: plan.wantsViewer };
+}
+
+/** Who holds one issue as the push picks it (holders): the one task speaking for it, or the active tasks sharing it. */
+export type IssueHolder = { readonly kind: 'speaker'; readonly task: Task } | { readonly kind: 'shared'; readonly tasks: readonly string[] };
+
+/** The holder of `target` as the push picks it (holders), or undefined when no task holds it. */
+export function holderOf(target: IssueTarget, tasks: Iterable<Task>): IssueHolder | undefined {
+  const held = holders(target.repo, tasks);
+  const speaker = held.speakers.get(target.number);
+  if (speaker !== undefined) {
+    return { kind: 'speaker', task: speaker };
+  }
+  const shared = held.shared.get(target.number);
+  return shared === undefined ? undefined : { kind: 'shared', tasks: shared };
 }
 
 /**
@@ -439,9 +506,9 @@ function holders(repo: string, tasks: Iterable<Task>): { speakers: Map<number, T
   return { speakers, shared };
 }
 
-/** The issue a task holds by its `gh:` ref, or undefined when its ref names none. */
+/** The issue a task holds by its ref, or undefined when its ref names none. */
 export function heldIssue(task: Task): IssueTarget | undefined {
-  return task.ref?.startsWith(ISSUE_REF_PREFIX) === true ? parseIssueTarget(task.ref.slice(ISSUE_REF_PREFIX.length)) : undefined;
+  return parseRef(task.ref);
 }
 
 /**
@@ -449,7 +516,7 @@ export function heldIssue(task: Task): IssueTarget | undefined {
  * status labels too, so a closed issue never shows work as still going on. `assign`, set for an open issue with no
  * assignee, is the login it gets.
  */
-function changeFor(target: IssueTarget, task: Task, issue: HostIssue, goal: IssueGoal, assign: string | undefined): IssueChange | undefined {
+function changeFor(target: IssueTarget, task: Task, issue: IssueNow, goal: IssueGoal, assign: string | undefined): IssueChange | undefined {
   const statusLabels = issue.labels.filter((label) => label.startsWith(STATUS_LABEL_PREFIX));
   if (!goal.open) {
     if (issue.state === 'closed') {

@@ -45,6 +45,7 @@
     "local": {
       "runner": "tools/ci/local.ts"
     },
-    "regenerated": ["plugins/teamrig-pane/.claude-plugin/plugin.json"]
+    "regenerated": ["plugins/teamrig-pane/.claude-plugin/plugin.json", ".release-please-manifest.json"],
+    "release": { "head": "release-please--branches--main--components--teamrig-pane", "changelog": "CHANGELOG.md" }
   }
 }

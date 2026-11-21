@@ -5,6 +5,7 @@ import { typedEffortsOf } from '../effort/typed-effort.ts';
 import { CLAIM_END, CLAIM_HELD, CLAIM_TAKEN, isClaudeSessionId, type ClaimOutcome, type ClearMode, type PersonHold } from '../mod/clear-hand.ts';
 import { endAndWait, tabProcessOf, workCutOffBy, type TabEnder } from '../open/end-tab.ts';
 import { isClaudeProcess, type FeedOutcome, type ProcessInfo, type SessionProcesses } from '../open/session-processes.ts';
+import type { TranscriptReader } from '../ports/host/index.ts';
 import type { RestoreRegistry } from '../restore/registry.ts';
 import type { ClearAsks } from './clear-asks.ts';
 import { readRunningWork } from './running.ts';
@@ -18,6 +19,8 @@ export type TabOpening = { readonly kind: 'opened' } | { readonly kind: 'none'; 
 export interface RestartDeps extends TabEnder {
   readonly store: RefreshStore;
   readonly files: Files;
+  /** Reads the lines of the session's transcript. */
+  readonly reader: TranscriptReader;
   /** The asks a tab's mod claims to run /clear itself, or holds while a helper runs (`mod/clear-hand.ts`). */
   readonly asks: ClearAsks;
   /** The registry of the restore after a reboot, which the ended session leaves as its SessionEnd hook would have it. */
@@ -133,7 +136,7 @@ async function endHooks(deps: RestartDeps, plan: RestartPlan, request: RestartRe
 /** Whether the session's last turn has ended and none of the work it started still runs. */
 async function idleAt(deps: RestartDeps, transcript: string): Promise<boolean> {
   const tail = await deps.files.readTail(transcript, TURN_TAIL_BYTES);
-  return !turnRunning(tail ?? '') && (await readRunningWork(deps.files, transcript, deps.clock.now())) === 0;
+  return !turnRunning(deps.reader, tail ?? '') && (await readRunningWork(deps.reader, deps.files, transcript, deps.clock.now())) === 0;
 }
 
 /** What a held answer's give-up says when the tab's mod gave no reason: one older than the reason. */
@@ -221,9 +224,9 @@ async function tabAnswerOf(deps: RestartDeps, claudeSession: string, outcome: Cl
  * The level the session runs at: the newest /effort typed in it after its request (a typed command is no prompt,
  * so it leaves the request pending), else the level its last turn ran at; null when neither is known.
  */
-function runningEffortOf(request: RestartRequest, tail: string): EffortLevel | null {
+function runningEffortOf(reader: TranscriptReader, request: RestartRequest, tail: string): EffortLevel | null {
   const asked = Date.parse(request.at);
-  return typedEffortsOf(tail, request.claudeSession).findLast((typed) => typed.at > asked)?.level ?? request.effort;
+  return typedEffortsOf(reader, tail, request.claudeSession).findLast((typed) => typed.at > asked)?.level ?? request.effort;
 }
 
 /**
@@ -236,7 +239,7 @@ async function modeOf(deps: RestartDeps, request: RestartRequest, claude: Proces
   if (wanted === undefined) {
     return 'clear';
   }
-  const running = runningEffortOf(request, (await deps.files.readTail(transcript, TURN_TAIL_BYTES)) ?? '');
+  const running = runningEffortOf(deps.reader, request, (await deps.files.readTail(transcript, TURN_TAIL_BYTES)) ?? '');
   if (running === null || running === wanted) {
     return 'clear';
   }

@@ -2,8 +2,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { FALLBACK_TAIL_BYTES, fallbackLine, lastFallbackOf, readLastFallback, type ModelFallback } from './model-fallback.ts';
 
+const reader = shippedTranscripts();
 const FABLE = 'claude-fable-5-1';
 const OPUS = 'claude-opus-4-8';
 const SWITCH: ModelFallback = { id: 'd1a87003-e004-4233-8310-9cf5c77cca16', from: FABLE, to: OPUS, category: 'cyber' };
@@ -36,33 +38,39 @@ function lines(...entries: readonly string[]): string {
 
 describe('lastFallbackOf', () => {
   it('finds the switch while the session still runs on the fallback model', () => {
-    assert.deepEqual(lastFallbackOf(lines(reply(FABLE), fallback(), reply(OPUS), reply(OPUS)), false), SWITCH);
-    assert.deepEqual(lastFallbackOf(lines(reply(FABLE), fallback()), false), SWITCH, 'no reply after it yet');
+    assert.deepEqual(lastFallbackOf(reader, lines(reply(FABLE), fallback(), reply(OPUS), reply(OPUS)), false), SWITCH);
+    assert.deepEqual(lastFallbackOf(reader, lines(reply(FABLE), fallback()), false), SWITCH, 'no reply after it yet');
   });
 
   it('finds nothing without a switch, or once the user switched back', () => {
-    assert.equal(lastFallbackOf(lines(reply(FABLE), reply(FABLE)), false), undefined);
-    assert.equal(lastFallbackOf(lines(fallback(), reply(OPUS), reply(FABLE)), false), undefined);
-    assert.equal(lastFallbackOf('', false), undefined);
+    assert.equal(lastFallbackOf(reader, lines(reply(FABLE), reply(FABLE)), false), undefined);
+    assert.equal(lastFallbackOf(reader, lines(fallback(), reply(OPUS), reply(FABLE)), false), undefined);
+    assert.equal(lastFallbackOf(reader, '', false), undefined);
   });
 
   it('takes the last switch, and ignores subagents, made-up replies and damaged lines', () => {
     const later = fallback({ uuid: 'later', originalModel: 'claude-opus-5-5', apiRefusalCategory: undefined });
-    assert.deepEqual(lastFallbackOf(lines(fallback(), reply(FABLE), later, reply(OPUS)), false), { id: 'later', from: 'claude-opus-5-5', to: OPUS, category: undefined });
-    assert.deepEqual(lastFallbackOf(lines(fallback(), reply(FABLE, true), reply('<synthetic>'), '{"fallbackModel": broken', '{"type":"assistant"'), false), SWITCH);
-    assert.equal(lastFallbackOf(lines(fallback({ isSidechain: true })), false), undefined);
+    assert.deepEqual(lastFallbackOf(reader, lines(fallback(), reply(FABLE), later, reply(OPUS)), false), { id: 'later', from: 'claude-opus-5-5', to: OPUS, category: undefined });
+    assert.deepEqual(lastFallbackOf(reader, lines(fallback(), reply(FABLE, true), reply('<synthetic>'), '{"fallbackModel": broken', '{"type":"assistant"'), false), SWITCH);
+    assert.equal(lastFallbackOf(reader, lines(fallback({ isSidechain: true })), false), undefined);
+  });
+
+  it('counts a switch and a reply that name no thread as the main thread', () => {
+    const unmarked = JSON.stringify({ type: 'assistant', message: { model: FABLE, role: 'assistant', content: [] } });
+    assert.deepEqual(lastFallbackOf(reader, lines(fallback({ isSidechain: undefined })), false), SWITCH);
+    assert.equal(lastFallbackOf(reader, lines(fallback(), unmarked), false), undefined, 'the unmarked reply came from the old model again');
   });
 
   it('needs both models, and two different ones, and keys a switch with no uuid by its models', () => {
-    assert.equal(lastFallbackOf(lines(fallback({ originalModel: undefined })), false), undefined);
-    assert.equal(lastFallbackOf(lines(fallback({ fallbackModel: FABLE })), false), undefined);
-    assert.equal(lastFallbackOf(lines(fallback({ type: 'assistant' })), false), undefined);
-    assert.equal(lastFallbackOf(lines(fallback({ uuid: undefined })), false)?.id, `${FABLE}>${OPUS}`);
+    assert.equal(lastFallbackOf(reader, lines(fallback({ originalModel: undefined })), false), undefined);
+    assert.equal(lastFallbackOf(reader, lines(fallback({ fallbackModel: FABLE })), false), undefined);
+    assert.equal(lastFallbackOf(reader, lines(fallback({ type: 'assistant' })), false), undefined);
+    assert.equal(lastFallbackOf(reader, lines(fallback({ uuid: undefined })), false)?.id, `${FABLE}>${OPUS}`);
   });
 
   it('skips the first line of a cut tail, which may be partial', () => {
-    assert.equal(lastFallbackOf(lines(fallback(), reply(OPUS)), true), undefined);
-    assert.deepEqual(lastFallbackOf(lines(reply(FABLE), fallback(), reply(OPUS)), true), SWITCH);
+    assert.equal(lastFallbackOf(reader, lines(fallback(), reply(OPUS)), true), undefined);
+    assert.deepEqual(lastFallbackOf(reader, lines(reply(FABLE), fallback(), reply(OPUS)), true), SWITCH);
   });
 });
 
@@ -71,9 +79,9 @@ describe('readLastFallback', () => {
 
   it('reads the switch from the transcript, and nothing from a missing one', async () => {
     const files = new MemoryFiles();
-    assert.equal(await readLastFallback(files, TRANSCRIPT), undefined);
+    assert.equal(await readLastFallback(reader, files, TRANSCRIPT), undefined);
     await files.write(TRANSCRIPT, lines(reply(FABLE), fallback(), reply(OPUS)));
-    assert.deepEqual(await readLastFallback(files, TRANSCRIPT), SWITCH);
+    assert.deepEqual(await readLastFallback(reader, files, TRANSCRIPT), SWITCH);
   });
 
   it('reads only the tail, so a switch further back is not found', async () => {
@@ -81,7 +89,7 @@ describe('readLastFallback', () => {
     const filler = reply(OPUS);
     const count = Math.ceil(FALLBACK_TAIL_BYTES / (filler.length + 1)) + 1;
     await files.write(TRANSCRIPT, lines(fallback(), ...Array.from({ length: count }, () => filler)));
-    assert.equal(await readLastFallback(files, TRANSCRIPT), undefined);
+    assert.equal(await readLastFallback(reader, files, TRANSCRIPT), undefined);
   });
 });
 

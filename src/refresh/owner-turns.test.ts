@@ -1,8 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { OWNER_TURNS_MAX_CHARS, ownerTurnsLine, ownerTurnsOf, ownerTurnsText } from './owner-turns.ts';
 
 const HANDOVER = '/team/handover/lead.md';
+const reader = shippedTranscripts();
 
 /** One transcript line per entry. */
 function transcriptOf(...entries: readonly object[]): string {
@@ -23,7 +25,7 @@ describe('ownerTurnsOf', () => {
       call('Edit', { file_path: HANDOVER, old_string: 'a', new_string: 'b' }),
       typed('Also hold the PR until Monday'),
     );
-    assert.deepEqual(ownerTurnsOf(text, HANDOVER), [
+    assert.deepEqual(ownerTurnsOf(reader, text, HANDOVER), [
       { text: 'Ship the cleanup only after I approve the counts', afterHandover: false },
       { text: 'Decision: approve the release once the photos are checked', afterHandover: false },
       { text: 'Also hold the PR until Monday', afterHandover: true },
@@ -32,11 +34,11 @@ describe('ownerTurnsOf', () => {
 
   it('counts a shell command naming the handover as its write', () => {
     const text = transcriptOf(typed('first'), call('Bash', { command: `cat > ${HANDOVER} <<'E'` }), typed('second'));
-    assert.deepEqual(ownerTurnsOf(text, HANDOVER).map((turn) => turn.afterHandover), [false, true]);
+    assert.deepEqual(ownerTurnsOf(reader, text, HANDOVER).map((turn) => turn.afterHandover), [false, true]);
   });
 
   it('marks nothing after the handover when the transcript never wrote it', () => {
-    assert.deepEqual(ownerTurnsOf(transcriptOf(typed('hello')), HANDOVER), [{ text: 'hello', afterHandover: false }]);
+    assert.deepEqual(ownerTurnsOf(reader, transcriptOf(typed('hello')), HANDOVER), [{ text: 'hello', afterHandover: false }]);
   });
 
   it('skips the turns nobody typed: tool results, meta, summaries, subagents, scheduled, notifications, peers, commands and the prompts teamrig types', () => {
@@ -53,7 +55,7 @@ describe('ownerTurnsOf', () => {
       typed('You were started fresh after your context refresh: read your handover now'),
       typed('the one real prompt'),
     );
-    assert.deepEqual(ownerTurnsOf(text, HANDOVER), [{ text: 'the one real prompt', afterHandover: false }]);
+    assert.deepEqual(ownerTurnsOf(reader, text, HANDOVER), [{ text: 'the one real prompt', afterHandover: false }]);
   });
 
   it('skips a scheduled job firing and a prompt repeated three times or more, and carries a repeated one once', () => {
@@ -67,14 +69,42 @@ describe('ownerTurnsOf', () => {
       typed(CHECK),
       typed('inherited job'),
     );
-    assert.deepEqual(ownerTurnsOf(text, HANDOVER, ['inherited job']), [{ text: 'approve it', afterHandover: false }]);
+    assert.deepEqual(ownerTurnsOf(reader, text, HANDOVER, ['inherited job']), [{ text: 'approve it', afterHandover: false }]);
+  });
+
+  it('skips the firing of a job the host lists as live at a compaction, the session\'s own or one an earlier session armed', () => {
+    const job = (id: string, prompt: string): object => ({ id, cron: '3 13 * * *', prompt, recurring: true, createdAt: 1 });
+    const text = transcriptOf(
+      typed('budget checkpoint'),
+      { type: 'attachment', attachment: { type: 'session_cron_carry', tasks: [job('own1', 'budget checkpoint')], otherArmed: [job('armed1', ' morning brief ')] } },
+      typed('morning brief'),
+      typed('the "session_cron_carry" list is wrong'),
+    );
+    assert.deepEqual(ownerTurnsOf(reader, text, HANDOVER), [{ text: 'the "session_cron_carry" list is wrong', afterHandover: false }]);
+  });
+
+  it('skips a notification and a hand-back by their origin, and a prompt a wake-up call scheduled', () => {
+    const text = transcriptOf(
+      call('ScheduleWakeup', { delaySeconds: 600, prompt: 'look at the run' }),
+      typed('look at the run'),
+      typed('a task ended', { origin: { kind: 'task-notification' } }),
+      typed('another ended', { turnOrigin: 'task_notification' }),
+      typed('the helper is back', { origin: { kind: 'peer', handback: true } }),
+      typed('typed by a person', { origin: { kind: 'human' } }),
+    );
+    assert.deepEqual(ownerTurnsOf(reader, text, HANDOVER), [{ text: 'typed by a person', afterHandover: false }]);
+  });
+
+  it('passes over a damaged line and a blank one', () => {
+    const text = `${transcriptOf(typed('before'))}{"type":"user","message":{"role":"us\n\n  \n${transcriptOf(typed('after'))}`;
+    assert.deepEqual(ownerTurnsOf(reader, text, HANDOVER).map((turn) => turn.text), ['before', 'after']);
   });
 
   it('reads text blocks, and keeps the newest within the cap', () => {
     const blocks = { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'part one' }, { type: 'image' }, { type: 'text', text: 'part two' }] } };
-    assert.deepEqual(ownerTurnsOf(transcriptOf(blocks), HANDOVER), [{ text: 'part one\npart two', afterHandover: false }]);
+    assert.deepEqual(ownerTurnsOf(reader, transcriptOf(blocks), HANDOVER), [{ text: 'part one\npart two', afterHandover: false }]);
     const long = 'x'.repeat(OWNER_TURNS_MAX_CHARS - 10);
-    const turns = ownerTurnsOf(transcriptOf(typed('oldest'), typed(long), typed('newest message')), HANDOVER);
+    const turns = ownerTurnsOf(reader, transcriptOf(typed('oldest'), typed(long), typed('newest message')), HANDOVER);
     assert.equal(turns.length, 2, 'the oldest finds no room left');
     assert.equal(turns[1]?.text, 'newest message');
     assert.equal(turns[0]?.text.length, OWNER_TURNS_MAX_CHARS - 'newest message'.length);

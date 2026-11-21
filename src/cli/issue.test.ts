@@ -8,44 +8,102 @@ import { areaLabelSpec } from '../issues/managed-labels.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
+import { rotateRegister } from '../testing/rotation.ts';
 import { EXIT } from './runtime.ts';
 
+const DAY_MS = 86_400_000;
 const GITHUB_TEAM: JsonRecord = { ...TEAM, github: { repos: ['acme/web'] } };
 const AS_LEAD = { env: { TEAMRIG_SESSION: 'lead' } };
 const LOGIN = 'ACCESS acme: writes with the token saved as teamrig-gh-acme';
 
-describe('teamrig issue comment', () => {
-  it('posts one comment through the allowlisted call and writes nothing to the task list', async () => {
-    const kit = new CliHarness(GITHUB_TEAM);
-    const log = kit.files.get(EVENTS_PATH);
-    const gh = new FakeGh();
-    const result = await kit.run(['issue', 'comment', 'Acme/Web#612', '--body', 'Thank you! Merged as #624.'], { ...AS_LEAD, gh });
-    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
-    assert.deepEqual(result.stdout, [LOGIN, 'COMMENTED acme/web#612']);
-    assert.deepEqual(gh.ran.map((request) => request.args), [['api', 'repos/acme/web/issues/612/comments', '-X', 'POST', '-f', `body=${withStampFooter('Thank you! Merged as #624.')}`]]);
-    assert.equal(kit.files.get(EVENTS_PATH), log);
+describe('teamrig issue reply (T3169)', () => {
+  const REPLY = join(APP, 'reply.md');
+
+  /** A team with the lead's task holding acme/web#922 (T1) and the reply's text in reply.md; github is the team's github section. */
+  async function replyKit(github: JsonRecord = { repos: ['acme/web'] }): Promise<CliHarness> {
+    const kit = new CliHarness({ ...TEAM, github });
+    const added = await kit.run(['add', '--title', 'Picked-up issue', '--description', 'Work tracked on an issue.', '--priority', 'p2', '--ref', 'gh:acme/web#922'], AS_LEAD);
+    assert.equal(added.code, EXIT.ok, [...added.stdout, ...added.stderr].join('\n'));
+    await kit.files.write(REPLY, 'Picking this up.');
+    return kit;
+  }
+
+  /** #922 as it stood: open, status:open, no one assigned. */
+  function stale(): FakeGh {
+    return new FakeGh().holds('acme/web', [ghIssue('acme/web', 922, { labels: ['status:open'] })]).hasLabels('acme/web', ['status:open', 'status:in progress']);
+  }
+
+  it('on #922 sets the task, then the status label and the assignee, and posts the comment last', async () => {
+    const kit = await replyKit();
+    const gh = stale();
+    const result = await kit.run(['issue', 'reply', 'acme/web#922', '--body-file', 'reply.md', '--status', 'in progress', '--note', 'picked up'], { ...AS_LEAD, gh });
+    const printed = [...result.stdout, ...result.stderr].join('\n');
+    assert.equal(result.code, EXIT.ok, printed);
+    // The lead maps to no login, so the push assigns the token's own user, as the repository push does (T4581).
+    assert.match(printed, /SET acme\/web#922 T1 in-progress: add status:in progress, take off status:open, assign sync-bot$/mu);
+    const writes = gh.ran.map((request) => request.args).filter((args) => !isIssueRead(args) && !isLabelRead(args));
+    assert.ok(writes.some(isLabelAdd) && writes.some(isLabelRemove), printed);
+    assert.deepEqual(writes.at(-1), ['api', 'repos/acme/web/issues/922/comments', '-X', 'POST', '-f', `body=${withStampFooter('Picking this up.')}`]);
+    assert.ok(writes.slice(0, -1).every((args) => !isIssueComment(args)));
+    const list = await kit.run(['list', '--session', 'lead'], AS_LEAD);
+    assert.match(list.stdout.join('\n'), /T1 in-progress/u);
   });
 
-  it('posts the comment as given, with no footer, for a team that turned github.stamp off', async () => {
-    const kit = new CliHarness({ ...TEAM, github: { repos: ['acme/web'], stamp: false } });
-    const gh = new FakeGh();
-    const result = await kit.run(['issue', 'comment', 'acme/web#612', '--body', 'Thank you! Merged as #624.'], { ...AS_LEAD, gh });
+  it('posts the reply as given, with no footer, for a team that turned github.stamp off', async () => {
+    const kit = await replyKit({ repos: ['acme/web'], stamp: false });
+    const gh = stale();
+    const result = await kit.run(['issue', 'reply', 'acme/web#922', '--body-file', 'reply.md'], { ...AS_LEAD, gh });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
-    assert.deepEqual(gh.ran.map((request) => request.args.at(-1)), ['body=Thank you! Merged as #624.']);
+    const comments = gh.ran.map((request) => request.args).filter(isIssueComment);
+    assert.deepEqual(comments.map((args) => args.at(-1)), ['body=Picking this up.']);
   });
 
-  it('refuses, running no gh, a caller not on the team, a repository not listed, a bad target, and a body that is empty, secret or names a task id', async () => {
-    const kit = new CliHarness(GITHUB_TEAM);
+  it('writes nothing to the thread when the task may not be set, and nothing anywhere when no task holds the issue', async () => {
+    const kit = await replyKit();
+    const gh = stale();
+    const bogus = await kit.run(['issue', 'reply', 'acme/web#922', '--body-file', 'reply.md', '--status', 'finished'], { ...AS_LEAD, gh });
+    assert.notEqual(bogus.code, EXIT.ok);
+    const held = new FakeGh().holds('acme/web', [ghIssue('acme/web', 5)]);
+    const unheld = await kit.run(['issue', 'reply', 'acme/web#5', '--body-file', 'reply.md'], { ...AS_LEAD, gh: held });
+    assert.equal(unheld.code, EXIT.refused);
+    assert.match(unheld.stdout.join('\n'), /no task holds acme\/web#5, so the reply has no status to show/u);
+    for (const ran of [gh, held]) {
+      assert.ok(ran.ran.every((request) => isIssueRead(request.args) || isLabelRead(request.args)), 'the refused reply wrote to GitHub');
+    }
+  });
+
+  it('writes nothing anywhere when two active tasks share the issue, as the status push speaks for neither (#1449)', async () => {
+    const kit = await replyKit();
+    const second = await kit.run(['add', '--title', 'Follow-up on the issue', '--description', 'More work on the same issue.', '--priority', 'p2', '--ref', 'gh:acme/web#922'], AS_LEAD);
+    assert.equal(second.code, EXIT.ok, [...second.stdout, ...second.stderr].join('\n'));
+    const gh = stale();
+    const result = await kit.run(['issue', 'reply', 'acme/web#922', '--body-file', 'reply.md', '--status', 'in progress'], { ...AS_LEAD, gh });
+    assert.equal(result.code, EXIT.refused, [...result.stdout, ...result.stderr].join('\n'));
+    assert.match(result.stdout.join('\n'), /T1, T2 all hold acme\/web#922, so no one task's status speaks for it/u);
+    assert.ok(gh.ran.every((request) => isIssueRead(request.args) || isLabelRead(request.args)), 'the refused reply wrote to GitHub');
+    const list = await kit.run(['list', '--session', 'lead'], AS_LEAD);
+    assert.doesNotMatch(list.stdout.join('\n'), /in-progress/u);
+  });
+
+  it('refuses, running no gh, a caller not on the team, a repository not listed, a bad target or --pr, a body that is empty, secret or names a task id, and set flags without --status', async () => {
+    const kit = await replyKit();
     const gh = new FakeGh();
     /** Built at runtime so no secret-shaped literal sits in the source. */
     const secret = ['ghp', '_', 'a'.repeat(36)].join('');
+    await kit.files.write(join(APP, 'empty.md'), ' ');
+    await kit.files.write(join(APP, 'secret.md'), `key ${secret}`);
+    await kit.files.write(join(APP, 'task.md'), 'Done in T12');
+    const reply = (target: string, file: string, ...more: string[]): string[] => ['issue', 'reply', target, '--body-file', file, ...more];
     const cases: Array<[readonly string[], Readonly<Record<string, string>>, RegExp]> = [
-      [['issue', 'comment', 'acme/web#7', '--body', 'x'], { TEAMRIG_SESSION: 'stranger' }, /^REFUSED stranger is not a session on this team/u],
-      [['issue', 'comment', 'acme/api#7', '--body', 'x'], AS_LEAD.env, /^REFUSED acme\/api is not one of the team's repositories: list it under github\.repos in the team config \(now acme\/web\)/u],
-      [['issue', 'comment', 'acme/web/issues/7', '--body', 'x'], AS_LEAD.env, /^REFUSED acme\/web\/issues\/7 names no issue or pull request: give it as owner\/name#number/u],
-      [['issue', 'comment', 'acme/web#7', '--body', ' '], AS_LEAD.env, /^REFUSED --body is empty/u],
-      [['issue', 'comment', 'acme/web#7', '--body', `key ${secret}`], AS_LEAD.env, /^REFUSED --body looks like it holds a secret/u],
-      [['issue', 'comment', 'acme/web#7', '--body', 'Done in T12'], AS_LEAD.env, /^REFUSED --body names the task id T12/u],
+      [reply('acme/web#7', 'reply.md'), { TEAMRIG_SESSION: 'stranger' }, /^REFUSED stranger is not a session on this team/u],
+      [reply('acme/api#7', 'reply.md'), AS_LEAD.env, /^REFUSED acme\/api is not one of the team's repositories/u],
+      [reply('acme/web/issues/7', 'reply.md'), AS_LEAD.env, /^REFUSED acme\/web\/issues\/7 names no issue or pull request/u],
+      [reply('acme/web#7', 'reply.md', '--pr', 'latest'), AS_LEAD.env, /^REFUSED --pr latest is no pull request number/u],
+      [reply('acme/web#7', 'empty.md'), AS_LEAD.env, /^REFUSED --body-file is empty/u],
+      [reply('acme/web#7', 'secret.md'), AS_LEAD.env, /^REFUSED --body-file looks like it holds a secret/u],
+      [reply('acme/web#7', 'task.md'), AS_LEAD.env, /^REFUSED --body-file names the task id T12/u],
+      [reply('acme/web#7', 'reply.md', '--followup', 'Done in T12'), AS_LEAD.env, /^REFUSED --followup names the task id T12/u],
+      [reply('acme/web#7', 'reply.md', '--note', 'x'), AS_LEAD.env, /^REFUSED --note go to the task with --status/u],
     ];
     for (const [argv, env, error] of cases) {
       const result = await kit.run(argv, { env, gh });
@@ -54,14 +112,18 @@ describe('teamrig issue comment', () => {
       assert.match(printed, error, argv.join(' '));
       assert.ok(!printed.includes(secret));
     }
-    const missing = await kit.run(['issue', 'comment', 'acme/web#7'], { ...AS_LEAD, gh });
-    assert.match([...missing.stdout, ...missing.stderr].join('\n'), /--body is required/u);
     assert.deepEqual(gh.ran, []);
   });
 
+  it('is the only comment a session posts: issue comment is no command', async () => {
+    const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'comment', 'acme/web#7', '--body', 'x'], { ...AS_LEAD, gh: new FakeGh() });
+    assert.notEqual(result.code, EXIT.ok);
+  });
+
   it('writes nothing while GitHub is off on the machine', async () => {
+    const kit = await replyKit();
     const gh = new FakeGh();
-    const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'comment', 'acme/web#7', '--body', 'x'], { gh, env: { TEAMRIG_SESSION: 'lead', TEAMRIG_GITHUB: 'off' } });
+    const result = await kit.run(['issue', 'reply', 'acme/web#922', '--body-file', 'reply.md'], { gh, env: { TEAMRIG_SESSION: 'lead', TEAMRIG_GITHUB: 'off' } });
     assert.equal(result.code, EXIT.ok);
     assert.match(result.stdout.join('\n'), /^OFF /u);
     assert.deepEqual(gh.ran, []);
@@ -373,21 +435,49 @@ describe('teamrig issue edit', () => {
 });
 
 describe('teamrig issue similar', () => {
-  /** Three mirrored issues (T1-T3), two of them about the same crash, and one task with no issue (T4). */
-  async function seeded(team: JsonRecord = GITHUB_TEAM): Promise<CliHarness> {
+  /** A task to add: its title, its description, and the issue it mirrors, if any. */
+  type Seed = readonly [title: string, description: string, ref: string | undefined];
+
+  /** A team holding `tasks`, added in order as T1, T2 and on. */
+  async function teamWith(tasks: readonly Seed[], team: JsonRecord = GITHUB_TEAM): Promise<CliHarness> {
     const kit = new CliHarness(team);
-    const tasks: ReadonlyArray<readonly [string, string, string | undefined]> = [
-      ['Login page crashes on submit', 'The login page crashes when the form is submitted with an empty password.', 'gh:acme/web#7'],
-      ['Login crashes on submit with an empty password', 'Submitting the login form with no password crashes the page.', 'gh:acme/web#8'],
-      ['Dark theme colours for the settings menu', 'The settings menu needs its own dark theme colours.', 'gh:acme/web#9'],
-      ['The login page crashes on submit', 'A team task with no issue behind it: the login page crashes on submit.', undefined],
-    ];
     for (const [title, description, ref] of tasks) {
       const added = await kit.run(['add', '--title', title, '--description', description, '--priority', 'p1', ...(ref === undefined ? [] : ['--ref', ref])], AS_LEAD);
       assert.equal(added.code, EXIT.ok, [...added.stdout, ...added.stderr].join('\n'));
     }
     return kit;
   }
+
+  /** Three mirrored issues (T1-T3), two of them about the same crash, and one task with no issue (T4). */
+  function seeded(team: JsonRecord = GITHUB_TEAM): Promise<CliHarness> {
+    return teamWith(
+      [
+        ['Login page crashes on submit', 'The login page crashes when the form is submitted with an empty password.', 'gh:acme/web#7'],
+        ['Login crashes on submit with an empty password', 'Submitting the login form with no password crashes the page.', 'gh:acme/web#8'],
+        ['Dark theme colours for the settings menu', 'The settings menu needs its own dark theme colours.', 'gh:acme/web#9'],
+        ['The login page crashes on submit', 'A team task with no issue behind it: the login page crashes on submit.', undefined],
+      ],
+      team,
+    );
+  }
+
+  it('compares the bodies a compaction left out of the snapshot, read from the history (T4781)', async () => {
+    // Alike only in their bodies: with the bodies missing, no title word is shared and nothing matches. The bodies
+    // are long enough to outweigh the titles, whose words count twice and are shared by neither.
+    const crash = 'The login page crashes when the form is submitted with an empty password';
+    const trace = 'the browser console shows a null reference error in the validation script.';
+    const kit = await teamWith([
+      ['Sign-in is broken', `${crash}: ${trace}`, 'gh:acme/web#7'],
+      ['Report from a customer', `${crash} field: ${trace}`, 'gh:acme/web#8'],
+      ['Dark theme colours for the settings menu', 'The settings menu needs its own dark theme colours.', 'gh:acme/web#9'],
+    ]);
+    kit.clock.advance(3 * DAY_MS);
+    await rotateRegister(kit.files, EVENTS_PATH, { now: new Date(kit.clock.now()) });
+    const result = await kit.run(['issue', 'similar', 'acme/web#7'], AS_LEAD);
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.equal(result.stdout[0], 'SIMILAR acme/web#7 (T1): 1 of 2 mirrored issues at or above 0.35 (github.similarThreshold)');
+    assert.match(result.stdout[1] ?? '', / acme\/web#8 T2 Report from a customer$/u);
+  });
 
   it("lists the issue's likely duplicates among the mirrored ones, best first, reading only the task list", async () => {
     const kit = await seeded();

@@ -3,7 +3,8 @@ import { privateShapeIn } from '../core/private-shapes.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { taskIdIn } from '../issues/posted.ts';
 import type { Task } from '../register/fold.ts';
-import { ACTIVE_STATUSES, ISSUE_REF_PREFIX } from '../register/model.ts';
+import { refOf } from '../issues/ref.ts';
+import { ACTIVE_STATUSES, isIssueRef } from '../register/model.ts';
 import type { Verdict } from '../register/policy.ts';
 import type { IssueDraft } from '../issues/host.ts';
 
@@ -256,13 +257,13 @@ function skipReason(row: MigrateRow, task: Task | undefined, repos: readonly str
   if (row.decision === 'local') {
     return undefined;
   }
-  if (task.ref?.startsWith(ISSUE_REF_PREFIX) === true) {
+  if (isIssueRef(task.ref)) {
     return `the task has its issue already: ${task.ref}`;
   }
   if (!repos.includes(row.repo)) {
     return `${row.repo} is not one of github.repos (${repos.join(', ')})`;
   }
-  return judge(task, `${ISSUE_REF_PREFIX}${row.repo}#1`);
+  return judge(task, refOf({ repo: row.repo, number: 1 }));
 }
 
 /** The number of the issue GitHub's create answered with, from the JSON gh prints; undefined when there is none. */

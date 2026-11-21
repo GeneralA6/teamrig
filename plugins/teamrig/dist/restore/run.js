@@ -18,11 +18,11 @@ export const ROOM_POLL_MS = 15_000;
  * The config's `launch.<id>.effort` wins once set, so a restore after a config change brings the session back on the
  * new level, not the old one its transcript ran at (T2440); a session the config leaves unset comes back at its last.
  */
-function reopenEffortOf(team, text) {
+function reopenEffortOf(reader, team, text) {
     if (team?.effort !== undefined) {
         return { level: team.effort, from: 'config' };
     }
-    const last = lastRecordedEffort(text);
+    const last = lastRecordedEffort(reader, text);
     return last === undefined ? undefined : { level: last, from: 'last run' };
 }
 /** The effort in words for the preview and the log: `high (config)`, `max (last run)` or `default`. */
@@ -47,8 +47,8 @@ async function factsOf(deps, entries, since) {
             transcripts.set(entry.claudeSession, transcript);
             const tail = await deps.readTail(transcript, KIND_TAIL_BYTES);
             if (tail !== undefined) {
-                kinds.set(entry.claudeSession, transcriptKindOf(tail));
-                if (live && turnRunning(tail) && (await stalledSince(deps, transcript, now))) {
+                kinds.set(entry.claudeSession, transcriptKindOf(deps.reader, tail));
+                if (live && turnRunning(deps.reader, tail) && (await stalledSince(deps, transcript, now))) {
                     stalled.add(entry.claudeSession);
                 }
             }
@@ -66,11 +66,11 @@ async function itemOf(deps, facts, judged) {
     const { entry } = judged;
     const transcript = facts.transcripts.get(entry.claudeSession);
     const text = (transcript === undefined ? undefined : await deps.readTail(transcript, CARRY_TAIL_BYTES)) ?? '';
-    const lost = lostWorkOf(text, Buffer.byteLength(text, 'utf8') >= CARRY_TAIL_BYTES, diedAt(entry, facts.shutdown?.start));
+    const lost = lostWorkOf(deps.reader, text, Buffer.byteLength(text, 'utf8') >= CARRY_TAIL_BYTES, diedAt(entry, facts.shutdown?.start));
     const team = teamSessionOf(entry, deps.teams);
-    const label = team?.name ?? customTitleOf(text) ?? `Claude ${entry.claudeSession.slice(0, 8)}`;
+    const label = team?.name ?? customTitleOf(deps.reader, text) ?? `Claude ${entry.claudeSession.slice(0, 8)}`;
     const resumeFolder = transcript === undefined ? undefined : resumeFolderOf(transcript, text, entry.projectDir, deps.projectsDir, deps.platform);
-    return { ...judged, transcript, resumeFolder, label, team, lost, effort: reopenEffortOf(team, text), ...chooseMode(entry, lost, team?.isLead === true) };
+    return { ...judged, transcript, resumeFolder, label, team, lost, effort: reopenEffortOf(deps.reader, team, text), ...chooseMode(entry, lost, team?.isLead === true) };
 }
 /**
  * The folder a restored session reopens in: the one `claude --resume` finds its transcript from, since Claude Code

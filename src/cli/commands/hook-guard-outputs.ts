@@ -1,11 +1,14 @@
 import { LeadTree } from '../../config/lead-tree.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress } from '../../core/address.ts';
+import { query } from '../../core/git-run.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { checkClient, clientRootOf } from '../../exec/client-integrity.ts';
 import { ClientInstalls, ShellPathSearch } from '../../exec/client-launch.ts';
 import { dbWriteGuardOf, dbWriteGuardOutput } from '../../hooks/db-write-guard.ts';
 import { execGuardOutput, type TabIdentity } from '../../hooks/exec-guard.ts';
+import { githubReposOf } from '../../hooks/gh-write-refusals.ts';
+import { remoteReposOf } from '../../hooks/gh-writes.ts';
 import { packageGuardOf, packageGuardOutput } from '../../hooks/package-guard.ts';
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf, skipHooksOf, type PushClearance } from '../../hooks/push-guard.ts';
 import { secretGuardOf, secretGuardOutput, secretPatternsOf } from '../../hooks/secret-guard.ts';
@@ -182,6 +185,14 @@ export function execGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload
     search: new ShellPathSearch({ env: runtime.env, platform: runtime.platform, probe: runtime.probe }),
     checkClient: (root) => checkClient(root, runtime.files),
     platform: runtime.platform,
+    ghWrites: {
+      github: githubReposOf(guard.load),
+      remotesOf: (dir) => {
+        const listing = query(dir, ['remote', '-v']);
+        return listing === undefined ? undefined : remoteReposOf(listing);
+      },
+      ghRepo: runtime.env['GH_REPO'],
+    },
   });
 }
 

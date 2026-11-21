@@ -1,4 +1,4 @@
-import { ISSUE_REF_PREFIX, LOCAL_REF_PREFIX } from "../register/model.js";
+import { isIssueRef, LOCAL_REF_PREFIX } from "../register/model.js";
 import { issueLabels, priorityLabelOf, publicIssueText } from "./migrate.js";
 /** The name a refusal gives the task, which has no id before it is written. */
 const NEW_TASK = 'the new task';
@@ -11,7 +11,7 @@ export function addIssuePlan(ask, github, scanner) {
     if (asksIssue) {
         return openPlan(ask, github, scanner);
     }
-    if (github.issueAtAdd !== undefined && !(ask.ref?.startsWith(ISSUE_REF_PREFIX) ?? false)) {
+    if (github.issueAtAdd !== undefined && !isIssueRef(ask.ref)) {
         return {
             ok: false,
             error: `github.issueAtAdd is ${github.issueAtAdd}: give the task's public issue with --issue <title> --issue-body <text>, or why it stays local with --local <reason>`,

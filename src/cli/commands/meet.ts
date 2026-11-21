@@ -9,6 +9,7 @@ import { meetAsk, meetPrompt } from '../../open/prompt.ts';
 import { ownerCardsBySession, type OwnerCards } from '../../register/owner-waits.ts';
 import type { TaskTree } from '../../register/tree.ts';
 import { onePositional, UsageError, type ParsedArgs } from '../args.ts';
+import { asRead, withCardTexts, type CardRead } from '../card-texts.ts';
 import { readRunFiles } from '../hand-step-file.ts';
 import { callerOf } from '../inputs.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type FoundTeam, type Kit } from '../kit.ts';
@@ -38,16 +39,20 @@ const SECOND_MS = 1000;
 
 /**
  * The session `ref` names (an id or a name) and its cards on the owner; refused when no card of it waits on the owner
- * now, naming the cards the owner put off and until when.
+ * now, naming the cards the owner put off and until when. The register goes through `read`: `withCardTexts` for the
+ * command that prints the cards, whose `what and why:` a snapshot's task line leaves out (T4781); `asRead` for one
+ * that only counts them.
  */
-async function meetFactsOf(runtime: CliRuntime, ref: string): Promise<MeetFacts> {
+async function meetFactsOf(runtime: CliRuntime, ref: string, read: CardRead): Promise<MeetFacts> {
   const found = await findTeam(runtime);
   const kit = await openKit(runtime, found.team);
   const config = requireConfig(kit, runtime, 'read');
   const roster = await rosterOf(runtime, kit, config);
   const id = sessionIdOf(roster, ref);
   const name = roster.nameOf(id) ?? id;
-  const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
+  const register = teamRegister(runtime, kit.paths, config);
+  const { snapshot: working, elsewhere } = await register.snapshotWithElsewhere();
+  const { snapshot } = await read({ snapshot: working, history: () => register.history(), config });
   const ranking = await teamRanking(runtime, kit.paths, config, snapshot.state.tasks.values());
   const tree = taskTreeOf({ snapshot, config, elsewhere, ranking }, runtime);
   const { ownerSource, requireDecisionCard } = config.register;
@@ -82,7 +87,7 @@ async function meetCards(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCod
   if (extra !== undefined) {
     throw new UsageError(`meet --cards prints the caller's own cards: it takes no "${extra}"`);
   }
-  const { id, name, cards, tree, config } = await meetFactsOf(runtime, callerOf(args.flags, runtime.env));
+  const { id, name, cards, tree, config } = await meetFactsOf(runtime, callerOf(args.flags, runtime.env), withCardTexts);
   const runFiles = await readRunFiles(runtime, cards.due);
   const lines = meetCardLines({ id, name, cards, tree, ownerMarker: config.register.ownerSource, command: KIT_NAME, runFiles });
   lines.forEach((line) => runtime.out.stdout(line));
@@ -100,7 +105,7 @@ export async function meet(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   if (args.switches.has('cards')) {
     return meetCards(args, runtime);
   }
-  const facts = await meetFactsOf(runtime, onePositional(args, 'id|name'));
+  const facts = await meetFactsOf(runtime, onePositional(args, 'id|name'), asRead);
   const { found, kit, config, roster, id, name } = facts;
   // `--terminal` names where the session's tab is, so it picks the terminal searched for a running tab as well as the
   // one a closed session opens in.

@@ -1,6 +1,6 @@
 import { formatCount } from '../budget/format.ts';
 import type { TestOutput } from './parse.ts';
-import type { ShellEnd } from './shell.ts';
+import type { ShellEnd } from '../core/shell-end.ts';
 
 /** The longest command text the first line names; a longer one is cut with `…`. */
 export const LABEL_CHARS = 60;

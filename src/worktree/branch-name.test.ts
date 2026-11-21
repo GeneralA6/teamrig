@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_BRANCHES } from '../config/defaults.ts';
 import type { BranchesConfig } from '../config/types.ts';
-import { type BranchTask, type BranchWords, branchNameFor, branchPatternProblem, isBranchType, issueNumberOf, slugOf, taskBranchName } from './branch-name.ts';
+import { type BranchTask, type BranchWords, branchNameFor, branchPatternProblem, isBranchType, slugOf, taskBranchName } from './branch-name.ts';
 import { branchTaskOf } from './owner.ts';
 
 const WORDS: BranchWords = { type: 'feat', id: 't12', issue: '933', slug: 'issue-forms', session: 'web' };
@@ -98,14 +98,6 @@ describe('slugOf', () => {
 
   it('falls back to work when nothing is left', () => {
     assert.equal(slugOf('T12 — ✓', 40), 'work');
-  });
-});
-
-describe('issueNumberOf', () => {
-  it("reads the number of a task's GitHub issue ref", () => {
-    assert.equal(issueNumberOf('gh:acme/app#933'), '933');
-    assert.equal(issueNumberOf(null), undefined);
-    assert.equal(issueNumberOf('jira:ABC-1'), undefined);
   });
 });
 

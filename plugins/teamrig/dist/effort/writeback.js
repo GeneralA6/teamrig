@@ -77,8 +77,9 @@ export async function effortWriteback(deps, input) {
     const lastAt = marks.config === config ? marks.lastAt : Math.max(marks.lastAt, (await deps.configChangedAt()) ?? deps.clock.now());
     const seen = { ...marks, lastAt, config };
     const runsAsConfigured = isEffortLevel(input.running) && input.running === input.config;
-    const text = runsAsConfigured || input.transcript === undefined ? undefined : await deps.files.readTail(input.transcript, RUNNING_TAIL_BYTES);
-    const typed = text === undefined ? undefined : newestAfter(typedEffortsOf(text, input.claude), lastAt);
+    const { reader } = deps;
+    const text = runsAsConfigured || input.transcript === undefined || reader === undefined ? undefined : await deps.files.readTail(input.transcript, RUNNING_TAIL_BYTES);
+    const typed = text === undefined || reader === undefined ? undefined : newestAfter(typedEffortsOf(reader, text, input.claude), lastAt);
     if (typed === undefined) {
         if (!sameMarks(seen, marks)) {
             await deps.marks.save(input.id, seen);

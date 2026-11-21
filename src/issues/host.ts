@@ -1,11 +1,12 @@
 /**
  * The issue host port: where a team's issues and pull requests live, behind names that hold for any host. teamrig
- * writes to a host only through this port, and each host (GitHub is the only one so far, src/github/host.ts) is an
- * adapter that keeps its own access rules. A repository reaches a host only when the team config lists it there.
+ * writes to a host only through this port, split by kind (Tracker, CodeHost) into small capabilities, and each host
+ * (GitHub is the only one so far, src/github/host.ts, and it is both kinds) is an adapter that keeps its own access
+ * rules. A repository reaches a host only when the team config lists it there.
  */
 
 import type { IssueFields } from './fields.ts';
-import type { HostIssue, LinkedIssue, ReadComment } from './issue.ts';
+import type { HostIssue, IssueThread, LinkedIssue, ReadComment } from './issue.ts';
 import type { HostPosts } from './post.ts';
 import type { HostPull } from './pull.ts';
 
@@ -51,6 +52,9 @@ export type HostEnd = { readonly kind: 'done' } | { readonly kind: 'failed'; rea
 
 /** The host's own id of one issue, which a link to it names; missing when the host has no such issue. */
 export type HostIssueId = { readonly kind: 'found'; readonly id: number } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
+
+/** One read of an issue or pull request: read, missing (none the access can see), or the read failed. */
+export type HostThread = { readonly kind: 'read'; readonly thread: IssueThread } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
 
 /** A label to make on a host: its name, its colour as six hex digits with no `#`, and the line describing it. */
 export interface LabelSpec {
@@ -127,30 +131,26 @@ export interface IssueDraft {
 /** How opening an issue ended: the issue opened, or one plain line saying why there is none. */
 export type HostOpen = { readonly kind: 'opened'; readonly target: IssueTarget } | { readonly kind: 'failed'; readonly reason: string };
 
-/** An issue host: its reads of a repository's issues and its writes. Each ends in a result and never throws. */
-export interface IssueHost {
+/**
+ * The capabilities of a host, each a small interface so a caller asks only for what it calls and a host of one kind
+ * gives only its own: a tracker holds issues, a code host holds pull requests, their checks and a repository's files.
+ * Every method ends in a result and never throws.
+ */
+
+/** What every host has, of either kind: its name and how it is reached. */
+export interface HostAccess {
   /** The host's name, for a message. */
   readonly name: string;
   /** How the host is reached for `repo` to `use` it. Asked before any read or write, so a key that cannot be read does nothing. */
   reach(repo: string, use: HostUse): Promise<HostReach>;
+}
+
+/** A tracker's issues: listed, opened, their body replaced, closed, named by the host's own id, and one read as it is now. */
+export interface IssueStore {
   /** The open issues of `repo` and those closed on or after `closedSince` (`YYYY-MM-DD`, UTC), the newest state of each. */
   list(repo: string, closedSince: string): Promise<HostList>;
-  /**
-   * The open pull requests of `repo`, and those changed at or after `since` (an ISO time); with no `since`, the most
-   * recently changed ones, a page of them.
-   */
-  pulls(repo: string, since: string | undefined): Promise<HostPulls>;
-  /** The end of the log of the failed CI job `jobId` of `repo` (a pull request's FailedJob id). */
-  jobLog(repo: string, jobId: number): Promise<HostJobLog>;
-  /**
-   * The comments, review comments, reviews and issue and pull request bodies of `repo` written or edited at or after
-   * `since` (an ISO time in whole seconds, UTC), for the mention scan. Their text is outside input.
-   */
-  posts(repo: string, since: string): Promise<HostPosts>;
   /** Opens one issue. */
   open(draft: IssueDraft): Promise<HostOpen>;
-  /** Posts `body` as one comment. */
-  comment(target: IssueTarget, body: string): Promise<HostEnd>;
   /** Replaces the body (the description) of the issue or pull request with `body`; its title, state and the rest stay. */
   editBody(target: IssueTarget, body: string): Promise<HostEnd>;
   /**
@@ -160,25 +160,50 @@ export interface IssueHost {
   close(target: IssueTarget, reason?: CloseReason, duplicateId?: number): Promise<HostEnd>;
   /** The host's id of one issue, read so a link can name it. */
   issueId(target: IssueTarget): Promise<HostIssueId>;
+  /** One issue or pull request as it is now: its state, labels, assignees, kind and body. */
+  thread(target: IssueTarget): Promise<HostThread>;
+}
+
+/** A tracker's comments: one posted, and an issue's new ones read. */
+export interface Comments {
+  /** Posts `body` as one comment. */
+  comment(target: IssueTarget, body: string): Promise<HostEnd>;
+  /**
+   * The comments of the issue posted or edited at or after `since` (ms since the epoch), oldest first and at most one
+   * bounded page: the claim pass's only read of comment text, which it matches for a claim line and drops.
+   */
+  newComments(target: IssueTarget, since: number): Promise<HostComments>;
+}
+
+/** A tracker's Labels.labelName, handed to code that plans or looks a label up with no tracker of its own. */
+export type LabelNaming = (label: string) => string;
+
+/** A tracker's labels: named as it holds them, a repository's read and made, an item's read, added and taken off. */
+export interface Labels {
+  /**
+   * The name this tracker holds `label` under: the label itself where a label takes any name, else the nearest name
+   * the tracker takes (a tracker whose labels hold no space gives one without). Every read gives a label back under
+   * that name, so a label teamrig knows by its own name (a status label, one a person typed) is named through this
+   * before it is looked for, made, added or taken off. Naming a name gives it back.
+   */
+  labelName(label: string): string;
   /** Whether `repo` has the label `label`, so a label is only added once the repository has it. */
   labelExists(repo: string, label: string): Promise<HostLabel>;
-  /** The labels `repo`'s own label file names, as it stands on the default branch, so issue label can make one it lacks. */
-  labelFile(repo: string): Promise<HostLabelFile>;
   /**
    * Makes `label` in the repository; only for a label teamrig makes (MANAGED_LABEL_SPECS), by the push or issue label,
-   * or one the repository's label file names, as labelFile read it this run.
+   * or one the repository's label file names, as LabelFiles.labelFile read it this run.
    */
   createLabel(repo: string, label: LabelSpec): Promise<HostEnd>;
   /** Adds `labels` to the issue or pull request. */
   addLabels(target: IssueTarget, labels: readonly string[]): Promise<HostEnd>;
   /** Takes `label` off the issue or pull request; the repository keeps the label. */
   removeLabel(target: IssueTarget, label: string): Promise<HostEnd>;
-  /** Every issue of `repo` with its host id, its parent and its blockers. */
-  links(repo: string): Promise<HostLinks>;
-  /** Puts the issue whose host id is `childId` under `parent` as its sub-issue. */
-  addSubIssue(parent: IssueTarget, childId: number): Promise<HostEnd>;
-  /** Marks `target` blocked by the issue whose host id is `blockerId`. */
-  addBlockedBy(target: IssueTarget, blockerId: number): Promise<HostEnd>;
+  /** The labels the issue or pull request carries now, read so a write its labels rule out is refused (issue assign on a design issue). */
+  issueLabels(target: IssueTarget): Promise<HostIssueLabels>;
+}
+
+/** A tracker's assignees: who may be one, read, and an item's added and taken off. */
+export interface Assignees {
   /** Whether `login` may be assigned in `repo`, so an assign is only sent for one the host would not drop. */
   assigneeExists(repo: string, login: string): Promise<HostAssignee>;
   /** The login the access used for `repo` belongs to: the one the sync runs as, which the status push assigns when a session maps to none. */
@@ -190,26 +215,76 @@ export interface IssueHost {
   assignableOn(target: IssueTarget, login: string): Promise<HostAssignee>;
   /** Adds `logins` to the assignees of the issue or pull request; those already on it stay. */
   assign(target: IssueTarget, logins: readonly string[]): Promise<HostEnd>;
-  /** The labels the issue or pull request carries now, read so a write its labels rule out is refused (issue assign on a design issue). */
-  issueLabels(target: IssueTarget): Promise<HostIssueLabels>;
+  /** Takes `login` off the assignees of the issue or pull request; any others stay. Only for a claim the sync made. */
+  unassign(target: IssueTarget, login: string): Promise<HostEnd>;
+}
+
+/** A tracker's links between issues: read, and a parent or a blocker added. */
+export interface IssueLinks {
+  /** Every issue of `repo` with its host id, its parent and its blockers. */
+  links(repo: string): Promise<HostLinks>;
+  /** Puts the issue whose host id is `childId` under `parent` as its sub-issue. */
+  addSubIssue(parent: IssueTarget, childId: number): Promise<HostEnd>;
+  /** Marks `target` blocked by the issue whose host id is `blockerId`. */
+  addBlockedBy(target: IssueTarget, blockerId: number): Promise<HostEnd>;
+}
+
+/** A tracker's cheap look for a change, so a list is read only when something moved. */
+export interface IssueEvents {
   /**
    * Whether `repo` changed since the host gave `marks`, cheaply enough to ask every minute: no list is read. Empty
    * marks always read as changed.
    */
   watch(repo: string, marks: WatchMarks): Promise<HostWatch>;
-  /** Takes `login` off the assignees of the issue or pull request; any others stay. Only for a claim the sync made. */
-  unassign(target: IssueTarget, login: string): Promise<HostEnd>;
-  /**
-   * The comments of the issue posted or edited at or after `since` (ms since the epoch), oldest first and at most one
-   * bounded page: the claim pass's only read of comment text, which it matches for a claim line and drops.
-   */
-  newComments(target: IssueTarget, since: number): Promise<HostComments>;
+}
+
+/** A tracker's issue fields and types, when it has any. */
+export interface StatusFields {
   /**
    * The issue fields and types of a repository, read and set: a capability, so a host with none leaves it out and
    * the field push skips it, saying so.
    */
   readonly fields?: IssueFields;
 }
+
+/** A tracker: where a team's issues live, with every capability over them. */
+export interface Tracker extends HostAccess, IssueStore, Comments, Labels, Assignees, IssueLinks, IssueEvents, StatusFields {}
+
+/** A code host's pull requests, read. */
+export interface PullRequests {
+  /**
+   * The open pull requests of `repo`, and those changed at or after `since` (an ISO time); with no `since`, the most
+   * recently changed ones, a page of them.
+   */
+  pulls(repo: string, since: string | undefined): Promise<HostPulls>;
+}
+
+/** A code host's CI checks: a failed job's log, read. */
+export interface Checks {
+  /** The end of the log of the failed CI job `jobId` of `repo` (a pull request's FailedJob id). */
+  jobLog(repo: string, jobId: number): Promise<HostJobLog>;
+}
+
+/** A code host's posts: what was written on its pull requests and issues, read. */
+export interface ReviewPosts {
+  /**
+   * The comments, review comments, reviews and issue and pull request bodies of `repo` written or edited at or after
+   * `since` (an ISO time in whole seconds, UTC), for the mention scan. Their text is outside input.
+   */
+  posts(repo: string, since: string): Promise<HostPosts>;
+}
+
+/** A code host's read of a repository's own label file: a file of the repository, so the code host holds it. */
+export interface LabelFiles {
+  /** The labels `repo`'s own label file names, as it stands on the default branch, so issue label can make one it lacks. */
+  labelFile(repo: string): Promise<HostLabelFile>;
+}
+
+/** A code host: where a team's pull requests live, with every capability over them and the repository's files. */
+export interface CodeHost extends HostAccess, PullRequests, Checks, ReviewPosts, LabelFiles {}
+
+/** A host of both kinds, as GitHub is: one adapter that is the tracker and the code host of its repositories. */
+export interface IssueHost extends Tracker, CodeHost {}
 
 /** What a host gave for its last answers about one repository: the caller keeps them between looks and never reads them. */
 export type WatchMarks = ReadonlyMap<string, string>;
@@ -223,8 +298,14 @@ export type HostWatch =
   | { readonly kind: 'unchanged' }
   | { readonly kind: 'failed'; readonly reason: string };
 
-/** The hosts teamrig has an adapter for, by the team config list that names their repositories. */
+/**
+ * The hosts teamrig has an adapter for, by the team config list that names their repositories. A kind is the id of
+ * the host's connector adapter (src/adapters/connectors), which is what it is loaded by.
+ */
 export type HostKind = 'github';
+
+/** The host whose list is `github.repos`: the one a command that works through that list reaches. */
+export const GITHUB_REPOS_HOST: HostKind = 'github';
 
 /** The config lists that name each host's repositories. */
 export interface HostLists {
@@ -233,5 +314,5 @@ export interface HostLists {
 
 /** The host whose config list names `repo`, or undefined when none does. */
 export function hostKindOf(repo: string, lists: HostLists): HostKind | undefined {
-  return lists.github.repos.includes(repo) ? 'github' : undefined;
+  return lists.github.repos.includes(repo) ? GITHUB_REPOS_HOST : undefined;
 }

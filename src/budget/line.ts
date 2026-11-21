@@ -1,8 +1,7 @@
-import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import { parseObject } from '../core/jsonl.ts';
+import { stringField, type JsonRecord } from '../core/guards.ts';
 import { BLOCK_START_WORDS, isBlockStartLine } from '../core/work-block.ts';
+import type { CallUsage, EntryKind, HookNoteEntry, InputEntry, ReplyEntry, TranscriptReader } from '../ports/host/index.ts';
 import { isPushedPrompt, isStopFeedback } from './turn-origin.ts';
-import { usageOf, type Usage } from './weights.ts';
 
 /** A tool the model called in a reply: its id, its name and, for a shell, the command line. */
 export interface ToolUse {
@@ -40,7 +39,7 @@ export interface CallLine {
   readonly at: number | undefined;
   /** False for a subagent's reply (a sidechain) and for a line that does not say. */
   readonly mainThread: boolean;
-  readonly usage: Usage;
+  readonly usage: CallUsage;
   readonly tools: readonly ToolUse[];
   /** The model that wrote the reply, when the line names it. */
   readonly model?: string;
@@ -95,26 +94,6 @@ export interface StartNoteLine {
 
 export type TranscriptLine = CallLine | ResultsLine | PromptLine | CompactLine | StartNoteLine;
 
-function timeOf(entry: JsonRecord): number | undefined {
-  const text = stringField(entry, 'timestamp');
-  const at = text === undefined ? Number.NaN : Date.parse(text);
-  return Number.isNaN(at) ? undefined : at;
-}
-
-function blocksOf(message: JsonRecord): readonly JsonRecord[] {
-  const content = message['content'];
-  return Array.isArray(content) ? content.filter(isRecord) : [];
-}
-
-function toolUseOf(block: JsonRecord): ToolUse | undefined {
-  const id = stringField(block, 'id');
-  const name = stringField(block, 'name');
-  if (block['type'] !== 'tool_use' || id === undefined || name === undefined) {
-    return undefined;
-  }
-  return toolUseFrom(id, name, recordField(block, 'input'));
-}
-
 /** A tool call from its id, name and input, as a transcript line or a hook payload carries them. */
 export function toolUseFrom(id: string, name: string, input: JsonRecord | undefined): ToolUse {
   const path = input === undefined ? undefined : toolPathOf(input);
@@ -161,108 +140,70 @@ export function toolPathOf(input: JsonRecord): string | undefined {
   return stringField(input, 'file_path') ?? stringField(input, 'notebook_path') ?? stringField(input, 'path');
 }
 
-/** A tool result's text: the string itself, or its text blocks joined by newlines. */
-function resultText(block: JsonRecord): string {
-  const content = block['content'];
-  if (typeof content === 'string') {
-    return content;
-  }
-  return Array.isArray(content)
-    ? content
-        .filter(isRecord)
-        .map((part) => stringField(part, 'text') ?? '')
-        .join('\n')
-    : '';
-}
+const TOOL_USE_ID = /<tool-use-id>([^<\s]+)<\/tool-use-id>/;
 
-function toolResultOf(block: JsonRecord): ToolResult | undefined {
-  const id = stringField(block, 'tool_use_id');
-  if (block['type'] !== 'tool_result' || id === undefined) {
+/** A reply entry as a call; undefined for a reply without readable usage. */
+export function callLineOf(entry: ReplyEntry): CallLine | undefined {
+  const { usage, model, effort } = entry;
+  if (usage === undefined || usage === 'unreadable') {
     return undefined;
   }
-  return { id, isError: block['is_error'] === true, text: resultText(block) };
-}
-
-/** An assistant entry as a call; undefined for any other entry and for a reply without readable usage. */
-export function callOf(entry: JsonRecord): CallLine | undefined {
-  const message = entry['type'] === 'assistant' ? recordField(entry, 'message') : undefined;
-  const usage = message === undefined ? undefined : usageOf(message);
-  if (message === undefined || usage === undefined) {
-    return undefined;
-  }
-  const id = stringField(message, 'id');
-  const tools = blocksOf(message).flatMap((block) => toolUseOf(block) ?? []);
-  const model = stringField(message, 'model');
-  const effort = stringField(entry, 'effort');
   return {
     kind: 'call',
-    key: id === undefined ? undefined : `${id}|${stringField(entry, 'requestId') ?? ''}`,
-    at: timeOf(entry),
-    mainThread: entry['isSidechain'] === false,
+    key: entry.key,
+    at: entry.at,
+    mainThread: entry.thread === 'main',
     usage,
-    tools,
+    tools: entry.calls.map((call) => toolUseFrom(call.id, call.name, call.input)),
     ...(model === undefined ? {} : { model }),
     ...(effort === undefined ? {} : { effort }),
   };
 }
 
-function promptText(message: JsonRecord): string {
-  const content = message['content'];
-  return typeof content === 'string' ? content : blocksOf(message).map((block) => stringField(block, 'text') ?? '').join('');
+/** An input's text: the plain content, else its text parts joined. */
+function inputText(entry: InputEntry): string {
+  return entry.text ?? entry.parts.join('');
 }
 
 /**
- * What started the turn a user entry begins, from the `origin` and `turnOrigin` Claude Code writes, else
- * from the text a peer message or a notification starts with.
+ * What started the turn an input begins, from the two origin marks the host writes, else from the text a peer
+ * message or a notification starts with.
  */
-function triggerOf(entry: JsonRecord, message: JsonRecord): TurnTrigger | 'continuation' {
-  if (entry['isCompactSummary'] === true) {
+function inputTrigger(entry: InputEntry, text: string): TurnTrigger | 'continuation' {
+  if (entry.continuation) {
     return 'continuation';
   }
-  if (entry['isSidechain'] === true) {
+  if (entry.thread === 'helper') {
     return 'subagent';
   }
-  const origin = recordField(entry, 'origin');
-  const kind = origin === undefined ? undefined : stringField(origin, 'kind');
-  const turnOrigin = stringField(entry, 'turnOrigin');
-  const text = promptText(message);
+  const { origin, turnOrigin } = entry;
   if (turnOrigin === 'scheduled') {
     return 'scheduled';
   }
-  if (kind === 'peer') {
-    return origin?.['handback'] === true ? 'notification' : 'peer';
-  }
-  if (kind === 'task-notification' || turnOrigin === 'task_notification' || text.includes('<task-notification')) {
+  if (origin === 'handback') {
     return 'notification';
   }
-  if (kind === 'human' || turnOrigin === 'human') {
+  if (origin === 'peer') {
+    return 'peer';
+  }
+  if (origin === 'notification' || turnOrigin === 'notification' || text.includes('<task-notification')) {
+    return 'notification';
+  }
+  if (origin === 'person' || turnOrigin === 'person') {
     return 'owner';
   }
   return turnOrigin === 'peer' || text.startsWith('<cross-session-message') ? 'peer' : 'other';
 }
 
-/** A user entry as results or a prompt; undefined for any other entry and for text Claude Code adds itself. */
-function userLineOf(entry: JsonRecord): ResultsLine | PromptLine | undefined {
-  const message = entry['type'] === 'user' && entry['isMeta'] !== true ? recordField(entry, 'message') : undefined;
-  if (message === undefined) {
-    return undefined;
-  }
-  const results = blocksOf(message).flatMap((block) => toolResultOf(block) ?? []);
-  const at = timeOf(entry);
-  return results.length > 0 ? { kind: 'results', at, results } : promptOf(entry, message, at);
-}
-
-const TOOL_USE_ID = /<tool-use-id>([^<\s]+)<\/tool-use-id>/;
-
 /** A prompt line; only a notification's own `<tool-use-id>` names the call it answers, never one a message quotes. */
-function promptOf(entry: JsonRecord, message: JsonRecord, at: number | undefined): PromptLine {
-  const text = promptText(message);
-  const trigger = triggerOf(entry, message);
+function promptLineOf(entry: InputEntry): PromptLine {
+  const text = inputText(entry);
+  const trigger = inputTrigger(entry, text);
   const answers = trigger === 'notification' ? TOOL_USE_ID.exec(text)?.[1] : undefined;
   const tasks = tasksIn(text);
   return {
     kind: 'prompt',
-    at,
+    at: entry.at,
     trigger,
     commands: commandsIn(text),
     ...(answers === undefined ? {} : { answers }),
@@ -271,55 +212,53 @@ function promptOf(entry: JsonRecord, message: JsonRecord, at: number | undefined
   };
 }
 
-const STOP_FEEDBACK_WORDS = '"isMeta":true';
+/** An input as results or a prompt; undefined for text the host adds itself. A result naming no call is left out. */
+function inputLineOf(entry: InputEntry): ResultsLine | PromptLine | undefined {
+  if (entry.meta) {
+    return undefined;
+  }
+  const results = entry.results.flatMap((result) => (result.call === undefined ? [] : [{ id: result.call, isError: result.isError, text: result.text }]));
+  return results.length > 0 ? { kind: 'results', at: entry.at, results } : promptLineOf(entry);
+}
 
 /**
- * A Stop hook's push, which Claude Code writes as its own text. `parseTranscriptLine` skips such lines and must go on
+ * A hook's note written as the session started, whose text holds a work-block start line (core/work-block.ts);
+ * undefined for any other note.
+ */
+function startNoteLineOf(entry: HookNoteEntry): StartNoteLine | undefined {
+  return entry.atStart && entry.texts.some((text) => text.split('\n').some(isBlockStartLine)) ? { kind: 'start-note', at: entry.at } : undefined;
+}
+
+/** The entry kinds the meter counts; a hook's note is asked for only on a line that can hold a work-block start. */
+const COUNTED_KINDS = ['reply', 'input', 'compact'] as const satisfies readonly EntryKind[];
+const COUNTED_KINDS_AND_NOTES = [...COUNTED_KINDS, 'hook-note'] as const satisfies readonly EntryKind[];
+
+/**
+ * One transcript line as what the meter counts; undefined for the many lines it ignores (notes other than a
+ * work-block start, a reply without readable usage, text the host adds itself, every other kind) and for a damaged
+ * or torn line. The reader is asked for the few kinds counted, so most other lines are never parsed.
+ */
+export function transcriptLineOf(reader: TranscriptReader, raw: string): TranscriptLine | undefined {
+  const entry = reader.entry(raw, raw.includes(BLOCK_START_WORDS) ? COUNTED_KINDS_AND_NOTES : COUNTED_KINDS);
+  switch (entry?.kind) {
+    case 'reply':
+      return callLineOf(entry);
+    case 'input':
+      return inputLineOf(entry);
+    case 'compact':
+      return { kind: 'compact', at: entry.at };
+    case 'hook-note':
+      return startNoteLineOf(entry);
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * A Stop hook's push, which the host writes as its own text. `transcriptLineOf` skips such lines and must go on
  * skipping them, or the meter's turn counts move: only the rollup, which needs to see the turn start, reads this.
  */
-export function stopFeedbackPromptOf(raw: string): PromptLine | undefined {
-  if (!raw.includes(STOP_FEEDBACK_WORDS)) {
-    return undefined;
-  }
-  const entry = parseObject(raw);
-  const message = entry?.['type'] === 'user' && entry['isMeta'] === true ? recordField(entry, 'message') : undefined;
-  if (entry === undefined || message === undefined || !isStopFeedback(promptText(message))) {
-    return undefined;
-  }
-  return promptOf(entry, message, timeOf(entry));
-}
-
-/** A compaction's boundary line; undefined for any other entry. */
-function compactOf(entry: JsonRecord): CompactLine | undefined {
-  return entry['type'] === 'system' && entry['subtype'] === 'compact_boundary' ? { kind: 'compact', at: timeOf(entry) } : undefined;
-}
-
-/**
- * A SessionStart hook's note whose text holds a work-block start line (core/work-block.ts); undefined for any other
- * entry, a prompt or a tool result that only quotes one among them.
- */
-function startNoteOf(entry: JsonRecord): StartNoteLine | undefined {
-  const attachment = entry['type'] === 'attachment' ? recordField(entry, 'attachment') : undefined;
-  if (attachment === undefined || attachment['type'] !== 'hook_additional_context' || attachment['hookEvent'] !== 'SessionStart') {
-    return undefined;
-  }
-  const content = attachment['content'];
-  const texts = Array.isArray(content) ? content.filter((part): part is string => typeof part === 'string') : [];
-  return texts.some((text) => text.split('\n').some(isBlockStartLine)) ? { kind: 'start-note', at: timeOf(entry) } : undefined;
-}
-
-/**
- * One transcript line as what the meter counts; undefined for the many lines it ignores (system
- * notes other than a compaction, attachments other than a work-block start note, snapshots) and for a damaged or torn
- * line. A cheap text test runs first, so only a line that can be a reply, a user line or such a note is parsed.
- */
-export function parseTranscriptLine(raw: string): TranscriptLine | undefined {
-  if (!raw.includes('"usage"') && !raw.includes('"type":"user"') && !raw.includes('"compact_boundary"') && !raw.includes(BLOCK_START_WORDS)) {
-    return undefined;
-  }
-  const entry = parseObject(raw);
-  if (entry === undefined) {
-    return undefined;
-  }
-  return callOf(entry) ?? userLineOf(entry) ?? compactOf(entry) ?? startNoteOf(entry);
+export function stopFeedbackOf(reader: TranscriptReader, raw: string): PromptLine | undefined {
+  const entry = reader.entry(raw, ['input']);
+  return entry?.kind === 'input' && entry.meta && isStopFeedback(inputText(entry)) ? promptLineOf(entry) : undefined;
 }

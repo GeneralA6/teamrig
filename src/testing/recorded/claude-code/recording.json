@@ -1,0 +1,74 @@
+{
+  "host": "claude-code",
+  "version": "2.1.329",
+  "platform": "win32",
+  "model": "haiku",
+  "recorded": {
+    "SessionStart": 4,
+    "UserPromptSubmit": 2,
+    "PreToolUse": 10,
+    "PostToolUse": 8,
+    "PostToolUseFailure": 2,
+    "SubagentStart": 1,
+    "SubagentStop": 2,
+    "Stop": 2,
+    "SessionEnd": 3,
+    "PreCompact": 1,
+    "PostCompact": 1
+  },
+  "order": [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "PreToolUse",
+    "PostToolUse",
+    "PreToolUse",
+    "PostToolUse",
+    "PreToolUse",
+    "PostToolUse",
+    "PreToolUse",
+    "PostToolUse",
+    "PreToolUse",
+    "PostToolUse",
+    "PreToolUse",
+    "PostToolUse",
+    "PreToolUse",
+    "PostToolUseFailure",
+    "PreToolUse",
+    "PostToolUseFailure",
+    "PreToolUse",
+    "SubagentStart",
+    "SubagentStop",
+    "PostToolUse",
+    "Stop",
+    "SessionEnd",
+    "SessionStart",
+    "UserPromptSubmit",
+    "Stop",
+    "SessionEnd",
+    "SessionStart",
+    "PreCompact",
+    "SubagentStop",
+    "SessionStart",
+    "PostCompact",
+    "SessionEnd"
+  ],
+  "notRecorded": {
+    "PermissionRequest": "fires when a permission dialog opens, which a headless turn never shows",
+    "Elicitation": "fires when an MCP server asks the user for input; the recorded session has no MCP server",
+    "ElicitationResult": "fires when the user answers an MCP server; the recorded session has no MCP server",
+    "StopFailure": "fires when a turn ends on an API error, which a recording cannot cause"
+  },
+  "transcripts": {
+    "transcripts/session.jsonl": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001.jsonl",
+    "transcripts/helper-1.jsonl": "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001/subagents/agent-ac1085422add60ab6.jsonl"
+  },
+  "cut": {
+    "transcripts/session.jsonl": 143,
+    "transcripts/helper-1.jsonl": 82
+  },
+  "unwritten": [
+    "{{home}}/.claude/projects/{{cwd-slug}}/00000000-0000-4000-8000-000000000001/subagents/agent-a2a9e0a7eafb2901b.jsonl"
+  ]
+}

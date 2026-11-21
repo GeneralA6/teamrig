@@ -71,7 +71,7 @@ async function endHooks(deps, plan, request) {
 /** Whether the session's last turn has ended and none of the work it started still runs. */
 async function idleAt(deps, transcript) {
     const tail = await deps.files.readTail(transcript, TURN_TAIL_BYTES);
-    return !turnRunning(tail ?? '') && (await readRunningWork(deps.files, transcript, deps.clock.now())) === 0;
+    return !turnRunning(deps.reader, tail ?? '') && (await readRunningWork(deps.reader, deps.files, transcript, deps.clock.now())) === 0;
 }
 /** What a held answer's give-up says when the tab's mod gave no reason: one older than the reason. */
 export const NO_HOLD_REASON = 'its mod gave no reason';
@@ -142,9 +142,9 @@ async function tabAnswerOf(deps, claudeSession, outcome) {
  * The level the session runs at: the newest /effort typed in it after its request (a typed command is no prompt,
  * so it leaves the request pending), else the level its last turn ran at; null when neither is known.
  */
-function runningEffortOf(request, tail) {
+function runningEffortOf(reader, request, tail) {
     const asked = Date.parse(request.at);
-    return typedEffortsOf(tail, request.claudeSession).findLast((typed) => typed.at > asked)?.level ?? request.effort;
+    return typedEffortsOf(reader, tail, request.claudeSession).findLast((typed) => typed.at > asked)?.level ?? request.effort;
 }
 /**
  * How the tab refreshes the session: `end` when it runs at another effort level than the one it starts on, which a
@@ -156,7 +156,7 @@ async function modeOf(deps, request, claude, transcript) {
     if (wanted === undefined) {
         return 'clear';
     }
-    const running = runningEffortOf(request, (await deps.files.readTail(transcript, TURN_TAIL_BYTES)) ?? '');
+    const running = runningEffortOf(deps.reader, request, (await deps.files.readTail(transcript, TURN_TAIL_BYTES)) ?? '');
     if (running === null || running === wanted) {
         return 'clear';
     }

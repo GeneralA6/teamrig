@@ -2,10 +2,11 @@ import { resolveKitHome } from '../../core/home.ts';
 import { KIT_VERSION } from '../../core/version.ts';
 import type { MachineStep } from '../../restore/install-plan.ts';
 import { lowerRecordSteps } from '../../restore/launcher-refresh.ts';
-import { planInstall, planUninstall, STATUS_LINE_KEY, type StatusLinePlan } from '../../statusline/install.ts';
+import type { StatusLinePlan } from '../../ports/host/index.ts';
 import { LAUNCHER_SCRIPT, launcherPath } from '../../statusline/launcher.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { checked, readClaudeSettings, settingsTargetOf, writeClaudeSettings, type ClaudeSettings, type SettingsTarget } from '../claude-settings.ts';
+import { statusLineOf } from '../host.ts';
 import { underRecordLock } from '../launcher-record-lock.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 
@@ -29,25 +30,29 @@ interface Machine extends SettingsTarget {
 /** `statusline install [--yes]`. */
 export async function install(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
+  const port = statusLineOf(runtime);
   const machine = machineOf(runtime);
   return underRecordLock(args, runtime, machine.kitHome, async () => {
     const settings = await readClaudeSettings(runtime, machine.settingsPath);
-    const plan = checked(planInstall(settings.json, machine.launcher));
+    const plan = checked(port.install(settings.json, machine.launcher));
     const launcherStale = (await runtime.files.read(machine.launcher)) !== LAUNCHER_SCRIPT;
     const lower = launcherStale ? await lowerRecordSteps(runtime.files, machine.kitHome, KIT_VERSION, runtime.clock.now()) : [];
-    return apply(args, runtime, { machine, settings, plan, lower, launcher: launcherStale ? 'write' : undefined }, 'teamrig is already the status line');
+    const change: Change = { machine, settings, plan, setting: port.setting, lower, launcher: launcherStale ? 'write' : undefined };
+    return apply(args, runtime, change, 'teamrig is already the status line');
   });
 }
 
 /** `statusline uninstall [--yes]`. */
 export async function uninstall(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
+  const port = statusLineOf(runtime);
   const machine = machineOf(runtime);
   return underRecordLock(args, runtime, machine.kitHome, async () => {
     const settings = await readClaudeSettings(runtime, machine.settingsPath);
-    const plan = checked(planUninstall(settings.json, machine.launcher));
+    const plan = checked(port.uninstall(settings.json, machine.launcher));
     const launcherThere = (await runtime.files.read(machine.launcher)) !== undefined;
-    return apply(args, runtime, { machine, settings, plan, lower: [], launcher: launcherThere ? 'remove' : undefined }, 'teamrig is not the status line');
+    const change: Change = { machine, settings, plan, setting: port.setting, lower: [], launcher: launcherThere ? 'remove' : undefined };
+    return apply(args, runtime, change, 'teamrig is not the status line');
   });
 }
 
@@ -55,6 +60,8 @@ interface Change {
   readonly machine: Machine;
   readonly settings: ClaudeSettings;
   readonly plan: StatusLinePlan;
+  /** The setting the plan changes, as the host names it. */
+  readonly setting: string;
   /** The launcher record's lowering, taken before anything else is written. */
   readonly lower: readonly MachineStep[];
   readonly launcher: 'write' | 'remove' | undefined;
@@ -70,7 +77,7 @@ async function apply(args: ParsedArgs, runtime: CliRuntime, change: Change, unch
   const steps = [
     ...change.lower.map((step) => `  ${step.line}`),
     ...(change.launcher === 'write' ? [`  WRITE ${machine.launcher}`] : []),
-    ...(next === undefined ? [] : [`  CHANGE ${machine.settingsPath} ${STATUS_LINE_KEY}.command: ${shown(plan.before)} -> ${shown(plan.after)}`]),
+    ...(next === undefined ? [] : [`  CHANGE ${machine.settingsPath} ${change.setting}.command: ${shown(plan.before)} -> ${shown(plan.after)}`]),
     ...(change.launcher === 'remove' ? [`  REMOVE ${machine.launcher}`] : []),
   ];
   if (!args.switches.has('yes')) {

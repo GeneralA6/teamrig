@@ -2,7 +2,7 @@ import type { IssueFieldsConfig, KitConfig } from '../../config/types.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { fieldWriteLine, planFieldPush, type FieldPlan } from '../../issues/field-push.ts';
-import { targetText, type IssueHost } from '../../issues/host.ts';
+import { targetText, type StatusFields } from '../../issues/host.ts';
 import type { HostIssue } from '../../issues/issue.ts';
 import type { Task } from '../../register/fold.ts';
 import type { Register } from '../../register/register.ts';
@@ -37,7 +37,7 @@ export async function fieldRunOf(runtime: CliRuntime, config: KitConfig, paths: 
 
 /** One repository's field push: where it reads and writes, what it is planned from, its share of the run's writes. */
 export interface FieldStep {
-  readonly host: IssueHost;
+  readonly host: StatusFields;
   readonly run: FieldRun;
   readonly repo: string;
   /** The repository's issues as the label push's list read found them, for each one's labels. */

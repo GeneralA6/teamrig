@@ -24,6 +24,7 @@ import { postLine } from "../../inbox/inbox.js";
 import { holdBack } from "../../hooks/permission.js";
 import { helperLaunchReminder } from "../../rules/helper-default.js";
 import { accountWeekOn, otherTeamsOnAccount } from "../account-teams.js";
+import { transcriptsOf, usageOf } from "../host.js";
 import { teamZone } from "../kit.js";
 import { peerStatesOf } from "../stored-week.js";
 import { liftNamesOf } from "./budget.js";
@@ -41,7 +42,7 @@ async function subagentsOf(folders, transcript) {
 /** One meter run over the tab's own transcripts; a run that lost a save race is left for the next hook. */
 async function meterTab(runtime, store, id, transcript, budget) {
     const transcripts = { main: [transcript], subagents: await subagentsOf(runtime.transcripts, transcript) };
-    await runMeter({ bytes: runtime.transcripts, store, clock: runtime.clock }, { session: id, transcripts, subagentWeight: budget.subagentWeight, modelWeights: budget.modelWeights, maxBytes: budget.maxBytesPerHook });
+    await runMeter({ bytes: runtime.transcripts, reader: transcriptsOf(runtime), usage: usageOf(runtime), store, clock: runtime.clock }, { session: id, transcripts, subagentWeight: budget.subagentWeight, modelWeights: budget.modelWeights, maxBytes: budget.maxBytesPerHook });
 }
 /**
  * How far a tab's transcript runs past its stored cursor before a tool call meters it mid-turn (T3298). The Stop hook

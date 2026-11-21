@@ -6,6 +6,7 @@ import type { ProcessInfo } from '../open/session-processes.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { shippedTranscripts } from '../testing/shipped-transcripts.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
 import type { EffortLevel } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
@@ -31,8 +32,10 @@ const LIVE_HELPER = '1 agent of this session still live';
 const BUSY_HOUR = 'it stayed busy for 60 minutes';
 const PLAN: RestartPlan = { team: 'app', id: 'alpha', at: AT, delayMs: DELAY_MS, endCommand: ['node', 'tracker.cjs', 'end'], endEnv: { PATH: '/bin' }, fallbackCwd: '/project', hold: { countdownMs: 20_000, afterActivityMs: 300_000 } };
 
+/** A model reply's line, as Claude Code writes one. */
+const REPLY = JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Done.' }] } });
 /** What Claude Code writes once a turn has ended. */
-const TURN_END = JSON.stringify({ type: 'system', subtype: 'turn_duration' });
+const TURN_END =JSON.stringify({ type: 'system', subtype: 'turn_duration' });
 
 /** A background command's start and its end, as Claude Code writes them to the transcript. */
 const BACKGROUND_START = [
@@ -100,13 +103,14 @@ class World {
   private sleeps = 0;
 
   constructor(options: WorldOptions = {}) {
-    this.files = new MemoryFiles({ [TRANSCRIPT]: options.transcript ?? `${JSON.stringify({ type: 'assistant' })}\n${TURN_END}\n` });
+    this.files = new MemoryFiles({ [TRANSCRIPT]: options.transcript ?? `${REPLY}\n${TURN_END}\n` });
     this.store = new RefreshStore(this.files, PATHS);
     this.asks = new ClearAsks(this.files, ASK_DIR);
     (options.running ?? [TAB_SHELL, CLAUDE]).forEach((info) => this.processes.add(info));
     this.deps = {
       store: this.store,
       files: this.files,
+      reader: shippedTranscripts(),
       asks: this.asks,
       restore: new RestoreRegistry(this.files, restoreSessionsDir(join('/', 'kit'))),
       processes: this.processes,
@@ -115,7 +119,7 @@ class World {
         this.sleeps += 1;
         await this.actions.get(this.sleeps)?.();
         if (this.busy) {
-          await this.files.append(TRANSCRIPT, `${JSON.stringify({ type: 'assistant', n: this.sleeps })}\n`);
+          await this.files.append(TRANSCRIPT, `${JSON.stringify({ type: 'assistant', n: this.sleeps, message: { role: 'assistant', content: [] } })}\n`);
         }
         await this.clock.sleep(ms);
       },
@@ -313,7 +317,7 @@ describe('runRestart', () => {
 
   it('waits while the transcript grows, and restarts after a whole quiet delay', async () => {
     const world = await new World().arm();
-    world.onSleep(2, () => world.files.append(TRANSCRIPT, `${JSON.stringify({ type: 'assistant' })}\n${TURN_END}\n`));
+    world.onSleep(2, () => world.files.append(TRANSCRIPT, `${REPLY}\n${TURN_END}\n`));
     assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
     assert.equal(world.clock.now() - START, 2 * DELAY_MS + CLAIM_WAIT_MS);
   });
@@ -329,7 +333,7 @@ describe('runRestart', () => {
     const command = JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_long', name: 'Bash', input: {} }] } });
     const world = await new World({ transcript: `${command}\n` }).arm();
     const result = JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_long', content: 'done' }] } });
-    world.onSleep(4, () => world.files.append(TRANSCRIPT, `${result}\n${JSON.stringify({ type: 'assistant' })}\n${TURN_END}\n`));
+    world.onSleep(4, () => world.files.append(TRANSCRIPT, `${result}\n${REPLY}\n${TURN_END}\n`));
     assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
     assert.equal(world.clock.now() - START, 4 * DELAY_MS + CLAIM_WAIT_MS);
   });
@@ -466,7 +470,7 @@ describe("runRestart through the tab's mod", () => {
     world.onSleep(3, () => world.files.append(TRANSCRIPT, `${command}
 `));
     world.onSleep(24, () => world.files.append(TRANSCRIPT, `${result}
-${JSON.stringify({ type: 'assistant' })}
+${REPLY}
 ${TURN_END}
 `));
     world.onSleep(26, () => world.claimAsk());
@@ -522,7 +526,7 @@ function typedEffort(at: string, level: EffortLevel): string {
 
 /** A quiet transcript in which the user typed `/effort <level>` at `at`. */
 function transcriptTyped(at: string, level: EffortLevel): string {
-  return `${typedEffort(at, level)}\n${JSON.stringify({ type: 'assistant' })}\n${TURN_END}\n`;
+  return `${typedEffort(at, level)}\n${REPLY}\n${TURN_END}\n`;
 }
 
 describe("runRestart when the session runs at another effort level than its config's", () => {

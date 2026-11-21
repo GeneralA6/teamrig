@@ -1,9 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
+import type { HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { indexMarks, readMarks } from '../inbox/marks.ts';
-import { APP, CLAUDE_SESSION, CliHarness, contextOf, RENAMES_PATH, TEAM, TEAM_HOME, titledPromptOf } from '../testing/cli-harness.ts';
+import { bareHost } from '../testing/bare-host.ts';
+import { APP, CLAUDE_SESSION, CliHarness, contextOf, RENAMES_PATH, TEAM, TEAM_HOME, titledPromptOf, USER_HOME } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
@@ -43,6 +45,17 @@ describe('runCli: a hand-started tab binds itself by its Claude Code title (T302
     assert.ok(text.includes('This tab was bound to the `lead` session from its Claude Code title; nothing was marked read.'), text);
     assert.match((await kit.run(['inbox', 'status', '--session', 'lead'])).stdout[0] ?? '', /^lead 0 unread \(read to line 1 of 1/);
     assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ session_title: 'captain' }) })).stdout, []);
+  });
+
+  it("binds by the title in the tab's transcript, which a host that keeps none it can read does not give", async () => {
+    const kit = new CliHarness();
+    const path = join(USER_HOME, '.claude', 'projects', 'work-app', `${CLAUDE_SESSION}.jsonl`);
+    await kit.files.write(path, `${JSON.stringify({ type: 'custom-title', customTitle: 'alpha' })}\n`);
+    const bare: HostSource = bareHost;
+    const unread = await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ transcript_path: path }), host: bare });
+    assert.match(unread.stdout[0] ?? '', /^teamrig: this tab is not bound to a session of team app\./);
+    const read = await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ transcript_path: path }) });
+    assert.match(read.stdout[0] ?? '', /^teamrig: this tab is now the `alpha` session of team app /);
   });
 
   it('says once per reason how to bind a tab it cannot bind, until a rename binds it', async () => {

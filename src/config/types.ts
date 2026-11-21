@@ -6,7 +6,7 @@ import type { NeedKind } from '../tabs/need-kind.ts';
 import type { ServiceCommand } from '../permissions/service-commands.ts';
 
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
-export const CONFIG_VERSION = 8;
+export const CONFIG_VERSION = 9;
 
 export interface RolesConfig {
   /** Owns priorities, team rules and the owner's decision queue; may re-prioritize and reassign tasks; hands the work itself to others (`leadBoundary`). */
@@ -333,8 +333,8 @@ export interface PromptsConfig {
   readonly routeAllow: RouteAllow;
   /**
    * How many calls one service role lets run with no permission check in 24 hours (T2984, security condition C6), a
-   * migrate counting each issue row (T4606), so a holder steered by outside text closes, comments or migrates only so
-   * much; past it, the role's next call is refused.
+   * migrate counting each issue row (T4606), so a holder steered by outside text closes or migrates only so much; past
+   * it, the role's next call is refused.
    */
   readonly serviceRoleDailyCap: number;
 }
@@ -702,7 +702,7 @@ export interface IssueFieldsConfig {
   readonly types: Readonly<Record<IssueKind, readonly string[]>>;
 }
 
-/** The team's GitHub repositories: `teamrig issue sync` reads their issues into the register, never writing to GitHub; `issue migrate` and `issue comment`/`issue close`, run by hand, write only to them. */
+/** The team's GitHub repositories: `teamrig issue sync` reads their issues into the register, never writing to GitHub; `issue migrate` and `issue reply`/`issue close`, run by hand, write only to them. */
 export interface GithubConfig {
   /** The repositories it reads, as `owner/name` in lowercase; empty turns the import off. */
   readonly repos: readonly string[];
@@ -754,7 +754,7 @@ export interface GithubConfig {
   /**
    * The session that hears the pull request news no task owner takes: a pull request from a fork or by an author
    * outside the repository, or from a branch that names no task. Unset, the first holder of a service role holding
-   * `issue comment` (github/watcher.ts), else the lead.
+   * `issue close` (github/watcher.ts), else the lead.
    */
   readonly watcher?: string;
   /**

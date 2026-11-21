@@ -1,25 +1,10 @@
-import { isRecord, stringField } from "./guards.js";
+import { fetchFailure, isHttpsUrl } from "./http.js";
 /** The longest message the chat accepts; a longer one is cut to fit, with an ellipsis. */
 export const WEBHOOK_MAX_CONTENT = 2_000;
 /** How long a post may take: a slow chat must not hold the command that already logged its event. */
 export const WEBHOOK_TIMEOUT_MS = 5_000;
 function fitted(content) {
     return content.length <= WEBHOOK_MAX_CONTENT ? content : `${content.slice(0, WEBHOOK_MAX_CONTENT - 1)}…`;
-}
-/**
- * Why a post failed, from the error's name and its cause's code (`ECONNREFUSED`) alone: fetch's own messages can
- * quote the URL, which is the secret.
- */
-function failureOf(error, timeoutMs) {
-    if (error instanceof Error && error.name === 'TimeoutError') {
-        return `the webhook did not answer within ${timeoutMs} ms`;
-    }
-    const code = error instanceof Error && isRecord(error.cause) ? stringField(error.cause, 'code') : undefined;
-    return `the webhook could not be reached${code === undefined ? '' : ` (${code})`}`;
-}
-/** True for an absolute https URL, the only kind a teamrig post goes to, so its text never crosses a network in the clear. */
-export function isHttpsUrl(text) {
-    return URL.canParse(text) && new URL(text).protocol === 'https:';
 }
 /**
  * `webhook`, posting only to an https URL: anything else (http, a file or data URL, a bare name) is refused before
@@ -57,7 +42,8 @@ export function httpWebhook(timeoutMs = WEBHOOK_TIMEOUT_MS) {
                 return response.ok ? undefined : `the webhook answered HTTP ${response.status}`;
             }
             catch (error) {
-                return failureOf(error, timeoutMs);
+                // Never the error's own words: they can quote the URL, which is the secret.
+                return fetchFailure('the webhook', error, timeoutMs);
             }
         },
     };

@@ -4,6 +4,7 @@ import { indexMarks } from "../../inbox/marks.js";
 import { checkedState, formatHooklessState, HOOKLESS_TAIL_BYTES, hooklessLine, hooklessNews, hooklessReader, hooklessTabs, isCheckDue, lastReplyAt, parseHooklessState, staleEntries, workedPastHook, } from "../../restore/hookless.js";
 import { RestoreRegistry, restoreSessionsDir } from "../../restore/registry.js";
 import { postToHolder, sessionNameOn } from "../holder-team.js";
+import { transcriptsOf } from "../host.js";
 import { teamZone } from "../kit.js";
 import { inboxDepsOf } from "./inbox.js";
 import { fileLockOf } from "../file-locks.js";
@@ -19,7 +20,7 @@ async function replyAtEnd(runtime, path) {
     const offset = Math.max(0, size - HOOKLESS_TAIL_BYTES);
     const { lines } = await readLines(runtime.transcripts, path, offset, size, HOOKLESS_TAIL_BYTES);
     // A read from inside the file starts mid-line.
-    return lastReplyAt(offset === 0 ? lines : lines.slice(1));
+    return lastReplyAt(transcriptsOf(runtime), offset === 0 ? lines : lines.slice(1));
 }
 /**
  * The team's tabs that run without their hooks now: the stale restore entries of its sessions whose transcript

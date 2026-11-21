@@ -1,4 +1,4 @@
-import { parseTranscriptLine } from "../budget/line.js";
+import { transcriptLineOf } from "../budget/line.js";
 /** The tools that change a file in place. A shell edit is left out: a failed shell call is seldom a lost edit. */
 const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write']);
 /** A file in a skill folder Claude Code loads: `.claude/skills/<name>/`, the user's or a project's. */
@@ -23,7 +23,7 @@ function errorLine(text) {
  * counts as redone; a prompt starts a new turn, but a compaction's summary does not: the turn goes on, with
  * the refusal now out of the agent's context. A tail without any error result is not parsed at all.
  */
-export function droppedEditsOf(text, cut, thread) {
+export function droppedEditsOf(reader, text, cut, thread) {
     if (!text.includes('"is_error":true')) {
         return [];
     }
@@ -31,7 +31,7 @@ export function droppedEditsOf(text, cut, thread) {
     const dropped = new Map();
     const lines = text.split('\n');
     for (const raw of cut ? lines.slice(1) : lines) {
-        const line = parseTranscriptLine(raw);
+        const line = transcriptLineOf(reader, raw);
         if (line?.kind === 'prompt' && line.trigger !== 'continuation') {
             edits.clear();
             dropped.clear();

@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import type { HostSource } from '../composition/host-ports.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { promptLine, textLine, transcript } from '../testing/transcript-lines.ts';
@@ -53,6 +55,14 @@ describe('the stop hook on a hand step typed into the reply (core rule 11)', () 
   it('reads the last message Claude Code hands the hook when the transcript does not hold it yet', async () => {
     const kit = await kitWith(turn(['Checking.']));
     assert.match(blockReason(await stop(kit, stdin({ last_assistant_message: HAND_STEP }))) ?? '', /Core rule 11/);
+  });
+
+  it('reads that last message alone on a host whose transcript teamrig cannot read', async () => {
+    const bare: HostSource = bareHost;
+    const unread = await kitWith(turn([HAND_STEP]));
+    assert.equal(blockReason(await unread.run(['hook', 'stop'], { stdin: stdin(), env: ENV, host: bare })), undefined);
+    const handed = await kitWith(turn(['Checking.']));
+    assert.match(blockReason(await handed.run(['hook', 'stop'], { stdin: stdin({ last_assistant_message: HAND_STEP }), env: ENV, host: bare })) ?? '', /Core rule 11/);
   });
 
   it("lets a turn by that pins the file, marks the block read-only, or only an earlier turn's reply typed one", async () => {

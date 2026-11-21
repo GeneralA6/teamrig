@@ -1,4 +1,5 @@
 import { isNonNegativeInteger, isRecord, stringField } from "../core/guards.js";
+import { hostSessionOf } from "../core/host-session.js";
 import { ID_PATTERN } from "../core/ids.js";
 import { parseObject } from "../core/jsonl.js";
 import { MS_PER_MINUTE } from "../core/time.js";
@@ -145,9 +146,12 @@ export function parseEntry(text) {
     const record = parseObject(text.trim());
     return record === undefined ? undefined : entryOfRecord(record);
 }
-/** The entry an `entryRecord` object holds; undefined when it is of another shape. */
+/**
+ * The entry an `entryRecord` object holds; undefined when it is of another shape. The files carry no format, so a
+ * later teamrig's entry, naming the session `hostSession` (T4762), is told by that field alone.
+ */
 export function entryOfRecord(record) {
-    const claudeSession = stringField(record, 'claudeSession');
+    const claudeSession = hostSessionOf(record, 'claudeSession');
     const projectDir = stringField(record, 'projectDir');
     const state = activityOf(stringField(record, 'state'));
     const createdAt = instantField(record, 'createdAt');

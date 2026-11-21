@@ -1,4 +1,5 @@
-import { ACTIVE_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX } from "../register/model.js";
+import { holdsDescription } from "../register/description-cut.js";
+import { ACTIVE_STATUSES, GITHUB_SOURCE, isIssueRef } from "../register/model.js";
 import { issueTask } from "./map.js";
 import { issueTrust } from "./trust.js";
 /** How GitHub closed an issue, in the note the sync writes; any other reason is left out. */
@@ -32,7 +33,7 @@ export function importedTasks(tasks) {
 export function refHolders(tasks) {
     const held = importedTasks(tasks);
     for (const task of tasks) {
-        if (task.ref !== null && task.ref.startsWith(ISSUE_REF_PREFIX) && !held.has(task.ref)) {
+        if (isIssueRef(task.ref) && !held.has(task.ref)) {
             held.set(task.ref, task);
         }
     }
@@ -46,7 +47,7 @@ export function refHolders(tasks) {
 export function linkedRefs(tasks) {
     const refs = new Set();
     for (const task of tasks) {
-        if (task.source !== GITHUB_SOURCE && task.ref !== null && task.ref.startsWith(ISSUE_REF_PREFIX)) {
+        if (task.source !== GITHUB_SOURCE && isIssueRef(task.ref)) {
             refs.add(task.ref);
         }
     }
@@ -107,11 +108,15 @@ function namesText(names) {
     const last = names.at(-1) ?? '';
     return names.length < 2 ? last : `${names.slice(0, -1).join(', ')} and ${last}`;
 }
-/** The priority the issue now gives, and with `followsText` its title and description, where they differ from the task's. */
+/**
+ * The priority the issue now gives, and with `followsText` its title and description, where they differ from the
+ * task's. The description is judged by holdsDescription, as the snapshot's task lines leave descriptions out: a plain
+ * comparison would see every such task as changed and write its body again at each sync.
+ */
 function fieldChanges(task, wanted, followsText) {
     return {
         ...(!followsText || task.title === wanted.title ? {} : { title: wanted.title }),
-        ...(!followsText || task.description === wanted.description ? {} : { description: wanted.description }),
+        ...(!followsText || holdsDescription(task, wanted.description) ? {} : { description: wanted.description }),
         ...(task.priority === wanted.priority ? {} : { priority: wanted.priority }),
     };
 }

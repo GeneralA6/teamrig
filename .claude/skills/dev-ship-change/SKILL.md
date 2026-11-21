@@ -42,14 +42,20 @@ description: Land a finished teamrig change through small signed commits with Co
 - Main moved while you worked: the merge catches the branch up itself (`tools/ship/merge.ts`), dropping a
   `build: rebuild the plugin dist` commit a branch cut before main stopped tracking the dist still carries. When it
   refuses, rebase onto `origin/main` by hand.
+- Each catch-up or hand rebase pushes a new `<stem>-N` branch with its own pull request. Once a merge or `ship.ts pr`
+  holds the newest one, it closes each older open pull request of that stem whose work commits the new head carries,
+  with a comment linking the new one (`tools/ship/superseded.ts`). A pull request with work the new head lacks stays
+  open, and the merge's warning line names the commits.
 - `tools/ship` builds the dist only to run the checks and commits none, as main tracks none; a run without
   `--merge`, for an approval, leaves the work alone on the head.
 - The local gate proves a committed tree, so it refuses uncommitted changes: commit or stash them first.
 - The pre-push hook's light checks leave the suite to CI: a failing spec shows on the pull request, not at the push.
   Run `npm run check` yourself first when the change reaches far.
 - With `"mergeChecks": "changed"` on the repository in `tools/ship/repos.json`, the pre-push hook and the `--merge`
-  run take the short checks (scrub, DCO, typecheck, the changed files' specs) and leave the whole suite to required
-  CI; a spec only a changed file's neighbour misses fails there, not here. Run `npm run check` yourself first when
+  run take the short checks (scrub, DCO, size rule, commit subjects, typecheck, the changed files' specs) and
+  leave the whole suite to required CI; a spec only a changed file's neighbour misses fails there, not here. A change
+  to the gate itself (hooks, workflows, `tools/ci`, `tools/ship`, the push guard, the package or a tsconfig) runs
+  every check. Run `npm run check` yourself first when
   the change reaches far.
 - A missing sign-off: `git commit --amend -s` for the last commit; the `commit-msg` hook from `npm run setup` catches
   it before the push.
@@ -58,4 +64,4 @@ description: Land a finished teamrig change through small signed commits with Co
   request of origin's head when that head is the approved sha and clears on that approval as a merge would, takes
   the merge's title and body, runs no gate, merges nothing and prints the URL (an open one is found, not opened again).
 
-Last verified: 2026-11-19
+Last verified: 2026-11-20

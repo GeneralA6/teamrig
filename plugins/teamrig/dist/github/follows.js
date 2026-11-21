@@ -1,7 +1,7 @@
 import { isRecord } from "../core/guards.js";
 import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 import { parseIssueTarget } from "../issues/host.js";
-import { ISSUE_REF_PREFIX } from "../register/model.js";
+import { bareRef } from "../issues/ref.js";
 import { issueRef } from "./map.js";
 /**
  * The issues and pull requests each session follows (`teamrig follow`), kept pure: the automatic sync tells a
@@ -12,8 +12,7 @@ import { issueRef } from "./map.js";
 export const FOLLOWS_FORMAT = 1;
 /** The item `text` names as `owner/name#n` or as its ref `gh:owner/name#n`, or undefined when it names none. */
 export function followTarget(text) {
-    const trimmed = text.trim();
-    return parseIssueTarget(trimmed.startsWith(ISSUE_REF_PREFIX) ? trimmed.slice(ISSUE_REF_PREFIX.length) : trimmed);
+    return parseIssueTarget(bareRef(text.trim()));
 }
 /** The follows a file holds; a ref that names no item is left out, and a missing or damaged file follows nothing. */
 export function parseFollows(text) {

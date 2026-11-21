@@ -1,6 +1,7 @@
 import { ENV } from "../../core/home.js";
 import { issueRef } from "../../github/map.js";
-import { hostOf } from "../issue-hosts.js";
+import { GITHUB_REPOS_HOST } from "../../issues/host.js";
+import { hostsOf } from "../issue-hosts.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { GITHUB_OFF, githubOff } from "./issue-sync-auto.js";
 /** The flags of `add` that ask about the new task's issue (github/issue-at-add.ts). */
@@ -18,11 +19,12 @@ export function addIssueAskOf(flags, input) {
     };
 }
 /**
- * The host a new task's issue opens on: GitHub, with the token saved for the repository's owner, or none while GitHub is
- * off here. stamp is the team's github.stamp: whether the issue's body ends with the made-with-teamrig footer.
+ * The tracker a new task's issue opens on: GitHub's (the issue's repository is one of github.repos), with the token
+ * saved for the repository's owner, or none while GitHub is off here. stamp is the team's github.stamp: whether the
+ * issue's body ends with the made-with-teamrig footer.
  */
-export function addIssueHost(runtime, scanner, stamp) {
-    return githubOff(runtime.env) ? undefined : hostOf('github', runtime, scanner, stamp);
+export async function addIssueHost(runtime, scanner, stamp) {
+    return githubOff(runtime.env) ? undefined : (await hostsOf(GITHUB_REPOS_HOST, runtime, scanner, stamp)).tracker;
 }
 /**
  * Adds a task with its issue, all or nothing: the add is judged, the issue opened, then the task written with its ref

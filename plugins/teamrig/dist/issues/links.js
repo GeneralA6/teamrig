@@ -8,11 +8,10 @@
  * between two issues, not two tasks: two tasks can hold one issue, so the edges are kept once per issue pair, and an
  * edge between two tasks of one issue makes no link (T3352).
  */
-import { ISSUE_REF_PREFIX } from "../register/model.js";
-import { parseIssueTarget } from "./host.js";
+import { parseRef } from "./ref.js";
 /** The issue a task's ref names, or undefined when it names none. */
 export function refTarget(task) {
-    return task.ref !== null && task.ref.startsWith(ISSUE_REF_PREFIX) ? parseIssueTarget(task.ref.slice(ISSUE_REF_PREFIX.length)) : undefined;
+    return parseRef(task.ref);
 }
 /** The ids `task` is planned after, each asking for a sub-issue, then those it waits on and is not planned after. */
 function partsOf(task) {

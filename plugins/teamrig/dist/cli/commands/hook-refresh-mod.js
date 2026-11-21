@@ -9,6 +9,7 @@ import { decideCompact, decideMidTurn, handoverHashOf } from "../../refresh/deci
 import { readRunningWork } from "../../refresh/running.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { readContextEstimate } from "../../refresh/usage.js";
+import { contextSourceIfTold, transcriptsIfKept } from "../host.js";
 import { noPositionals } from "../args.js";
 import { EXIT } from "../runtime.js";
 import { hookScopeOf, parseJson } from "./hook-input.js";
@@ -29,10 +30,12 @@ function countOf(payload, key) {
  */
 export async function dueFactsAt(runtime, store, id, transcript) {
     const handover = await store.handover(id);
+    // A host that keeps no transcript teamrig can read shows no running work, as a missing transcript shows none.
+    const reader = transcriptsIfKept(runtime);
     return {
         handoverHash: handoverHashOf(handover),
         handover,
-        running: transcript === undefined ? 0 : await readRunningWork(runtime.files, transcript, runtime.clock.now()),
+        running: transcript === undefined || reader === undefined ? 0 : await readRunningWork(reader, runtime.files, transcript, runtime.clock.now()),
     };
 }
 /**
@@ -152,7 +155,9 @@ export async function preCompact(args, runtime) {
     if (transcript === undefined || scope === undefined) {
         return EXIT.ok;
     }
-    const tokens = await readContextEstimate(runtime.files, transcript);
+    // No readable transcript or no meter, no estimate: the compaction goes, since a refusal here would block it.
+    const source = contextSourceIfTold(runtime);
+    const tokens = source === undefined ? undefined : await readContextEstimate(source, runtime.files, transcript);
     const state = await new RefreshStore(runtime.files, scope.kit.paths).state(scope.id);
     const decision = tokens === undefined ? GO : decideCompact(state, { settings: scope.config.refresh, command: KIT_NAME }, { tokens, window: undefined });
     if (decision.kind === 'skip') {

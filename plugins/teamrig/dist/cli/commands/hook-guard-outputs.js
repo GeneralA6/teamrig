@@ -1,10 +1,13 @@
 import { LeadTree } from "../../config/lead-tree.js";
 import { formatAddress } from "../../core/address.js";
+import { query } from "../../core/git-run.js";
 import { errorMessage } from "../../core/guards.js";
 import { checkClient, clientRootOf } from "../../exec/client-integrity.js";
 import { ClientInstalls, ShellPathSearch } from "../../exec/client-launch.js";
 import { dbWriteGuardOf, dbWriteGuardOutput } from "../../hooks/db-write-guard.js";
 import { execGuardOutput } from "../../hooks/exec-guard.js";
+import { githubReposOf } from "../../hooks/gh-write-refusals.js";
+import { remoteReposOf } from "../../hooks/gh-writes.js";
 import { packageGuardOf, packageGuardOutput } from "../../hooks/package-guard.js";
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf, skipHooksOf } from "../../hooks/push-guard.js";
 import { secretGuardOf, secretGuardOutput, secretPatternsOf } from "../../hooks/secret-guard.js";
@@ -172,6 +175,14 @@ export function execGuardOutputOf(runtime, guard, payload) {
         search: new ShellPathSearch({ env: runtime.env, platform: runtime.platform, probe: runtime.probe }),
         checkClient: (root) => checkClient(root, runtime.files),
         platform: runtime.platform,
+        ghWrites: {
+            github: githubReposOf(guard.load),
+            remotesOf: (dir) => {
+                const listing = query(dir, ['remote', '-v']);
+                return listing === undefined ? undefined : remoteReposOf(listing);
+            },
+            ghRepo: runtime.env['GH_REPO'],
+        },
     });
 }
 /**

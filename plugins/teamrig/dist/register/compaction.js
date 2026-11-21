@@ -1,6 +1,7 @@
 import { toJsonlLine } from "../core/jsonl.js";
 import { MS_PER_DAY } from "../core/time.js";
 import { currentWeekOf } from "./week.js";
+import { cutTask } from "./description-cut.js";
 import { RegisterFold, taskNumber } from "./fold.js";
 import { snapshotHeaderRecord } from "./layout.js";
 import { TASK_LINES_LAYOUT_VERSION } from "./marker.js";
@@ -58,9 +59,12 @@ function foldStart(source) {
  * (the first event at or after `windowFrom` and every one after it) but those of the tasks it retires. Each such
  * event is its line as written, never re-serialized, so a field this code does not parse is kept; a task line
  * holds the task as this code folds it, so such a field of an older event is left to the archive, which keeps
- * every line, and `teamrig compact --from-history` folds again from it. The orphans among the events left out
- * are counted in the header. A task that moved to another team retires at once, whatever its age, with its moved
- * line: the other team's register holds it, and the history still says where it went.
+ * every line, and `teamrig compact --from-history` folds again from it. A task line leaves the task's description
+ * out and holds its mark (description-cut.ts, T4781): a description is most of a task's bytes, an imported issue's
+ * body above all, and the history keeps it for the readers that print it, while an event of the window that gives
+ * one keeps it as written, so a task holds its text whole until that event leaves the window. The orphans among the
+ * events left out are counted in the header. A task that moved to another team retires at once, whatever its age,
+ * with its moved line: the other team's register holds it, and the history still says where it went.
  * `source` must hold in `read.events` exactly the events its state folds from on top of its window (a
  * working-set or a history read), and hold no line from a newer teamrig's format or status: those are no events,
  * so the snapshot would drop them, and such a log is never compacted (rotate.ts).
@@ -101,7 +105,7 @@ export function compactRegister(source, options) {
         retiredLastWeek: newestWeek([source.retired?.lastWeek ?? null, ...retiring.map((task) => task.week)]),
         at: options.now.toISOString(),
     };
-    const taskLines = lined.map((task) => toJsonlLine(taskLineRecord(TASK_LINES_LAYOUT_VERSION, task)));
+    const taskLines = lined.map((task) => toJsonlLine(taskLineRecord(TASK_LINES_LAYOUT_VERSION, cutTask(task))));
     const text = [toJsonlLine(snapshotHeaderRecord(header)), ...taskLines, ...eventLines.map((line) => `${line}\n`)].join('');
     const retiredNow = [...retiredIds].sort((a, b) => taskNumber(a) - taskNumber(b));
     return { header, text, eventLines, kept: source.state.tasks.size - retiring.length, retiredNow };

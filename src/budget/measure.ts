@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import type { Roster } from '../config/roster.ts';
 import type { ModelWeight } from '../config/types.ts';
 import type { Clock } from '../core/lock.ts';
+import type { TranscriptReader, UsageMeter } from '../ports/host/index.ts';
 import { attribute, type OutsideSession, type PeerTeam } from './attribute.ts';
 import { discoverTranscripts, type TranscriptSet, type TranscriptSource } from './discover.ts';
 import { runMeter } from './meter.ts';
@@ -28,6 +29,10 @@ export const MAX_RUNS_PER_SESSION = 64;
 
 export interface MeasureDeps {
   readonly transcripts: TranscriptSource;
+  /** The host's reading of one transcript line. */
+  readonly reader: TranscriptReader;
+  /** The host's price of one call. */
+  readonly usage: UsageMeter;
   /** The title the user gave a Claude Code session, from one of its transcripts. */
   titleOf(transcript: string): Promise<string | undefined>;
   /** Each team session's usage, by its id. */
@@ -86,7 +91,7 @@ interface Metered {
 async function meterSession(deps: MeasureDeps, store: UsageStorage, session: string, transcripts: TranscriptSet, input: MeasureInput): Promise<Metered> {
   let state = (await store.load(session)).state;
   for (let run = 0; run < input.maxRuns; run += 1) {
-    const result = await runMeter({ bytes: deps.transcripts, store, clock: deps.clock }, { session, transcripts, subagentWeight: input.subagentWeight, modelWeights: input.modelWeights, maxBytes: input.chunkBytes });
+    const result = await runMeter({ bytes: deps.transcripts, reader: deps.reader, usage: deps.usage, store, clock: deps.clock },{ session, transcripts, subagentWeight: input.subagentWeight, modelWeights: input.modelWeights, maxBytes: input.chunkBytes });
     if (result.saved) {
       state = result.state;
       if (!result.catchingUp) {

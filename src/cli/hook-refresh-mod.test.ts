@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import type { HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
@@ -50,9 +52,9 @@ class Tab {
     this.transcripts.set(TRANSCRIPT, text, this.kit.clock.now());
   }
 
-  run(command: string, input: JsonRecord | string, env: Readonly<Record<string, string>> = AS_ALPHA): Promise<CliResult> {
+  run(command: string, input: JsonRecord | string, env: Readonly<Record<string, string>> = AS_ALPHA, host?: HostSource): Promise<CliResult> {
     const stdin = typeof input === 'string' ? input : JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, ...input });
-    return this.kit.run(['hook', command], { env, stdin, transcripts: this.transcripts });
+    return this.kit.run(['hook', command], { env, stdin, transcripts: this.transcripts, ...(host === undefined ? {} : { host }) });
   }
 
   async mid(tokens: unknown): Promise<unknown> {
@@ -209,6 +211,13 @@ describe('runCli: hook refresh-mid', () => {
     assert.deepEqual(await ended.mid(130_000), { kind: 'ask', text: ASK_130K, nextAt: 154_000 });
   });
 
+  it('asks plainly on a host that keeps no transcript it can read, whose background work it cannot see', async () => {
+    const tab = new Tab();
+    await tab.transcript(BACKGROUND_START);
+    const bare: HostSource = bareHost;
+    assert.deepEqual(answerOf(await tab.run('refresh-mid', { tokens: 130_000 }, AS_ALPHA, bare)), { kind: 'ask', text: ASK_130K, nextAt: 154_000 });
+  });
+
   it('asks for nothing outside a team session, with refresh off, or on input it cannot read', async () => {
     const tab = new Tab();
     assert.deepEqual(answerOf(await tab.run('refresh-mid', { tokens: 130_000 }, {})), OFF, 'no team session');
@@ -280,6 +289,16 @@ describe('runCli: hook pre-compact', () => {
     // 45,000 bytes since the reply read at least 15,000 tokens more: 185k, the ceiling.
     await tab.transcript(replyLine(170_000) + resultLine(45_000));
     assert.equal(await tab.preCompact(), undefined, 'at the ceiling');
+  });
+
+  it('lets the compaction go on a host that keeps no transcript it can read, never by a refusal', async () => {
+    const tab = new Tab();
+    await tab.transcript(replyLine(170_000));
+    await tab.mid(130_000);
+    assert.notEqual(await tab.preCompact(), undefined, 'held on the shipped host');
+    const bare: HostSource = bareHost;
+    const result = await tab.run('pre-compact', { transcript_path: TRANSCRIPT, trigger: 'auto' }, AS_ALPHA, bare);
+    assert.deepEqual({ code: result.code, stdout: result.stdout }, { code: EXIT.ok, stdout: [] });
   });
 
   it('lets the compaction go outside a team session, with refresh off, without a reply in the transcript, or on input it cannot read', async () => {

@@ -1,16 +1,17 @@
 import { spawn } from 'node:child_process';
 import type { Env } from '../core/home.ts';
-import { endOf, type ShellEnd } from '../test-run/shell.ts';
+import { endOf, type ShellEnd } from '../core/shell-end.ts';
 import type { CloseReason, IssueDraft, LabelSpec } from '../issues/host.ts';
 import { LABEL_FILE, parseLabelFile } from '../issues/label-file.ts';
 import { areaLabelSpec, MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
 import { labelRefusal } from '../issues/write.ts';
+import { GH_PROGRAM } from './gh-program.ts';
 import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
 
 /**
  * The kinds of `gh` command line teamrig runs: a page of a shipped query (the issue import, the links read and the
  * pull request monitor, which never write to GitHub), the creation of one issue (issue migrate, which opens an issue for a team task), one
- * comment on or the close of one issue or pull request (issue comment and issue close, a close with or without its
+ * comment on or the close of one issue or pull request (issue reply and issue close, a close with or without its
  * reason), its body replaced (issue edit), its labels: the read of one label of a repository, labels added to one
  * issue, one label taken off it (issue label), the read of one issue, for the id a duplicate close names (issue close
  * --duplicate-of), logins added to one issue's assignees, the read of one user, for the case GitHub spells its login
@@ -860,7 +861,7 @@ export function isReviewRead(args: readonly string[]): boolean {
  * GhOutputCapError. It keeps what each repository's label file named when it read one, so it makes only those
  * labels beside its own.
  */
-export function nodeGhRunner(program = 'gh', leading: readonly string[] = [], timeoutMs = GH_TIMEOUT_MS, maxBytes = GH_OUTPUT_MAX_BYTES): GhRunner {
+export function nodeGhRunner(program: string = GH_PROGRAM, leading: readonly string[] = [], timeoutMs = GH_TIMEOUT_MS, maxBytes = GH_OUTPUT_MAX_BYTES): GhRunner {
   const labelFiles = new LabelFileReads();
   return {
     run: async (request) => {

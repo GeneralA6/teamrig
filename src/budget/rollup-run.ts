@@ -1,12 +1,13 @@
 import { join } from 'node:path';
 import type { Roster } from '../config/roster.ts';
 import type { Files } from '../core/files.ts';
+import type { TranscriptReader, UsageMeter } from '../ports/host/index.ts';
 import { sessionsTitled } from '../hooks/bind.ts';
 import { attribute } from './attribute.ts';
 import { readLines, type TranscriptBytes } from './cursor.ts';
 import type { ClaudeSessionFiles, TranscriptSet } from './discover.ts';
 import { formatRollup, rollupFileName, type DayRollup } from './rollup-file.ts';
-import { parseRollupLine, RollupFold, type RollupSource } from './rollup.ts';
+import { rollupLineOf, RollupFold, type RollupSource } from './rollup.ts';
 
 /**
  * One run of the usage rollup: which transcripts are a team's, their fold, and what the run would do to each day's
@@ -105,15 +106,22 @@ export interface TeamFoldInput {
   readonly chunkBytes: number;
 }
 
+/** Where a fold's lines come from and what they cost: the transcripts' bytes, the host's reader of a line and its price of a call. */
+export interface TeamFoldDeps {
+  readonly bytes: TranscriptBytes;
+  readonly reader: TranscriptReader;
+  readonly usage: UsageMeter;
+}
+
 /** Folds one transcript, a chunk at a time; a last line Claude Code is still writing is left for the next run. */
-async function readInto(bytes: TranscriptBytes, path: string, fold: RollupFold, source: RollupSource, chunkBytes: number): Promise<void> {
+async function readInto({ bytes, reader }: Pick<TeamFoldDeps, 'bytes' | 'reader'>, path: string, fold: RollupFold, source: RollupSource, chunkBytes: number): Promise<void> {
   const transcript = fold.transcript(source);
   const size = (await bytes.size(path)) ?? 0;
   let offset = 0;
   while (offset < size) {
     const batch = await readLines(bytes, path, offset, size, chunkBytes);
     for (const raw of batch.lines) {
-      const line = parseRollupLine(raw);
+      const line = rollupLineOf(reader, raw);
       if (line !== undefined) {
         transcript.line(line);
       }
@@ -127,15 +135,15 @@ async function readInto(bytes: TranscriptBytes, path: string, fold: RollupFold, 
 }
 
 /** The team's rows per day. Sessions and their transcripts go in sorted, as the first reader of a repeated reply takes it. */
-export async function foldTeam(bytes: TranscriptBytes, input: TeamFoldInput): Promise<ReadonlyMap<string, DayRollup>> {
-  const fold = new RollupFold();
+export async function foldTeam(deps: TeamFoldDeps, input: TeamFoldInput): Promise<ReadonlyMap<string, DayRollup>> {
+  const fold = new RollupFold(deps.usage);
   for (const [session, { main, subagents }] of [...input.byTeamSession].sort(([a], [b]) => a.localeCompare(b))) {
     const lead = session === input.lead;
     for (const path of [...main].sort()) {
-      await readInto(bytes, path, fold, { session, lead, side: false }, input.chunkBytes);
+      await readInto(deps, path, fold, { session, lead, side: false }, input.chunkBytes);
     }
     for (const path of [...subagents].sort()) {
-      await readInto(bytes, path, fold, { session, lead, side: true }, input.chunkBytes);
+      await readInto(deps, path, fold, { session, lead, side: true }, input.chunkBytes);
     }
   }
   return fold.rollups();

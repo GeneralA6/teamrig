@@ -2,12 +2,12 @@ import { ENV } from '../../core/home.ts';
 import type { SecretScanner } from '../../core/secrets.ts';
 import { issueRef } from '../../github/map.ts';
 import type { AddIssueAsk } from '../../github/issue-at-add.ts';
-import type { IssueDraft, IssueHost } from '../../issues/host.ts';
+import { GITHUB_REPOS_HOST, type HostAccess, type IssueDraft, type IssueStore, type Tracker } from '../../issues/host.ts';
 import type { TaskFields } from '../../register/events.ts';
 import type { AddInput, Verdict } from '../../register/policy.ts';
 import type { WriteResult } from '../../register/register.ts';
 import type { Flags } from '../args.ts';
-import { hostOf } from '../issue-hosts.ts';
+import { hostsOf } from '../issue-hosts.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { GITHUB_OFF, githubOff } from './issue-sync-auto.ts';
 
@@ -37,11 +37,12 @@ export interface IssueAddRegister {
 export type IssueAddEnd = { readonly kind: 'stopped'; readonly code: ExitCode } | { readonly kind: 'written'; readonly verdict: Verdict<WriteResult>; readonly ref: string };
 
 /**
- * The host a new task's issue opens on: GitHub, with the token saved for the repository's owner, or none while GitHub is
- * off here. stamp is the team's github.stamp: whether the issue's body ends with the made-with-teamrig footer.
+ * The tracker a new task's issue opens on: GitHub's (the issue's repository is one of github.repos), with the token
+ * saved for the repository's owner, or none while GitHub is off here. stamp is the team's github.stamp: whether the
+ * issue's body ends with the made-with-teamrig footer.
  */
-export function addIssueHost(runtime: CliRuntime, scanner: SecretScanner, stamp: boolean): IssueHost | undefined {
-  return githubOff(runtime.env) ? undefined : hostOf('github', runtime, scanner, stamp);
+export async function addIssueHost(runtime: CliRuntime, scanner: SecretScanner, stamp: boolean): Promise<Tracker | undefined> {
+  return githubOff(runtime.env) ? undefined : (await hostsOf(GITHUB_REPOS_HOST, runtime, scanner, stamp)).tracker;
 }
 
 /**
@@ -53,7 +54,7 @@ export function addIssueHost(runtime: CliRuntime, scanner: SecretScanner, stamp:
 export async function addWithIssue(
   say: (line: string) => void,
   register: IssueAddRegister,
-  host: IssueHost | undefined,
+  host: (HostAccess & IssueStore) | undefined,
   by: string,
   input: AddInput,
   draft: IssueDraft,

@@ -1,0 +1,26 @@
+[
+  {
+    "event": "PostToolUseFailure",
+    "index": 0,
+    "hook": "hook missing-cli",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUseFailure",
+    "index": 0,
+    "hook": "hook tool-end",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  },
+  {
+    "event": "PostToolUseFailure",
+    "index": 1,
+    "hook": "hook tool-end",
+    "code": 0,
+    "stdout": [],
+    "stderr": []
+  }
+]

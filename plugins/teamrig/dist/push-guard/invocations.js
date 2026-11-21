@@ -6,7 +6,7 @@ import { redirectsInput, stdinUse } from "./stdin.js";
 import { parseHeldText, parseShell } from "./tokenizer.js";
 import { resolveLiteralVariables } from "./variables.js";
 /** Git's own commands; an alias never overrides one. */
-const BUILTINS = new Set(('add am annotate apply archive backfill bisect blame branch bugreport bundle cat-file check-attr check-ignore check-mailmap ' +
+export const GIT_BUILTINS = new Set(('add am annotate apply archive backfill bisect blame branch bugreport bundle cat-file check-attr check-ignore check-mailmap ' +
     'check-ref-format checkout checkout-index cherry cherry-pick citool clean clone column commit commit-graph commit-tree config ' +
     'count-objects credential cvsexportcommit cvsimport cvsserver daemon describe diagnose diff diff-files diff-index diff-tree ' +
     'difftool fast-export fast-import fetch fetch-pack filter-branch fmt-merge-msg for-each-ref for-each-repo format-patch fsck gc ' +
@@ -21,7 +21,7 @@ const BUILTINS = new Set(('add am annotate apply archive backfill bisect blame b
 /** Git options that only print something and run no command. */
 const GIT_INFO_OPTIONS = new Set(['--help', '-h', '--version', '-v', '--html-path', '--man-path', '--info-path', '--exec-path']);
 /** Git options that take a value, as the next word or after `=`. */
-const GIT_VALUED_OPTIONS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix', '--attr-source']);
+export const GIT_VALUED_OPTIONS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix', '--attr-source']);
 /** Config sections that change which remote branch a push updates. */
 const PUSH_CONFIG = /^(?:remote|push|branch)\./i;
 /** `git config` forms that read or remove, never set. */
@@ -321,7 +321,7 @@ class GitInvocationFinder {
                     break;
                 }
                 const subcommand = name.startsWith('git-') ? name.slice(4) : undefined;
-                if (name !== 'git' && (subcommand === undefined || !BUILTINS.has(subcommand))) {
+                if (name !== 'git' && (subcommand === undefined || !GIT_BUILTINS.has(subcommand))) {
                     break;
                 }
                 const inner = location.child();
@@ -471,7 +471,7 @@ class GitInvocationFinder {
         }
         const state = { dir, gitDir, configOverride, aliases, aliasesUnknown, hooksOverride };
         const args = words.slice(index + 1);
-        if (BUILTINS.has(sub.text)) {
+        if (GIT_BUILTINS.has(sub.text)) {
             const hooks = hooksOverride === undefined ? {} : { hooksOverride };
             this.builtin({ dir: this.repoDir(state), subcommand: sub.text, args, configOverride, ...hooks }, depth);
         }

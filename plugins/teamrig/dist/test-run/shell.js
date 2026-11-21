@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { endOf } from "../core/shell-end.js";
 import { posixQuote } from "../open/quote.js";
 /** Characters a POSIX shell reads as plain text; a word with any other is single-quoted. */
 const POSIX_PLAIN = /^[\w@%+=:,./-]+$/;
@@ -49,10 +50,6 @@ export function posixWord(word) {
 }
 function cmdWord(word) {
     return word !== '' && !CMD_SPECIAL.test(word) ? word : `"${word.replaceAll('"', '\\"')}"`;
-}
-/** The end Node reports on `close`: a code, or no code and the signal that stopped the process. */
-export function endOf(code, signal) {
-    return code === null ? { kind: 'signal', signal: signal ?? 'an unknown signal' } : { kind: 'exited', code };
 }
 /** The real shell: Node's `spawn` with `shell: true`, stdin closed, stdout and stderr read as they come. */
 export function nodeShellRunner() {

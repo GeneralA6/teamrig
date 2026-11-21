@@ -204,6 +204,45 @@ export const RENAME_TO_DELIVERY = {
     firstRelease: '0.243.0',
     apply: (config) => renameKeys(config, DELIVERY_RENAMES, 7),
 };
+/** The service role command version 8 allowed and version 9 does not: a reply goes through `teamrig issue reply` (T3169). */
+export const DROPPED_ROLE_COMMAND = 'issue comment';
+/**
+ * v8 to v9: no service role posts a bare comment (T3169), so `issue comment` comes off each `serviceRoles` entry's
+ * commands, a role left with none goes, and `serviceRoles` goes once empty, as `roles revoke` leaves it. It only
+ * narrows what an owner-gated key allows. Without it version 9's parse would fail the load on such a config, and so
+ * every config write, `roles revoke` included.
+ */
+export const DROP_ROLE_COMMENT = {
+    from: 8,
+    firstRelease: '0.496.0',
+    apply: (config) => {
+        const roles = config['serviceRoles'];
+        if (!isRecord(roles)) {
+            return { config, changes: [] };
+        }
+        const kept = [];
+        const changes = [];
+        for (const [name, role] of Object.entries(roles)) {
+            const commands = isRecord(role) ? role['commands'] : undefined;
+            if (!isRecord(role) || !Array.isArray(commands) || !commands.includes(DROPPED_ROLE_COMMAND)) {
+                kept.push([name, role]);
+                continue;
+            }
+            const left = commands.filter((command) => command !== DROPPED_ROLE_COMMAND);
+            if (left.length === 0) {
+                changes.push(`serviceRoles.${name} dropped: it held only ${DROPPED_ROLE_COMMAND}, and a reply goes through teamrig issue reply`);
+                continue;
+            }
+            kept.push([name, { ...role, commands: left }]);
+            changes.push(`serviceRoles.${name}.commands: ${DROPPED_ROLE_COMMAND} taken off, as a reply goes through teamrig issue reply`);
+        }
+        if (changes.length === 0) {
+            return { config, changes: [] };
+        }
+        const { serviceRoles: _dropped, ...rest } = config;
+        return { config: kept.length === 0 ? rest : { ...config, serviceRoles: Object.fromEntries(kept) }, changes };
+    },
+};
 /** The shipped chain, in order: each step reads `from` and produces `from + 1`. */
 export const CONFIG_MIGRATIONS = [
     RENAME_TIERS_TO_PRIORITIES,
@@ -213,6 +252,7 @@ export const CONFIG_MIGRATIONS = [
     DROP_HIRE_CAP,
     DROP_IDLE_RETIRE,
     RENAME_TO_DELIVERY,
+    DROP_ROLE_COMMENT,
 ];
 /** This release's format. */
 export const SHIPPED_CONFIG_FORMAT = { version: CONFIG_VERSION, migrations: CONFIG_MIGRATIONS };

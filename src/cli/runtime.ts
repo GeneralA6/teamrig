@@ -1,4 +1,5 @@
 import type { TranscriptSource } from '../budget/discover.ts';
+import type { HostSource } from '../composition/host-ports.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
 import type { HostCpu } from '../delivery/cpu.ts';
 import type { HostMemory } from '../delivery/memory.ts';
@@ -8,12 +9,13 @@ import type { StepRunner } from '../delivery/steps.ts';
 import type { FileBytes } from '../core/file-bytes.ts';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
+import type { HttpClient } from '../core/http.ts';
 import type { ChatWebhook } from '../core/webhook.ts';
 import type { ExecPorts } from '../exec/ports.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import type { StoreFolders } from '../core/plugin-store.ts';
-import type { CredentialStore } from '../github/credentials.ts';
+import type { CredentialStore } from '../core/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { PullGit } from '../github/pull-conflicts.ts';
 import type { MergeGit } from '../merge/git.ts';
@@ -67,6 +69,8 @@ export interface CliRuntime {
   readonly secretsGit: SecretsGit;
   readonly out: Output;
   readonly platform: NodeJS.Platform;
+  /** The ports of the AI CLI this run works in, built for an environment and platform: read them with `hostOf` (host.ts). */
+  readonly host: HostSource;
   /** Terminal launchers and Claude Code, for `teamrig open` and `teamrig launch`. */
   readonly processes: Processes;
   /** The running session's Claude Code process and its tab, which the automatic context refresh ends. */
@@ -85,6 +89,8 @@ export interface CliRuntime {
   readonly gh: GhRunner;
   /** The system's saved secrets, where `teamrig issue sync` finds each owner's read-only GitHub token; only ever read. */
   readonly credentials: CredentialStore;
+  /** The API of an outside tool a connector adapter reaches with no command line (plugin-api/connector.ts): https only. */
+  readonly http: HttpClient;
   /** Whether a folder or a program is there. */
   readonly probe: PathProbe;
   /** The plugin store's file and folder times, which the idle pass reads before it reopens a session. */
