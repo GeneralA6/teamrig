@@ -6530,7 +6530,8 @@ and `budget.reset`. A reading taken before today's start gives its day: `at 10-2
 in the period kept in `state/usage/period.json`: from the last reset to the next, each week opening
 where the last one ended, and a moved reset keeping its start. A reading 2 points or more below the latest one,
 its reset unchanged, is a reset inside the week: a new budget runs from that latest reading to the reset, and the
-pace line and today's use start there. A reading 2 points or more over that budget's latest one is left out, and
+pace line and today's use start there. The pace line starts at the use that budget's first reading shows, not at 0,
+as a reset that gives back only one model's use (a Fable reset) leaves the rest counted. A reading 2 points or more over that budget's latest one is left out, and
 logs no meter line, when its session last showed another use before that latest reading: it may be the old week's
 use, shown late. With no period kept yet, the week before the reset is taken, unless the W
 metered since its start (at the week's W per percent) is 1.5 times the status line's use and 10 points over it:
