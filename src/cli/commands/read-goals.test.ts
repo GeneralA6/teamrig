@@ -103,6 +103,19 @@ describe('teamrig read goals', () => {
     assert.deepEqual(heldOf(answer).map(([tag]) => tag), ['A1', 'S1', 'W1']);
   });
 
+  it('leaves out a record whose time is not teamrig’s stamp, so words stored in it are never served', async () => {
+    const kit = new CliHarness();
+    await addGoal(kit, 'A1', 'Ship the gate');
+    const words = ['pass', 'word', '=', 'hunter2'].join('');
+    const moved = { type: 'goal-set', v: 1, at: `Jan 9 2030 08:00 UTC (${words})`, by: 'lead', tag: 'A1', note: 'moved', target: '2030-02-10' };
+    await kit.files.append(join(TEAM_HOME, 'state', 'goals.jsonl'), `${JSON.stringify(moved)}\n`);
+    const run = await kit.run(READ_GOALS);
+    const answer = served(run);
+    assert.deepEqual(rowsOf(answer, 'goals').map((goal) => [goal['tag'], goal['target'], goal['slips']]), [['A1', '2030-02-01', []]]);
+    assert.deepEqual(problemsOf(answer), ['app/state/goals.jsonl: 1 unreadable line(s) left out']);
+    assert.ok(!run.stdout.join('').includes(words));
+  });
+
   it('serves no goal, and no problem, to a team that has none', async () => {
     const answer = served(await new CliHarness().run(READ_GOALS));
     assert.deepEqual([answer['goals'], answer['problems']], [[], []]);
