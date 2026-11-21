@@ -802,8 +802,9 @@ them (`echo "exec approve R1"`). A command word only known when it runs counts o
   `setup restore`, `config migrate` or `restore install` with `--yes` (or a word only known when the line runs
   after the command), whatever client starts it: each changes Claude Code's settings, the team config's format or
   what runs at login, permissions only the owner changes. The CLI refuses the same `--yes` wherever `$CLAUDECODE`
-  is set. Its preview, without `--yes`, runs; the owner types `/teamrig permissions trim --yes` in a tab, or runs it
-  in their own terminal.
+  is set, and on a host whose adapter names no such mark, where an agent's run cannot be told from the owner's (the
+  refusal says what the adapter must name). Its preview, without `--yes`, runs; the owner types
+  `/teamrig permissions trim --yes` in a tab, or runs it in their own terminal.
 - **a hook**: any `hook` command (`hook slash-command`, `hook session-start`, ...), whatever client starts it,
   `$T hook ...` too. A hook takes the tab it runs for, and who typed a `/teamrig` line, from its stdin, which
   its caller writes, so only Claude Code's hooks and the mod run them; prove a hook in a test, or by a script on a
@@ -811,13 +812,15 @@ them (`echo "exec approve R1"`). A command word only known when it runs counts o
 - **another session's tab**: in a tab bound to a session, a [start](commands.md#teamrig-start) or
   [inbox read](commands.md#teamrig-inbox-read), whatever client starts it, that names another session of the team
   with `--session`, names one only known when it runs (`--session "$S"`), or runs on a line that sets
-  `$TEAMRIG_SESSION` or `$CLAUDE_CODE_SESSION_ID`: a tab reads its inbox and starts only as itself. Its own session,
-  by id or by a name it has had, passes, and a tab not bound yet binds to any.
+  `$TEAMRIG_SESSION` or a variable a host tells the tab by (its session id and the folder it
+  started in, as its adapter names them); the refusal names the variable the line changes: a tab reads its inbox and starts only as
+  itself. Its own session, by id or by a name it has had, passes, and a tab not bound yet binds to any.
 - **a changed `$CLAUDECODE`**: a line that sets, removes or empties it, in any shell (`CLAUDECODE= ...`,
   `env -u CLAUDECODE`, `env -i`, `unset`, `export -n`, PowerShell's `$env:CLAUDECODE = ...` or
   `Remove-Item Env:CLAUDECODE`, cmd's `set CLAUDECODE=`). Claude Code sets it so teamrig knows a command runs under
   it, and the owner commands, `hook slash-command` and `inbox read` keep their checks there; leave it as Claude Code
-  set it. A line that only reads it (`echo $CLAUDECODE`) passes.
+  set it. A line that only reads it (`echo $CLAUDECODE`) passes. The guard holds the mark of every host teamrig ships
+  an adapter for, and the running host's own, whichever host the line runs under.
 - **a shell fed from a pipe**: a shell on the line that takes its commands from a pipe (`echo ... | bash`,
   `... | iex`, `x | bash -c bash`), whatever feeds it, as the pipe can carry a review the line never shows. Run the
   commands directly, or hand the shell a heredoc, which the guard reads as written. A shell with no pipe into it
