@@ -328,20 +328,23 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       interface's read side, for a program: each document asked is one JSON line on stdout, in the
       order asked, with its revision and what could not be served (problems); a refusal goes to
       stderr, so stdout holds answers only.
-      Documents: tasks (the register's working set; --owner keeps one session's), inbox (--session's
-      own lines, marking none read: the unread ones and the read ones of the last --since hours, 24
-      unless given), sessions (every session of your tree of teams: its place, hire, state and unread
-      count; a hire's and a retirement's words only for your own team and the teams above it), meetings
-      (the team's scheduled and started meetings by time, as meeting list --json prints them), config
-      (the team, its zone, its priorities and every key of the team config as config get --json reads
-      it, a key naming where a secret is kept without its value; with no team here config alone is
-      answered, with the teams of this machine to join).
+      Documents: tasks (the register's working set; --owner keeps one session's), plan (the team's
+      active tasks in plan order, each with the keys of that order, what it needs, who needs it and
+      who moves next, as teamrig's own lists place it; --owner keeps one session's; of another team's
+      task only the id, team, owner and status), inbox (--session's own lines, marking none read: the
+      unread ones and the read ones of the last --since hours, 24 unless given), sessions (every
+      session of your tree of teams: its place, hire, state and unread count; a hire's and a
+      retirement's words only for your own team and the teams above it), meetings (the team's
+      scheduled and started meetings by time, as meeting list --json prints them), config (the team,
+      its zone, its priorities and every key of the team config as config get --json reads it, a key
+      naming where a secret is kept without its value; with no team here config alone is answered,
+      with the teams of this machine to join).
       --conversation: the host's id of the conversation the program runs in; sessions then names the
       session holding it (self), and inbox serves that session's when no --session is given. --team: a
-      team above yours, for tasks, meetings and config. --unless: the revision you hold of a document
-      asked; one still at that revision is answered with unchanged: true in place of its body, from
-      its files' stamps alone. --interface: the version you speak, refused when this teamrig does not
-      serve it. It writes nothing
+      team above yours, for tasks, plan, meetings and config. --unless: the revision you hold of a
+      document asked; one still at that revision is answered with unchanged: true in place of its
+      body, from its files' stamps alone. --interface: the version you speak, refused when this
+      teamrig does not serve it. It writes nothing
   sessions [--pass] [--project <dir>]   each session: running (and the MB its Claude Code's processes
       hold), closed or never recorded; then the host's free memory and commit charge. --pass: what an
       idle pass would close and reopen (one reopen a pass, with room on the host) and why it keeps or
