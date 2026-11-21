@@ -2451,15 +2451,16 @@ The read side of teamrig's public interface, for a program such as a pane, a das
 Nothing else is written to stdout, so every line there parses; a refusal is one `REFUSED` line on stderr with exit 2
 and no document, where other commands print it to stdout. It writes no file, marks nothing read and takes no lock.
 
-The five documents of interface 1.0 are served, and `plan`, which 1.1 added. `tasks` is the register's working set,
-the active tasks and the finished ones not yet archived. `plan` is the team's active tasks in plan order, each as
-teamrig's own lists place it. `inbox` is the asking session's own inbox. `sessions` is every session of your tree of
-teams. `meetings` is the team's meetings still scheduled or started. `config` is the team's config key by key, and
-the one document a run with no team is answered.
+The five documents of interface 1.0 are served, and `plan`, which 1.1 added, and `goals`, which 1.2 added. `tasks`
+is the register's working set, the active tasks and the finished ones not yet archived. `plan` is the team's active
+tasks in plan order, each as teamrig's own lists place it. `goals` is the goals a task of the team may serve.
+`inbox` is the asking session's own inbox. `sessions` is every session of your tree of teams. `meetings` is the
+team's meetings still scheduled or started. `config` is the team's config key by key, and the one document a run
+with no team is answered.
 
 Every document carries:
 
-- `interface`: the interface version that wrote it (`1.1`). Ignore fields you do not know: a minor version adds some.
+- `interface`: the interface version that wrote it (`1.2`). Ignore fields you do not know: a minor version adds some.
 - `document`: its name.
 - `revision`: 16 characters that stay the same while the files the document is read from, what you asked and the
   teamrig version stay the same. Compare it with the one you hold to know whether to draw again; it has no other
@@ -2522,6 +2523,29 @@ serves the id, the team, the owner and the status, and nothing else. When a regi
 archive segment is gone), `tasks` and `finished` are empty and `problems` names the segment: a plan judged without
 it would call a task ready whose need there is unfinished. Its `revision` moves with each of those files, so on a
 working team it moves at nearly every turn, as the scores do: `--unless` saves this document little there.
+
+`goals` (since interface 1.2) adds `goals` and `cuts`: the goals a task of the team may serve, which are the team's
+own and those of every team above it in your tree, as `teamrig add --goals` and the plan's ranking read them. A tag
+two of those teams hold is served once, as the nearer team's goal. A team beside or below the asked one is never
+read, and `--owner` does not narrow the document: a goal is no session's.
+
+- `goals`: the ranked goals first, by rank and then by tag, then the unranked ones by tag. Each holds:
+  - `tag`, and `team`: the team whose goals file holds it, the asked team or one above it.
+  - `title`: its title, plain text the team's lead wrote.
+  - `parent`: the tag of the goal it is a part of, or `null`.
+  - `rank`: its place in its team's ranking, 1 first; `null` for a goal the lead has not ranked.
+  - `slice`: the number of the slice now open, 1 first; `null` while none is.
+  - `start` and `target`: the first and the target day of its window, each `YYYY-MM-DD`.
+  - `slips`: every move of its target day, the oldest first, each `{ "at", "by", "from", "to", "note" }`: when it
+    was moved (a UTC instant), who moved it, the target day before and after, and why.
+- `cuts`: each text cut for matching a secret shape, as `{ "id", "field", "shape" }`: `id` is the goal's tag and
+  `field` is `title` or `slips.<n>.note`, the slip counted from 0.
+
+It serves what is stored of a goal and judges nothing: a goal's done counts, pace and forecast are no part of it.
+`plan[].goal` names a goal by `tag`: join it here for the title and the window. A goals file's lines that could not
+be served are counted in `problems`, the file named from its team's folder down: unreadable lines, lines a newer
+teamrig wrote, and records of no goal. Its `revision` moves with those goals files and the configs of your tree, so
+`--unless` holds it for days on a team whose goals stand still.
 
 `inbox` adds `session` (`{ "id", "name" }`), `unread` (how many lines the session has not read; `null` when it never
 ran `teamrig inbox read`, and then every line counts as unread), `lines` and `cuts`. `lines` holds every unread line
@@ -2614,8 +2638,8 @@ Flags:
   `.`, `:` or `-`), for a program that knows its conversation but not its session. `sessions` then answers `self`,
   and `inbox` serves the session of your team holding it when no `--session` is given (a usage error when none
   does). Like `--session` it is a label and proves nothing.
-- `--team <id>`: reads a team above yours in your tree instead of your own, for `tasks`, `plan`, `meetings` and
-  `config`. A team beside or below yours is refused.
+- `--team <id>`: reads a team above yours in your tree instead of your own, for `tasks`, `plan`, `goals`,
+  `meetings` and `config`. A team beside or below yours is refused.
 - `--owner <id|name>`: keeps the tasks one session owns, of `tasks` and of `plan`.
 - `--since <hours>`: how far back `inbox` serves the lines already read, in whole hours; 24 when left out, and 0
   serves the unread ones only.
@@ -2636,7 +2660,7 @@ teamrig read tasks --json --owner api
 Output:
 
 ```text
-{"interface":"1.1","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
+{"interface":"1.2","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
 ```
 
 ### teamrig sessions
