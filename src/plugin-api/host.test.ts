@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { unsupported } from '../ports/host/index.ts';
 import { hostDeclarationData, manifestOf } from '../testing/manifests.ts';
-import { defineHost, hostAdapterProblems, hostDeclarationProblems, isHostAdapter, isHostDeclaration, type HostDeps } from './host.ts';
+import { defineHost, hostAdapterProblems, hostDeclarationProblems, isHostAdapter, isHostDeclaration, NO_AGENT_MARK, type HostDeps } from './host.ts';
 
 const NOT_DEFINED = 'its entry is not made by defineHost: it needs a declaration and a create function';
 
@@ -17,6 +17,28 @@ describe('a host declaration', () => {
     assert.equal(isHostDeclaration(data), false);
     assert.ok(hostDeclarationProblems(data).includes('its manifest has no row for rules.session-start'));
     assert.ok(hostDeclarationProblems(data).includes('its manifest names tracker.comment, which is no host feature'));
+  });
+
+  it("is refused with no mark of an agent's run, and told what to declare", () => {
+    for (const sessionVariables of [undefined, {}, { identity: [] }, { marks: [], identity: [] }]) {
+      const data = hostDeclarationData({ sessionVariables });
+      assert.equal(isHostDeclaration(data), false);
+      assert.ok(hostDeclarationProblems(data).includes(NO_AGENT_MARK), JSON.stringify(sessionVariables));
+    }
+    assert.match(NO_AGENT_MARK, /sessionVariables\.marks must name an environment variable the tool sets in what its agent runs/);
+  });
+
+  it('is refused when a session variable it declares is no variable name', () => {
+    const marks = 'its sessionVariables.marks must be names of environment variables';
+    const identity = 'its sessionVariables.identity must be names of environment variables, an empty list when it has none';
+    assert.deepEqual(hostDeclarationProblems(hostDeclarationData({ sessionVariables: { marks: ['SOME CLI'], identity: [] } })), [marks]);
+    assert.deepEqual(hostDeclarationProblems(hostDeclarationData({ sessionVariables: { marks: 'SOME_CLI', identity: [] } })), [marks]);
+    assert.deepEqual(hostDeclarationProblems(hostDeclarationData({ sessionVariables: { marks: ['SOME_CLI'], identity: ['1ST'] } })), [identity]);
+    assert.deepEqual(hostDeclarationProblems(hostDeclarationData({ sessionVariables: { marks: ['SOME_CLI'] } })), [identity]);
+  });
+
+  it('declares its marks and the other variables that say who a session is', () => {
+    assert.deepEqual(hostDeclarationProblems(hostDeclarationData({ sessionVariables: { marks: ['SOME_CLI', '_agent2'], identity: ['SOME_CLI_SESSION'] } })), []);
   });
 });
 
@@ -64,5 +86,11 @@ describe('a host adapter entry', () => {
   it('is refused for what is wrong with its declaration', () => {
     assert.deepEqual(hostAdapterProblems({ declaration: hostDeclarationData({ name: '' }), create: () => ({}) }), ['it needs a name']);
     assert.deepEqual(hostAdapterProblems({ create: () => ({}) }), ['its declaration is not an object']);
+  });
+
+  it("is refused when its declaration names no mark of an agent's run", () => {
+    const markless = { declaration: hostDeclarationData({ sessionVariables: { marks: [], identity: ['SOME_CLI_SESSION'] } }), create: () => ({}) };
+    assert.deepEqual(hostAdapterProblems(markless), [NO_AGENT_MARK]);
+    assert.equal(isHostAdapter(markless), false);
   });
 });

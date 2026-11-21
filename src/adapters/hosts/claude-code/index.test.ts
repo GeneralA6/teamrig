@@ -19,6 +19,10 @@ describe('the Claude Code adapter', () => {
     assert.equal(apiVersionNotice(declaration.apiVersion, API_VERSION), undefined);
   });
 
+  it("declares the mark of an agent's run, and the variables that say which session it is and where it started", () => {
+    assert.deepEqual(declaration.sessionVariables, { marks: ['CLAUDECODE'], identity: ['CLAUDE_CODE_SESSION_ID', 'CLAUDE_PROJECT_DIR'] });
+  });
+
   it('supports every host feature but the two it says it lacks', () => {
     const lacking = featuresOf('host')
       .filter((row) => declaration.manifest[row.id].kind !== 'supported')

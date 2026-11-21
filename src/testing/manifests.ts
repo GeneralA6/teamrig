@@ -11,7 +11,7 @@ export function manifestOf(side: FeatureSide, support: Support = SUPPORTED, over
 
 /** A host declaration as loaded data, with the fields of `over` in place of its own. */
 export function hostDeclarationData(over: Readonly<Record<string, unknown>> = {}): Record<string, unknown> {
-  return { apiVersion: '0.1.0', id: 'some-cli', name: 'Some CLI', manifest: manifestOf('host'), ...over };
+  return { apiVersion: '0.1.0', id: 'some-cli', name: 'Some CLI', sessionVariables: { marks: ['SOME_CLI_AGENT'], identity: [] }, manifest: manifestOf('host'), ...over };
 }
 
 /** A terminal declaration as loaded data, with the fields of `over` in place of its own. */

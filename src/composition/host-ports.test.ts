@@ -60,6 +60,14 @@ describe('loadHostPorts', () => {
     await assert.rejects(loadHostPorts(run, undefinedEntry), { message: /did not load: its entry is not made by defineHost/ });
   });
 
+  it("loads no host that declares no mark of an agent's run, and says what to declare", async () => {
+    const declaration = hostDeclarationData({ id: DEFAULT_HOST, sessionVariables: { marks: [], identity: [] } });
+    const markless: ModuleImporter = () => Promise.resolve({ default: { declaration, create: () => everyPortUnsupported() } });
+    const refusal = /^the host adapter claude-code did not load: it declares no mark of an agent's run: sessionVariables\.marks must name an environment variable /;
+    await assert.rejects(loadHostPorts(run, markless), { message: refusal });
+    await assert.rejects(loadShippedHosts(run, markless), { message: refusal });
+  });
+
   it('refuses what an adapter built when a port is left unnamed, naming each one', async () => {
     const source = await loadHostPorts(run, building({}));
     assert.throws(() => source({ env: {}, platform: 'linux' }), {

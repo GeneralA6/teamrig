@@ -42,7 +42,7 @@ export type { HostPlugin, InstallReach, MarketplaceSource, PluginInstall } from 
 export type { StatusLine, StatusLineAnswer, StatusLinePlan, StatusReading } from './status-line.ts';
 export type { RateLimits, RateWindow, TokenWeights, UsageMeter } from './usage-meter.ts';
 export type { FolderSettings, HostPaths } from './paths.ts';
-export type { SessionIdentity, SessionLauncher } from './session-launcher.ts';
+export type { SessionIdentity, SessionLauncher, SessionVariables } from './session-launcher.ts';
 
 /** Every host port by its name. Each line is required: an adapter names every port, filled or not. */
 export interface HostPorts {

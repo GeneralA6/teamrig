@@ -1,4 +1,5 @@
 import type { HostDeclaration, Support } from '../../../plugin-api/index.ts';
+import { SESSION_VARIABLES } from './session-variables.ts';
 
 /**
  * What teamrig does on Claude Code today: every feature but the two below. No row carries a proof yet: a proof is the
@@ -26,6 +27,7 @@ export const declaration: HostDeclaration = {
   apiVersion: '0.1.0',
   id: 'claude-code',
   name: 'Claude Code',
+  sessionVariables: SESSION_VARIABLES,
   manifest: {
     'rules.session-start': SUPPORTED,
     'rules.instruction-files': SUPPORTED,

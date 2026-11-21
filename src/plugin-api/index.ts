@@ -123,6 +123,7 @@ export {
   type SearchCall,
   type SessionIdentity,
   type SessionLauncher,
+  type SessionVariables,
   type ShellCall,
   type ShellDialect,
   type SkillCall,
