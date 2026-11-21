@@ -622,7 +622,7 @@ export async function cut(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
     throw new RefusedError(decision.reason);
   }
   await new CutLog(runtime.files, kit.paths.cuts).append(decision.cut);
-  runtime.out.stdout(`CUT ${cutText(decision.cut, nameOf(id), zone)}`);
+  runtime.out.stdout(`CUT ${cutText(decision.cut, nameOf(id), zone, config.budget.overAction)}`);
   return EXIT.ok;
 }
 

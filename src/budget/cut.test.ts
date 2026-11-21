@@ -102,14 +102,20 @@ describe('activeCut', () => {
 describe('cutText', () => {
   it('says what the cut does and when it ends', () => {
     assert.equal(
-      cutText(cut(), 'alpha', TimeZone.UTC),
+      cutText(cut(), 'alpha', TimeZone.UTC, 'block'),
       'alpha to its own daily budget until 00:00 UTC (the end of the budget day): past it, it is held whatever room the team has, ' +
         'so it wakes for p0 work only and budget.overAction holds its new helpers back as it says; a lift in force still sets that budget, and a new lift of it ends the cut.',
     );
   });
 
+  it('says under overAction warn that the cut only warns, as wakes hold nothing there (#922)', () => {
+    const text = cutText(cut(), 'alpha', TimeZone.UTC, 'warn');
+    assert.doesNotMatch(text, /p0 work only|it is held/);
+    assert.match(text, /^alpha to its own daily budget until 00:00 UTC \(the end of the budget day\): past it, it is warned whatever room the team has, but budget\.overAction warn holds nothing, /);
+  });
+
   it("says when it ends on the team's clock", () => {
-    assert.match(cutText(cut({ endsAt: Date.parse('2030-01-08T16:00:00Z') }), 'alpha', JERUSALEM), /^alpha to its own daily budget until 18:00 IST: past it, /);
+    assert.match(cutText(cut({ endsAt: Date.parse('2030-01-08T16:00:00Z') }), 'alpha', JERUSALEM, 'block'), /^alpha to its own daily budget until 18:00 IST: past it, /);
   });
 });
 

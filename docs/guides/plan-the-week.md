@@ -109,7 +109,9 @@ Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 poin
 - A leader also holds a session to its own part for a day: `teamrig budget cut` holds it as soon as it is past its
   own daily budget, whatever room the team has, until the end of the day or `--until`; a lift of it given later ends
   the cut. With `--stop` it is held whatever its use, so it is woken and reopened for p0 work only, until `--until`
-  or the week's reset.
+  or the week's reset. Under `budget.overAction` `warn`, the default, the budget holds nothing, a cut or stop
+  included: the session is only warned past its own budget and still wakes and works, so set `ask-lead`, `ask` or
+  `block` for a cut to hold.
 - On a short day, when the week's use is past its pace line so what is left gives the day less than the line plans,
   every session keeps its part by default. With `budget.pauseByPriority` on, the day funds the work in priority order
   instead, across every team on the Claude account: the lead, the delivery owner and lifted sessions first, then

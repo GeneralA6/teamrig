@@ -23,6 +23,7 @@ import {
   wakeCost,
   wakePrompt,
   wakeRestOf,
+  type WakeBudget,
   wakeToast,
   WARM_WAKE_W,
   type OpenedTab,
@@ -350,56 +351,73 @@ describe('wakeRestOf', () => {
     ...overrides,
   });
 
+  // A budget that holds past the stop; under `warn` (the default) it holds nothing (#922).
+  const BLOCK: WakeBudget = { overAction: 'block' };
+  const QUIET_BLOCK: WakeBudget = { quietHours: QUIET_HOURS, overAction: 'block' };
+
   it('goes by the clock alone with no budget facts, never held', () => {
-    assert.deepEqual(wakeRestOf(undefined, QUIET_HOURS, NOW, 0), { held: false, quiet: true });
-    assert.deepEqual(wakeRestOf(undefined, undefined, NOW, 0), { held: false, quiet: false });
+    assert.deepEqual(wakeRestOf(undefined, QUIET_BLOCK, NOW, 0), { held: false, quiet: true });
+    assert.deepEqual(wakeRestOf(undefined, BLOCK, NOW, 0), { held: false, quiet: false });
   });
 
   it("reads the hold and quiet hours from the session's facts, and its lift's exemption", () => {
-    assert.deepEqual(wakeRestOf(facts(), undefined, NOW, 0), { held: false, quiet: false });
-    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 1.5 }), QUIET_HOURS, NOW, 0), { held: true, quiet: true });
+    assert.deepEqual(wakeRestOf(facts(), BLOCK, NOW, 0), { held: false, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 1.5 }), QUIET_BLOCK, NOW, 0), { held: true, quiet: true });
     const lift = { session: 'alpha', group: false, partPct: 40, stopPct: 97, endsAt: NOW + 60 * MINUTE, reserve: false, quietHoursExempt: true, reason: 'incident', by: 'lead', at: NOW - MINUTE };
-    assert.deepEqual(wakeRestOf(facts({ lift }), QUIET_HOURS, NOW, 0), { held: false, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ lift }), QUIET_BLOCK, NOW, 0), { held: false, quiet: false });
   });
 
   it('counts the turn a wake would start as spent, so a session with less left than that turn is held before it (T1322)', () => {
     const awake = { held: false, quiet: false };
     const held = { held: true, quiet: false };
-    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0 }), undefined, NOW, COLD_WAKE_W), held);
-    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0.05 }), undefined, NOW, COLD_WAKE_W), awake);
-    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0.01 }), undefined, NOW, COLD_WAKE_W), held);
-    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0.01 }), undefined, NOW, WARM_WAKE_W), awake);
-    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0, teamDay: { usedPct: 4.9, pacePct: 5 } }), undefined, NOW, COLD_WAKE_W), awake);
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0 }), BLOCK, NOW, COLD_WAKE_W), held);
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0.05 }), BLOCK, NOW, COLD_WAKE_W), awake);
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0.01 }), BLOCK, NOW, COLD_WAKE_W), held);
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0.01 }), BLOCK, NOW, WARM_WAKE_W), awake);
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0, teamDay: { usedPct: 4.9, pacePct: 5 } }), BLOCK, NOW, COLD_WAKE_W), awake);
   });
 
   it('never holds a session past its part while the team has room today', () => {
-    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 1.5, teamDay: { usedPct: 4.9, pacePct: 5 } }), undefined, NOW, 0), { held: false, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 1.5, teamDay: { usedPct: 4.9, pacePct: 5 } }), BLOCK, NOW, 0), { held: false, quiet: false });
   });
 
   it('holds a session a leader cut once past its part, whatever room the team has (T1616)', () => {
     const cut = { session: 'alpha', endsAt: NOW + 60 * MINUTE, stop: false, reason: 'over on a p3', by: 'lead', at: NOW - MINUTE };
     const cutBy = { id: 'lead', name: 'lead', isLead: true };
-    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 1.5, teamDay: { usedPct: 4.9, pacePct: 5 }, cut, cutBy }), undefined, NOW, 0), { held: true, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 1.5, teamDay: { usedPct: 4.9, pacePct: 5 }, cut, cutBy }), BLOCK, NOW, 0), { held: true, quiet: false });
   });
 
   it('holds a session a leader stopped from its first W, whatever room the team has (T3455)', () => {
     const cutBy = { id: 'lead', name: 'lead', isLead: true };
     const room = { usedPct: 1, pacePct: 5 };
     const cut = { session: 'alpha', endsAt: NOW + 60 * MINUTE, stop: false, reason: 'stopped until the reset', by: 'lead', at: NOW - MINUTE };
-    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, teamDay: room, cut, cutBy }), undefined, NOW, 0), { held: false, quiet: false });
-    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, teamDay: room, cut: { ...cut, stop: true }, cutBy }), undefined, NOW, 0), { held: true, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, teamDay: room, cut, cutBy }), BLOCK, NOW, 0), { held: false, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, teamDay: room, cut: { ...cut, stop: true }, cutBy }), BLOCK, NOW, 0), { held: true, quiet: false });
+    // Under warn a stop holds nothing either, as its line says (#922).
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, teamDay: room, cut: { ...cut, stop: true }, cutBy }), { overAction: 'warn' }, NOW, 0), { held: false, quiet: false });
   });
 
   it('holds a session a short day pauses, whatever room the team has and before any use today (T1598)', () => {
     const room = { usedPct: 1, pacePct: 5 };
-    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0, paused: true, teamDay: room }), undefined, NOW, 0), { held: true, quiet: false });
-    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0, paused: false, teamDay: room }), undefined, NOW, 0), { held: false, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0, paused: true, teamDay: room }), BLOCK, NOW, 0), { held: true, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0, paused: false, teamDay: room }), BLOCK, NOW, 0), { held: false, quiet: false });
+  });
+
+  it('holds nothing past the daily budget under overAction warn, a cut included, but rests a paused session (#922)', () => {
+    const warn: WakeBudget = { overAction: 'warn' };
+    const cut = { session: 'alpha', endsAt: NOW + 60 * MINUTE, stop: false, reason: 'over on a p3', by: 'lead', at: NOW - MINUTE };
+    const cutBy = { id: 'lead', name: 'lead', isLead: true };
+    const awake = { held: false, quiet: false };
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 1.5 }), warn, NOW, 0), awake);
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0 }), warn, NOW, COLD_WAKE_W), awake);
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 1.5, teamDay: { usedPct: 4.9, pacePct: 5 }, cut, cutBy }), warn, NOW, 0), awake);
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0, paused: true, teamDay: { usedPct: 1, pacePct: 5 } }), warn, NOW, 0), { held: true, quiet: false });
   });
 
   it('lets a burst hold a paused session up: its floor is the budget it goes by (T1598)', () => {
     const burst = { kind: 'surplus', sessions: ['alpha'], helpers: 1, hires: 0, dailyPct: 2, stopPct: 97, endsAt: NOW + 60 * MINUTE, tasks: [], reason: 'spare week', by: 'lead', at: NOW - MINUTE } as const;
-    assert.deepEqual(wakeRestOf(facts({ budgetPct: 2, paused: true, burst }), undefined, NOW, 0), { held: false, quiet: false });
-    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 2.5, budgetPct: 2, paused: true, burst }), undefined, NOW, 0), { held: true, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ budgetPct: 2, paused: true, burst }), BLOCK, NOW, 0), { held: false, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 2.5, budgetPct: 2, paused: true, burst }), BLOCK, NOW, 0), { held: true, quiet: false });
   });
 });
 

@@ -1181,7 +1181,7 @@ share of the week [focus.allocation]), so the push never sends a session past th
 `leadBoundary` is on, is asked to hand code work to the session owning its area (`teamrig update <id> --owner
 <session>`) and work the rest. It asks at one stop only, never on a stop already sent back or while a context
 refresh is under way (the ask then waits for a later stop), and never in the budget's quiet hours or while its
-budget holds it or a short day pauses it (the day-start wake brings it back to its work). With nothing it can start, the turn ends as
+budget holds it (never under `budget.overAction` `warn`) or a short day pauses it (the day-start wake brings it back to its work). With nothing it can start, the turn ends as
 it would, and a turn that asks the user to decide shows [the decision circle](#every-event-tab-status). A hired
 session asked to write its handover is asked that first.
 
@@ -1729,13 +1729,13 @@ work at a turn end, and once the team has no room it is held like any session pa
 lead, the delivery owner and lifted sessions are never paused, and a burst's floor still holds a paused session up.
 Past its part while the team has room, a session is not held, and its line says so: `The team has room today: 2.0%
 of the week used, below its in-day pace of 4.0%, so nothing more happens.` Past its part once the team has no room,
-it is held: only p0 work wakes it or keeps its idle tab open, and it is escalated when `budget.escalate` is `session`, or, with
+it is held, unless `budget.overAction` is `warn`: only p0 work wakes it or keeps its idle tab open, and it is escalated when `budget.escalate` is `session`, or, with
 `session-and-fleet` (the default), only while the whole team is also ahead of its pace line. Then
 `budget.overAction` applies:
 
 | `overAction` | What happens |
 | --- | --- |
-| `warn` (default) | the lines only |
+| `warn` (default) | the lines only; nothing is held, so its wakes, its idle tab and the Stop hook's keep-working ask go on as with room left (a short day's pause still rests it) |
 | `ask-lead` | the session's leader (the lead, or its sub-lead) also gets one inbox line a day, naming the lift command |
 | `ask` | the leader's line, and each new helper launch is refused with its route (no teamrig hook asks a person) |
 | `block` | the leader's line, and new helper launches are refused |

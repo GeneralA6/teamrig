@@ -6795,7 +6795,9 @@ lift that gives more), a week already at the stop % or an unknown week (no statu
 A leader cuts one session under it to its own daily budget, for today at most. Without a cut, a session past its
 daily budget uses the room the others left: it is held only once the team has no room left today. Under a cut it is
 held as soon as it is past its own budget, whatever room the team has: it wakes, and is reopened, for p0 work only,
-and `budget.overAction` holds its new helpers back as it says. Its budget lines name the cut, and its leader gets no
+and `budget.overAction` holds its new helpers back as it says. Under `budget.overAction` `warn`, the default, the
+budget holds nothing, a cut included: past its own budget the cut session is only warned, and it still wakes and
+works as before; set `budget.overAction` to `ask-lead`, `ask` or `block` to hold it. Its budget lines name the cut, and its leader gets no
 inbox line about it, since a leader gave the cut. A lift in force still sets the session's budget; a lift of the
 session given after the cut ends it. A cut ends at `--until` or at the end of the budget day (a UTC day), whichever
 comes first, and a newer cut of the session replaces an older one. The leaders who may lift a session may cut it:
@@ -6822,11 +6824,19 @@ Example:
 teamrig budget cut api --session lead --reason "over on a p3"
 ```
 
-Output:
+Output, under `budget.overAction` `block`:
 
 ```text
 CUT api to its own daily budget until 03:00 IDT (the end of the budget day): past it, it is held whatever room the team has, so it wakes for p0 work only and budget.overAction holds its new helpers back as it says; a lift in force still sets that budget, and a new lift of it ends the cut.
 ```
+
+Under `warn`, the default:
+
+```text
+CUT api to its own daily budget until 03:00 IDT (the end of the budget day): past it, it is warned whatever room the team has, but budget.overAction warn holds nothing, so it still wakes and works as before (set budget.overAction to hold it); a lift in force still sets that budget, and a new lift of it ends the cut.
+```
+
+A stop, under `block` (under `warn` it says it is only warned, as above):
 
 ```sh
 teamrig budget cut api --stop --session lead --reason "no new work until the reset"

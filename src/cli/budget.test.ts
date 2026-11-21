@@ -727,8 +727,9 @@ describe('teamrig budget lift', () => {
 describe('teamrig budget cut', () => {
   const CUTS = join(TEAM_HOME, 'state', 'usage', 'cuts.jsonl');
   const CUT = ['budget', 'cut', 'alpha', '--reason', 'over on a p3'];
+  // The default budget.overAction is warn, which holds nothing, a cut included (#922).
   const cutLine = (who: string, until: string): string =>
-    `CUT ${who} to its own daily budget until ${until}: past it, it is held whatever room the team has, so it wakes for p0 work only and budget.overAction holds its new helpers back as it says; a lift in force still sets that budget, and a new lift of it ends the cut.`;
+    `CUT ${who} to its own daily budget until ${until}: past it, it is warned whatever room the team has, but budget.overAction warn holds nothing, so it still wakes and works as before (set budget.overAction to hold it); a lift in force still sets that budget, and a new lift of it ends the cut.`;
   const records = (text: string | undefined): unknown[] =>
     (text ?? '')
       .split('\n')
@@ -746,7 +747,7 @@ describe('teamrig budget cut', () => {
   });
 
   it("stops a session until the week's reset, logged as a stop, and the report names it held at no use (T3455)", async () => {
-    const { kit, run } = await world();
+    const { kit, run } = await world({ ...TEAM, budget: { weeklyLimitW: 1_000_000_000, overAction: 'block' } });
     const [line = ''] = ok(await run([...CUT, '--stop', '--session', 'lead']));
     assert.match(line, /^CUT app-alpha stopped until .+: it is held whatever its use, so it wakes and is reopened for p0 work only /);
     const [record] = records(kit.files.get(CUTS));
@@ -754,6 +755,13 @@ describe('teamrig budget cut', () => {
     assert.ok(ok(await run(['budget'])).includes('Stopped by a leader, held whatever their use: app-alpha.'));
     // Until --until, when that comes first.
     assert.match(ok(await run([...CUT, '--stop', '--until', '18:00', '--session', 'lead']))[0] ?? '', /^CUT app-alpha stopped until 18:00 UTC:/);
+  });
+
+  it('says a stop under the default overAction warn only warns, as wakes hold nothing there (#922)', async () => {
+    const { run } = await world();
+    const [line = ''] = ok(await run([...CUT, '--stop', '--session', 'lead']));
+    assert.match(line, /^CUT app-alpha stopped until .+: it is warned whatever its use, but budget\.overAction warn holds nothing, /);
+    assert.doesNotMatch(line, /p0 work only|it is held/);
   });
 
   /** The report's past lines before and after a cut, once bravo's lift leaves alpha past its part, under `overAction`. */

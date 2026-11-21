@@ -468,6 +468,14 @@ describe("the Stop hook's work-order nudge under the daily budget stop (#922)", 
     assert.match(messageOf(result), /past its in-day pace/);
   });
 
+  it('blocks once to send the session to its next task past the daily budget under overAction warn, which holds nothing', async () => {
+    const team = await world({ overAction: 'warn' }, 40_000_000, 30);
+    await meterLead(team);
+    await waitingWithWork(team.kit);
+    const result = await team.hook('stop', ALPHA_TAB);
+    assert.equal(stopDecisionOf(result), 'block', result.stdout.join('\n'));
+  });
+
   it('blocks once to send the session to its next task while the budget has room', async () => {
     const team = await world({}, 1_000, 5);
     await waitingWithWork(team.kit);

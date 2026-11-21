@@ -122,7 +122,7 @@ export type JudgedStep = Exclude<PassStep, { readonly kind: 'reopen' }> | Reopen
  * and a running one the pass would close has been quiet `open.headroom.closeIdleMinutes`.
  */
 async function wakeWeightOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, id: string, configured: number): Promise<{ readonly rest: WakeRest; readonly maxPriority: number }> {
-  const rest = config.budget.enabled ? wakeRestOf(await budgetFactsOf(runtime, { kit, config, roster, id }, undefined), config.budget.quietHours, runtime.clock.now(), COLD_WAKE_W) : AWAKE;
+  const rest = config.budget.enabled ? wakeRestOf(await budgetFactsOf(runtime, { kit, config, roster, id }, undefined), config.budget, runtime.clock.now(), COLD_WAKE_W) : AWAKE;
   return { rest, maxPriority: effectivePriority(configured, rest, config.budget.quietHours) };
 }
 

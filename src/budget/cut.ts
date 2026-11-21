@@ -1,3 +1,4 @@
+import type { BudgetConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import { stringField, type JsonRecord } from '../core/guards.ts';
 import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
@@ -9,7 +10,9 @@ import type { Lift } from './lift.ts';
 /**
  * A leader's cut, for today at most, of one session to its own daily budget: past that budget the session is held
  * whatever room the team has left today, so it wakes, and is reopened, for p0 work only, and `budget.overAction`
- * holds its new helpers back as it says. Without a cut a session past its part uses the room the others left (src/budget/warn.ts
+ * holds its new helpers back as it says. Under `budget.overAction` `warn` the budget holds nothing (src/wake/decide.ts
+ * `wakeRestOf`, #922), a cut included: the cut session is only warned past its own budget, and
+ * `cutText` says so. Without a cut a session past its part uses the room the others left (src/budget/warn.ts
  * `isHeld`). A cut leaves a lift in force: the session works up to its lifted part, then is held. It ends at its
  * `--until`, the end of the budget day, or a lift of the session given after it, whichever comes first; a newer cut
  * replaces an older one.
@@ -85,17 +88,21 @@ export function activeCut(cuts: readonly Cut[], lifts: readonly Lift[], session:
  * What a cut does, after "cut", on the team's clock: `alpha to its own daily budget until 18:00 IDT: past it, it is
  * held whatever room the team has, ...`.
  */
-export function cutText(cut: Cut, name: string, zone: TimeZone): string {
+export function cutText(cut: Cut, name: string, zone: TimeZone, overAction: BudgetConfig['overAction']): string {
+  const until = formatEndTime(cut.endsAt, zone);
+  const warnOnly = 'but budget.overAction warn holds nothing, so it still wakes and works as before (set budget.overAction to hold it)';
   if (cut.stop) {
-    return (
-      `${name} stopped until ${formatEndTime(cut.endsAt, zone)}: it is held whatever its use, so it wakes and is reopened for p0 work only ` +
-      'and budget.overAction holds its new helpers back as it says; a new lift of it ends the stop.'
-    );
+    const held =
+      overAction === 'warn'
+        ? `it is warned whatever its use, ${warnOnly}`
+        : 'it is held whatever its use, so it wakes and is reopened for p0 work only and budget.overAction holds its new helpers back as it says';
+    return `${name} stopped until ${until}: ${held}; a new lift of it ends the stop.`;
   }
-  return (
-    `${name} to its own daily budget until ${formatEndTime(cut.endsAt, zone)}: past it, it is held whatever room the team has, ` +
-    'so it wakes for p0 work only and budget.overAction holds its new helpers back as it says; a lift in force still sets that budget, and a new lift of it ends the cut.'
-  );
+  const past =
+    overAction === 'warn'
+      ? `past it, it is warned whatever room the team has, ${warnOnly}`
+      : 'past it, it is held whatever room the team has, so it wakes for p0 work only and budget.overAction holds its new helpers back as it says';
+  return `${name} to its own daily budget until ${until}: ${past}; a lift in force still sets that budget, and a new lift of it ends the cut.`;
 }
 
 /**
