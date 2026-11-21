@@ -16,6 +16,12 @@ export type MergeClearance =
   | { readonly kind: 'self' }
   | { readonly kind: 'approved'; readonly by: string };
 
+/**
+ * The variable Claude Code names a tab's session by. The ship tool is this repo's own and runs only from a Claude
+ * Code tab, so it holds the name itself; the plugin's code asks its host adapter and names no host's variable.
+ */
+const TAB_VARIABLE = 'CLAUDE_CODE_SESSION_ID';
+
 const SHA = /^[0-9a-f]{7,40}$/;
 const SHA_RUN = /\b[0-9a-f]{7,40}\b/g;
 
@@ -109,7 +115,7 @@ export async function clearTaskMerge(caller: MergeCaller, reads: MergeReads, tas
     return refused('TEAMRIG_SESSION and TEAMRIG_TEAM must name the merging session and its team');
   }
   if (caller.claudeSession === undefined || caller.claudeSession === '') {
-    return refused("CLAUDE_CODE_SESSION_ID must name the merging Claude Code tab: a merge runs from the merging session's own tab");
+    return refused(`${TAB_VARIABLE} must name the merging Claude Code tab: a merge runs from the merging session's own tab`);
   }
   let standing: MergeStanding;
   try {
@@ -149,7 +155,7 @@ export function clearTaskMergeFrom(env: Env, reader: KitReader): ClearTaskMerge 
 
 function mergeContextOf(env: Env, reader: KitReader): { readonly caller: MergeCaller; readonly reads: MergeReads } {
   return {
-    caller: { session: env[ENV.session]?.trim(), team: env[ENV.team]?.trim(), claudeSession: env[ENV.claudeSession]?.trim() },
+    caller: { session: env[ENV.session]?.trim(), team: env[ENV.team]?.trim(), claudeSession: env[TAB_VARIABLE]?.trim() },
     reads: {
       tabCallerOf: (team, claudeSession, session) => tabCallerOf(reader, team, claudeSession, session),
       standingOf: (team, session, taskId) => mergeStandingOf(reader, team, session, taskId),

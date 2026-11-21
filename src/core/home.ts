@@ -15,11 +15,6 @@ export const ENV = {
   /** The calling session's name when `--session` is not given. */
   session: 'TEAMRIG_SESSION',
   /**
-   * The Claude Code session running a command: the inbox reminder hook follows its reads by it, and `teamrig queue`
-   * takes the session this tab is bound to from it when no session is named.
-   */
-  claudeSession: 'CLAUDE_CODE_SESSION_ID',
-  /**
    * The token of the host lock a running step holds (`queue`, `merge`, `deploy`), set for the processes it starts:
    * a `teamrig queue` among them, such as a git hook's checks, runs at once under that lock instead of waiting on its parent.
    */
@@ -36,11 +31,6 @@ export const ENV = {
   subagentModelForce: 'CLAUDE_CODE_SUBAGENT_MODEL_FORCE',
   /** Set (`1`), Claude Code stops writing the terminal tab's title and leaves it to hooks: tab status needs it. */
   claudeTitleOff: 'CLAUDE_CODE_DISABLE_TERMINAL_TITLE',
-  /**
-   * `1` in what Claude Code starts for the agent: its Bash and PowerShell tools, the scripts they run, hook commands,
-   * the status line. The plugin's mod runs commands with Claude Code's own environment, which lacks it.
-   */
-  claudeCode: 'CLAUDECODE',
 } as const;
 
 export type Env = Readonly<Record<string, string | undefined>>;
