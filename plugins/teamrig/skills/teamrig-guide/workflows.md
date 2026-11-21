@@ -99,6 +99,13 @@ A change that removes or loosens a safety step (a guard, a gate, a check, a retr
 covers, its run history (how often it fired, and on what), what is still unknown, and a first step that can be
 undone, such as a warn-only mode or a flag.
 
+## Review a change or an issue
+
+Before reviewing a pull request, a change waiting on your approval or an issue, check that it still applies: whether
+main changed the code it touches since it was written (`git log <base>..origin/main -- <its paths>`), whether a later
+change already fixed or replaced it, and whether landing it now would undo newer work. A stale one is closed or
+re-scoped with a comment saying what changed, never landed or worked as written. Then review it on its merits.
+
 ## Close a task with proof
 
 1. Finish and verify: tests pass, the change is merged or deployed as the task needs, and you checked that it
