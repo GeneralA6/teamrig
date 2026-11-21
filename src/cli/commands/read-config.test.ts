@@ -6,7 +6,7 @@ import { formatConfig } from '../../config/load.ts';
 import { CONFIG_VERSION } from '../../config/types.ts';
 import { isRecord, type JsonRecord } from '../../core/guards.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { cutText, KEPT_NOTE, SETTING_PROBLEM } from '../../interface/index.ts';
+import { cutText, INTERFACE_VERSION, KEPT_NOTE, SETTING_PROBLEM } from '../../interface/index.ts';
 import { CliHarness, CONFIG_PATH, TEAM, type CliResult, type RunOptions } from '../../testing/cli-harness.ts';
 import { problemsOf, rowsOf, served } from '../../testing/read-answers.ts';
 import { SUB_TEAMS, teamConfigOf, treeHarness } from '../../testing/team-tree.ts';
@@ -70,7 +70,7 @@ function teamless(config: JsonRecord | null = TEAM): CliHarness {
 describe('teamrig read config', () => {
   it('answers one JSON line with the envelope and the body in one order', async () => {
     const answer = served(await read(await teamWithSchema()));
-    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], ['1.6', 'config', [], []]);
+    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], [INTERFACE_VERSION, 'config', [], []]);
     assert.match(String(answer['revision']), /^[0-9a-f]{16}$/);
     assert.deepEqual([answer['team'], answer['teams'], answer['timeZone']], ['app', [], 'UTC']);
     assert.deepEqual(answer['priorities'], ['keep the lights on', 'correctness', 'scale', "this week's owner decisions", 'if budget allows']);

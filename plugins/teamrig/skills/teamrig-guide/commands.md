@@ -2761,7 +2761,7 @@ teamrig read tasks --json --owner api
 Output:
 
 ```text
-{"interface":"1.6","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
+{"interface":"1.7","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
 ```
 
 ### teamrig sessions

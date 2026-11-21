@@ -13,6 +13,7 @@ import { layoutPaths } from '../../register/layout.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
 import { formatSessionRecord } from '../../sessions/record.ts';
 import { formatTabNeed } from '../../tabs/need.ts';
+import { INTERFACE_MAJOR, INTERFACE_MINOR, INTERFACE_VERSION } from '../../interface/index.ts';
 import { CliHarness, CONFIG_PATH, EVENTS_PATH, TEAM, TEAM_HOME, type CliResult } from '../../testing/cli-harness.ts';
 import { rotateRegister } from '../../testing/rotation.ts';
 import { normalisePath } from '../../testing/memory-files.ts';
@@ -123,7 +124,7 @@ describe('teamrig read tasks', () => {
     const kit = new CliHarness();
     await add(kit, 'Ship the gate', 'alpha');
     const answer = served(await kit.run(READ_TASKS));
-    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], ['1.6', 'tasks', [], []]);
+    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], [INTERFACE_VERSION, 'tasks', [], []]);
     assert.match(String(answer['revision']), REVISION);
     const [task] = tasksOf(answer);
     assert.deepEqual([task?.['id'], task?.['title'], task?.['owner']], ['T1', { text: 'Ship the gate', source: 'team' }, 'alpha']);
@@ -196,7 +197,7 @@ describe('teamrig read inbox', () => {
     const kit = new CliHarness();
     const line = await post(kit, 'lead', 'alpha', 'Ship the gate');
     const answer = served(await kit.run(READ_INBOX));
-    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], ['1.6', 'inbox', [], []]);
+    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], [INTERFACE_VERSION, 'inbox', [], []]);
     assert.match(String(answer['revision']), REVISION);
     assert.deepEqual([answer['session'], answer['unread']], [{ id: 'alpha', name: 'app-alpha' }, null]);
     assert.deepEqual(linesOf(answer), [
@@ -639,13 +640,13 @@ describe('teamrig read: what is asked', () => {
     });
   }
 
-  it('answers a reader of the served version or an older minor with the version it serves', async () => {
-    for (const asked of ['1.6', '1.5', '1.4', '1.3', '1.2', '1.1', '1.0']) {
-      assert.equal(served(await new CliHarness().run([...READ_TASKS, '--interface', asked]))['interface'], '1.6');
+  it('answers a reader of the served version or an older minor, in the version it serves', async () => {
+    for (const asked of ['1.0', INTERFACE_VERSION]) {
+      assert.equal(served(await new CliHarness().run([...READ_TASKS, '--interface', asked]))['interface'], INTERFACE_VERSION, asked);
     }
   });
 
-  for (const version of ['2.0', '0.9', '1.7']) {
+  for (const version of [`${INTERFACE_MAJOR + 1}.0`, `${INTERFACE_MAJOR - 1}.9`, `${INTERFACE_MAJOR}.${INTERFACE_MINOR + 1}`]) {
     it(`refuses --interface ${version} on stderr and prints no document`, async () => {
       const result = await new CliHarness().run([...READ_TASKS, '--interface', version]);
       assert.deepEqual([result.code, result.stdout, result.stderr.length], [EXIT.refused, [], 1]);
@@ -684,7 +685,7 @@ describe('teamrig read --unless', () => {
     assert.ok(tasks !== undefined && meetings !== undefined);
     const again = allServed(await kit.run([...READ_ALL, '--unless', heldOf([meetings, tasks])]));
     assert.deepEqual(unchangedOf(again), [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', false], ['plan', false], ['goals', false], ['history', false], ['stats', false]]);
-    assert.deepEqual(again[0], { interface: '1.6', document: 'tasks', revision: tasks['revision'], unchanged: true });
+    assert.deepEqual(again[0], { interface: INTERFACE_VERSION, document: 'tasks', revision: tasks['revision'], unchanged: true });
     assert.deepEqual(again.slice(1, 3), first.slice(1, 3));
   });
 
@@ -719,7 +720,7 @@ describe('teamrig read --unless', () => {
     const first = served(await kit.run(['read', 'config', '--json']));
     assert.deepEqual(
       served(await kit.run(['read', 'config', '--json', '--unless', heldOf([first])])),
-      { interface: '1.6', document: 'config', revision: first['revision'], unchanged: true },
+      { interface: INTERFACE_VERSION, document: 'config', revision: first['revision'], unchanged: true },
     );
   });
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../../core/guards.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { cutText } from '../../interface/index.ts';
+import { cutText, INTERFACE_VERSION } from '../../interface/index.ts';
 import { CliHarness, TEAM_HOME, USER_HOME, type RunOptions } from '../../testing/cli-harness.ts';
 import { problemsOf, rowsOf, served } from '../../testing/read-answers.ts';
 import { teamHomeOf, treeHarness } from '../../testing/team-tree.ts';
@@ -33,7 +33,7 @@ describe('teamrig read meetings', () => {
     await book(kit, 'alpha', '14:00', 'the release plan', ['--with', 'bravo', '--minutes', '45']);
     await book(kit, 'bravo', '11:00', 'the docs');
     const answer = served(await kit.run(READ_MEETINGS));
-    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], ['1.6', 'meetings', [], []]);
+    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], [INTERFACE_VERSION, 'meetings', [], []]);
     assert.match(String(answer['revision']), /^[0-9a-f]{16}$/);
     assert.deepEqual(meetingsOf(answer), [
       { id: 'M2', at: '2030-01-08T11:00:00.000Z', atText: 'Tue 01-08 11:00 UTC', minutes: 30, session: 'bravo', with: [], tasks: [], about: 'the docs', brief: null, status: 'scheduled', missed: false },
