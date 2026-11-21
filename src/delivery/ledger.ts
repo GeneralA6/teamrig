@@ -42,6 +42,14 @@ export interface QueuedStepRecord {
   readonly queueFreeMb?: number;
   /** Set when the step was a small one sharing the host (`queue --small`); a heavy step, holding the host lock or a heavy share, leaves it out. */
   readonly shared?: true;
+  /** The folder the step ran in (#708); an older teamrig or a team's own deploy tool leaves it and the three below out. */
+  readonly cwd?: string;
+  /** The top level of the git repository it ran in; left out when it ran outside one. */
+  readonly gitTop?: string;
+  /** HEAD's commit when it started; left out outside git and before a repository's first commit. */
+  readonly head?: string;
+  /** Whether the tree had uncommitted or untracked changes when it started; left out outside git. */
+  readonly dirty?: boolean;
   /** An ISO time: when it took the host lock and started. */
   readonly startedAt: string;
   readonly endedAt: string | null;
@@ -236,8 +244,20 @@ function requestFieldsOf(record: JsonRecord): Pick<QueuedStepRecord, 'kind' | 't
   };
 }
 
+/** A queued step's folder and tree (#708), each field kept only when it is a non-empty string or, `dirty`, a boolean. */
+function parsedTreeFieldsOf(record: JsonRecord): Pick<QueuedStepRecord, 'cwd' | 'gitTop' | 'head' | 'dirty'> {
+  const [cwd, gitTop, head] = [stringField(record, 'cwd'), stringField(record, 'gitTop'), stringField(record, 'head')];
+  const dirty = record['dirty'];
+  return {
+    ...(cwd === undefined || cwd === '' ? {} : { cwd }),
+    ...(gitTop === undefined || gitTop === '' ? {} : { gitTop }),
+    ...(head === undefined || head === '' ? {} : { head }),
+    ...(typeof dirty === 'boolean' ? { dirty } : {}),
+  };
+}
+
 /** The optional fields a record carries, each left out when it is missing or bad, since they only add to it. */
-function queuedStepExtrasOf(record: JsonRecord): Pick<QueuedStepRecord, 'kind' | 'task' | 'priority' | 'kit' | 'queuedAt' | 'waits' | 'shared' | StepMemoryField> {
+function queuedStepExtrasOf(record: JsonRecord): Pick<QueuedStepRecord, 'kind' | 'task' | 'priority' | 'kit' | 'queuedAt' | 'waits' | 'shared' | 'cwd' | 'gitTop' | 'head' | 'dirty' | StepMemoryField> {
   const [kit, queuedAt, waits] = [stringField(record, 'kit'), timeField(record, 'queuedAt'), waitsField(record)];
   const memory: Partial<Record<StepMemoryField, number>> = {};
   for (const field of STEP_MEMORY_FIELDS) {
@@ -252,6 +272,7 @@ function queuedStepExtrasOf(record: JsonRecord): Pick<QueuedStepRecord, 'kind' |
     ...(queuedAt === undefined ? {} : { queuedAt }),
     ...(waits === undefined ? {} : { waits }),
     ...(record['shared'] === true ? { shared: true } : {}),
+    ...parsedTreeFieldsOf(record),
     ...memory,
   };
 }

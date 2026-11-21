@@ -58,6 +58,7 @@ export async function recordQueuedStep(ports, setup, mark, work, exitOf) {
         kit: KIT_VERSION,
         ...waitFieldsOf(mark),
         ...(mark.shared === true ? { shared: true } : {}),
+        ...mark.ranIn,
         startedAt: new Date(ports.clock.now()).toISOString(),
         endedAt: null,
         exitCode: null,

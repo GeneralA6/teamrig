@@ -4,6 +4,7 @@ import { withoutCredentials } from '../../core/child-env.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { ENV, resolveKitHome } from '../../core/home.ts';
 import { resolveTeam } from '../../core/team.ts';
+import { treeHeader } from '../../delivery/run-tree.ts';
 import { commandHeader, logBody, pruneLogs, reserveLog } from '../../test-run/logs.ts';
 import { cleanOutput, parseTestOutput } from '../../test-run/parse.ts';
 import { labelOf, reportLines } from '../../test-run/report.ts';
@@ -101,7 +102,8 @@ export async function test(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const words = shellWordsOf(args, runtime.platform);
   const place = await logPlace(runtime, givenSession(args, runtime));
   const command = commandLine(words, runtime.platform);
-  const log = await reserveLog(runtime.files, place.dir, place.session, commandHeader(command));
+  const header = treeHeader(runtime.cwd, runtime.trees.ranIn(runtime.cwd)) + commandHeader(command);
+  const log = await reserveLog(runtime.files, place.dir, place.session, header);
   const run = place.queued ? commandLine(queuedWords(runtime.self, words, place.session), runtime.platform) : command;
   const started = runtime.clock.now();
   const result = await runLogged(runtime, { command: run, cwd: runtime.cwd, env: withoutCredentials(runtime.env, place.passEnv) }, log);

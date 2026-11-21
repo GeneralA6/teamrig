@@ -20,6 +20,8 @@ import { loadTree } from "../tree.js";
 import { configSource, teamlessConfigSource } from "./read-config.js";
 import { goalsSource } from "./read-goals.js";
 import { historySource } from "./read-history.js";
+import { statsSource } from "./read-stats.js";
+import { rangeOf } from "./stats.js";
 import { meetingsSource } from "./read-meetings.js";
 import { planSource } from "./read-plan.js";
 import { selfOf, sessionsSource } from "./read-sessions.js";
@@ -44,6 +46,7 @@ const SOURCES = {
     plan: planSource,
     goals: goalsSource,
     history: historySource(CONNECTORS),
+    stats: statsSource(CONNECTORS),
 };
 /** The documents a run with no team is still answered: what a setup screen reads before there is a team to read. */
 const TEAMLESS = {
@@ -89,6 +92,7 @@ function requestOf(args, env) {
         conversation: conversationOf(args.flags.get('conversation')),
         sinceHours: sinceHoursOf(args.flags.get('since')),
         task: taskOf(args.flags.get('task'), documents),
+        range: statsRangeOf(args.flags.get('range'), documents),
         unless: unlessOf(args.flags.get('unless'), documents),
         speaks,
     };
@@ -148,6 +152,16 @@ function taskOf(typed, documents) {
         throw new UsageError('--task names the task history is asked of, and this run does not ask for history');
     }
     return typed;
+}
+/**
+ * `--range`: the calendar days `stats` counts over, `7d` when the run gives none, as `teamrig stats` reads it. It is
+ * refused on a run that does not ask for `stats`, as `--task` is without `history`.
+ */
+function statsRangeOf(typed, documents) {
+    if (typed !== undefined && !documents.includes('stats')) {
+        throw new UsageError('--range names the days stats is counted over, and this run does not ask for stats');
+    }
+    return rangeOf(typed);
 }
 function conversationOf(typed) {
     if (typed !== undefined && !CONVERSATION_PATTERN.test(typed)) {
@@ -256,6 +270,7 @@ async function scopeOf(request, runtime, own) {
         tree,
         sinceHours: request.sinceHours,
         task: request.task ?? null,
+        range: request.range,
         warnings: configProblemsOf(kit.paths, load),
     };
 }

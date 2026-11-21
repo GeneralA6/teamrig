@@ -5,6 +5,7 @@ import type { TeamPaths } from '../../core/home.ts';
 import type { RevisionParts, SessionPlace } from '../../interface/index.ts';
 import type { Task } from '../../register/fold.ts';
 import type { RegisterEvent } from '../../register/events.ts';
+import type { StatsRange } from '../../register/stats.ts';
 import { MissingSegmentError, readHistory, readWorkingSet, type LayoutPaths } from '../../register/layout.ts';
 import { lacksEventsOf, type RegisterSnapshot } from '../../register/snapshot.ts';
 import type { Kit, LoadedConfig } from '../kit.ts';
@@ -35,6 +36,8 @@ export interface ReadScope {
   readonly sinceHours: number;
   /** The task whose history is served (`--task`); null when the run names none, which only `history` minds. */
   readonly task: string | null;
+  /** The calendar days `stats` counts over (`--range`); `7d` when the run names none, which only `stats` minds. */
+  readonly range: StatsRange;
   /** What the config's own read has to tell: every document is read through it, so each carries these. */
   readonly warnings: readonly string[];
 }
@@ -146,6 +149,25 @@ export async function taskEventsOf(runtime: CliRuntime, folder: ServedFolder, la
     if (error instanceof MissingSegmentError) {
       const segment = servedPathOf(folder, error.path);
       return { events: [], problems: [`${segment}: missing, so the register's archive is incomplete and the task's history cannot be read`] };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Every event the register ever held, in write order: the archive's segments, then the live log, as `teamrig stats`
+ * reads them, since a count over a range reaches past what a compaction left in the working set. Its cost grows with
+ * the archive. An archive with a segment gone serves no event and says why, as {@link workingSetOf} does: numbers
+ * counted from half a history would read as the whole one's.
+ */
+export async function wholeHistoryOf(runtime: CliRuntime, folder: ServedFolder, layout: LayoutPaths): Promise<TaskEvents> {
+  try {
+    const snapshot = await readHistory(runtime.files, layout);
+    return { events: snapshot.read.events, problems: damageOf(snapshot, folder, layout.tail) };
+  } catch (error) {
+    if (error instanceof MissingSegmentError) {
+      const segment = servedPathOf(folder, error.path);
+      return { events: [], problems: [`${segment}: missing, so the register's archive is incomplete and its numbers cannot be counted`] };
     }
     throw error;
   }

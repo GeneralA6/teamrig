@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "../../config/limits.js";
 import { CONFLICT_WINNERS, isConflictWinner } from "../../config/types.js";
 import { clipEnd } from "../../core/clip.js";
-import { claudeConfigDir, KIT_NAME } from "../../core/home.js";
+import { KIT_NAME } from "../../core/home.js";
 import { expandHome, homeRelative, pathKey } from "../../core/paths.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { sessionSettingsFiles } from "../../doctor/settings-env.js";
@@ -103,8 +103,9 @@ async function scanView(runtime, kit, config, kind, all) {
     const kitTree = await loadTree(runtime);
     const teamRules = teamRulesFilesOf(kit, kitTree).map((file) => file.path);
     // The scan's whole work is the files the host loads into a session, so a host whose folders teamrig does not know refuses here.
-    const sessionSettings = sessionSettingsFiles({ paths: pathsOf(runtime), userHome: runtime.userHome }, project);
-    const found = await scanRules(runtime.files, runtime.probe, { claudeDir: claudeConfigDir(runtime.env, runtime.userHome), userHome: runtime.userHome, project, sessionSettings, skills: kit.paths.skills, teamRules }, [...config.ruleConflicts, ...keptRulesAboveOf(kit, kitTree)]);
+    const paths = pathsOf(runtime);
+    const sessionSettings = sessionSettingsFiles({ paths, userHome: runtime.userHome }, project);
+    const found = await scanRules(runtime.files, runtime.probe, { paths, userHome: runtime.userHome, project, sessionSettings, skills: kit.paths.skills, teamRules }, [...config.ruleConflicts, ...keptRulesAboveOf(kit, kitTree)]);
     const kinds = kind === undefined ? PLACE_KINDS : [kind];
     const hashes = ruleHashesOf(coreRuleTexts(config, KIT_NAME, runtime.platform, RULE_HASH_CLOCK));
     const verdicts = await new VerdictStore(runtime.files, kit.paths.ruleVerdicts).read();

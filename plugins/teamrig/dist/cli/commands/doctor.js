@@ -1,9 +1,9 @@
 import { claudeProjectsDir } from "../../budget/discover.js";
 import { launchOf } from "../../config/launch.js";
 import { Roster } from "../../config/roster.js";
-import { claudeConfigDir, KIT_NAME } from "../../core/home.js";
+import { KIT_NAME } from "../../core/home.js";
 import { readContextFiles } from "../../doctor/context-files.js";
-import { readSettingsDeny, secretDenyLines } from "../../doctor/deny-lines.js";
+import { readSettingsDeny } from "../../doctor/deny-lines.js";
 import { doctorFindings, formatFinding } from "../../doctor/doctor.js";
 import { readSessionLists } from "../../doctor/session-lists.js";
 import { readSettingsEnv, sessionSettingsFiles } from "../../doctor/settings-env.js";
@@ -14,7 +14,7 @@ import { inboxStatus } from "../../inbox/inbox.js";
 import { JsonlRenameLog } from "../../names/log.js";
 import { readWideAllow } from "../allow-scope.js";
 import { noPositionals } from "../args.js";
-import { pathsIfKnown } from "../host.js";
+import { pathsIfKnown, permissionsIfKept } from "../host.js";
 import { openTeamKit, projectFolder, requireConfig, teamZone } from "../kit.js";
 import { readLeadStart } from "../lead-start.js";
 import { pageCheckOf } from "../login-page.js";
@@ -23,14 +23,15 @@ import { readTeamRules } from "../team-rules.js";
 import { loadTree } from "../tree.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
- * What the context findings weigh (`ContextInput`): the CLAUDE.md files, memory index and skill listing of `project`,
- * the user's Claude Code folder and the `skills` folder against `budgets`, and the lists of the project's newest
- * session, its transcript read in chunks. `doctor` and `check` read it.
+ * What the context findings weigh (`ContextInput`): the instruction files, memory index and skill listing of `project`
+ * against `budgets`, read from the places the run's host names, and the lists of the project's newest session, its
+ * transcript read in chunks. `doctor` and `check` read it, and both go on where teamrig does not know the host's
+ * folders: only the team's `skills` folder is weighed there.
  */
 export async function readContextInput(runtime, project, skills, budgets) {
-    const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
+    const at = { paths: pathsIfKnown(runtime), userHome: runtime.userHome, project, skills };
     return {
-        contextFiles: { read: await readContextFiles(runtime.files, { claudeDir, project, skills }), budgets },
+        contextFiles: { read: await readContextFiles(runtime.files, at), budgets },
         sessionLists: await readSessionLists(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), project),
     };
 }
@@ -58,11 +59,12 @@ function sessionSettingsOf(runtime, project) {
  */
 export async function readSecretDeny(runtime, project) {
     const host = pathsIfKnown(runtime);
-    if (host === undefined) {
+    const permissions = permissionsIfKept(runtime);
+    if (host === undefined || permissions === undefined) {
         return undefined;
     }
     const paths = sessionSettingsFiles({ paths: host, userHome: runtime.userHome }, project);
-    return { files: await readSettingsDeny(runtime.files, paths), lines: secretDenyLines(runtime.platform), pasteInto: host.userSettings(runtime.userHome) };
+    return { files: await readSettingsDeny(permissions, runtime.files, paths), lines: permissions.denyLines(runtime.platform), pasteInto: host.userSettings(runtime.userHome) };
 }
 /** The doctor's view of a page check: only a page webhook that gives no URL is a finding. */
 function pageProblemOf(check) {

@@ -64,7 +64,7 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
     restore: quietRestore(),
     mergeGit: new FakeMergeGit(),
     pulls: new FakePullGit(),
-    trees: { checked: () => ({ kind: 'none' }) },
+    trees: { checked: () => ({ kind: 'none' }), ranIn: () => ({ kind: 'outside' }) },
     hooks: new FakeHooks(),
     packageRegistry: new FakePackageRegistry(),
     exec: { spawner: new FakeExecSpawner(), checkout: new FakeCheckout() },

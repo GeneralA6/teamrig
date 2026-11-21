@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeShell } from '../testing/fake-shell.ts';
+import { FakeTrees } from '../testing/fake-trees.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { NODE_SPEC_FAILED } from '../testing/test-output.ts';
 import { runsOneSpecFile } from './commands/test.ts';
@@ -10,6 +11,8 @@ import { runsOneSpecFile } from './commands/test.ts';
 const LOGS = join(TEAM_HOME, 'state', 'logs');
 /** The harness's own CLI (`runtime.self`), which a run in a team starts as `teamrig queue`. */
 const QUEUE = '/usr/bin/node /opt/teamrig/dist/cli/main.js queue --kind test';
+/** A log's first lines for a run in APP when no repository is there, as the harness's trees read by default. */
+const OUTSIDE = `# folder: ${APP}\n# git: none, it ran outside a git repository\n`;
 const PASSED = '▶ parseArgs\n  ✔ splits a command (0.5ms)\n▶ parseArgs (1ms)\nℹ tests 1532\nℹ suites 1\nℹ pass 1532\nℹ fail 0\nℹ cancelled 0\n';
 
 /** TAP output with `count` failing tests of about `size` characters each. */
@@ -29,7 +32,7 @@ describe('teamrig test', () => {
     const result = await kit.run(['test', '--session', 'alpha', '--', 'npm', 'test'], { shell: shell.prints(PASSED, 0, 41_000) });
     const log = join(LOGS, 'test-alpha-1.log');
     assert.deepEqual(result, { code: 0, stdout: [`PASS npm test: 1,532 tests in 41 s. Log: ${log}`], stderr: [] });
-    assert.equal(kit.files.get(log), `$ npm test\n${PASSED}exit 0\n`);
+    assert.equal(kit.files.get(log), `${OUTSIDE}$ npm test\n${PASSED}exit 0\n`);
   });
 
   it('runs the command line in the shell, in the current folder with the environment as it is', async () => {
@@ -79,7 +82,7 @@ describe('teamrig test', () => {
     const result = await kit.run(['test', '--', 'npm test'], { shell: shell.prints('', { kind: 'signal', signal: 'SIGTERM' }) });
     assert.equal(result.code, 1);
     assert.equal(result.stdout[0], `FAIL npm test in 0.0 s (ended by SIGTERM). Log: ${join(LOGS, 'test-1.log')}`);
-    assert.equal(kit.files.get(join(LOGS, 'test-1.log')), '$ npm test\nended by SIGTERM\n');
+    assert.equal(kit.files.get(join(LOGS, 'test-1.log')), `${OUTSIDE}$ npm test\nended by SIGTERM\n`);
   });
 
   it('prints failures within the configured cap, then how many more the log holds', async () => {
@@ -127,7 +130,7 @@ describe('teamrig test', () => {
     const { kit, shell } = harness();
     const one = await kit.run(['test', '--session', 'alpha', '--', 'node', '--test', 'src/a.test.ts'], { shell: shell.prints(PASSED, 0, 1_000) });
     assert.equal(shell.ran[0]?.command, `${QUEUE} --small --what 'test: node --test src/a.test.ts' --session alpha -- node --test src/a.test.ts`);
-    assert.equal(kit.files.get(join(LOGS, 'test-alpha-1.log'))?.split('\n')[0], '$ node --test src/a.test.ts', 'the log names the command as given');
+    assert.equal(kit.files.get(join(LOGS, 'test-alpha-1.log'))?.split('\n')[2], '$ node --test src/a.test.ts', 'the log names the command as given, after the tree header');
     assert.equal(one.stdout[0], `PASS node --test src/a.test.ts: 1,532 tests in 1.0 s. Log: ${join(LOGS, 'test-alpha-1.log')}`);
     await kit.run(['test', '--session', 'alpha', '--', 'npm test'], { shell });
     assert.equal(shell.ran[1]?.command, `${QUEUE} --what 'test: npm test' --session alpha -- 'npm test'`);
@@ -152,14 +155,14 @@ describe('teamrig test', () => {
     const held = new FaultyFiles(kit.files).fail('write', log, systemError('EPERM', 'EPERM: operation not permitted, rename'));
     const result = await kit.run(['test', '--session', 'alpha', '--', 'npm', 'test'], { shell: shell.prints(PASSED, 0, 41_000), files: held });
     assert.deepEqual(result, { code: 0, stdout: [`PASS npm test: 1,532 tests in 41 s. Log: ${log}`], stderr: [] });
-    assert.equal(kit.files.get(log), `$ npm test\n${PASSED}exit 0\n`);
+    assert.equal(kit.files.get(log), `${OUTSIDE}$ npm test\n${PASSED}exit 0\n`);
   });
 
   it('fails with the reason when the command cannot start, and the log says why', async () => {
     const { kit, shell } = harness();
     const result = await kit.run(['test', '--', 'npm test'], { shell: shell.failsWith(new Error('spawn /bin/sh ENOENT')) });
     assert.deepEqual(result, { code: 1, stdout: [], stderr: ['FAILED spawn /bin/sh ENOENT'] });
-    assert.equal(kit.files.get(join(LOGS, 'test-1.log')), '$ npm test\ncould not start: spawn /bin/sh ENOENT\n');
+    assert.equal(kit.files.get(join(LOGS, 'test-1.log')), `${OUTSIDE}$ npm test\ncould not start: spawn /bin/sh ENOENT\n`);
   });
 
   it('refuses a line with no command after --, or words before it', async () => {
@@ -228,5 +231,32 @@ describe('runsOneSpecFile', () => {
       [['node', '--test', 'src/**/*.test.ts'], ['node', '--test', 'a.test.ts', 'b.test.ts'], ['node', '--test', 'src/'], ['npm test -- a.test.ts'], ['npx', 'tsx', 'a.test.ts'], []].map(runsOneSpecFile),
       [false, false, false, false, false, false],
     );
+  });
+});
+
+describe('teamrig test, the tree its log names (#708)', () => {
+  it("starts the log with the folder, the repository's top level and HEAD's commit, clean", async () => {
+    const { kit, shell } = harness();
+    const trees = new FakeTrees();
+    trees.ran = { kind: 'git', top: '/work', head: 'c0ffee12345', dirty: false };
+    await kit.run(['test', '--session', 'alpha', '--', 'npm', 'test'], { shell: shell.prints(PASSED, 0, 41_000), trees });
+    assert.equal(kit.files.get(join(LOGS, 'test-alpha-1.log')), `# folder: ${APP}\n# git: /work at c0ffee12345, clean\n$ npm test\n${PASSED}exit 0\n`);
+    assert.deepEqual(trees.ranLooks, [APP]);
+  });
+
+  it('marks a tree with uncommitted changes', async () => {
+    const { kit, shell } = harness();
+    const trees = new FakeTrees();
+    trees.ran = { kind: 'git', top: '/work', head: 'c0ffee12345', dirty: true };
+    await kit.run(['test', '--', 'npm', 'test'], { shell: shell.prints(PASSED, 0, 1_000), trees });
+    assert.ok(kit.files.get(join(LOGS, 'test-1.log'))?.startsWith(`# folder: ${APP}\n# git: /work at c0ffee12345, with uncommitted changes\n$ npm test\n`));
+  });
+
+  it('runs outside any repository, and its log says it ran outside one', async () => {
+    const { kit, shell } = harness();
+    const result = await kit.run(['test', '--', 'npm', 'test'], { shell: shell.prints(PASSED, 0, 1_000), trees: new FakeTrees() });
+    assert.equal(result.code, 0);
+    assert.equal(shell.ran.length, 1);
+    assert.ok(kit.files.get(join(LOGS, 'test-1.log'))?.startsWith(OUTSIDE));
   });
 });

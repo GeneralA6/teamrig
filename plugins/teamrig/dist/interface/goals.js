@@ -41,6 +41,6 @@ function servedGoal(team, goal, served) {
  * A slip written out field by field. `at` is served as the instant it reads as, never as the text stored: a goal
  * record's parse holds it to teamrig's stamp, and this keeps a goal built any other way from carrying words in it.
  */
-function servedSlip(tag, index, slip, served) {
+export function servedSlip(tag, index, slip, served) {
     return { at: new Date(slip.at).toISOString(), by: slip.by, from: slip.from, to: slip.to, note: served.plain(tag, `slips.${index}.note`, slip.note) };
 }

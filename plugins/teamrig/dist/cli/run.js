@@ -194,7 +194,7 @@ const COMMANDS = {
     'idle-close': { effect: 'internal', flags: ['team', 'project'], load: async () => (await idleActCommands()).idleClose },
     'idle-open': { effect: 'internal', flags: ['team', 'project'], load: async () => (await idleActCommands()).idleOpen },
     who: { effect: 'read', flags: [], load: async () => (await teamCommands()).who },
-    read: { effect: 'read', flags: ['session', 'team', 'owner', 'since', 'conversation', 'unless', 'interface', 'task'], switches: ['json'], load: async () => (await readCommand()).read },
+    read: { effect: 'read', flags: ['session', 'team', 'owner', 'since', 'conversation', 'unless', 'interface', 'task', 'range'], switches: ['json'], load: async () => (await readCommand()).read },
     sessions: { effect: 'read', flags: ['project'], switches: ['pass'], load: async () => (await sessionsCommands()).sessions },
     close: { effect: 'write', flags: ['session', 'project'], switches: ['yes'], load: async () => (await closeCommands()).close },
     'cleanup launchers': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await cleanupCommands()).cleanupLaunchers },
@@ -370,7 +370,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   team tree                    the tree of teams this team is in, with each team's lead and sessions
   open <id|name|team/id> [--prompt "<first prompt>"] [--terminal <name>] [--project <dir>] [--resume]
       a new terminal tab running Claude Code as that session (team/id: another team of the tree);
-      with no terminal it prints the command; a rehired session reads the handover it left first, or,
+      it takes no --session, as the session it opens is its argument; --terminal print opens no tab
+      and prints the command to run, as open does when no terminal it tries opens (exit 3);
+      a rehired session reads the handover it left first, or,
       with --resume, goes on in its last Claude Code session when that is small and recent enough,
       as does one whose tab ended outside teamrig (a crash or reboot), on a prompt to re-read its list;
       a session teamrig close ended goes on in its last one by those limits, else opens fresh (on its
@@ -666,7 +668,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   exec run R<n>        runs an approved request once, before its approval expires
   who [<id|name|role|team/id>] the name to message a session by (no argument: every session of yours)
   read <document>... --json [--session <id|name>] [--conversation <id>] [--team <id>] [--owner <id|name>]
-      [--task T<id>] [--since <hours>] [--unless <document>=<revision>[,...]]
+      [--task T<id>] [--range 7d|30d|90d|180d|1y|all] [--since <hours>]
+      [--unless <document>=<revision>[,...]]
       [--interface <major.minor>]   the public interface's read side, for a program: each document
       asked is one JSON line on stdout, in the order asked, with its revision and what could not be
       served (problems); a refusal goes to stderr, so stdout holds answers only.
@@ -677,21 +680,23 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       own and those of the teams above it, the ranked ones first: each one's title, rank, open slice,
       window and every move of its target day), history (every event the register holds of the one
       task --task names, the oldest first: its creation, each status set, each change of its fields
-      and a move to another team), inbox (--session's own lines, marking none read: the
-      unread ones and the read ones of the last --since hours, 24 unless given), sessions (every
-      session of your tree of teams: its place, hire, state and unread count; a hire's and a
-      retirement's words only for your own team and the teams above it), meetings (the team's
-      scheduled and started meetings by time, as meeting list --json prints them), config (the team,
-      its zone, its priorities and every key of the team config as config get --json reads it, a key
-      naming where a secret is kept without its value; with no team here config alone is answered,
-      with the teams of this machine to join).
+      and a move to another team), stats (the register's numbers over --range of the team's days,
+      as teamrig stats counts them, with their Health levels, each count's tasks by id; --owner keeps
+      one session's; validUntil says when a number counted in days of age next goes stale), inbox
+      (--session's own lines, marking none read: the unread ones and the read ones of the last --since
+      hours, 24 unless given), sessions (every session of your tree of teams: its place, hire, state
+      and unread count; a hire's and a retirement's words only for your own team and the teams above
+      it), meetings (the team's scheduled and started meetings by time, as meeting list --json prints
+      them), config (the team, its zone, its priorities and every key of the team config as config get
+      --json reads it, a key naming where a secret is kept without its value; with no team here config
+      alone is answered, with the teams of this machine to join).
       --conversation: the host's id of the conversation the program runs in; sessions then names the
       session holding it (self), and inbox serves that session's when no --session is given. --team: a
-      team above yours, for tasks, plan, goals, history, meetings and config. --task: the one task
-      history is asked of. --unless: the revision you hold of a document asked; one still at that
-      revision is answered with unchanged: true in place of its body, from its files' stamps alone.
-      --interface: the version you speak, refused when this teamrig does not serve it. It writes
-      nothing
+      team above yours, for tasks, plan, goals, history, stats, meetings and config. --task: the one
+      task history is asked of. --range: the days stats counts over, 7d unless given. --unless: the
+      revision you hold of a document asked; one still at that revision is answered with unchanged:
+      true in place of its body, from its files' stamps alone. --interface: the version you speak,
+      refused when this teamrig does not serve it. It writes nothing
   sessions [--pass] [--project <dir>]   each session: running (and the MB its Claude Code's processes
       hold), closed or never recorded; then the host's free memory and commit charge. --pass: what an
       idle pass would close and reopen (one reopen a pass, with room on the host) and why it keeps or
@@ -706,7 +711,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       its Claude Code) and which lost their tab: the terminal that started it has ended; without --yes
       it ends nothing, with --yes it ends each orphaned one and what it started, never its own tab's
   rename <id|name> <new-name>  records a session's new name; its old names keep finding it
-      (the session itself or the lead)
+      (the session itself or the lead); then prints the follow-up steps under the new name
   hire <id> --scope "<its job>" --reason "<why>" [--name <name>] [--model <model>] [--effort <level>]
       [--review <YYYY-MM-DD>] [--approved-by "<who>"] [--burst] [--yes]
       (a lead: the lead, or a sub-lead into its own group) adds a worker the leader is sure the team needs,

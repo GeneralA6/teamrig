@@ -1,6 +1,6 @@
 import { extname, isAbsolute, join, resolve } from 'node:path';
 import { expandHome, pathKey } from "../core/paths.js";
-import { CLAUDE_MD_FILES, claudeMdPaths, claudeMemoryDir, skillFolders } from "../doctor/context-files.js";
+import { instructionPaths, skillFolders } from "../doctor/context-files.js";
 import { jsonObjectOf } from "../doctor/settings-env.js";
 import { hookCommandsOf } from "../doctor/settings-hooks.js";
 import { SkillDir } from "../skills/store.js";
@@ -28,8 +28,11 @@ async function subfolders(files, probe, folder) {
     const kinds = await Promise.all(names.map(async (name) => ({ path: join(folder, name), kind: await probe.kind(join(folder, name)) })));
     return kinds.filter((entry) => entry.kind === 'folder').map((entry) => entry.path);
 }
-/** The CLAUDE.md files in folders 1 to NESTED_DEPTH below the project, breadth first, in at most NESTED_FOLDERS_MAX folders. */
-export async function nestedClaudeMd(files, probe, project) {
+/**
+ * The instruction files in folders 1 to NESTED_DEPTH below the project, breadth first, in at most NESTED_FOLDERS_MAX
+ * folders. `instructionsIn` names the files the host loads from one folder.
+ */
+export async function nestedInstructions(files, probe, project, instructionsIn) {
     const paths = [];
     let level = await subfolders(files, probe, project);
     let visited = 0;
@@ -40,8 +43,7 @@ export async function nestedClaudeMd(files, probe, project) {
                 return { paths, capped: true };
             }
             visited += 1;
-            for (const parts of CLAUDE_MD_FILES) {
-                const path = join(folder, ...parts);
+            for (const path of instructionsIn(folder)) {
                 if ((await probe.kind(path)) === 'file') {
                     paths.push(path);
                 }
@@ -114,20 +116,21 @@ async function existing(probe, paths) {
  * reads. Not searched: files a CLAUDE.md imports with `@path`, plugins' own skills and hooks, and managed settings.
  */
 export async function findRulePlaces(files, probe, at) {
-    const nested = await nestedClaudeMd(files, probe, at.project);
+    const { paths } = at;
+    const nested = await nestedInstructions(files, probe, at.project, (folder) => paths.folderInstructions(folder));
     const settings = await existing(probe, at.sessionSettings);
-    const skillPaths = (await Promise.all(skillFolders(at.skills, at.project).map(async (folder) => {
+    const skillPaths = (await Promise.all(skillFolders(paths, at.skills, at.project).map(async (folder) => {
         const dir = new SkillDir(files, folder);
         return (await dir.readAll()).map((skill) => dir.pathOf(skill.name));
     }))).flat();
     const byKind = {
-        'claude-md': [...(await existing(probe, claudeMdPaths(at.claudeDir, at.project))), ...nested.paths],
+        'claude-md': [...(await existing(probe, instructionPaths(paths, at.userHome, at.project))), ...nested.paths],
         rules: [
-            ...(await markdownBelow(files, probe, join(at.project, '.claude', 'rules'))),
-            ...(await markdownBelow(files, probe, join(at.claudeDir, 'rules'))),
+            ...(await markdownBelow(files, probe, paths.projectRules(at.project))),
+            ...(await markdownBelow(files, probe, paths.userRules(at.userHome))),
         ],
         skill: skillPaths,
-        memory: await markdownBelow(files, probe, claudeMemoryDir(at.claudeDir, at.project)),
+        memory: await markdownBelow(files, probe, paths.memoryFolder(at.userHome, at.project)),
         'team-rules': await existing(probe, at.teamRules),
         hook: await existing(probe, await hookScripts(files, settings, at)),
         settings,

@@ -1,4 +1,4 @@
-import { isUnsupported, type HookBridge, type HostPaths, type HostPorts, type StatusLine, type TranscriptReader, type UsageMeter } from '../ports/host/index.ts';
+import { isUnsupported, type HookBridge, type HostPaths, type HostPermissions, type HostPorts, type StatusLine, type TranscriptReader, type UsageMeter } from '../ports/host/index.ts';
 import type { ContextSource } from '../refresh/usage.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
@@ -108,4 +108,22 @@ export function hostHomeOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'
 /** The host's own folder for the person of this run, or undefined on a host whose folders teamrig does not know. */
 export function hostHomeIfKnown(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform' | 'userHome'>): string | undefined {
   return pathsIfKnown(runtime)?.home(runtime.userHome);
+}
+
+/** The run's permission rules. A host that keeps none refuses with its own reason, as `transcriptsOf` does. */
+export function permissionsOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): HostPermissions {
+  const { permissions } = hostOf(runtime);
+  if (isUnsupported(permissions)) {
+    throw new RefusedError(permissions.notice);
+  }
+  return permissions;
+}
+
+/**
+ * The run's permission rules, or undefined on a host that keeps none: for a check that goes on without them, such as
+ * doctor's, which then has no rule to find missing.
+ */
+export function permissionsIfKept(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): HostPermissions | undefined {
+  const { permissions } = hostOf(runtime);
+  return isUnsupported(permissions) ? undefined : permissions;
 }

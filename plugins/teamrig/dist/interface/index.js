@@ -15,6 +15,7 @@ export { planBody, } from "./plan.js";
 export { refOf } from "./ref.js";
 export { revisionText } from "./revision.js";
 export { sessionsBody, } from "./sessions.js";
+export { statsBody, } from "./stats.js";
 export { sourceOf } from "./source.js";
 export { tasksBody } from "./tasks.js";
 export { cutText, ServedText } from "./text.js";

@@ -148,5 +148,12 @@ export async function rename(args, runtime) {
     const { from } = outcome.rename;
     runtime.out.stdout(`RENAMED ${id}: ${from} -> ${to}`);
     runtime.out.stdout(`NOTE ${from} still finds ${id} in every ${KIT_NAME} command; ${KIT_NAME} never edits permission or auto-mode rules, so update any that name ${from} yourself`);
+    // Every team ran these same checks by hand after a rename (#1255); only a recorded rename prints them.
+    runtime.out.stdout(`NEXT check ${to} is listed under its new name: ${KIT_NAME} who`);
+    runtime.out.stdout(`NEXT see its tasks: ${KIT_NAME} list --session ${to}`);
+    // An inbox read marks the lines read, so only the session itself is pointed at it; another caller only counts them.
+    runtime.out.stdout(by === id
+        ? `NEXT read its unread lines: ${KIT_NAME} inbox read --session ${to}`
+        : `NEXT count its unread lines, marking none read: ${KIT_NAME} inbox status --session ${to}`);
     return EXIT.ok;
 }

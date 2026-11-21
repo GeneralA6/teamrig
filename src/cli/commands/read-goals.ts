@@ -6,7 +6,7 @@ import { teamsFolderOf, type KitTree } from '../tree.ts';
 import { servedPathOf, skippedOf, stampsOf, type DocumentSource, type ReadScope } from './read-source.ts';
 
 /** A goals file a task of the team may serve a goal of, and the team that holds it. */
-type Holder = Pick<TeamPaths, 'team' | 'home' | 'goals'>;
+export type Holder = Pick<TeamPaths, 'team' | 'home' | 'goals'>;
 
 /**
  * `goals`: the goals a task of the team may serve, which are its own and those of every team above it, the nearer
@@ -27,21 +27,42 @@ export function goalsSource(scope: ReadScope): DocumentSource {
           // A team folder added or removed moves no file the tree read: the folder's own listing tells.
           (await runtime.files.list(teamsFolderOf(runtime))).join(','),
           ...(await stampsOf(runtime, configs)),
-          ...(await stampsOf(runtime, holdersOf(loaded, kit.paths).map((holder) => holder.goals))),
+          ...(await stampsOf(runtime, goalsFilesOf(loaded, kit.paths))),
         ],
       };
     },
     async build() {
-      const held: HeldGoals[] = [];
-      const problems: string[] = [];
-      for (const holder of holdersOf(await scope.tree(), kit.paths)) {
-        const read = readGoals(await runtime.files.read(holder.goals));
-        held.push({ team: holder.team, goals: read.goals.values() });
-        problems.push(...leftOutOf(holder, read));
-      }
+      const { held, problems } = await heldGoalsOf(scope);
       return { body: goalsBody({ held, shapes: new SecretScanner(config.register.secretPatterns) }), problems };
     },
   };
+}
+
+/** The goals a task of the scope's team may serve, as each team's file holds them, and what a file's read left out. */
+export interface HeldGoalsRead {
+  /** The root's first, the scope's own team's last: a later team's goal is the nearer one. */
+  readonly held: readonly HeldGoals[];
+  readonly problems: readonly string[];
+}
+
+/**
+ * The goals files of the scope's team and of every team above it, read once each. The `goals` document serves them
+ * and `stats` counts its goals from them, so the two never read a different set of teams.
+ */
+export async function heldGoalsOf(scope: ReadScope): Promise<HeldGoalsRead> {
+  const held: HeldGoals[] = [];
+  const problems: string[] = [];
+  for (const holder of holdersOf(await scope.tree(), scope.kit.paths)) {
+    const read = readGoals(await scope.runtime.files.read(holder.goals));
+    held.push({ team: holder.team, goals: [...read.goals.values()] });
+    problems.push(...leftOutOf(holder, read));
+  }
+  return { held, problems };
+}
+
+/** The paths of those goals files, in the order {@link heldGoalsOf} reads them: a revision's stamps are taken of these. */
+export function goalsFilesOf(loaded: KitTree, own: Holder): string[] {
+  return holdersOf(loaded, own).map((holder) => holder.goals);
 }
 
 /** The teams above `own` that the tree loaded, the root first, then `own` itself, read from the kit the run opened. */

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { kitLines, kitTag } from '../automode/lines.ts';
 import { formatConfig } from '../config/load.ts';
 import { homeRelative } from '../core/paths.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import { CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME } from '../testing/cli-harness.ts';
 import { NO_PATHS_HOST } from '../testing/host.ts';
 import { EXIT } from './runtime.ts';
@@ -109,6 +110,16 @@ describe('teamrig automode install', () => {
     const result = await kit.run(['automode', 'install']);
     assert.equal(result.code, EXIT.refused);
     assert.match(result.stdout[0] ?? '', /^REFUSED no team here/);
+  });
+
+  it('refuses on a host that keeps no permission rule, install and uninstall alike, writing nothing', async () => {
+    const original = formatConfig({ autoMode: { environment: [OWN, ...LINES] } });
+    for (const command of ['install', 'uninstall']) {
+      const kit = await withSettings(original);
+      const result = await kit.run(['automode', command, '--yes'], { host: bareHost });
+      assert.deepEqual([result.code, result.stdout], [EXIT.refused, ['REFUSED no permission rule is kept']], command);
+      assert.deepEqual([kit.files.get(SETTINGS), kit.files.get(BACKUP)], [original, undefined], command);
+    }
   });
 });
 

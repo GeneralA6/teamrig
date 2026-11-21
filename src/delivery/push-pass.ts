@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { isRecord, stringField } from '../core/guards.ts';
 import { KIT_VERSION } from '../core/version.ts';
+import type { RunTree } from './run-tree.ts';
 
 /**
  * Git opens a push's connection before its pre-push hook runs, so checks that wait in the host lock's line keep the
@@ -29,6 +30,8 @@ export type CleanTree = Extract<CheckedTree, { kind: 'clean' }>;
 /** Reads a folder's working tree. */
 export interface TreeState {
   checked(dir: string): CheckedTree;
+  /** The tree a host step runs on in `dir`, for its log and ledger record (#708). */
+  ranIn(dir: string): RunTree;
 }
 
 /** Checks that passed on one clean tree: the record a push of the same tree reuses. */

@@ -94,8 +94,8 @@ A read returns a versioned JSON document built from parsed data, never a file's 
 ### What version 1 ships
 
 `teamrig read <document>... --json` serves the five documents of 1.0 and each one a minor version added since (1.1:
-`plan`, 1.2: `goals`, 1.3: `history`); [the commands page](../commands.md) has its usage and the plugin's guide
-describes every field. What the design above left open is settled this way:
+`plan`, 1.2: `goals`, 1.3: `history`, 1.4: `stats`); [the commands page](../commands.md) has its usage and the
+plugin's guide describes every field. What the design above left open is settled this way:
 
 - **One line a document.** Each document asked is one JSON object on one line of stdout, in the order asked, and
   nothing else is written there: a refusal is one line on stderr. A run answers every document asked or none. With
@@ -151,6 +151,15 @@ describes every field. What the design above left open is settled this way:
   that event, and a cut names its event. An id with no event is answered empty, since a run answers every document
   asked or none. A task whose events left the working set is read from the archive, the one read here that costs
   more with the register's age, which the guide tells a reader.
+- **`stats` (1.4).** The pane's Stats tab and `teamrig stats` folded the register themselves, so a reader drawing
+  the team's numbers parsed the log and its archive. `stats` serves that fold under its own field names, with the
+  Health levels and, for each headline count, the ids of the tasks it counts, each named once in a slim `tasks` row.
+  A range reaches past the working set, so it reads the whole history, every archive segment, and costs more with
+  the register's age; a gone segment counts nothing and says so, since a partial count would mislead. Its numbers
+  age with the clock, which is no part of `revision`, so `validUntil` says when they next may change: the end of
+  the team's day or an active task's due. Only the asked team is counted, never the teams below it, since a read
+  serves the own team and those above it. The days the account's week sat at its limit come from the meter log, as
+  `teamrig stats` reads it.
 
 ## Act
 

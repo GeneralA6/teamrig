@@ -6,6 +6,7 @@ import { appendRecord, type QueuedStepRecord, type RefusalOutcome } from './ledg
 import { holdersText, type HostMemory, type MemoryPeaks } from './memory.ts';
 import type { DeliveryPlaces } from './places.ts';
 import { processRequest, type ProcessRequest } from './process-request.ts';
+import type { RunTreeFields } from './run-tree.ts';
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd, type StepRequest, type StepRunner } from './steps.ts';
 import type { WaitCause } from './wait-cause.ts';
 import type { Waited, WaitLog, WaitTotals } from './wait-log.ts';
@@ -64,6 +65,8 @@ export interface StepMark extends StepOwner {
   readonly queueFreeMb?: number;
   /** Set for a small step sharing the host; recorded as `shared`. */
   readonly shared?: true;
+  /** The folder and tree the step runs on (#708); recorded as `cwd`, `gitTop`, `head` and `dirty`. */
+  readonly ranIn?: RunTreeFields;
 }
 
 /**
@@ -129,6 +132,7 @@ export async function recordQueuedStep<T>(ports: StepRecordPorts, setup: StepRec
     kit: KIT_VERSION,
     ...waitFieldsOf(mark),
     ...(mark.shared === true ? { shared: true } : {}),
+    ...mark.ranIn,
     startedAt: new Date(ports.clock.now()).toISOString(),
     endedAt: null,
     exitCode: null,

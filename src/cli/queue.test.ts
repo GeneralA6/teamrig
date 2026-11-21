@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { FIRST_IN_LINE_POLL_MS } from '../delivery/host-lock.ts';
-import type { QueuedStepRecord, RefusalOutcome, RefusalRecord } from '../delivery/ledger.ts';
+import { parseQueuedStep, type QueuedStepRecord, type RefusalOutcome, type RefusalRecord } from '../delivery/ledger.ts';
 import { lineFrontPath, LineFrontStore } from '../delivery/line-front-store.ts';
 import { isRecord } from '../core/guards.ts';
 import { recordPass } from '../delivery/push-pass.ts';
@@ -12,6 +12,7 @@ import { KIT_VERSION } from '../core/version.ts';
 import { APP, CliHarness, CONFIG_PATH, KIT, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { BUSY_HOLDERS, BUSY_HOLDERS_TEXT, FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { cleanTree, FakeTrees, GIT_DIR } from '../testing/fake-trees.ts';
+import type { RunTree } from '../delivery/run-tree.ts';
 import { CLAUDE, FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
 import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
@@ -107,7 +108,7 @@ type RanAlso = Partial<Pick<QueuedStepRecord, 'kind' | 'startFreeMb' | 'lowFreeM
 
 /** An ended run of `what` by `session` the day before, whose process tree held `peakTreeMb` at most, with `also`. */
 function ranBefore(session: string, what: string, peakTreeMb: number, also: RanAlso = {}): string {
-  return JSON.stringify({ type: 'heavy', id: `${session}-${peakTreeMb}`, session, what, ...also, startedAt: '2030-01-07T10:00:00.000Z', endedAt: '2030-01-07T10:05:00.000Z', exitCode: 0, peakTreeMb });
+  return JSON.stringify({ type: 'heavy', id: `${session}-${peakTreeMb}`, session, what, ...also, cwd: APP, startedAt: '2030-01-07T10:00:00.000Z', endedAt: '2030-01-07T10:05:00.000Z', exitCode: 0, peakTreeMb });
 }
 
 describe('teamrig queue', () => {
@@ -123,7 +124,7 @@ describe('teamrig queue', () => {
     const share = { id: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: build api', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:02.000Z', expiresAt: '2030-01-08T12:30:02.000Z', reserveMb: 2048, heavy: true, request };
     assert.deepEqual(whileRunning, [undefined, share]);
     assert.equal(kit.files.get(`${SHARED}/id-1.json`), undefined, 'the share is released');
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, cwd: APP, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:02.000Z', exitCode: 0 }], 'a heavy share is not recorded as shared: that marks a small step');
   });
 
@@ -172,7 +173,7 @@ describe('teamrig queue', () => {
       expiresAt: '2030-01-08T12:30:02.000Z',
     });
     assert.equal(kit.files.get(LOCK), undefined, 'the lock is released');
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, cwd: APP, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:02.000Z', exitCode: 0 }]);
   });
 
@@ -230,7 +231,7 @@ describe('teamrig queue', () => {
       ],
       stderr: [],
     });
-    assert.deepEqual(ledgerOf(kit)[1], { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, startedAt: '2030-01-08T10:00:02.000Z', endedAt: '2030-01-08T10:45:02.000Z', exitCode: 124, endFreeMb: ROOMY_FREE_MB });
+    assert.deepEqual(ledgerOf(kit)[1], { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, cwd: APP, startedAt: '2030-01-08T10:00:02.000Z', endedAt: '2030-01-08T10:45:02.000Z', exitCode: 124, endFreeMb: ROOMY_FREE_MB });
   });
 
   it('prints FAILED for a step a signal stopped, recorded as exit 1', async () => {
@@ -366,7 +367,7 @@ describe('teamrig queue', () => {
     await kit.files.write(LOCK, heldBy('2030-01-08T10:03:00.000Z'));
     assert.equal((await kit.run(BUILD, { steps, memory, sessionProcesses: otherRuns() })).code, 0);
     assert.deepEqual(memory.watches, [{ root: 4242, intervalMs: 15_000, stopped: true }], "its own process's tree, every 15 s");
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', waits: { lock: 3 * MINUTE + 2_000 }, queueFreeMb: ROOMY_FREE_MB, startedAt: '2030-01-08T10:03:02.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', waits: { lock: 3 * MINUTE + 2_000 }, queueFreeMb: ROOMY_FREE_MB, cwd: APP, startedAt: '2030-01-08T10:03:02.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:08:02.000Z', exitCode: 0, peakTreeMb: 1900, lowFreeMb: 6400 }]);
   });
 
@@ -415,7 +416,7 @@ describe('teamrig queue', () => {
       stderr: [],
     });
     assert.equal(steps.ran[0]?.stop?.aborted, true);
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, cwd: APP, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:00:02.000Z', exitCode: 129, endFreeMb: ROOMY_FREE_MB }]);
     assert.deepEqual([kit.files.get(LOCK), starters.openWatches], [undefined, 0]);
   });
@@ -601,7 +602,7 @@ describe('teamrig queue', () => {
       const { kit, steps } = harness();
       steps.ends(0, MINUTE);
       assert.equal((await kit.run(['queue', '--session', 'alpha', '--what', what, ...flags, '--', ...command], { steps })).code, 0);
-      const start = { type: 'heavy', id: 'id-2', session: 'alpha', what, ...request, kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
+      const start = { type: 'heavy', id: 'id-2', session: 'alpha', what, ...request, kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, cwd: APP, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
       assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:01:02.000Z', exitCode: 0 }]);
     });
   }
@@ -612,7 +613,7 @@ describe('teamrig queue', () => {
     assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
     steps.ends(0, MINUTE);
     assert.equal((await kit.run(['queue', '--session', 'alpha', '--what', 'T1 build', '--', 'npm', 'run', 'build'], { steps })).code, 0);
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'T1 build', kind: 'build', task: 'T1', priority: 2, kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'T1 build', kind: 'build', task: 'T1', priority: 2, kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, cwd: APP, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:01:02.000Z', exitCode: 0 }]);
   });
 
@@ -697,7 +698,7 @@ describe('teamrig queue --small', () => {
     const share = { id: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:02.000Z', expiresAt: '2030-01-08T12:30:02.000Z', reserveMb: 2048, request };
     assert.deepEqual(whileRunning, [undefined, share], 'a step whose label names no task asks at the default class, with no priority');
     assert.equal(kit.files.get(`${SHARED}/id-1.json`), undefined, 'the share is released');
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'specs', kind: 'test', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, shared: true, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'specs', kind: 'test', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, shared: true, cwd: APP, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:02.000Z', exitCode: 0 }]);
   });
 
@@ -794,7 +795,7 @@ describe('teamrig queue --small', () => {
     assert.equal((await kit.run(BUILD, { steps, memory })).code, 0);
     const [start] = ledgerOf(kit);
     const short = 3 * FIRST_IN_LINE_POLL_MS;
-    assert.deepEqual(start, { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', waits: { memory: short }, queueFreeMb: 5000, startedAt: new Date(Date.parse('2030-01-08T10:00:00Z') + short).toISOString(), endedAt: null, exitCode: null }, 'it waits two short looks of the first in line, then its last look before it takes the lock');
+    assert.deepEqual(start, { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', waits: { memory: short }, queueFreeMb: 5000, cwd: APP, startedAt: new Date(Date.parse('2030-01-08T10:00:00Z') + short).toISOString(), endedAt: null, exitCode: null }, 'it waits two short looks of the first in line, then its last look before it takes the lock');
   });
 
   it('holds for a heavy step its latest runs\' peak with a quarter more when that passes delivery.queue.heavyReserveMb (T2192)', async () => {
@@ -871,7 +872,7 @@ describe('teamrig queue --exclusive', () => {
     const lock = { id: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: build api', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:02.000Z', expiresAt: '2030-01-08T12:30:02.000Z' };
     assert.deepEqual(whileRunning, [lock, undefined]);
     assert.equal(kit.files.get(LOCK), undefined, 'the lock is released');
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, cwd: APP, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:02.000Z', exitCode: 0 }]);
   });
 
@@ -1127,11 +1128,40 @@ describe('teamrig queue --detached-run (T2227)', () => {
     const starters = new FakeStarterWatch();
     steps.ends(0, MINUTE).whileRunning(async () => starters.end());
     const result = await kit.run(hiddenArgs, { steps, starters });
-    assert.deepEqual(result, { code: 0, stdout: [`2030-01-08 10:00:00 UTC detached run ${DETACHED_ID}: pid 4242`, '2030-01-08 10:00:02 UTC running: build api (killed after 1h30m)', 'DONE exit 0'], stderr: [] });
+    assert.deepEqual(result, { code: 0, stdout: [`# folder: ${APP}\n# git: none, it ran outside a git repository`, `2030-01-08 10:00:00 UTC detached run ${DETACHED_ID}: pid 4242`, '2030-01-08 10:00:02 UTC running: build api (killed after 1h30m)', 'DONE exit 0'], stderr: [] });
     assert.deepEqual([steps.ran[0]?.stop?.aborted, starters.openWatches], [false, 0], 'the shell that ran --detach ended long ago: it stops nothing');
     assert.deepEqual(await alphaLines(kit), [`queue ${DETACHED_ID} started: build api; log ${DETACHED_LOG}`, `queue ${DETACHED_ID} ended: build api: DONE exit 0; log ${DETACHED_LOG}`]);
     assert.deepEqual(await alphaWakes(kit), [`alpha: queue ${DETACHED_ID} ended: build api: DONE exit 0; log ${DETACHED_LOG}`], 'only the end wakes it');
     assert.equal(ledgerOf(kit).length, 2, "its start and end are recorded as any step's");
+  });
+
+  it('starts its log with the tree it was started on, says one that changed while it waited, and records the tree it ran on (#708)', async () => {
+    const { kit, steps } = harness();
+    const trees = new FakeTrees();
+    const clean: RunTree = { kind: 'git', top: '/work', head: 'c0ffee12345', dirty: false };
+    const looks: RunTree[] = [clean, { ...clean, dirty: true }];
+    trees.ranIn = (dir) => {
+      trees.ranLooks.push(dir);
+      return looks.shift() ?? clean;
+    };
+    const result = await kit.run(DETACHED_BUILD, { steps: steps.ends(0), trees });
+    const changed = '2030-01-08 10:00:02 UTC the tree changed while it waited; it runs on /work at c0ffee12345, with uncommitted changes';
+    assert.equal(result.stdout[0], `# folder: ${APP}\n# git: /work at c0ffee12345, clean`);
+    assert.deepEqual(result.stdout.slice(-3), [changed, '2030-01-08 10:00:02 UTC running: build api (killed after 45m)', 'DONE exit 0']);
+    assert.deepEqual(trees.ranLooks, [APP, APP], 'once as it starts, once as its step starts');
+    const start = parseQueuedStep(ledgerOf(kit)[0]);
+    assert.deepEqual([start?.cwd, start?.gitTop, start?.head, start?.dirty], [APP, '/work', 'c0ffee12345', true]);
+  });
+
+  it("says nothing more of an unchanged tree, and a step that runs in the caller's shell prints no header", async () => {
+    const { kit, steps } = harness();
+    const trees = new FakeTrees();
+    trees.ran = { kind: 'git', top: '/work', head: 'c0ffee12345', dirty: false };
+    const detached = await kit.run(DETACHED_BUILD, { steps: steps.ends(0), trees });
+    assert.equal(detached.stdout.filter((line) => line.includes('tree changed')).length, 0);
+    const shell = await kit.run(BUILD, { steps: steps.ends(0), trees });
+    assert.ok(!shell.stdout.some((line) => line.startsWith('# ')));
+    assert.equal(parseQueuedStep(ledgerOf(kit).at(-1))?.head, 'c0ffee12345', "a step in the caller's shell records its tree too");
   });
 
   it('tells its session of a failed step with its exit code', async () => {

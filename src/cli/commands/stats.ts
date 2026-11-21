@@ -92,7 +92,8 @@ async function goalsOf(runtime: CliRuntime, { teams }: RollUp): Promise<Readonly
   return new Map(reads.flatMap((goals) => [...goals]));
 }
 
-function rangeOf(value: string | undefined): StatsRange {
+/** The range a `--range` names, `7d` when the run gives none; `teamrig read stats` takes the same flag. */
+export function rangeOf(value: string | undefined): StatsRange {
   if (value === undefined) {
     return '7d';
   }

@@ -8,6 +8,7 @@ import { deliveryPlaces, detachedDirOf, detachedLogOf } from "../../delivery/pla
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass } from "../../delivery/push-pass.js";
 import { isStepKind, kindOfCommand, processRequest, STEP_KINDS, takesShipSlot, taskOfLabel } from "../../delivery/process-request.js";
 import { recordRefusal, runRecorded } from "../../delivery/recorded-step.js";
+import { treeFieldsOf, treeHeader, treeText } from "../../delivery/run-tree.js";
 import { stepNeedOf } from "../../delivery/step-need.js";
 import { causeOfLockWait, WaitLog } from "../../delivery/wait-log.js";
 import { queueCutoffReason, minutesText } from "../../delivery/schedule.js";
@@ -208,6 +209,17 @@ async function report(runtime, say, end, step) {
     return ended.code;
 }
 const UNREPORTED = { started: async () => undefined, opened: async () => undefined, ended: async () => undefined };
+/**
+ * The tree the step runs on, read as it starts, for its ledger record (#708). A detached run's log began with the tree
+ * it was started on; one changed while it waited is said, so the log names the head that ran.
+ */
+function runTree(runtime, say, startTree) {
+    const tree = runtime.trees.ranIn(runtime.cwd);
+    if (startTree !== undefined && treeText(tree) !== treeText(startTree)) {
+        say(`the tree changed while it waited; it runs on ${treeText(tree)}`);
+    }
+    return tree;
+}
 /** Writes the detached run's record; a record that cannot be written is said in the log, never failing the step. */
 async function keepRunRecord(runtime, say, path, record) {
     try {
@@ -505,6 +517,11 @@ export async function queue(args, runtime) {
         refuseDetachUsage(args);
     }
     const detachedId = detachedRunIdOf(args);
+    // A detached run's log starts with the tree it was started on (#708): the log is what a reviewer is shown.
+    const startTree = detachedId === undefined ? undefined : runtime.trees.ranIn(runtime.cwd);
+    if (startTree !== undefined) {
+        runtime.out.stdout(treeHeader(runtime.cwd, startTree).trimEnd());
+    }
     const firstArrival = arrivedAtOf(args, runtime.clock.now());
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'read');
@@ -584,13 +601,14 @@ export async function queue(args, runtime) {
             if (sharing !== undefined) {
                 say(sharing);
             }
+            const tree = runTree(runtime, say, startTree);
             say(`running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
             await reporting.started();
             // A merge that steps away while its checks run (teamrig step-away) holds nothing meanwhile: that time, and its wait
             // in line to take its share back, does not count against its limit (T4218).
             const awayMs = () => lock.awayMs(taking.lock.id);
             const run = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(step.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, awayMs, stop: watching.stop };
-            const mark = { ...owner, what, ...waited, ...(taking.sharing === undefined || taking.sharing.heavy ? {} : { shared: true }), request: run };
+            const mark = { ...owner, what, ...waited, ...(taking.sharing === undefined || taking.sharing.heavy ? {} : { shared: true }), ranIn: treeFieldsOf(runtime.cwd, tree), request: run };
             const end = await runRecorded(runtime, { places, delivery, opened: (start) => reporting.opened({ ledger: places.ledger, start }) }, mark);
             const code = await report(runtime, say, end, step);
             return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, waitedMs);

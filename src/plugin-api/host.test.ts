@@ -33,6 +33,7 @@ describe('defineHost', () => {
         usage: unsupported('no call is priced'),
         statusLine: unsupported('no status line is drawn'),
         paths: unsupported('no folder is known'),
+        permissions: unsupported('no permission rule is kept'),
       }),
     });
     assert.equal(adapter.declaration, data);
@@ -43,6 +44,7 @@ describe('defineHost', () => {
       usage: { kind: 'unsupported', notice: 'no call is priced' },
       statusLine: { kind: 'unsupported', notice: 'no status line is drawn' },
       paths: { kind: 'unsupported', notice: 'no folder is known' },
+      permissions: { kind: 'unsupported', notice: 'no permission rule is kept' },
     });
     assert.equal(isHostAdapter(adapter), true);
   });

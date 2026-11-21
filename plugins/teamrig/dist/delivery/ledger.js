@@ -83,6 +83,17 @@ function requestFieldsOf(record) {
         ...(task === undefined || priority === undefined ? {} : { priority }),
     };
 }
+/** A queued step's folder and tree (#708), each field kept only when it is a non-empty string or, `dirty`, a boolean. */
+function parsedTreeFieldsOf(record) {
+    const [cwd, gitTop, head] = [stringField(record, 'cwd'), stringField(record, 'gitTop'), stringField(record, 'head')];
+    const dirty = record['dirty'];
+    return {
+        ...(cwd === undefined || cwd === '' ? {} : { cwd }),
+        ...(gitTop === undefined || gitTop === '' ? {} : { gitTop }),
+        ...(head === undefined || head === '' ? {} : { head }),
+        ...(typeof dirty === 'boolean' ? { dirty } : {}),
+    };
+}
 /** The optional fields a record carries, each left out when it is missing or bad, since they only add to it. */
 function queuedStepExtrasOf(record) {
     const [kit, queuedAt, waits] = [stringField(record, 'kit'), timeField(record, 'queuedAt'), waitsField(record)];
@@ -99,6 +110,7 @@ function queuedStepExtrasOf(record) {
         ...(queuedAt === undefined ? {} : { queuedAt }),
         ...(waits === undefined ? {} : { waits }),
         ...(record['shared'] === true ? { shared: true } : {}),
+        ...parsedTreeFieldsOf(record),
         ...memory,
     };
 }

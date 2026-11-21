@@ -1,6 +1,6 @@
 import { INTERFACE_VERSION } from "./version.js";
 /** The documents version 1 serves, in the order the help names them: the five of 1.0, then each a minor added. */
-export const DOCUMENTS = ['tasks', 'inbox', 'sessions', 'meetings', 'config', 'plan', 'goals', 'history'];
+export const DOCUMENTS = ['tasks', 'inbox', 'sessions', 'meetings', 'config', 'plan', 'goals', 'history', 'stats'];
 export function isDocumentName(text) {
     return DOCUMENTS.some((name) => name === text);
 }

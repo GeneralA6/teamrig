@@ -36,7 +36,7 @@ const HELD = '0123456789abcdef';
  * Every document in one run, the inbox being alpha's and the history that of the first task a team adds: the five of
  * interface 1.0 and those a minor added, so the specs that hold the store unwritten cover each new one.
  */
-const ALL_DOCUMENTS = ['tasks', 'inbox', 'sessions', 'meetings', 'config', 'plan', 'goals', 'history'] as const;
+const ALL_DOCUMENTS = ['tasks', 'inbox', 'sessions', 'meetings', 'config', 'plan', 'goals', 'history', 'stats'] as const;
 const READ_ALL = ['read', ...ALL_DOCUMENTS, '--task', 'T1', '--json', '--session', 'alpha'] as const;
 const ALL_UNCHANGED = ALL_DOCUMENTS.map(() => true);
 /** A text one of teamrig's own secret shapes matches, built from parts so this file holds none. */
@@ -123,7 +123,7 @@ describe('teamrig read tasks', () => {
     const kit = new CliHarness();
     await add(kit, 'Ship the gate', 'alpha');
     const answer = served(await kit.run(READ_TASKS));
-    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], ['1.3', 'tasks', [], []]);
+    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], ['1.4', 'tasks', [], []]);
     assert.match(String(answer['revision']), REVISION);
     const [task] = tasksOf(answer);
     assert.deepEqual([task?.['id'], task?.['title'], task?.['owner']], ['T1', { text: 'Ship the gate', source: 'team' }, 'alpha']);
@@ -196,7 +196,7 @@ describe('teamrig read inbox', () => {
     const kit = new CliHarness();
     const line = await post(kit, 'lead', 'alpha', 'Ship the gate');
     const answer = served(await kit.run(READ_INBOX));
-    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], ['1.3', 'inbox', [], []]);
+    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], ['1.4', 'inbox', [], []]);
     assert.match(String(answer['revision']), REVISION);
     assert.deepEqual([answer['session'], answer['unread']], [{ id: 'alpha', name: 'app-alpha' }, null]);
     assert.deepEqual(linesOf(answer), [
@@ -640,12 +640,12 @@ describe('teamrig read: what is asked', () => {
   }
 
   it('answers a reader of the served version or an older minor with the version it serves', async () => {
-    for (const asked of ['1.3', '1.2', '1.1', '1.0']) {
-      assert.equal(served(await new CliHarness().run([...READ_TASKS, '--interface', asked]))['interface'], '1.3');
+    for (const asked of ['1.4', '1.3', '1.2', '1.1', '1.0']) {
+      assert.equal(served(await new CliHarness().run([...READ_TASKS, '--interface', asked]))['interface'], '1.4');
     }
   });
 
-  for (const version of ['2.0', '0.9', '1.4']) {
+  for (const version of ['2.0', '0.9', '1.5']) {
     it(`refuses --interface ${version} on stderr and prints no document`, async () => {
       const result = await new CliHarness().run([...READ_TASKS, '--interface', version]);
       assert.deepEqual([result.code, result.stdout, result.stderr.length], [EXIT.refused, [], 1]);
@@ -683,8 +683,8 @@ describe('teamrig read --unless', () => {
     const [tasks, , , meetings] = first;
     assert.ok(tasks !== undefined && meetings !== undefined);
     const again = allServed(await kit.run([...READ_ALL, '--unless', heldOf([meetings, tasks])]));
-    assert.deepEqual(unchangedOf(again), [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', false], ['plan', false], ['goals', false], ['history', false]]);
-    assert.deepEqual(again[0], { interface: '1.3', document: 'tasks', revision: tasks['revision'], unchanged: true });
+    assert.deepEqual(unchangedOf(again), [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', false], ['plan', false], ['goals', false], ['history', false], ['stats', false]]);
+    assert.deepEqual(again[0], { interface: '1.4', document: 'tasks', revision: tasks['revision'], unchanged: true });
     assert.deepEqual(again.slice(1, 3), first.slice(1, 3));
   });
 
@@ -710,7 +710,7 @@ describe('teamrig read --unless', () => {
     await post(kit, 'lead', 'alpha', 'the gate is merged');
     assert.deepEqual(
       unchangedOf(allServed(await kit.run([...READ_ALL, '--unless', held]))),
-      [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', true], ['plan', true], ['goals', true], ['history', true]],
+      [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', true], ['plan', true], ['goals', true], ['history', true], ['stats', true]],
     );
   });
 
@@ -719,7 +719,7 @@ describe('teamrig read --unless', () => {
     const first = served(await kit.run(['read', 'config', '--json']));
     assert.deepEqual(
       served(await kit.run(['read', 'config', '--json', '--unless', heldOf([first])])),
-      { interface: '1.3', document: 'config', revision: first['revision'], unchanged: true },
+      { interface: '1.4', document: 'config', revision: first['revision'], unchanged: true },
     );
   });
 });

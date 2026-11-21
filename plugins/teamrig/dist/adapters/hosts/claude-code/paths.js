@@ -10,6 +10,14 @@ const FOLDER_SETTINGS = [
     ['settings.json', 'shared'],
     ['settings.local.json', 'local'],
 ];
+/** The instruction files Claude Code reads in a folder, as path parts below it, in the order it reads them. */
+const FOLDER_INSTRUCTIONS = [['CLAUDE.md'], ['CLAUDE.local.md'], [PROJECT_DIR, 'CLAUDE.md']];
+/** The index of a project's memory, the one memory file Claude Code loads at a session's start. */
+const MEMORY_INDEX = 'MEMORY.md';
+/** Claude Code's folder name for a project: its path with every character but a letter or digit made `-`. */
+function projectSlug(project) {
+    return project.replace(/[^A-Za-z0-9]/g, '-');
+}
 /** The variable's value, or undefined when it is unset or blank: a blank one moves nothing. */
 function setIn(env, name) {
     const value = env[name]?.trim();
@@ -40,13 +48,24 @@ export function hostPaths(env, platform) {
     const home = (userHome) => setIn(env, CONFIG_DIR) ?? join(userHome, '.claude');
     /** Its temporary files: a session's scratchpad is `<it>/<project folder>/<session>/scratchpad`. */
     const temp = (systemTemp) => join(setIn(env, TEMP_DIR) ?? systemTemp, 'claude');
+    /** A project's memory: `<its folder>/projects/<the project's folder name>/memory`. */
+    const memoryFolder = (userHome, project) => join(home(userHome), 'projects', projectSlug(project), 'memory');
     return {
         home,
         userSettings: (userHome) => join(home(userHome), 'settings.json'),
         folderSettings: (folder) => FOLDER_SETTINGS.map(([name, kind]) => ({ path: join(folder, PROJECT_DIR, name), kind })),
         worktrees: (project) => join(project, PROJECT_DIR, 'worktrees'),
         worktreeRepo: (path) => worktreeRepoOf(path, platform),
+        userInstructions: (userHome) => join(home(userHome), 'CLAUDE.md'),
+        folderInstructions: (folder) => FOLDER_INSTRUCTIONS.map((parts) => join(folder, ...parts)),
+        userRules: (userHome) => join(home(userHome), 'rules'),
+        projectRules: (project) => join(project, PROJECT_DIR, 'rules'),
         skills: (userHome) => join(home(userHome), 'skills'),
+        projectSkills: (project) => join(project, PROJECT_DIR, 'skills'),
+        userAgents: (userHome) => join(home(userHome), 'agents'),
+        projectAgents: (project) => join(project, PROJECT_DIR, 'agents'),
+        memoryFolder,
+        memoryIndex: (userHome, project) => join(memoryFolder(userHome, project), MEMORY_INDEX),
         memoryFolders: (userHome) => join(home(userHome), 'projects', '*', 'memory'),
         scratchpads: (systemTemp) => join(temp(systemTemp), '*', '*', 'scratchpad'),
         // A transcript is `<project folder>/<session>.jsonl`, and the scratchpad keeps both names.

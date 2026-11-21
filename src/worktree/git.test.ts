@@ -4,8 +4,14 @@ import { existsSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
-import type { GitRun } from '../core/git-run.ts';
-import { GIT_WORKTREES as git, parseStatus, parseWorktreeList, worktreeGit, type GitRunner } from './git.ts';
+import { runGit, type GitRun } from '../core/git-run.ts';
+import { parseStatus, parseWorktreeList, worktreeGit, type GitRunner } from './git.ts';
+
+/**
+ * The git CLI with room for each real git query here, far past its 10 s: under the full gate on a loaded host a query
+ * took longer, read as unknown, and failed the spec (GeneralA6/teamrig#844). Steps with their own limit keep it.
+ */
+const git = worktreeGit((dir, args, timeout = 120_000) => runGit(dir, args, timeout));
 
 describe('parseWorktreeList', () => {
   it('reads each worktree with its branch and lock, the main one first', () => {

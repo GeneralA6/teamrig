@@ -5,10 +5,11 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
+import { runGit } from '../core/git-run.ts';
 import { FakeWorktreeFiles, FakeWorktreeGit, type FakeGitAnswers, type FakeNode } from '../testing/fake-worktrees.ts';
 import { FakeProgramSystem } from '../testing/fake-program-system.ts';
 import { NODE_PROGRAM_SYSTEM, NODE_WORKTREE_FILES, parseLsofFolders, probeMove, readWorkingFolders, renameProbe, type WorktreeFiles } from './files.ts';
-import { GIT_WORKTREES, type GitOutcome, type WorktreeEntry } from './git.ts';
+import { type GitOutcome, type WorktreeEntry, worktreeGit } from './git.ts';
 import {
   carryOut,
   clearLeftover,
@@ -665,7 +666,11 @@ function realWorld(prefix: string): { repo: TempRepo; worktree: string; modules:
   return { repo, worktree, modules };
 }
 
-const REAL: WorktreePorts = { git: GIT_WORKTREES, files: NODE_WORKTREE_FILES };
+/**
+ * The git CLI with room for each real git query here, far past its 10 s: under the full gate on a loaded host a query
+ * took longer, read as unknown, and failed the spec (GeneralA6/teamrig#844). Steps with their own limit keep it.
+ */
+const REAL: WorktreePorts = { git: worktreeGit((dir, args, timeout = 120_000) => runGit(dir, args, timeout)), files: NODE_WORKTREE_FILES };
 
 describe('other programs running inside the worktree (#797)', () => {
   const HOLDERS = `other programs run inside ${TOP}: 4242 claude (in ${resolve(TOP, 'src')}); a folder a program runs in cannot be deleted on Windows, so git would stop partway: close them or move them out of it, then run this again`;

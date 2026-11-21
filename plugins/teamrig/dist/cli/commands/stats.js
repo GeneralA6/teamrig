@@ -66,7 +66,8 @@ async function goalsOf(runtime, { teams }) {
     const reads = await Promise.all(teams.map((team) => new KitTreeGoals(runtime, team.paths, team.config).all()));
     return new Map(reads.flatMap((goals) => [...goals]));
 }
-function rangeOf(value) {
+/** The range a `--range` names, `7d` when the run gives none; `teamrig read stats` takes the same flag. */
+export function rangeOf(value) {
     if (value === undefined) {
         return '7d';
     }

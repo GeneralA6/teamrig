@@ -103,6 +103,13 @@ describe('parseLedger', () => {
     assert.deepEqual(parseLedger([JSON.stringify(measured), JSON.stringify(damaged)].join('\n')), [measured, queuedStep]);
   });
 
+  it("reads the folder a queued step ran in, its repository's top level, HEAD's commit and dirty flag, and leaves out bad ones (#708)", () => {
+    const ranIn = { ...queuedStep, cwd: '/work/app/src', gitTop: '/work/app', head: 'c0ffee12345', dirty: true };
+    const outside = { ...queuedStep, cwd: '/tmp/scratch' };
+    const damaged = { ...queuedStep, cwd: 7, gitTop: '', head: null, dirty: 'no' };
+    assert.deepEqual(parseLedger([ranIn, outside, damaged].map((line) => JSON.stringify(line)).join('\n')), [ranIn, outside, queuedStep]);
+  });
+
   it('keeps a priority only as a whole number beside a good task, as it is that task\'s (T2209)', () => {
     const lines = [{ ...queuedStep, task: 'T12', priority: -1 }, { ...queuedStep, task: 'T12', priority: 1.5 }, { ...queuedStep, priority: 2 }, { ...queuedStep, task: 'T0', priority: 2 }];
     assert.deepEqual(parseLedger(lines.map((line) => JSON.stringify(line)).join('\n')), [{ ...queuedStep, task: 'T12' }, { ...queuedStep, task: 'T12' }, queuedStep, queuedStep]);

@@ -182,6 +182,13 @@ describe('runCli: help, version and usage errors', () => {
     assert.equal(kit.files.get(EVENTS_PATH), undefined);
   });
 
+  it("open's help names --terminal print and says open takes no --session (GeneralA6/teamrig#1307)", async () => {
+    const open = (await new CliHarness().run(['open', '--help'])).stdout.join('\n');
+    assert.match(open, /it takes no --session/);
+    assert.match(open, /--terminal print opens no tab\s+and prints the command to run/);
+    assert.doesNotMatch(open, /with no terminal it prints the command/);
+  });
+
   it('gives every command its own lines in the help, and states the short form limit there', () => {
     assert.deepEqual(COMMAND_HELP.undocumented(), []);
     assert.ok(USAGE.includes(`within ${SHORT_FORM_CHARS.toLocaleString('en-US')} characters`));

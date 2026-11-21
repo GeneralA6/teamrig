@@ -6,7 +6,7 @@ import { planLine, totalLine, writeLine } from "../../permissions/report.js";
 import { applyTrim, backupStamp, ownerStateDir, planScope, rewritesOf } from "../../permissions/trim.js";
 import { teamSettingsScope } from "../allow-scope.js";
 import { noPositionals } from "../args.js";
-import { pathsOf } from "../host.js";
+import { pathsOf, permissionsOf } from "../host.js";
 import { openTeamKit, projectFolder, requireConfig } from "../kit.js";
 import { EXIT } from "../runtime.js";
 /**
@@ -27,7 +27,8 @@ export async function trim(args, runtime) {
     const config = requireConfig(kit, runtime, 'read');
     const mode = args.switches.has('all') ? 'all' : 'wide';
     const scope = await teamSettingsScope(runtime, pathsOf(runtime), { paths: kit.paths, config, project: await projectFolder(runtime, config) });
-    const plans = await planScope(runtime.files, scope, new KeepList(config.permissions.keepAllow), mode, new SecretScanner(config.register.secretPatterns));
+    const permissions = permissionsOf(runtime);
+    const plans = await planScope(permissions, runtime.files, scope, new KeepList(config.permissions.keepAllow), mode, new SecretScanner(config.register.secretPatterns));
     const lines = plans.flatMap((plan) => planLine(plan) ?? []);
     const what = mode === 'all' ? 'every allow rule' : 'the allow rules that approve a whole tool or program or hold a credential';
     if (rewritesOf(plans).length === 0) {
@@ -42,7 +43,7 @@ export async function trim(args, runtime) {
     }
     const now = runtime.clock.now();
     const backupDir = join(ownerStateDir(runtime.env, runtime.userHome, runtime.platform), KIT_NAME, BACKUPS, backupStamp(now));
-    const written = await applyTrim(runtime.files, plans, backupDir, now);
+    const written = await applyTrim(permissions, runtime.files, plans, backupDir, now);
     const wrote = written.filter((write) => write.result === 'wrote').length;
     runtime.out.stdout(`WROTE ${wrote} of ${written.length} file(s); their old text and a manifest are in ${backupDir}`);
     written.forEach((write) => runtime.out.stdout(writeLine(write)));

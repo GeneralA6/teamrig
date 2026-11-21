@@ -1,14 +1,14 @@
-import { join } from 'node:path';
 import { formatCount } from '../budget/format.ts';
 import { clipEnd } from '../core/clip.ts';
 import type { Files } from '../core/files.ts';
-import { isRecord, type JsonRecord } from '../core/guards.ts';
+import type { JsonRecord } from '../core/guards.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { jsonObjectOf } from '../doctor/settings-env.ts';
 import { hookCommandLine, hookCommandsOf } from '../doctor/settings-hooks.ts';
 import { countOf, formatCounts, type KeepList } from '../permissions/allow-rules.ts';
 import type { SettingsFile } from '../permissions/settings-scope.ts';
 import { planScope, type ReadPlan } from '../permissions/trim.ts';
+import type { HostPermissions, PermissionsReading } from '../ports/host/index.ts';
 import { CONTEXT_HOOK_EVENTS, hookOutputKey, recordedCommandOf, type HookOutputs } from './scan-hook-output.ts';
 import { tokensOf } from './scan-finding.ts';
 
@@ -28,16 +28,6 @@ export type FileFinding = Omit<SettingsFinding, 'copies'>;
 
 /** A hook's command prints up to this many characters. */
 const HOOK_COMMAND_MAX_CHARS = 80;
-
-function permissionsOf(settings: JsonRecord): JsonRecord {
-  const permissions = settings['permissions'];
-  return isRecord(permissions) ? permissions : {};
-}
-
-function hasDeny(settings: JsonRecord): boolean {
-  const deny = permissionsOf(settings)['deny'];
-  return Array.isArray(deny) && deny.length > 0;
-}
 
 function wideFindings(plan: ReadPlan): FileFinding[] {
   const removed = countOf(plan.trim.removed);
@@ -63,30 +53,39 @@ export function hookFindings(path: string, settings: JsonRecord, hooks: HookOutp
   });
 }
 
-function fileFindings(path: string, settings: JsonRecord, hooks: HookOutputs, secrets: SecretScanner): FileFinding[] {
-  const bypass: FileFinding[] =
-    permissionsOf(settings)['defaultMode'] === 'bypassPermissions' ? [{ kind: 'bypass', path, what: 'permissions.defaultMode is bypassPermissions: every tool call runs without asking' }] : [];
+function fileFindings(path: string, settings: JsonRecord, reading: PermissionsReading, hooks: HookOutputs, secrets: SecretScanner): FileFinding[] {
+  const bypass: FileFinding[] = reading.bypass === undefined ? [] : [{ kind: 'bypass', path, what: `${reading.bypass}: every tool call runs without asking` }];
   return [...bypass, ...hookFindings(path, settings, hooks, secrets)];
 }
 
 /**
- * The settings findings of the Claude Code settings files in `scope`: per file, the allow rules a `permissions trim`
+ * The settings findings of the host's settings files in `scope`: per file, the allow rules a `permissions trim`
  * removes (counted by class, never printed), prompts turned off, and the context hooks `hooks` (the transcripts read)
  * show printing into the context, with what they printed, the same finding in a file's worktree copies folded into its
- * first, with their count; then one finding when no file denies anything. It only reads.
+ * first, with their count; then one finding when no file denies anything, on `userSettings`, the person's own settings
+ * file, where a deny rule holds in every project. It only reads.
  */
-export async function scanSettings(files: Files, claudeDir: string, scope: readonly SettingsFile[], keep: KeepList, secrets: SecretScanner, hooks: HookOutputs): Promise<SettingsFinding[]> {
+export async function scanSettings(
+  permissions: HostPermissions,
+  files: Files,
+  userSettings: string,
+  scope: readonly SettingsFile[],
+  keep: KeepList,
+  secrets: SecretScanner,
+  hooks: HookOutputs,
+): Promise<SettingsFinding[]> {
   /** Keyed by the file (a worktree's copy as the project folder's own), the kind and the words. */
   const found = new Map<string, SettingsFinding>();
   let denies = false;
-  for (const plan of await planScope(files, scope, keep, 'wide', secrets)) {
+  for (const plan of await planScope(permissions, files, scope, keep, 'wide', secrets)) {
     if (plan.kind !== 'read') {
       continue;
     }
     const settings = jsonObjectOf(plan.text) ?? {};
-    denies ||= hasDeny(settings);
+    const reading = permissions.read(settings);
+    denies ||= reading.deny.length > 0;
     const file = plan.file.projectFile ?? plan.file.path;
-    for (const finding of [...wideFindings(plan), ...fileFindings(plan.file.path, settings, hooks, secrets)]) {
+    for (const finding of [...wideFindings(plan), ...fileFindings(plan.file.path, settings, reading, hooks, secrets)]) {
       const key = JSON.stringify([file, finding.kind, finding.what]);
       const first = found.get(key);
       found.set(key, first === undefined ? { ...finding, copies: 0 } : { ...first, copies: first.copies + 1 });
@@ -94,7 +93,7 @@ export async function scanSettings(files: Files, claudeDir: string, scope: reado
   }
   const grouped = [...found.values()];
   if (!denies) {
-    grouped.push({ kind: 'no-deny', path: join(claudeDir, 'settings.json'), what: 'no settings file has a permissions.deny rule, so nothing is refused outright (secret files, force pushes)', copies: 0 });
+    grouped.push({ kind: 'no-deny', path: userSettings, what: `no settings file has a ${permissions.denySetting} rule, so nothing is refused outright (secret files, force pushes)`, copies: 0 });
   }
   return grouped;
 }

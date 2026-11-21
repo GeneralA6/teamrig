@@ -2,14 +2,14 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
-import { secretDenyLines } from '../doctor/deny-lines.ts';
 import { CliHarness, APP, USER_SETTINGS as USER, type RunOptions } from '../testing/cli-harness.ts';
 import { NO_PATHS_HOST } from '../testing/host.ts';
+import { shippedPermissions } from '../testing/shipped-permissions.ts';
 import { EXIT } from './runtime.ts';
 
 const LOCAL = join(APP, '.claude', 'settings.local.json');
 const OPTIONS: RunOptions = { platform: 'linux' };
-const SECRET_DENY_LINES = secretDenyLines('linux');
+const SECRET_DENY_LINES = shippedPermissions().denyLines('linux');
 const MISSING = ['Bash(env)', 'Read(//**/*.pem)'];
 const FLAG =
   `WARN deny-missing 2 of ${SECRET_DENY_LINES.length} secret deny line(s) are in no settings file a session reads (read: ${USER}, ${LOCAL}), ` +

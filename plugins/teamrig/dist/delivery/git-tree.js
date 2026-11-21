@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { resolve } from 'node:path';
 /** One git run's stdout; any failure (no repository, no commit, no git on PATH) reads as undefined. */
 function runGit(dir, args) {
     try {
@@ -7,6 +8,13 @@ function runGit(dir, args) {
     catch {
         return undefined;
     }
+}
+/**
+ * git prints its top level with forward slashes on Windows too (`C:/work/repo`); resolved, it names the place the
+ * way the log's folder line does (`C:\\work\\repo`).
+ */
+export function nativeTop(shown, resolvePath = resolve) {
+    return resolvePath(shown);
 }
 /** The working tree from the git CLI: HEAD's ids and the shared git folder, and whether anything is uncommitted. */
 export const GIT_TREES = {
@@ -19,5 +27,16 @@ export const GIT_TREES = {
             return { kind: 'none' };
         }
         return status === '' ? { kind: 'clean', tree, commit, gitDir } : { kind: 'changed' };
+    },
+    ranIn: (dir) => {
+        const shown = runGit(dir, ['rev-parse', '--show-toplevel'])?.trim();
+        if (shown === undefined || shown === '') {
+            return { kind: 'outside' };
+        }
+        const top = nativeTop(shown);
+        const head = runGit(dir, ['rev-parse', '--verify', '--quiet', 'HEAD'])?.trim();
+        const status = runGit(dir, ['--no-optional-locks', 'status', '--porcelain', '--untracked-files=normal']);
+        // A status git cannot give reads as dirty: a log never calls a tree clean that nobody saw.
+        return { kind: 'git', top, head: head === undefined || head === '' ? null : head, dirty: status !== '' };
     },
 };

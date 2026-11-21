@@ -4,7 +4,9 @@ import { join, resolve } from 'node:path';
 import { SecretScanner } from '../core/secrets.ts';
 import { KeepList } from '../permissions/allow-rules.ts';
 import type { SettingsFile } from '../permissions/settings-scope.ts';
+import type { HostPermissions } from '../ports/host/index.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { shippedPermissions } from '../testing/shipped-permissions.ts';
 import { hookOutputKey, type HookOutputs } from './scan-hook-output.ts';
 import { scanSettings, type SettingsFinding } from './scan-settings.ts';
 
@@ -19,6 +21,7 @@ const SCOPE: readonly SettingsFile[] = [
 ];
 const HELD = 'hunter2-abcdef';
 const SECRETS = new SecretScanner(['hunter2-']);
+const PERMISSIONS = shippedPermissions();
 
 function json(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
@@ -44,7 +47,7 @@ const NO_HOOKS: HookOutputs = new Map();
 describe('scanSettings', () => {
   it('names the wide allow rules by count, prompts turned off, the hooks that printed into the context (an exec-form one with its args) and the missing deny list', async () => {
     const files = new MemoryFiles({ [USER]: USER_SETTINGS, [SHARED]: json({ permissions: { allow: ['Read'] } }) });
-    const found = await scanSettings(files, CLAUDE_DIR, SCOPE, new KeepList([]), SECRETS, HOOKS);
+    const found = await scanSettings(PERMISSIONS, files, USER, SCOPE, new KeepList([]), SECRETS, HOOKS);
     assert.deepEqual(
       found.map((finding) => [finding.kind, finding.path]),
       [
@@ -69,7 +72,7 @@ describe('scanSettings', () => {
     const files = new MemoryFiles({ [USER]: USER_SETTINGS });
     const silent: HookOutputs = new Map([[hookOutputKey('SessionStart', 'node'), { runs: 5, printed: 0, chars: 0 }]]);
     for (const hooks of [NO_HOOKS, silent]) {
-      const kinds = (await scanSettings(files, CLAUDE_DIR, SCOPE, new KeepList([]), SECRETS, hooks)).map((finding) => finding.kind);
+      const kinds = (await scanSettings(PERMISSIONS, files, USER, SCOPE, new KeepList([]), SECRETS, hooks)).map((finding) => finding.kind);
       assert.deepEqual(kinds, ['wide-allow', 'bypass', 'no-deny']);
     }
   });
@@ -88,17 +91,39 @@ describe('scanSettings', () => {
     const wide = json({ permissions: { allow: ['Bash', 'Read'], deny: ['Read(./.env)'] } });
     const narrower = json({ permissions: { allow: ['Bash'] } });
     const rows = (found: readonly SettingsFinding[]) => found.map((finding) => [finding.kind, finding.path, finding.copies]);
-    const withProject = await scanSettings(new MemoryFiles({ [LOCAL]: wide, [treeA]: wide, [treeB]: narrower, [treeC]: wide }), CLAUDE_DIR, scope, new KeepList([]), SECRETS, NO_HOOKS);
+    const withProject = await scanSettings(PERMISSIONS, new MemoryFiles({ [LOCAL]: wide, [treeA]: wide, [treeB]: narrower, [treeC]: wide }), USER, scope, new KeepList([]), SECRETS, NO_HOOKS);
     assert.deepEqual(rows(withProject), [
       ['wide-allow', LOCAL, 2],
       ['wide-allow', treeB, 0],
     ]);
-    const copiesOnly = await scanSettings(new MemoryFiles({ [treeA]: wide, [treeC]: wide }), CLAUDE_DIR, scope, new KeepList([]), SECRETS, NO_HOOKS);
+    const copiesOnly = await scanSettings(PERMISSIONS, new MemoryFiles({ [treeA]: wide, [treeC]: wide }), USER, scope, new KeepList([]), SECRETS, NO_HOOKS);
     assert.deepEqual(rows(copiesOnly), [['wide-allow', treeA, 1]]);
+  });
+
+  it("words prompts turned off and the missing deny list in the host's own settings names", async () => {
+    const host: HostPermissions = {
+      ...PERMISSIONS,
+      denySetting: 'rules.refuse',
+      read: (settings) => ({ ...PERMISSIONS.read(settings), deny: [], bypass: 'rules.ask is never' }),
+    };
+    const files = new MemoryFiles({ [USER]: json({ permissions: { deny: ['Read(./.env)'] } }) });
+    assert.deepEqual(
+      (await scanSettings(host, files, USER, SCOPE, new KeepList([]), SECRETS, NO_HOOKS)).map((finding) => finding.what),
+      ['rules.ask is never: every tool call runs without asking', 'no settings file has a rules.refuse rule, so nothing is refused outright (secret files, force pushes)'],
+    );
+  });
+
+  it("puts the missing deny list on the person's settings file it is told, joining no file name of its own", async () => {
+    const told = resolve('/', 'agent', 'prefs.json');
+    const found = await scanSettings(PERMISSIONS, new MemoryFiles({ [SHARED]: json({ permissions: { allow: ['Read'] } }) }), told, SCOPE, new KeepList(['Read']), SECRETS, NO_HOOKS);
+    assert.deepEqual(
+      found.map((finding) => [finding.kind, finding.path]),
+      [['no-deny', told]],
+    );
   });
 
   it('finds nothing in a scope whose files deny something and allow only what the keep-list keeps', async () => {
     const files = new MemoryFiles({ [USER]: json({ permissions: { allow: ['Bash'] } }), [LOCAL]: json({ permissions: { deny: ['Read(./.env)'] } }) });
-    assert.deepEqual(await scanSettings(files, CLAUDE_DIR, SCOPE, new KeepList(['Bash']), SECRETS, NO_HOOKS), []);
+    assert.deepEqual(await scanSettings(PERMISSIONS, files, USER, SCOPE, new KeepList(['Bash']), SECRETS, NO_HOOKS), []);
   });
 });

@@ -374,6 +374,10 @@ function midnight(day, zone) {
     const date = new Date(day);
     return zone.instant({ year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate(), hour: 0, minute: 0 }).getTime();
 }
+/** When the zone's clock next shows 00:00 after `at`: the end of the calendar day `at` falls in. */
+export function dayEndOf(at, zone) {
+    return midnight(calendarDay(at, zone) + MS_PER_DAY, zone);
+}
 /** From the start of calendar day `first` to the end of `last`. */
 function dayWindow(first, last, zone) {
     return { start: midnight(first, zone), end: midnight(last + MS_PER_DAY, zone) };

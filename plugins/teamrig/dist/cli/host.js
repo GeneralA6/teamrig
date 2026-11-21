@@ -96,3 +96,19 @@ export function hostHomeOf(runtime) {
 export function hostHomeIfKnown(runtime) {
     return pathsIfKnown(runtime)?.home(runtime.userHome);
 }
+/** The run's permission rules. A host that keeps none refuses with its own reason, as `transcriptsOf` does. */
+export function permissionsOf(runtime) {
+    const { permissions } = hostOf(runtime);
+    if (isUnsupported(permissions)) {
+        throw new RefusedError(permissions.notice);
+    }
+    return permissions;
+}
+/**
+ * The run's permission rules, or undefined on a host that keeps none: for a check that goes on without them, such as
+ * doctor's, which then has no rule to find missing.
+ */
+export function permissionsIfKept(runtime) {
+    const { permissions } = hostOf(runtime);
+    return isUnsupported(permissions) ? undefined : permissions;
+}

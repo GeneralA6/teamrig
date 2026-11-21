@@ -36,7 +36,7 @@ describe('the public interface data', () => {
     assert.deepEqual(
       [newerMinor, newerMajor, olderMajor].map((check) => (check.served ? 'served' : check.reason)),
       [
-        `interface 1.4 is newer than the ${api.INTERFACE_VERSION} this teamrig serves; update teamrig`,
+        `interface 1.5 is newer than the ${api.INTERFACE_VERSION} this teamrig serves; update teamrig`,
         `interface 2.0 is newer than the ${api.INTERFACE_VERSION} this teamrig serves; update teamrig`,
         `interface 0.9 is no longer served; this teamrig serves ${api.INTERFACE_VERSION}, so update the reader`,
       ],
@@ -44,7 +44,7 @@ describe('the public interface data', () => {
   });
 
   it('names the documents, the five of 1.0 first, and wraps a body in the head a body cannot replace', () => {
-    assert.deepEqual(api.DOCUMENTS, ['tasks', 'inbox', 'sessions', 'meetings', 'config', 'plan', 'goals', 'history']);
+    assert.deepEqual(api.DOCUMENTS, ['tasks', 'inbox', 'sessions', 'meetings', 'config', 'plan', 'goals', 'history', 'stats']);
     assert.deepEqual(['tasks', 'goals', 'history', 'weather', ''].map(api.isDocumentName), [true, true, true, false, false]);
     const answer = api.answerOf('tasks', 'abc', ['one line'], { tasks: [], revision: 'from the body' });
     assert.deepEqual(answer, { tasks: [], interface: api.INTERFACE_VERSION, document: 'tasks', revision: 'abc', problems: ['one line'] });

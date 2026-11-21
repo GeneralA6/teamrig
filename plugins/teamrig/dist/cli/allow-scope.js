@@ -3,7 +3,7 @@ import { SecretScanner } from "../core/secrets.js";
 import { KeepList } from "../permissions/allow-rules.js";
 import { ownUntracked, settingsScope } from "../permissions/settings-scope.js";
 import { planScope, wideAllowOf } from "../permissions/trim.js";
-import { pathsIfKnown } from "./host.js";
+import { pathsIfKnown, permissionsIfKept } from "./host.js";
 /**
  * The host's settings files a team's sessions run under, where `host` keeps them, for `permissions trim` and its flag
  * in doctor and `check` (which `start` shows the lead): the person's user settings, the project folder and each
@@ -40,10 +40,14 @@ function settingsInGit(runtime, path) {
 }
 /**
  * The rules off the team's keep-list that approve a whole tool or program or hold a credential, in every file of its
- * scope: none on a host whose folders teamrig does not know (`knownSettingsScope`).
+ * scope: none on a host whose folders teamrig does not know (`knownSettingsScope`) or that keeps no permission rule.
  */
 export async function readWideAllow(runtime, input) {
     const { config } = input;
-    const plans = await planScope(runtime.files, await knownSettingsScope(runtime, input), new KeepList(config.permissions.keepAllow), 'wide', new SecretScanner(config.register.secretPatterns));
+    const permissions = permissionsIfKept(runtime);
+    if (permissions === undefined) {
+        return wideAllowOf([]);
+    }
+    const plans = await planScope(permissions, runtime.files, await knownSettingsScope(runtime, input), new KeepList(config.permissions.keepAllow), 'wide', new SecretScanner(config.register.secretPatterns));
     return wideAllowOf(plans);
 }
