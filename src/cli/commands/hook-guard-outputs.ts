@@ -17,7 +17,8 @@ import type { HookEvent, HookReply } from '../../ports/host/index.ts';
 import { approvedTaskOf } from '../../register/approval.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
-import { secretFilesOf } from '../host.ts';
+import { runBy } from '../agent-run.ts';
+import { secretFilesOf, sessionVariablesOf } from '../host.ts';
 import { rosterOf, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { leadAboveOf } from '../tree.ts';
@@ -175,7 +176,10 @@ async function tabIdentityOf(runtime: CliRuntime, kit: Kit | undefined, hostSess
  * none when it lets the call go.
  */
 export function execGuardReplyOf(runtime: CliRuntime, guard: GuardLoad, event: HookEvent): Promise<HookReply | undefined> {
+  const by = runBy(runtime);
   return execGuardReply(event, {
+    sessionVariables: sessionVariablesOf(runtime),
+    agentMark: by.kind === 'agent' ? by.mark : undefined,
     cwd: runtime.cwd,
     home: runtime.userHome,
     identity: () => tabIdentityOf(runtime, guard.kit, event.session ?? null),

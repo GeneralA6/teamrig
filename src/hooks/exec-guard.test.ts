@@ -6,6 +6,7 @@ import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { settingsWriteRefusal } from '../core/settings-writers.ts';
 import type { ClientCheck } from '../exec/client-integrity.ts';
 import { ClientInstalls } from '../exec/client-launch.ts';
+import type { SessionVariables } from '../ports/host/index.ts';
 import { hookEventOf, replyText } from '../testing/host.ts';
 import { EXEC_COMMANDS, execGuardReply, HOOK_COMMANDS, OWNER_COMMANDS, type ExecGuardEnv, type TabIdentity } from './exec-guard.ts';
 
@@ -14,6 +15,11 @@ const SESSIONS: Readonly<Record<string, string>> = { alpha: 'alpha', 'app-alpha'
 const ALPHA: TabIdentity = { kind: 'bound', session: 'alpha', owner: 'owner', idOf: (name) => SESSIONS[name] };
 
 const INTACT: ClientCheck = { kind: 'intact' };
+
+/** The variables the shipped host tells a session by, as the hook hands them where it is the only host. */
+const CLAUDE_CODE_VARIABLES: SessionVariables = { marks: ['CLAUDECODE'], identity: ['CLAUDE_CODE_SESSION_ID', 'CLAUDE_PROJECT_DIR'] };
+/** The same, beside a second host's: what the hook hands the guard once another adapter ships. */
+const TWO_HOSTS_VARIABLES: SessionVariables = { marks: ['CLAUDECODE', 'OTHER_AGENT'], identity: [...CLAUDE_CODE_VARIABLES.identity, 'OTHER_SESSION'] };
 
 /** The plugin cache, the hook's own install in it, and an older version beside it that a tab keeps on PATH. */
 const CACHE = 'C:/u/.claude/plugins/cache/teamrig/teamrig';
@@ -53,6 +59,8 @@ function env(
       return Promise.resolve(root === INSTALL ? client : (placing.others?.[root] ?? INTACT));
     },
     ghWrites: { github: { kind: 'repos', repos: new Set(['acme/web']) }, remotesOf: () => ['acme/web'], ghRepo: undefined },
+    sessionVariables: CLAUDE_CODE_VARIABLES,
+    agentMark: 'CLAUDECODE',
     reads: () => reads,
     checks: () => checked.length,
     checked: () => checked,
@@ -759,6 +767,27 @@ describe('execGuardReply, binding the tab to a session', () => {
     }
   });
 
+  it("refuses a bind on a line that changes any variable a host names its session or its folder with, naming the ones changed", async () => {
+    const two = { ...env(), sessionVariables: TWO_HOSTS_VARIABLES };
+    for (const [payload, changed] of [
+      [bash('TEAMRIG_SESSION=bravo teamrig start'), '\\$TEAMRIG_SESSION'],
+      [bash('env CLAUDE_CODE_SESSION_ID=00000000-0000-0000-0000-000000000000 teamrig start'), '\\$CLAUDE_CODE_SESSION_ID'],
+      [bash('CLAUDE_PROJECT_DIR=/srv/other teamrig inbox read'), '\\$CLAUDE_PROJECT_DIR'],
+      [powershell("$env:OTHER_SESSION = 'x'; teamrig start"), '\\$OTHER_SESSION'],
+      [bash('TEAMRIG_SESSION=bravo OTHER_SESSION=x teamrig start'), '\\$TEAMRIG_SESSION, \\$OTHER_SESSION'],
+    ] as const) {
+      const found = await verdict(payload, two);
+      assert.equal(found?.decision, 'deny', JSON.stringify(payload));
+      assert.match(
+        found.reason,
+        new RegExp(`runs on a line that changes what the CLI binds the tab by \\(${changed}\\); name this tab's own \\(--session alpha\\) and leave the line's variables as they are\\.`),
+        JSON.stringify(payload),
+      );
+    }
+    assert.equal(await verdict(bash('OTHER_SESSION=x teamrig start')), undefined, 'a variable no host of the set names');
+    assert.equal(await verdict(bash('CLAUDE_PROJECT_DIR=/srv/other npm test'), two), undefined, 'no bind on the line');
+  });
+
   it('reads the identity only for a bind that names a session or runs on a line that steers one', async () => {
     const quiet = env();
     assert.equal(await verdict(bash('teamrig start'), quiet), undefined);
@@ -798,5 +827,24 @@ describe('execGuardReply, the variable Claude Code marks its tool calls with', (
   it('passes a line that reads it', async () => {
     assert.equal(await verdict(bash('echo "$CLAUDECODE"')), undefined);
     assert.equal(await verdict(powershell('Write-Output $env:CLAUDECODE')), undefined);
+  });
+
+  it("refuses a line that changes any host's mark of the set, each one named, and lets a name outside the set be", async () => {
+    const two = { ...env(), sessionVariables: TWO_HOSTS_VARIABLES };
+    const other = await verdict(bash('env -u OTHER_AGENT teamrig list'), two);
+    assert.equal(other?.decision, 'deny');
+    assert.match(other.reason, /this line changes \$OTHER_AGENT, /);
+    assert.doesNotMatch(other.reason, /\$CLAUDECODE/);
+    const both = await verdict(bash('env -i PATH=/usr/bin teamrig list'), two);
+    assert.match(both?.reason ?? '', /this line changes \$CLAUDECODE, .*this line changes \$OTHER_AGENT, /s);
+    assert.equal((await verdict(powershell('Remove-Item Env:CLAUDECODE'), two))?.decision, 'deny');
+    assert.equal(two.reads(), 0);
+    assert.equal(await verdict(bash('OTHER_AGENT= teamrig list')), undefined);
+  });
+
+  it("names the mark of the hook's own run in a settings writer's refusal, and none where its run shows none", async () => {
+    const line = bash('teamrig permissions trim --yes');
+    assert.equal((await verdict(line, { ...env(), agentMark: 'OTHER_AGENT' }))?.reason, `teamrig exec guard: ${settingsWriteRefusal('permissions trim', 'OTHER_AGENT')}`);
+    assert.equal((await verdict(line, { ...env(), agentMark: undefined }))?.reason, `teamrig exec guard: ${settingsWriteRefusal('permissions trim', undefined)}`);
   });
 });

@@ -5,7 +5,7 @@ import { placeProgram, placeScript, type ClientFile, type ClientInstalls, type C
 import { PACKAGE_STARTERS } from '../package-guard/packaged.ts';
 import { runsOf, type LineRuns, type OpaqueRun, type ProgramRun, type ProgramsContext } from '../package-guard/programs.ts';
 import { programName } from '../push-guard/launchers.ts';
-import type { HookEvent, HookReply } from '../ports/host/index.ts';
+import type { HookEvent, HookReply, SessionVariables } from '../ports/host/index.ts';
 import type { ShellWord } from '../push-guard/tokenizer.ts';
 import { ghWriteRefusals, type GhWriteEnv } from './gh-write-refusals.ts';
 import { heldBack } from './permission.ts';
@@ -123,6 +123,14 @@ export interface ExecGuardEnv {
   readonly checkClient: (root: string) => Promise<ClientCheck>;
   /** The team's GitHub repositories and where a raw `gh` write lands, for the check that refuses one there. */
   readonly ghWrites: GhWriteEnv;
+  /**
+   * The variables every shipped host and the running one tell a session by. A line that changes a mark of an agent's
+   * run is refused, as the checks kept for the person read the marks; one that changes a variable naming the session
+   * or its folder steers a bind, as `$TEAMRIG_SESSION` does.
+   */
+  readonly sessionVariables: SessionVariables;
+  /** The mark that shows the hook's own run to be an agent's, where one is set: a settings writer's refusal names it. */
+  readonly agentMark: string | undefined;
 }
 
 /** A review a line runs: its action and every `--session` value it names. */
@@ -288,10 +296,10 @@ function bindCallOf(words: readonly ShellWord[]): BindCall | undefined {
 /**
  * Why the guard refuses a bind call from a bound tab, or undefined when it binds the tab to its own session (T3081):
  * a tab reads its inbox and starts only as itself, so a tool call can never move it to another session, whichever
- * client runs it. `steered` is true when the line changes a variable the CLI binds by (`$TEAMRIG_SESSION`, the Claude
- * Code session id). A tab no mark binds yet binds freely: that is how it first binds.
+ * client runs it. `steered` names the variables the line changes that the CLI binds by (`$TEAMRIG_SESSION`, and each
+ * one a host names its session or its folder with). A tab no mark binds yet binds freely: that is how it first binds.
  */
-function bindRefusalOf(call: BindCall, identity: TabIdentity, steered: boolean): string | undefined {
+function bindRefusalOf(call: BindCall, identity: TabIdentity, steered: readonly string[]): string | undefined {
   if (identity.kind === 'unbound') {
     return undefined;
   }
@@ -307,8 +315,9 @@ function bindRefusalOf(call: BindCall, identity: TabIdentity, steered: boolean):
   if (other !== undefined) {
     return `${command} names --session ${other}, but this tab is ${identity.session}'s; a tab reads its inbox and starts only as its own session (${own}).`;
   }
-  if (steered) {
-    return `${command} runs on a line that sets the session the CLI binds the tab by ($${ENV.session} or $${ENV.claudeSession}); name this tab's own (${own}) and leave those as they are.`;
+  if (steered.length > 0) {
+    const changed = steered.map((name) => `$${name}`).join(', ');
+    return `${command} runs on a line that changes what the CLI binds the tab by (${changed}); name this tab's own (${own}) and leave the line's variables as they are.`;
   }
   return undefined;
 }
@@ -444,8 +453,10 @@ const UNREADABLE =
 const FED_SHELL =
   'a shell here reads its commands from a pipe, so the guard cannot tell whether they review a request or act as the owner; run them directly, or hand the shell a heredoc, which the guard reads.';
 
-const CLAUDE_CODE_CHANGED =
-  `this line changes $${ENV.claudeCode}, which Claude Code sets so teamrig knows a command runs under it and keeps the checks that hold there; leave it as Claude Code set it.`;
+/** Why a line that changes a mark of an agent's run is refused: the checks kept for the person read it. */
+function markChangedRefusal(mark: string): string {
+  return `this line changes $${mark}, which Claude Code sets so teamrig knows a command runs under it and keeps the checks that hold there; leave it as Claude Code set it.`;
+}
 
 const FOREIGN_SHELL =
   'a package runner here hands its command line to a shell the line names (--script-shell, npm_config_script_shell or ComSpec) that the guard cannot read, so it cannot tell whether the line reviews a request or acts as the owner; leave the runner its own shell, or run the commands directly.';
@@ -631,9 +642,9 @@ export async function execGuardReply(event: HookEvent, env: ExecGuardEnv): Promi
   const unread = runs.opaque.some(hidesSubcommand) || calls.some(({ call }) => call.kind === 'unreadable');
   const fed = runs.fedShells.length > 0;
   const foreign = runs.foreignShells.length > 0;
-  const cleared = changesVariable(runs, ENV.claudeCode);
-  const steered = changesVariable(runs, ENV.session) || changesVariable(runs, ENV.claudeSession);
-  const checkedBinds = binds.filter((call) => call.unread || call.sessions.length > 0 || steered);
+  const cleared = env.sessionVariables.marks.filter((mark) => changesVariable(runs, mark));
+  const steered = [ENV.session, ...env.sessionVariables.identity].filter((name) => changesVariable(runs, name));
+  const checkedBinds = binds.filter((call) => call.unread || call.sessions.length > 0 || steered.length > 0);
   const ghRefusals = ghWriteRefusals(runs, env.ghWrites);
   const quiet =
     calls.length === 0 &&
@@ -643,16 +654,16 @@ export async function execGuardReply(event: HookEvent, env: ExecGuardEnv): Promi
     opaqueHook.length === 0 &&
     checkedBinds.length === 0 &&
     ghRefusals.length === 0;
-  if (quiet && !unread && !fed && !foreign && !cleared) {
+  if (quiet && !unread && !fed && !foreign && cleared.length === 0) {
     return undefined;
   }
-  const reasons: string[] = [...(unread ? [UNREADABLE] : []), ...(fed ? [FED_SHELL] : []), ...(foreign ? [FOREIGN_SHELL] : []), ...(cleared ? [CLAUDE_CODE_CHANGED] : [])];
+  const reasons: string[] = [...(unread ? [UNREADABLE] : []), ...(fed ? [FED_SHELL] : []), ...(foreign ? [FOREIGN_SHELL] : []), ...cleared.map(markChangedRefusal)];
   reasons.push(...ghRefusals);
   reasons.push(...opaque.map((run) => opaqueRefusalOf(run.program)));
   reasons.push(...calls.flatMap(({ call }) => (call.kind === 'owner' ? [ownerRefusalOf(call.action)] : call.kind === 'hook' ? [hookRefusalOf(call.name)] : [])));
   reasons.push(...opaqueOwner.map((words) => ownerRefusalOf(ownerActionOf(words))));
-  reasons.push(...calls.flatMap(({ call }) => (call.kind === 'settings' ? [settingsWriteRefusal(call.command, ENV.claudeCode)] : [])));
-  reasons.push(...opaqueSettings.map((command) => settingsWriteRefusal(command, ENV.claudeCode)));
+  reasons.push(...calls.flatMap(({ call }) => (call.kind === 'settings' ? [settingsWriteRefusal(call.command, env.agentMark)] : [])));
+  reasons.push(...opaqueSettings.map((command) => settingsWriteRefusal(command, env.agentMark)));
   reasons.push(...opaqueHook.map((words) => hookRefusalOf(hookNameOf(words))));
   const roots = new Set<string>();
   for (const { call, client, at } of calls) {
