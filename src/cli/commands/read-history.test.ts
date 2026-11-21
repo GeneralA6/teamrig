@@ -217,6 +217,17 @@ describe('teamrig read history', () => {
     assert.deepEqual([stepsOf(answer).length, problemsOf(answer)], [3, ['app/state/events.jsonl: 1 unreadable line(s) left out']]);
   });
 
+  it('leaves out an event whose time is not the stamp the register writes, as one damaged line, and serves none of its words', async () => {
+    const kit = await workedTask();
+    const lines = (kit.files.get(EVENTS_PATH) ?? '').trimEnd().split('\n');
+    const last: unknown = JSON.parse(lines.at(-1) ?? '{}');
+    assert.ok(typeof last === 'object' && last !== null && !Array.isArray(last));
+    await kit.files.append(EVENTS_PATH, toJsonlLine({ ...last, at: '2030-01-08 (served words)' }));
+    const answer = await historyOf(kit, 'T1');
+    assert.deepEqual([stepsOf(answer).length, problemsOf(answer)], [3, ['app/state/events.jsonl: 1 unreadable line(s) left out']]);
+    assert.ok(!JSON.stringify(answer).includes('served words'));
+  });
+
   it('serves the history of a task of a team above the caller’s with --team, and its own without', async () => {
     const kit = await treeHarness();
     await add(kit, 'Of web', 'front', AS_WEB);
