@@ -1,5 +1,5 @@
 import { MS_PER_DAY, parseDeadline } from '../core/time.ts';
-import type { Task } from '../register/fold.ts';
+import { taskNumber, type Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES } from '../register/model.ts';
 import { planBand, type NextMove, type PlanPlace, type TaskTree } from '../register/tree.ts';
 
@@ -36,6 +36,23 @@ export interface ServedNeed {
   readonly team: string | null;
   readonly owner: string | null;
   readonly status: string | null;
+}
+
+/**
+ * An active task of another session that needs a task, so whom the task holds up beyond its owner. It is a task of
+ * the same register: a plan knows no needer in another team's.
+ */
+export interface ServedNeeder {
+  readonly id: string;
+  readonly owner: string;
+  /** The date the needing task works to. */
+  readonly due: ServedDue | null;
+}
+
+/** A finished task and the work class its rank is shown with, which is read with the team's goals as an active task's is. */
+export interface FinishedTask {
+  readonly id: string;
+  readonly workClass: string;
 }
 
 /**
@@ -80,6 +97,8 @@ export interface PlannedTask {
   readonly goal: ServedGoalRank | null;
   readonly prep: boolean;
   readonly needs: readonly ServedNeed[];
+  /** The active tasks of other sessions that need it, the one with the earliest date first, then in plan order. */
+  readonly neededBy: readonly ServedNeeder[];
   /** Null when every unfinished need of it runs into a loop. */
   readonly next: ServedMove | null;
 }
@@ -98,6 +117,8 @@ export interface PlanBody {
   readonly week: string | null;
   /** The active tasks in plan order: the place in this list is the rank. */
   readonly tasks: readonly PlannedTask[];
+  /** The finished tasks the register still holds, by number: a plan places none of them, a reader still shows their class. */
+  readonly finished: readonly FinishedTask[];
 }
 
 /** The settings whose days turn an answer of the plan with no file moving. */
@@ -112,7 +133,7 @@ export interface PlanTurns {
 export interface PlanInput {
   /** The team's tree as read at `now`, with its ranking and the tasks of the tree's other registers. */
   readonly tree: TaskTree;
-  /** The register's tasks; the finished ones are left out. */
+  /** The register's tasks; a finished one is served by its work class alone. */
   readonly tasks: Iterable<Task>;
   /** Serve only this session's tasks, in the team's order; null serves every session's. */
   readonly owner: string | null;
@@ -123,20 +144,26 @@ export interface PlanInput {
 /** The `plan` document's body. */
 export function planBody(input: PlanInput): PlanBody {
   const { tree, now } = input;
-  const active = tree.inPlanOrder([...input.tasks].filter((task) => ACTIVE_STATUSES.includes(task.status)));
+  const tasks = [...input.tasks];
+  const isActive = (task: Task) => ACTIVE_STATUSES.includes(task.status);
+  const asked = (task: Task) => input.owner === null || task.owner === input.owner;
+  const active = tree.inPlanOrder(tasks.filter(isActive));
   const turns = active.flatMap((task) => turnsOf(task, tree, input.turns)).filter((at) => at > now);
   return {
     at: new Date(now).toISOString(),
     validUntil: turns.length === 0 ? null : new Date(Math.min(...turns)).toISOString(),
     week: tree.week,
-    tasks: active.filter((task) => input.owner === null || task.owner === input.owner).map((task) => plannedTask(task, tree)),
+    tasks: active.filter(asked).map((task) => plannedTask(task, tree)),
+    finished: tasks
+      .filter((task) => !isActive(task) && asked(task))
+      .sort((a, b) => taskNumber(a.id) - taskNumber(b.id))
+      .map((task) => ({ id: task.id, workClass: rankedOf(tree.placeOf(task)).workClass })),
   };
 }
 
 function plannedTask(task: Task, tree: TaskTree): PlannedTask {
   const place = tree.placeOf(task);
   const ranked = rankedOf(place);
-  const due = tree.effectiveDue(task.id);
   const move = tree.nextMove(task.id);
   return {
     id: task.id,
@@ -146,7 +173,7 @@ function plannedTask(task: Task, tree: TaskTree): PlannedTask {
     ready: place.blocked !== true,
     score: ranked.score,
     started: place.started === true,
-    due: due === undefined ? null : { due: due.due, at: new Date(due.at).toISOString(), from: due.from },
+    due: servedDue(task.id, tree),
     unblocks: place.unblocks === undefined ? null : { first: place.unblocks.first, priority: place.unblocks.priority, count: place.unblocks.count },
     inWeek: place.inWeek === true,
     size: task.size,
@@ -156,8 +183,14 @@ function plannedTask(task: Task, tree: TaskTree): PlannedTask {
     goal: ranked.goal === null ? null : { tag: ranked.goal.tag, rank: ranked.goal.rank },
     prep: ranked.prep,
     needs: tree.needs(task.id).map((id) => servedNeed(id, tree)),
+    neededBy: tree.neededByOthers(task.id).map((needer) => ({ id: needer.id, owner: needer.owner, due: servedDue(needer.id, tree) })),
     next: move === undefined ? null : servedMove(move, tree),
   };
+}
+
+function servedDue(id: string, tree: TaskTree): ServedDue | null {
+  const due = tree.effectiveDue(id);
+  return due === undefined ? null : { due: due.due, at: new Date(due.at).toISOString(), from: due.from };
 }
 
 /** A plan is a ranked read: a tree built with no ranking places nothing, so it is refused here, loudly, as a bug. */
