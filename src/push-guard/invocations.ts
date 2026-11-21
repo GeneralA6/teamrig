@@ -1,9 +1,10 @@
 import { packagedStartOf, type PackagedStart } from '../package-guard/packaged.ts';
-import { isAssignment, launch, programName, staticWord, type Assignment, type Launch, type ProgramLaunch } from './launchers.ts';
+import { isAssignmentWord, LineCommands, rereadingCommands } from './held-reread.ts';
+import { isAssignment, launch, programName, staticWord, type Assignment, type Launch, type ProgramLaunch, type ScriptLaunch } from './launchers.ts';
 import { bashNativeWord, Location, resolveDir } from './location.ts';
 import { splitGitAlias } from './program-split.ts';
 import { redirectsInput, stdinUse } from './stdin.ts';
-import { parseHeldText, parseShell, type ShellDialect, type ShellParse, type ShellWord } from './tokenizer.ts';
+import { parseHeldText, parseShell, type ShellCommand, type ShellDialect, type ShellParse, type ShellWord } from './tokenizer.ts';
 import { resolveLiteralVariables } from './variables.ts';
 
 /** One git config value: set, unset (git exits 1), or unreadable (git failed or is missing). */
@@ -244,6 +245,11 @@ export function configWrite(args: readonly ShellWord[]): ConfigWrite | undefined
   return value === undefined ? undefined : { kind: 'set', key, value };
 }
 
+/** True when `word` is one of the variables a launcher sets for the shell it starts, as written. */
+function setsFor(script: ScriptLaunch, word: ShellWord): boolean {
+  return isAssignmentWord(word.text) && script.env.some(({ name, value }) => word.text === `${name}=${value.text}`);
+}
+
 /** Quotes a word for a bash command line, so a git shell alias gets its arguments as typed. */
 function shellQuote(word: ShellWord): string {
   return word.dynamic ? word.text : `'${word.text.replace(/'/g, `'\\''`)}'`;
@@ -298,6 +304,8 @@ class GitInvocationFinder {
    * set in it earlier in the line, or one its launcher or parent git set, which a child shell inherits.
    */
   private shellHooksOverride: string | undefined;
+  /** The functions, aliases and loaded builtins of every bash script the line runs, which may run their arguments as code. */
+  private readonly lineCommands = new LineCommands();
   private readonly context: FinderContext;
 
   constructor(context: FinderContext) {
@@ -343,8 +351,9 @@ class GitInvocationFinder {
     // bash reads $NAME set to a literal earlier in the line; other dialects keep every variable unknown. The
     // line's own shell has the user's HOME; a script it starts may be handed another (`HOME=x bash -c`).
     const commands = dialect === 'bash' ? resolveLiteralVariables(parsed, depth === 0 ? location.home : undefined) : parsed.commands;
+    const rereading = dialect === 'bash' ? this.rereading(commands) : [];
     let piped: { readonly body: ShellWord; readonly nesting: number } | undefined;
-    for (const command of commands) {
+    for (const [index, command] of commands.entries()) {
       command.words.forEach((word) => this.mention(word.text));
       let stdin = command.stdin;
       // A substitution's commands, read before the command that holds them, sit between a pipe's two ends.
@@ -354,10 +363,7 @@ class GitInvocationFinder {
       }
       location.enter(command.subshells);
       const launched = this.visitCommand(command.words, dialect, location, depth, stdin);
-      // A shell that runs a word as a script reads its substitutions as commands already.
-      if (launched?.kind !== 'script') {
-        this.visitHeld(command.words, location, depth);
-      }
+      this.visitHeld(command, launched, rereading[index] ?? true, location, depth);
       if (stdin !== undefined) {
         const use = launched === undefined ? 'read' : stdinUse(command, launched);
         if (use !== 'stored') {
@@ -369,25 +375,48 @@ class GitInvocationFinder {
   }
 
   /**
-   * Reads the command substitutions words hold as text (see `ShellWord.held`), which bash runs when an expansion
-   * reads the text again, in this line or a later one the guard never sees. One that pushes, or text the guard
-   * leaves unread, is a doubt: the push is not judged as written, as nothing on the line says when it runs.
-   * Text that only never closes, such as a grep pattern's escaped backtick, still shows every substitution
-   * bash runs there (see {@link parseHeldText}).
+   * Notes the commands a bash parse defines, then tells for each command whether bash may read its words' held text
+   * again (see {@link rereadingCommands}); a parse with no held text needs no answer.
    */
-  private visitHeld(words: readonly ShellWord[], location: Location, depth: number): void {
-    for (const word of words) {
-      if (word.held === undefined) {
+  private rereading(commands: readonly ShellCommand[]): readonly boolean[] {
+    this.lineCommands.note(commands);
+    return commands.some((command) => command.words.some((word) => word.held !== undefined)) ? rereadingCommands(commands, this.lineCommands) : [];
+  }
+
+  /**
+   * Reads the command substitutions a command's words hold as text (see `ShellWord.held`), which bash runs when an
+   * expansion reads the text again, in this line or a later one the guard never sees. One that pushes is a doubt in
+   * any word, as some programs run quoted backticks in their own code (`perl -e`, `ruby -e`): the push is not judged as
+   * written, as nothing on the line says when it runs. The gated doubts reading it raises (text left unread, a shell
+   * with no stdin, a git command built at run time) count only in an assignment word and where bash may read it again,
+   * `rereads` (see {@link rereadingCommands}): a plain argument of another program, such as a perl or sed regex, is
+   * data (#1471). Text that only never closes, such as a grep pattern's escaped backtick, still shows every
+   * substitution bash runs there (see {@link parseHeldText}).
+   */
+  private visitHeld(command: ShellCommand, launched: Launch | undefined, rereads: boolean, location: Location, depth: number): void {
+    const script = launched?.kind === 'script' ? launched : undefined;
+    for (const word of command.words) {
+      // A shell that runs a word as a script reads its substitutions as commands already; the variables set for it
+      // (`PS4='...' bash -xc`) are values it may read again.
+      if (word.held === undefined || (script !== undefined && !setsFor(script, word))) {
         continue;
       }
-      const parsed = parseHeldText(word.held);
-      const unread = parsed.skipped ? 'it holds quoted text the guard cannot read for the commands bash runs if an expansion reads it again' : undefined;
-      const held = new GitInvocationFinder(this.context);
-      held.visitParsed(parsed, word.held, unread, 'bash', location.child(), depth + 1);
-      this.doubts.push(...held.doubts);
-      if (held.invocations.some((invocation) => invocation.subcommand === 'push')) {
-        this.doubt('it holds a quoted command substitution that pushes, which bash runs if an expansion reads it again', true);
-      }
+      this.readHeld(word.held, rereads || isAssignmentWord(word.text), location, depth);
+    }
+  }
+
+  /**
+   * Reads one word's held text; see {@link visitHeld}. A push in it always asks, ungated, as it may come through an
+   * alias (`'$(git p)'`) where no word of the line says push.
+   */
+  private readHeld(text: string, rereads: boolean, location: Location, depth: number): void {
+    const parsed = parseHeldText(text);
+    const unread = parsed.skipped ? 'it holds quoted text the guard cannot read for the commands bash runs if an expansion reads it again' : undefined;
+    const held = new GitInvocationFinder(this.context);
+    held.visitParsed(parsed, text, unread, 'bash', location.child(), depth + 1);
+    this.doubts.push(...held.doubts.filter((doubt) => rereads || !doubt.gated));
+    if (held.invocations.some((invocation) => invocation.subcommand === 'push')) {
+      this.doubt('it holds a quoted command substitution that pushes, which bash runs if an expansion reads it again', false);
     }
   }
 

@@ -264,6 +264,20 @@ describe('evaluatePushes: where a push hides', () => {
     ]);
   });
 
+  it('asks about a push held in any word, but reads a plain argument of another program as data (#1471)', () => {
+    expectRows([
+      ["perl -pe 's/`bash`/x/' f && git push origin feature", 'allow'],
+      ["perl -e 'print `git push origin main`'", 'ask', 'doubt'],
+      ["read 'a[$(git push origin main)]'", 'ask', 'doubt'],
+      ["PS4='$(git push origin main)' bash -xc true", 'ask', 'doubt'],
+      ["echo '$(git push origin main)' > run.sh", 'ask', 'doubt'],
+      ["sed -i 's/x/$(git push origin main)/' run.sh", 'ask', 'doubt'],
+      ["perl -pe 's/`bash`/x/' f > run.sh && git push origin feature", 'ask', 'doubt'],
+    ]);
+    // An alias push held in quoted text asks too, though no word of the line says push.
+    expectRows([["x='a[$(git p)]'; echo $((x))", 'ask', 'doubt']], { config: { 'alias.p': 'push origin main' } });
+  });
+
   it('allows quoted text whose backticks never close, as bash runs nothing there (T2764)', () => {
     expectRows([
       ["printf '%s' 'then `\\`' ; git push origin t1-x", 'allow'],

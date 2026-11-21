@@ -253,7 +253,7 @@ describe('findGitInvocations: scripts and shells', () => {
   });
 
   it('doubts a push held in quoted text, and reads a substitution a shell runs as commands', () => {
-    const held = 'g:it holds a quoted command substitution that pushes, which bash runs if an expansion reads it again';
+    const held = '!:it holds a quoted command substitution that pushes, which bash runs if an expansion reads it again';
     // bash expands held text left to right, so a push before the point where it never closes still runs.
     for (const line of ["x='$(git push origin main)'; echo ${x@P}", "x='a[$(git push)]'; echo $((x))", "export X='`git push`'", "echo 'a[$(git p)]'", 'x="a[\\$(git push)]"; let y=x', "echo '$(git push) $('"]) {
       expectDoubt(line, held);
@@ -268,6 +268,62 @@ describe('findGitInvocations: scripts and shells', () => {
       ["eval 'echo $(git push)'", [`${CWD}|push|`]],
       ['echo "$(git push)"', [`${CWD}|push|`]],
     ]);
+  });
+
+  it('doubts a push in any word, but other doubts of held text only where bash may read it again (#1471)', () => {
+    const held = '!:it holds a quoted command substitution that pushes, which bash runs if an expansion reads it again';
+    const stdinShell = 'g:a shell reads its commands from stdin';
+    // A push held in any word is a doubt: perl runs backticks in its code as shell commands.
+    for (const line of ["perl -e 'print `git push`'", "read 'a[$(git push)]'", "PS4='$(git push)'", "PS4='$(git push)' bash -xc true", "echo '$(git push)' > x.sh", "sed -i 's/x/$(git push)/' run.sh"]) {
+      expectDoubt(line, held);
+    }
+    // With no redirection the push doubt is the only one: no gated doubt comes from the held text.
+    expectDoubt("echo '$(git push)'", held);
+    assert.deepEqual(doubts("echo '$(git push)' > >(bash)"), [stdinShell, held]);
+    // A plain argument of another program is data: its held text raises no gated doubt, and the push is judged as written.
+    expectInvocations([
+      ["perl -pe 's/`bash`/x/' f && git push", [`${CWD}|push|`]],
+      ["sed 's/x/`bash`/' run.sh", []],
+      ["/usr/bin/perl -pe 's/`bash`/x/' f | head", []],
+      ["echo '$(x)' > /dev/null", []],
+      ["perl -pe 's/`bash`/x/' f > /dev/null 2>&1", []],
+    ]);
+    // Where bash may read it again the gated doubts stay: a builtin under any spelling, a reserved word, a function or
+    // alias the line defines, a program only known when it runs, an assignment, a variable bash runs as commands.
+    for (const line of [
+      "read 'a[`bash`]'",
+      "command read 'a[`bash`]'",
+      "builtin read 'a[`bash`]'",
+      "\\read 'a[`bash`]'",
+      "'read' 'a[`bash`]'",
+      "echo '`bash`'",
+      "[[ -v 'a[`bash`]' ]]",
+      "p() { :; }; p '`bash`'",
+      "alias perl=eval\nperl '`bash`'",
+      "X='`bash`' perl -e 1",
+      'x=$(perl -pe \'s/`bash`/x/\' f)',
+      ...['PROMPT_COMMAND', 'BASH_ENV', 'ENV', 'PS0', 'PS1', 'PS2', 'PS4'].map((name) => `${name}='\`bash\`'`),
+      "PS4='`bash`' bash -xc true",
+    ]) {
+      expectDoubt(line, stdinShell);
+    }
+    assert.deepEqual(doubts("$P '`bash`'"), ['g:the program it runs is only known when it runs', stdinShell]);
+    // Text written for a later line: an output redirection but to /dev/null, a pipe into what stores it, an in-place edit.
+    for (const line of [
+      "perl -pe 's/`bash`/x/' f > out.sh",
+      "perl -pe 's/`bash`/x/' f >> out.sh",
+      "perl -pe 's/`bash`/x/' f &> out.sh",
+      'perl -pe \'s/`bash`/x/\' f > "$OUT"',
+      "perl -pe 's/`bash`/x/' f >&3",
+      "perl -pe 's/`bash`/x/' f | tee out.sh",
+      "perl -pe 's/`bash`/x/' f | sort > out.sh",
+      "{ perl -pe 's/`bash`/x/' f; } > out.sh",
+      "exec > out.sh; perl -pe 's/`bash`/x/' f",
+      "sed -i 's/x/`bash`/' run.sh",
+      "perl -pi -e 's/x/`bash`/' run.sh",
+    ]) {
+      expectDoubt(line, stdinShell);
+    }
   });
 
   it('reads the git a package runner or a version manager starts, in its folder and with its variables (T3069)', () => {

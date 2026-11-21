@@ -328,7 +328,10 @@ the guard cannot read (`--script-shell=node`, or a variable) is refused as a dou
   sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it."
 - **Refuses, in doubt**: when it cannot read part of the line (an unclosed quote, a branch or alias only known when
   the line runs, a push held in quoted text such as `x='$(git push)'`, which bash runs if `${x@P}` or `$((x))`
-  reads it again, though not quoted backticks that never close, which run nothing; a bash variable counts as known when the line set it earlier to text and other known variables,
+  reads it again, in any word, though not quoted backticks that never close, which run nothing; other quoted text
+  it cannot read counts only where bash may read it again: an assignment, a builtin's argument, a word a redirection
+  other than to `/dev/null`, a pipe into `tee` or an in-place edit (`sed -i`) writes for a later line, never a plain
+  argument of another program such as a perl or sed pattern; a bash variable counts as known when the line set it earlier to text and other known variables,
   as in `B=feat; git push -u origin $B` or `G="git -C /w"; $G push`, and never set it otherwise, in a command or a
   file it writes to (`cat > $S/x`); from a command that may set variables unseen (`read B`, `eval`, a program held
   in an unknown variable), or from the start of a loop or group that holds one, no variable counts as known; `$HOME` and a
