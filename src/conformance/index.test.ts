@@ -27,7 +27,7 @@ function targetOf(path: string, name: string): string {
 
 describe('the conformance kit', () => {
   it('exports what a contract and a binding are written with, and nothing leaves or joins it unseen', () => {
-    assert.deepEqual(Object.keys(kit).sort(), ['CONTRACTS', 'STATUS_LINE_CONTRACT', 'TERMINAL_CONTRACT', 'TRANSCRIPT_CONTRACT', 'USAGE_CONTRACT', 'bind', 'choiceOf', 'defineContract', 'entryOf', 'kitProblems', 'nothingStatusLine', 'nothingTerminal', 'nothingTranscripts', 'nothingUsage', 'osOf', 'referenceTerminal', 'runCases', 'yesStatusLine', 'yesTerminal', 'yesTranscripts', 'yesUsage']);
+    assert.deepEqual(Object.keys(kit).sort(), ['CONTRACTS', 'PERMISSIONS_CONTRACT', 'STATUS_LINE_CONTRACT', 'TERMINAL_CONTRACT', 'TRANSCRIPT_CONTRACT', 'USAGE_CONTRACT', 'bind', 'choiceOf', 'defineContract', 'entryOf', 'kitProblems', 'nothingPermissions', 'nothingStatusLine', 'nothingTerminal', 'nothingTranscripts', 'nothingUsage', 'osOf', 'referenceTerminal', 'runCases', 'yesPermissions', 'yesStatusLine', 'yesTerminal', 'yesTranscripts', 'yesUsage']);
   });
 
   it('imports the plugin API, node:assert and its own folder, nothing else, so it ships to an outside host as it is', () => {
@@ -44,7 +44,7 @@ describe('the conformance kit', () => {
 
   it('reads an import and a re-export alike, by the file it names', () => {
     const index = join(KIT_DIR, 'index.ts');
-    assert.deepEqual([...new Set(importsOf(index).map((name) => targetOf(index, name)))].sort(), ['conformance/choice.ts', 'conformance/contract.ts', 'conformance/host/status-line.ts', 'conformance/host/transcript.ts', 'conformance/host/usage.ts', 'conformance/kit.ts', 'conformance/terminal/reference.ts', 'conformance/terminal/terminal.ts']);
+    assert.deepEqual([...new Set(importsOf(index).map((name) => targetOf(index, name)))].sort(), ['conformance/choice.ts', 'conformance/contract.ts', 'conformance/host/permissions.ts', 'conformance/host/status-line.ts', 'conformance/host/transcript.ts', 'conformance/host/usage.ts', 'conformance/kit.ts', 'conformance/terminal/reference.ts', 'conformance/terminal/terminal.ts']);
     assert.equal(targetOf(index, '../plugin-api/index.ts'), 'plugin-api/index.ts');
     assert.equal(targetOf(index, 'node:fs'), 'node:fs');
   });

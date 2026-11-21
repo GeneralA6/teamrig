@@ -1,8 +1,19 @@
-import { bind, STATUS_LINE_CONTRACT, TRANSCRIPT_CONTRACT, USAGE_CONTRACT, type StatusLineWorld, type TranscriptWorld, type UsageWorld } from '../../../conformance/index.ts';
-import { recordField, stringField, type RateWindow } from '../../../plugin-api/index.ts';
+import {
+  bind,
+  PERMISSIONS_CONTRACT,
+  STATUS_LINE_CONTRACT,
+  TRANSCRIPT_CONTRACT,
+  USAGE_CONTRACT,
+  type PermissionsWorld,
+  type StatusLineWorld,
+  type TranscriptWorld,
+  type UsageWorld,
+} from '../../../conformance/index.ts';
+import { isStringArray, recordField, stringField, type JsonRecord, type RateWindow } from '../../../plugin-api/index.ts';
 import { describeContracts } from '../../../testing/contracts.ts';
 import { promptLine, resultsLine } from '../../../testing/transcript-lines.ts';
 import { declaration } from './declaration.ts';
+import { hostPermissions } from './permissions.ts';
 import { statusLine } from './status-line.ts';
 import { transcriptReader } from './transcript.ts';
 import { usageMeter } from './usage.ts';
@@ -56,6 +67,26 @@ const statusLineWorld: StatusLineWorld = {
   },
 };
 
+function listIn(record: JsonRecord | undefined, key: string): readonly string[] | undefined {
+  const list = record?.[key];
+  return isStringArray(list) ? list : undefined;
+}
+
+/** Claude Code's settings: the rules under `permissions`, the bypass as its default mode, the routes under `autoMode.environment`. */
+const permissionsWorld: PermissionsWorld = {
+  settings: ({ allow, deny, bypass }) => ({
+    theme: 'dark',
+    permissions: {
+      ...(allow === undefined ? {} : { allow: [...allow] }),
+      ...(deny === undefined ? {} : { deny: [...deny] }),
+      ...(bypass === true ? { defaultMode: 'bypassPermissions' } : {}),
+    },
+  }),
+  allowOf: (settings) => listIn(recordField(settings, 'permissions'), 'allow'),
+  routes: (lines) => (lines === undefined ? { theme: 'dark' } : { theme: 'dark', autoMode: { environment: [...lines] } }),
+  routesOf: (settings) => listIn(recordField(settings, 'autoMode'), 'environment'),
+};
+
 describeContracts({
   side: 'host',
   declaration,
@@ -63,5 +94,6 @@ describeContracts({
     bind({ contract: TRANSCRIPT_CONTRACT, make: () => ({ port: transcriptReader, world: transcriptWorld }) }),
     bind({ contract: USAGE_CONTRACT, make: () => ({ port: usageMeter, world: usageWorld }) }),
     bind({ contract: STATUS_LINE_CONTRACT, make: () => ({ port: statusLine, world: statusLineWorld }) }),
+    bind({ contract: PERMISSIONS_CONTRACT, make: () => ({ port: hostPermissions, world: permissionsWorld }) }),
   ],
 });
