@@ -3,6 +3,9 @@ import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import type { RevisionParts, SessionPlace } from '../../interface/index.ts';
+import type { Task } from '../../register/fold.ts';
+import { MissingSegmentError, readWorkingSet, type LayoutPaths } from '../../register/layout.ts';
+import type { RegisterSnapshot } from '../../register/snapshot.ts';
 import type { Kit, LoadedConfig } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import type { KitTree } from '../tree.ts';
@@ -94,6 +97,36 @@ export function skippedOf(folder: ServedFolder, path: string, read: { readonly u
     ...(read.unreadable > 0 ? [`${name}: ${read.unreadable} unreadable line(s) left out`] : []),
     ...(read.newer > 0 ? [`${name}: ${read.newer} line(s) from a newer teamrig left out; update teamrig`] : []),
   ];
+}
+
+/** A register's working set as a document reads it: the tasks by id, and what could not be read of them. */
+export interface WorkingSet {
+  readonly tasks: ReadonlyMap<string, Task>;
+  readonly problems: readonly string[];
+}
+
+/**
+ * The register's tasks and what could not be read of them. An archive with a segment gone serves no task and says
+ * why, where a text command refuses: one broken document must not take down the others asked in the same run.
+ */
+export async function workingSetOf(runtime: CliRuntime, folder: ServedFolder, layout: LayoutPaths): Promise<WorkingSet> {
+  try {
+    const snapshot = await readWorkingSet(runtime.files, layout);
+    return { tasks: snapshot.state.tasks, problems: damageOf(snapshot, folder, layout.tail) };
+  } catch (error) {
+    if (error instanceof MissingSegmentError) {
+      const segment = servedPathOf(folder, error.path);
+      return { tasks: new Map(), problems: [`${segment}: missing, so the register's archive is incomplete and its tasks cannot be read`] };
+    }
+    throw error;
+  }
+}
+
+/** Damaged or newer lines never stop a read; each kind left out is one line, so a reader shows which it is. */
+function damageOf(snapshot: RegisterSnapshot, folder: ServedFolder, path: string): string[] {
+  const { orphans } = snapshot.state;
+  const unowned = orphans > 0 ? [`${servedPathOf(folder, path)}: ${orphans} event(s) naming no task left out`] : [];
+  return [...skippedOf(folder, path, snapshot.read), ...unowned];
 }
 
 /**
