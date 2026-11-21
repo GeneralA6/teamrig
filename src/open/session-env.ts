@@ -1,7 +1,9 @@
 import { CLAUDE_LOGIN_VARIABLES, CLAUDE_SESSION_VARIABLES, withoutCredentials } from '../core/child-env.ts';
 import { ENV, type Env } from '../core/home.ts';
-import { isPluginCacheBin } from '../core/installed-plugins.ts';
 import { envKey, pathList } from '../core/path-search.ts';
+
+/** Whether a PATH folder is a plugin install's `bin` folder in the host's cache (the host's plugin port answers). */
+export type CacheBinTest = (folder: string) => boolean;
 
 /** Variables that make Claude Code a teamrig session: its id, its team, and that `launch` runs it. */
 const TEAMRIG_SESSION_VARIABLES: readonly string[] = [ENV.session, ENV.team, ENV.launched];
@@ -11,12 +13,12 @@ function withoutVariables(env: Env, names: readonly string[]): Env {
 }
 
 /**
- * PATH without Claude Code's plugin `bin` folders (isPluginCacheBin). The opener's PATH holds those of the plugin
- * versions its own session started with. Claude Code adds a session's own at the end of its Bash tool's PATH, and adds
- * them again after a plugin update and /reload-plugins, so an inherited one would sit ahead of them and keep every Bash
- * call in the new session on the opener's version for the life of its process (T494). Every other entry stays as it was.
+ * PATH without the host's plugin `bin` folders (isCacheBin). The opener's PATH holds those of the plugin versions its
+ * own session started with. Claude Code adds a session's own at the end of its Bash tool's PATH, and adds them again
+ * after a plugin update and /reload-plugins, so an inherited one would sit ahead of them and keep every Bash call in
+ * the new session on the opener's version for the life of its process (T494). Every other entry stays as it was.
  */
-function withoutPluginBins(env: Env, platform: NodeJS.Platform): Env {
+function withoutPluginBins(env: Env, platform: NodeJS.Platform, isCacheBin: CacheBinTest): Env {
   const key = envKey(env, 'PATH', platform);
   const value = key === undefined ? undefined : env[key];
   if (key === undefined || value === undefined) {
@@ -24,7 +26,7 @@ function withoutPluginBins(env: Env, platform: NodeJS.Platform): Env {
   }
   const delimiter = platform === 'win32' ? ';' : ':';
   // pathList reads one entry the way a PATH search does (trimmed, unquoted); the kept entries keep their own spelling.
-  const kept = value.split(delimiter).filter((entry) => !pathList(entry, delimiter).some(isPluginCacheBin));
+  const kept = value.split(delimiter).filter((entry) => !pathList(entry, delimiter).some(isCacheBin));
   return { ...env, [key]: kept.join(delimiter) };
 }
 
@@ -40,9 +42,9 @@ export interface SessionIdentity {
  * command in it knows who it is, and the opener's own Claude Code session variables and plugin
  * `bin` folders left out.
  */
-export function sessionEnv(env: Env, identity: SessionIdentity, platform: NodeJS.Platform): Env {
+export function sessionEnv(env: Env, identity: SessionIdentity, platform: NodeJS.Platform, isCacheBin: CacheBinTest): Env {
   return {
-    ...withoutVariables(withoutPluginBins(env, platform), CLAUDE_SESSION_VARIABLES),
+    ...withoutVariables(withoutPluginBins(env, platform, isCacheBin), CLAUDE_SESSION_VARIABLES),
     [ENV.session]: identity.id,
     [ENV.team]: identity.team,
     ...(identity.home === undefined ? {} : { [ENV.home]: identity.home }),
@@ -63,9 +65,9 @@ export function sessionCredentialFree(env: Env, pass: readonly string[]): Env {
  * teamrig session, so the resumed session is not taken for the opener, nor its plugin `bin` folders; the kit home set
  * when it is not the default.
  */
-export function plainSessionEnv(env: Env, home: string | undefined, platform: NodeJS.Platform): Env {
+export function plainSessionEnv(env: Env, home: string | undefined, platform: NodeJS.Platform, isCacheBin: CacheBinTest): Env {
   return {
-    ...withoutVariables(withoutPluginBins(env, platform), [...CLAUDE_SESSION_VARIABLES, ...TEAMRIG_SESSION_VARIABLES]),
+    ...withoutVariables(withoutPluginBins(env, platform, isCacheBin),[...CLAUDE_SESSION_VARIABLES, ...TEAMRIG_SESSION_VARIABLES]),
     ...(home === undefined ? {} : { [ENV.home]: home }),
   };
 }

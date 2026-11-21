@@ -24,7 +24,7 @@ import { noRoomText } from '../../sessions/headroom.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { admitBusyText, admitTab, dropTabHold } from '../headroom.ts';
-import { transcriptsOf } from '../host.ts';
+import { cacheBinOf, transcriptsOf } from '../host.ts';
 import { loadTree, type TreeTeam } from '../tree.ts';
 import { claudeExit, claudeProgramOf, claudeSessionArg, effortFlag, encodedPromptFlag, homeArgs, openSessionTab, TERMINAL_LABELS, terminalFlag } from './open.ts';
 
@@ -322,7 +322,7 @@ export async function restoreResume(args: ParsedArgs, runtime: CliRuntime): Prom
   const effort = effortFlag(args.flags.get('effort'));
   const encoded = args.flags.get('encoded-prompt');
   const prompt = encoded === undefined ? undefined : encodedPromptFlag(encoded);
-  const env = plainSessionEnv(runtime.env, args.flags.get('home'), runtime.platform);
+  const env = plainSessionEnv(runtime.env, args.flags.get('home'), runtime.platform, cacheBinOf(runtime));
   const { command, prefix } = await claudeProgramOf(runtime, env);
   runtime.out.stdout(`Resuming Claude Code session ${claudeSession} in ${project}${effort === undefined ? '' : ` at ${effort} effort`}`);
   const claudeArgs = [...prefix, '--resume', claudeSession, ...(effort === undefined ? [] : ['--effort', effort]), ...(prompt === undefined ? [] : [prompt])];

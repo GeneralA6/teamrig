@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code';
 import type { Register, StateRef } from 'claude-code';
 import type { TeamrigBand, TeamrigMeetingPanel, TeamrigNeedsYou, TeamrigUpdate } from '../types';
-import { INSTALLED_PLUGINS_FILE, pluginsFolderOf } from '../dist/core/installed-plugins.js';
+import { hostPlugin } from '../dist/adapters/hosts/claude-code/plugin.js';
 import { bandLine, ClearHand, liveAgentsOf, sameBand, TICK_MS } from '../dist/mod/clear-hand.js';
 import { REFRESH_TIMEOUT_MS, RefreshHand, refreshCliArgv } from '../dist/mod/refresh-hand.js';
 import { CHECK_MS, RELOAD_COMMAND, ReloadHand } from '../dist/mod/reload-hand.js';
@@ -272,11 +272,12 @@ export const register: Register = (on) => {
         });
       });
     }
-    const pluginsFolder = pluginsFolderOf($.plugin.root);
+    const pluginsFolder = hostPlugin.pluginsFolderOf($.plugin.root);
     if (reloadHand === undefined && pluginsFolder !== undefined) {
       const active = new ReloadHand({
         pluginsFolder,
-        readInstalled: () => $.fs.read(`${pluginsFolder}/${INSTALLED_PLUGINS_FILE}`),
+        plugin: hostPlugin,
+        readInstalled: () => $.fs.read(`${pluginsFolder}/${hostPlugin.listFile}`),
         changedAt: (path) => $.fs.stat(path).then(
           (found) => found.mtimeMs,
           () => undefined,
@@ -432,7 +433,7 @@ export const register: Register = (on) => {
         installedChangedAt: async () =>
           pluginsFolder === undefined
             ? undefined
-            : $.fs.stat(`${pluginsFolder}/${INSTALLED_PLUGINS_FILE}`).then(
+            : $.fs.stat(`${pluginsFolder}/${hostPlugin.listFile}`).then(
                 (found) => found.mtimeMs,
                 () => undefined,
               ),

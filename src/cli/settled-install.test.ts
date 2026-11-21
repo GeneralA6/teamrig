@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakePluginStore } from '../testing/fake-plugin-store.ts';
+import { SHIPPED_HOST } from '../testing/host.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { installStateOf, REOPEN_SETTLE_MS, settleWaitText, type InstallState } from './settled-install.ts';
 
@@ -50,7 +52,7 @@ async function storeOf(list: string = listOf({ 'teamrig@teamrig': [USER_KIT], 't
 }
 
 async function stateOf(store: Store): Promise<InstallState> {
-  return installStateOf({ ...store, userHome: HOME }, PROJECT);
+  return installStateOf({ ...store, userHome: HOME, host: SHIPPED_HOST, platform: 'linux' }, PROJECT);
 }
 
 function unsettled(why: string): InstallState {
@@ -68,6 +70,12 @@ describe('installStateOf', () => {
     assert.deepEqual(await stateOf(store), { kind: 'settled' });
   });
 
+  it('settles on a host that keeps no plugin store, whatever its files hold', async () => {
+    const store = await storeOf('{"plugins": ');
+    store.pluginStore.date(LIST, store.clock.now());
+    assert.deepEqual(await installStateOf({ ...store, userHome: HOME, host: () => bareHost(), platform: 'linux' }, PROJECT), { kind: 'settled' });
+  });
+
   it('holds while any part of the store an install writes changed under 30 s ago, saying how long ago', async () => {
     const store = await storeOf();
     const now = store.clock.now();
@@ -77,6 +85,12 @@ describe('installStateOf', () => {
     assert.deepEqual(await stateOf(store), unsettled('the plugin store changed 29 s ago, under 30 s: an install may still be copying'));
     store.pluginStore.date(LIST, now - REOPEN_SETTLE_MS);
     assert.deepEqual(await stateOf(store), { kind: 'settled' }, '30 s still is settled');
+
+    // An update rewrites the marketplace list as it ends.
+    const marketplaces = join(PLUGINS, 'known_marketplaces.json');
+    store.pluginStore.date(marketplaces, now - 5_000);
+    assert.deepEqual(await stateOf(store), unsettled('the plugin store changed 5 s ago, under 30 s: an install may still be copying'));
+    store.pluginStore.date(marketplaces, now - HOUR_MS);
 
     // teamrig-pane's files are not checked, but a copy into its folders holds the reopen as teamrig's does.
     const deep = join(PANE, 'dist', 'mod');
@@ -100,8 +114,8 @@ describe('installStateOf', () => {
     assert.deepEqual(await lacking((store) => store.files.write(hooks, JSON.stringify({ hooks: {} }))), { kind: 'settled' }, 'a hooks file may name no module');
   });
 
-  it('holds on a plugin list that does not read as Claude Code\'s, and leaves out an install for another project', async () => {
-    assert.deepEqual(await stateOf(await storeOf('{"plugins": ')), unsettled("installed_plugins.json does not read as Claude Code's plugin list"));
+  it("holds on a plugin list that does not read as the host's, and leaves out an install for another project", async () => {
+    assert.deepEqual(await stateOf(await storeOf('{"plugins": ')), unsettled("installed_plugins.json does not read as the host's plugin list"));
 
     const elsewhere = await storeOf();
     elsewhere.pluginStore.date(ELSEWHERE_PATH, elsewhere.clock.now());
@@ -112,7 +126,7 @@ describe('installStateOf', () => {
     const store = await storeOf();
     store.env = { CLAUDE_CONFIG_DIR: join('/', 'config') };
     await store.files.write(join('/', 'config', 'plugins', 'installed_plugins.json'), '{"plugins": ');
-    assert.deepEqual(await stateOf(store), unsettled("installed_plugins.json does not read as Claude Code's plugin list"));
+    assert.deepEqual(await stateOf(store), unsettled("installed_plugins.json does not read as the host's plugin list"));
   });
 
   it('says a held reopen waits for a settled install', () => {

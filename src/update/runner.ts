@@ -7,6 +7,7 @@ import { succeeded, type HookRunner } from '../deploy/hooks.ts';
 import { gitEnvironment } from '../core/git-run.ts';
 import type { Env } from '../core/home.ts';
 import type { ClaudeProgram } from '../open/claude.ts';
+import type { HostPlugin } from '../ports/host/index.ts';
 import type { UpdateGit } from './check.ts';
 
 /** A git step of the check (a fetch of one commit is the longest, about 4 s on 11-11) is killed past this. */
@@ -39,18 +40,16 @@ export interface ApplyDeps {
   readonly env: Env;
   readonly claude: ClaudeProgram;
   readonly cwd: string;
+  /** The host's plugin port, which names the update's steps. */
+  readonly plugin: Pick<HostPlugin, 'updateSteps'>;
 }
 
 /**
- * Updates `plugin` from `marketplace` the way `/plugin` does: the marketplace first, so Claude Code sees the newest
- * version, then the plugin. The tab runs the new version once it reloads its plugins.
+ * Updates `plugin` from `marketplace` by the steps the host's plugin port names (`updateSteps`), each run in order
+ * until one fails. The tab runs the new version once it reloads its plugins.
  */
 export async function applyUpdate(deps: ApplyDeps, plugin: string, marketplace: string): Promise<ApplyOutcome> {
-  const steps: readonly (readonly string[])[] = [
-    ['plugin', 'marketplace', 'update', marketplace],
-    ['plugin', 'update', `${plugin}@${marketplace}`],
-  ];
-  for (const step of steps) {
+  for (const step of deps.plugin.updateSteps(plugin, marketplace)) {
     const lines: string[] = [];
     const end = await deps.hooks.run({
       argv: [deps.claude.command, ...deps.claude.prefix, ...step],

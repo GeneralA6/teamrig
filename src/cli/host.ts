@@ -1,4 +1,4 @@
-import { isUnsupported, type HookBridge, type HostPaths, type HostPermissions, type HostPorts, type StatusLine, type TranscriptReader, type UsageMeter } from '../ports/host/index.ts';
+import { isUnsupported, type HookBridge, type HostPaths, type HostPermissions, type HostPlugin, type HostPorts, type StatusLine, type TranscriptReader, type UsageMeter } from '../ports/host/index.ts';
 import type { ContextSource } from '../refresh/usage.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
@@ -126,4 +126,31 @@ export function permissionsOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platfo
 export function permissionsIfKept(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): HostPermissions | undefined {
   const { permissions } = hostOf(runtime);
   return isUnsupported(permissions) ? undefined : permissions;
+}
+
+/** The run's plugin store. A host that keeps none refuses with its own reason, as `transcriptsOf` does. */
+export function pluginOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): HostPlugin {
+  const { plugin } = hostOf(runtime);
+  if (isUnsupported(plugin)) {
+    throw new RefusedError(plugin.notice);
+  }
+  return plugin;
+}
+
+/**
+ * The run's plugin store, or undefined on a host that keeps none: for a step that goes on without it, such as a
+ * session's PATH, which then has no cache folder to leave out.
+ */
+export function pluginIfKept(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): HostPlugin | undefined {
+  const { plugin } = hostOf(runtime);
+  return isUnsupported(plugin) ? undefined : plugin;
+}
+
+/**
+ * Whether a PATH folder is a plugin install's `bin` folder in the run's host's cache, for a session's PATH to leave
+ * out. A host that keeps no plugin store has none, so every folder stays.
+ */
+export function cacheBinOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): (folder: string) => boolean {
+  const plugin = pluginIfKept(runtime);
+  return plugin === undefined ? () => false : (folder) => plugin.isCacheBin(folder);
 }

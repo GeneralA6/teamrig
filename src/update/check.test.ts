@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { HostPlugin } from '../ports/host/index.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { shippedPlugin } from '../testing/shipped-plugin.ts';
 import { CHECK_EVERY_MS, isNewer, noticesOf, parseCheckState, UpdateCheck, type UpdateGit } from './check.ts';
 
 const PLUGINS = '/claude/plugins';
@@ -75,11 +77,11 @@ class FakeGit implements UpdateGit {
   }
 }
 
-function setup(versions: Readonly<Record<string, string>> = { 'teamrig@kit': '0.332.0' }, extra: Readonly<Record<string, string>> = {}) {
+function setup(versions: Readonly<Record<string, string>> = { 'teamrig@kit': '0.332.0' }, extra: Readonly<Record<string, string>> = {}, plugin: HostPlugin = shippedPlugin()) {
   const clock = new FakeClock(START);
   const files = new MemoryFiles({ [`${PLUGINS}/installed_plugins.json`]: installed(versions), [`${PLUGINS}/known_marketplaces.json`]: KNOWN, ...extra }, clock);
   const git = new FakeGit(files);
-  const check = (): UpdateCheck => new UpdateCheck({ files, git, paths: { pluginsFolder: PLUGINS, updatesFolder: UPDATES }, now: () => clock.now() });
+  const check = (): UpdateCheck => new UpdateCheck({ files, git, paths: { pluginsFolder: PLUGINS, updatesFolder: UPDATES }, plugin, now: () => clock.now() });
   return { clock, files, git, check };
 }
 
@@ -212,6 +214,24 @@ describe('UpdateCheck.notices, a cloned marketplace', () => {
   it('asks nothing for a marketplace the marketplace list does not name', async () => {
     const { git, check } = setup({ 'teamrig@gone': '0.332.0' });
     assert.deepEqual(await check().notices(), []);
+    assert.deepEqual(git.calls, []);
+  });
+
+  it("reads the lists the host's plugin port names, with what it says they hold", async () => {
+    const port: HostPlugin = {
+      ...shippedPlugin(),
+      listFile: 'plugins.txt',
+      marketplacesFile: 'sources.txt',
+      installs: (text) => (text === 'teamrig at 0.332.0' ? [{ key: 'teamrig@local', plugin: 'teamrig', marketplace: 'local', reach: { kind: 'every project' }, installPath: '/cache/0.332.0', version: '0.332.0', revision: '' }] : undefined),
+      marketplaceSource: (text, name) => (text === 'local here' && name === 'local' ? { kind: 'directory', path: '/work/local' } : undefined),
+    };
+    const { git, check } = setup({}, {
+      [`${PLUGINS}/plugins.txt`]: 'teamrig at 0.332.0',
+      [`${PLUGINS}/sources.txt`]: 'local here',
+      '/work/local/.claude-plugin/marketplace.json': MARKETPLACE,
+      '/work/local/plugins/teamrig/.claude-plugin/plugin.json': pluginJson('0.340.0'),
+    }, port);
+    assert.deepEqual(await check().notices(), [{ plugin: 'teamrig', marketplace: 'local', installed: '0.332.0', newest: '0.340.0' }]);
     assert.deepEqual(git.calls, []);
   });
 });

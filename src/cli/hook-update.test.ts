@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
+import type { HostSource } from '../composition/host-ports.ts';
+import { bareHost } from '../testing/bare-host.ts';
 import { CliHarness, TEAM, USER_HOME, KIT, type CliResult } from '../testing/cli-harness.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
@@ -29,8 +31,8 @@ async function installed(marketplace: 'local' | 'kit', published = '0.333.0'): P
   return kit;
 }
 
-function run(kit: CliHarness, command: string, hooks: FakeHooks, stdin = ''): Promise<CliResult> {
-  return kit.run(['hook', command], { stdin, hooks, platform: 'linux', env: { PATH: '/bin' }, probe: new MemoryPathProbe(kit.files) });
+function run(kit: CliHarness, command: string, hooks: FakeHooks, stdin = '', host?: HostSource): Promise<CliResult> {
+  return kit.run(['hook', command], { stdin, hooks, platform: 'linux', env: { PATH: '/bin' }, probe: new MemoryPathProbe(kit.files), ...(host === undefined ? {} : { host }) });
 }
 
 function answerOf(result: CliResult): unknown {
@@ -71,6 +73,14 @@ describe('runCli: hook update-check', () => {
     const kit = await installed('local', '0.332.0');
     assert.deepEqual(answerOf(await run(kit, 'update-check', new FakeHooks())), { kind: 'notices', notices: [] });
   });
+
+  it('tells nothing on a host that keeps no plugin store, asking nothing', async () => {
+    const kit = await installed('local');
+    const hooks = new FakeHooks();
+    assert.deepEqual(answerOf(await run(kit, 'update-check', hooks, '', bareHost)), { kind: 'notices', notices: [] });
+    assert.deepEqual(hooks.ran, []);
+    assert.equal(await kit.files.read(CHECK_FILE), undefined);
+  });
 });
 
 describe('runCli: hook update-dismiss', () => {
@@ -93,6 +103,12 @@ describe('runCli: hook update-dismiss', () => {
       assert.deepEqual(answerOf(await run(kit, 'update-dismiss', hooks, stdin)), { kind: 'failed', why: 'stdin names no plugin and version' });
     }
     assert.deepEqual(answerOf(await run(kit, 'update-check', hooks)), { kind: 'notices', notices: [NOTICE] });
+  });
+
+  it("fails with the host's reason on a host that keeps no plugin store", async () => {
+    const kit = await installed('local');
+    const stdin = JSON.stringify({ plugin: 'teamrig', version: '0.333.0' });
+    assert.deepEqual(answerOf(await run(kit, 'update-dismiss', new FakeHooks(), stdin, bareHost)), { kind: 'failed', why: 'no plugin is installed' });
   });
 });
 
@@ -144,5 +160,12 @@ describe('runCli: hook update-apply', () => {
     const kit = await installed('local');
     await kit.files.remove('/bin/claude');
     assert.deepEqual(answerOf(await run(kit, 'update-apply', new FakeHooks(), '{"plugin": "teamrig"}')), { kind: 'failed', why: 'Claude Code is not on PATH' });
+  });
+
+  it("fails with the host's reason on a host that keeps no plugin store, running nothing", async () => {
+    const kit = await installed('local');
+    const hooks = new FakeHooks();
+    assert.deepEqual(answerOf(await run(kit, 'update-apply', hooks, '{"plugin": "teamrig"}', bareHost)), { kind: 'failed', why: 'no plugin is installed' });
+    assert.deepEqual(hooks.ran, []);
   });
 });
