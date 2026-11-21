@@ -349,7 +349,7 @@ describe('the budget in the hooks', () => {
         const byDay = { [day]: { w, calls: 1, patterns: emptyPatterns() } };
         assert.ok(await store.save(id, { ...EMPTY_USAGE, byDay }, (await store.load(id)).rev), `${id}'s use saved`);
       }
-      const period = { start: Date.parse('2030-01-07T01:00:00Z'), end: RESET, kind: 'week', lastPct: 30, lastAt: kit.clock.now() } as const;
+      const period = { start: Date.parse('2030-01-07T01:00:00Z'), end: RESET, kind: 'week', startPct: 0, lastPct: 30, lastAt: kit.clock.now() } as const;
       await kit.files.write(join(orgUsage, 'period.json'), formatPeriod(period));
       kit.clock.advance(60_000);
       assert.equal((await kit.run(['statusline'], { stdin: status(31) })).code, EXIT.ok);
@@ -370,7 +370,7 @@ describe('the budget in the hooks', () => {
     const store = new UsageStore(kit.files, usage);
     const byDay = { '2030-01-07': { w: 40_000_000, calls: 1, patterns: emptyPatterns() } };
     assert.ok(await store.save('alpha', { ...EMPTY_USAGE, byDay }, (await store.load('alpha')).rev), "alpha's use saved");
-    const period = { start: Date.parse('2030-01-07T01:00:00Z'), end: RESET, kind: 'week', lastPct: 30, lastAt: kit.clock.now() } as const;
+    const period = { start: Date.parse('2030-01-07T01:00:00Z'), end: RESET, kind: 'week', startPct: 0, lastPct: 30, lastAt: kit.clock.now() } as const;
     await kit.files.write(join(usage, 'period.json'), formatPeriod(period));
     kit.clock.advance(60_000);
     assert.equal((await kit.run(['statusline'], { stdin: status(31) })).code, EXIT.ok);

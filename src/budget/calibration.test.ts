@@ -33,7 +33,7 @@ const LOG = '/team/state/usage/meter-log.jsonl';
 const START = Date.parse('2026-10-21T01:00:00Z');
 const END = Date.parse('2026-10-28T01:00:00Z');
 const NOW = Date.parse('2026-10-22T12:00:00Z');
-const PERIOD: Period = { start: START, end: END, kind: 'week', lastPct: 12, lastAt: NOW - 5 * MS_PER_MINUTE };
+const PERIOD: Period = { start: START, end: END, kind: 'week', startPct: 0, lastPct: 12, lastAt: NOW - 5 * MS_PER_MINUTE };
 /** The status line read 13% a minute ago, with 120M W metered since the week's start. */
 const SIGHT: ReadingSight = {
   before: PERIOD,
@@ -94,7 +94,7 @@ describe('crossingOf', () => {
   });
 
   it('logs nothing for a reading the period left out, as old use a session showed late (T2019)', () => {
-    const left: Period = { ...PERIOD, kind: 'reset', lastPct: 0 };
+    const left: Period = { ...PERIOD, kind: 'reset', startPct: 0, lastPct: 0 };
     const use = { usedPct: 29, resetsAt: END, at: NOW - MS_PER_MINUTE, after: PERIOD.lastAt - MS_PER_HOUR };
     assert.equal(crossingOf({ ...SIGHT, before: left, period: left, use }, FIT), undefined);
     assert.equal(crossingOf({ ...SIGHT, before: left, period: { ...left, lastPct: 29, lastAt: use.at }, use }, FIT)?.usedPct, 29);
