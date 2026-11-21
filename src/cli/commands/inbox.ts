@@ -15,7 +15,7 @@ import { formatRead, formatStatus, inboxLineOf, inboxStatus, lineOnClock, postLi
 import { lineHash } from '../../inbox/line-hash.ts';
 import { boundElsewhereOf, CLAUDE_SESSION_ID, RECEIVER_TABS, tabsOf, type InboxMark } from '../../inbox/marks.ts';
 import { reachOf } from '../../inbox/reach.ts';
-import { actorsOf, rightNowNamedIn } from '../../inbox/right-now.ts';
+import { actorsOf, blockerNamedIn } from '../../inbox/blocker-named.ts';
 import { routeReminderOf } from '../../inbox/route.ts';
 import { InboxDir, JsonlMarkLog } from '../../inbox/store.ts';
 import { WAKE_AT_ONCE, WAKE_NOW, wakeByOf, wakeRefusal, wakesLine, type ReceiverWake, type WakeSender, type WakeTarget, type WakeWhen } from '../../inbox/wake-now.ts';
@@ -454,7 +454,7 @@ function wakeWhenOf(wake: string | undefined, wakeBy: string | undefined, now: n
   return wakeByOf(at, now, zone);
 }
 
-interface RightNowWake {
+interface BlockerWake {
   readonly when: WakeWhen | undefined;
   readonly note: string | undefined;
   /** The recipients the wake reaches: all of them for a one-recipient line, else those who act on the work now. */
@@ -465,25 +465,27 @@ interface RightNowWake {
 type WakeRefusalOf = (when: WakeWhen, woken: readonly Recipient[], group: boolean) => Promise<string | undefined>;
 
 /**
- * The wake a line sent with neither `--wake now` nor `--wake-by` takes (T4414): `--wake now` when it names unfinished
- * right-now work of the sender's tree ({@link rightNowNamedIn}), since such work never waits for a prompt; none
- * otherwise. A line to many sessions wakes only those of them who act on the work now ({@link actorsOf}, T4431): a p0
- * named to the whole team must not wake every tab, and none of them when no receiver acts on it. That narrowed wake
+ * The wake a line sent with neither `--wake now` nor `--wake-by` takes (T4414): `--wake now` when it names an
+ * unfinished blocker of the sender's tree ({@link blockerNamedIn}), since a blocker never waits for a prompt; none
+ * otherwise. A line naming p0 work posts with no wake (T4329): p0 is worked next, not dropped everything for, so the
+ * sender asks for a wake when one is needed. A line to many sessions wakes only those of them who act on the blocker
+ * now ({@link actorsOf}, T4431): a blocker named to the whole team must not wake every tab, and none of them when no
+ * receiver acts on it. That narrowed wake
  * is a targeted one, so the group gate does not apply to it. Where `--wake now` would be refused (a group from a
  * session that leads no one, another team from a member), the line still posts, with no wake and a note saying why:
  * the sender never asked for one.
  */
-async function rightNowWakeOf(
+async function blockerWakeOf(
   reads: SenderTreeReads,
   team: string,
   text: string,
   recipients: readonly Recipient[],
   group: boolean,
   refusalOf: WakeRefusalOf,
-): Promise<RightNowWake> {
+): Promise<BlockerWake> {
   const loaded = await reads.treeRegisters();
   const registers = loaded?.map(({ team: holder, snapshot }) => ({ team: holder, tasks: snapshot.state.tasks }));
-  const held = registers === undefined ? undefined : rightNowNamedIn(text, registers, team);
+  const held = registers === undefined ? undefined : blockerNamedIn(text, registers, team);
   if (registers === undefined || held === undefined) {
     return { when: undefined, note: undefined, woken: [] };
   }
@@ -530,9 +532,9 @@ const TO_FORMS ='a session id or name, <team>/<id>, all, leads, group:<leader>, 
  * its prompt within about 3 minutes (`wake.batchSeconds`), and says what that costs; `--wake-by <time>` (T1148) wakes
  * it at that time instead, and only if it has not seen the line by then. A group is woken only by a leader, another
  * team only by a team lead (a team below its own, any team's lead, a role holder its config names), else nothing is
- * posted. A line with neither flag that names unfinished right-now work wakes as `--wake now` where that gate lets it,
- * and posts with no wake where it does not (T4414); a line to many sessions wakes only those of them who act on that
- * work now, its owner and the owners of what it waits on (T4431).
+ * posted. A line with neither flag that names an unfinished blocker wakes as `--wake now` where that gate lets it, and
+ * posts with no wake where it does not (T4414, T4329; a p0 named alone wakes no one); a line to many sessions wakes
+ * only those of them who act on that blocker now, its owner and the owners of what it waits on (T4431).
  */
 export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -578,7 +580,7 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
       throw new RefusedError(refusal);
     }
   }
-  const { when, note, woken } = asked === undefined ? await rightNowWakeOf(reads, team, text, recipients, group, refusalOf) : { when: asked, note: undefined, woken: recipients };
+  const { when, note, woken } = asked === undefined ? await blockerWakeOf(reads, team, text, recipients, group, refusalOf) : { when: asked, note: undefined, woken: recipients };
   const secrets = new SecretScanner([
     ...config.register.secretPatterns,
     ...recipients.filter((recipient) => recipient.crossing).flatMap((recipient) => recipient.config.register.secretPatterns),
