@@ -393,8 +393,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       also a variable that overrides every model or effort choice, and a launch with a model but no effort,
       and a page webhook that gives no https URL
   ui [--session <id|name>] [--team <team>]   starts the dedicated UI in this terminal, for the team here or the
-      one named, on that session's view; it runs the entry script ui.path names, and is refused while
-      the key is unset (no released UI is pinned yet) or names no file
+      one named, on that session's view; it runs the entry script ui.path names, else the released UI
+      this teamrig pins, fetched once into the kit home's ui folder, held to its sha256 at each start
+      and given only a few variables; refused while neither is there or ui.path names no file
   page test                    posts one page marked TEST through the team's page webhook, as an expired login's
       page goes; prints which team's alerts key paged, or why none went and fails, never the URL
   compact [--dry-run] [--from-history]   archives the task list's log and rewrites its snapshot, so reads
