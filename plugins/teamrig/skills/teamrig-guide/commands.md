@@ -2451,17 +2451,18 @@ The read side of teamrig's public interface, for a program such as a pane, a das
 Nothing else is written to stdout, so every line there parses; a refusal is one `REFUSED` line on stderr with exit 2
 and no document, where other commands print it to stdout. It writes no file, marks nothing read and takes no lock.
 
-The five documents of interface 1.0 are served, and `plan`, which 1.1 added, `goals`, which 1.2 added, and
-`history`, which 1.3 added. `tasks` is the register's working set, the active tasks and the finished ones not yet
-archived. `plan` is the team's active tasks in plan order, each as teamrig's own lists place it. `goals` is the
-goals a task of the team may serve. `history` is every event of the one task `--task` names. `inbox` is the asking
+The five documents of interface 1.0 are served, and `plan`, which 1.1 added, `goals`, which 1.2 added, `history`,
+which 1.3 added, and `stats`, which 1.4 added. `tasks` is the register's working set, the active tasks and the
+finished ones not yet archived. `plan` is the team's active tasks in plan order, each as teamrig's own lists place
+it. `goals` is the goals a task of the team may serve. `history` is every event of the one task `--task` names.
+`stats` is the register's numbers over `--range`, as `teamrig stats` counts them. `inbox` is the asking
 session's own inbox. `sessions` is every session of your tree of teams. `meetings` is the team's meetings still
 scheduled or started. `config` is the team's config key by key, and the one document a run with no team is
 answered.
 
 Every document carries:
 
-- `interface`: the interface version that wrote it (`1.3`). Ignore fields you do not know: a minor version adds some.
+- `interface`: the interface version that wrote it (`1.4`). Ignore fields you do not know: a minor version adds some.
 - `document`: its name.
 - `revision`: 16 characters that stay the same while the files the document is read from, what you asked and the
   teamrig version stay the same. Compare it with the one you hold to know whether to draw again; it has no other
@@ -2581,6 +2582,48 @@ its history costs more than a recent task's: ask it when a person opens the task
 segment is gone, `events` is empty and `problems` names the segment. Its `revision` moves with the team's register
 (an event of any task), its archive, the renames and the config, and differs for each task.
 
+`stats` (since interface 1.4) holds the numbers `teamrig stats` prints and the pane's Stats tab draws, under the
+same names, counted over `--range` (`7d`, `30d`, `90d`, `180d`, `1y` or `all`; `7d` when left out) of the team's
+calendar days. `--owner` counts that session's tasks only. Only the asked team is counted, never the teams below it.
+
+- `at`: the instant every number is counted at, a UTC instant; an age in days is as of it.
+- `validUntil`: the first moment a number may change with no file moving: the end of the team's day, or an active
+  task's due, the nearer. The clock is no part of `revision`: once `validUntil` has passed, ask again without
+  `--unless`.
+- `range`, and `session`: the session counted, `null` for the whole team.
+- `days`: each day of the range, the oldest first, `{ "day", "opened", "done", "dropped", "active", "atLimit" }`:
+  `done` counts each close, `active` the active tasks in each status at the day's end, `atLimit` whether the
+  account's week sat at its usage limit for part of the day.
+- The range's counts: `opened`, `closedTasks`, `droppedTasks` (each task once), `net` (`opened` less
+  `closedTasks`), `closes` (each close), `recent` (`{ "days", "net" }`, whatever the range), `active` (the active
+  tasks in each status), `neverStarted`, `dueMoved`, `activeByAge` and `lateDays` (each `{ "label", "count" }`, the
+  label teamrig's own words).
+- `all`: `active`, `leadTime` and `cycleTime` (`{ "count", "median", "p85" }` in days, `null` with no duration),
+  `overdue` (`{ "count", "p1" }`) and `due` (`{ "total", "onTime" }`).
+- `newWork`: the tasks created in the range by who asked (`bySource`), `bugs`, `byPriority`, `byGoal` and `noGoal`.
+- `waits`: `waiting`, `byKind` (a task waiting on two kinds counts under both) and `ownerDecisions` (`{ "count",
+  "oldestDays" }`). `bugs`: `{ "active", "opened", "fixed" }`. `people`: who closed how many, most first. `splits`:
+  the tasks that moved between teams, by day.
+- `health`: the five Health tiles, `closeOpen`, `backlog`, `overdue`, `ownerDecisions` and `backlogClears`, each
+  with a `level` (`good`, `warn` or `bad`; pass over one you do not know) and its numbers.
+- `goals`: `goals` (each goal over its whole history, whatever the range: `tag`, `title`, `start`, `target`,
+  `parent`, `slips` as `goals` serves them, `done`, `open`, `doneDays`, `pace`, `forecast`, `state` and its `tasks`),
+  `offGoal` and `doneInRange`.
+- `areas`: `teams` and `sessions`, each `{ "areas", "median" }`: an area's `cells` (`bugs`, `p1`, `p1Late`, `low`,
+  `waits`) hold `value`, `usual`, `level` and the `tasks` behind it. `teams` holds no area, as one team is counted.
+- `behind`: the ids of the tasks each headline count counts (`active`, `opened`, `closed`, `overdue`, `overdueP1`,
+  `ownerDecisions`), in the count's order.
+- `tasks`: one slim row for each task named by id anywhere above, `{ "id", "title", "owner", "priority", "status",
+  "due" }`, by id; the `tasks` document holds the rest.
+- `cuts`: as `{ "id", "field", "shape" }`, `id` a task's id (`field` `title`) or a goal's tag (`title` or
+  `slips.<n>.note`).
+
+A range reaches past what a compaction left in the working set, so `stats` reads the team's whole history, every
+archive segment and the live log: it costs more with the register's age, so ask it when a person opens the view,
+not in a loop. It also reads the goals of the team and the teams above it and the meter log of the team's account,
+found as `teamrig stats` finds it. When an archive segment is gone, no event is counted, so every number is 0, and
+`problems` names the segment: numbers counted without it would be wrong.
+
 `inbox` adds `session` (`{ "id", "name" }`), `unread` (how many lines the session has not read; `null` when it never
 ran `teamrig inbox read`, and then every line counts as unread), `lines` and `cuts`. `lines` holds every unread line
 and the read ones posted in the last 24 hours (`--since`), in file order, each `{ "key", "at", "from", "text",
@@ -2673,10 +2716,13 @@ Flags:
   and `inbox` serves the session of your team holding it when no `--session` is given (a usage error when none
   does). Like `--session` it is a label and proves nothing.
 - `--team <id>`: reads a team above yours in your tree instead of your own, for `tasks`, `plan`, `goals`,
-  `history`, `meetings` and `config`. A team beside or below yours is refused.
-- `--owner <id|name>`: keeps the tasks one session owns, of `tasks` and of `plan`.
+  `history`, `stats`, `meetings` and `config`. A team beside or below yours is refused.
+- `--owner <id|name>`: keeps the tasks one session owns, of `tasks` and of `plan`, and counts that session's of
+  `stats`.
 - `--task T<id>`: the one task `history` is asked of. A run asking `history` without it, or giving it without
   asking `history`, is a usage error, as is a text that is no task id.
+- `--range 7d|30d|90d|180d|1y|all`: the days `stats` counts over, `7d` when left out. Giving it without asking
+  `stats`, or another value, is a usage error.
 - `--since <hours>`: how far back `inbox` serves the lines already read, in whole hours; 24 when left out, and 0
   serves the unread ones only.
 - `--unless <document>=<revision>[,<document>=<revision>...]`: the revision you already hold of a document this run
@@ -2696,7 +2742,7 @@ teamrig read tasks --json --owner api
 Output:
 
 ```text
-{"interface":"1.3","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
+{"interface":"1.4","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
 ```
 
 ### teamrig sessions
