@@ -4,7 +4,7 @@
  * 1.x answer by leaving out what it does not know.
  */
 export const INTERFACE_MAJOR = 1;
-export const INTERFACE_MINOR = 0;
+export const INTERFACE_MINOR = 1;
 
 /** The served version as every answer carries it: `major.minor`. */
 export const INTERFACE_VERSION = `${INTERFACE_MAJOR}.${INTERFACE_MINOR}`;

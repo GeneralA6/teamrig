@@ -36,7 +36,7 @@ describe('the public interface data', () => {
     assert.deepEqual(
       [newerMinor, newerMajor, olderMajor].map((check) => (check.served ? 'served' : check.reason)),
       [
-        `interface 1.1 is newer than the ${api.INTERFACE_VERSION} this teamrig serves; update teamrig`,
+        `interface 1.2 is newer than the ${api.INTERFACE_VERSION} this teamrig serves; update teamrig`,
         `interface 2.0 is newer than the ${api.INTERFACE_VERSION} this teamrig serves; update teamrig`,
         `interface 0.9 is no longer served; this teamrig serves ${api.INTERFACE_VERSION}, so update the reader`,
       ],
