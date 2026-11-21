@@ -33,7 +33,7 @@ describe('teamrig read meetings', () => {
     await book(kit, 'alpha', '14:00', 'the release plan', ['--with', 'bravo', '--minutes', '45']);
     await book(kit, 'bravo', '11:00', 'the docs');
     const answer = served(await kit.run(READ_MEETINGS));
-    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], ['1.1', 'meetings', [], []]);
+    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], ['1.2', 'meetings', [], []]);
     assert.match(String(answer['revision']), /^[0-9a-f]{16}$/);
     assert.deepEqual(meetingsOf(answer), [
       { id: 'M2', at: '2030-01-08T11:00:00.000Z', atText: 'Tue 01-08 11:00 UTC', minutes: 30, session: 'bravo', with: [], tasks: [], about: 'the docs', brief: null, status: 'scheduled', missed: false },
