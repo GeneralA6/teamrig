@@ -8,7 +8,7 @@ import type { CliRuntime } from '../runtime.ts';
  * named none; it comes first, since the host may start the hook process somewhere else.
  */
 export function hookTeam(folder: string | undefined, runtime: CliRuntime): Promise<TeamResolution> {
-  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [folder, runtime.cwd]));
+  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime, [folder, runtime.cwd]));
 }
 
 /** The team a guard hook runs in, and its config load; either is undefined when it could not be opened. */

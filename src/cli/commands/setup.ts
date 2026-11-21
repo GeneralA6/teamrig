@@ -57,7 +57,7 @@ export interface SetupTeam {
  * the caller's team, not that project's. Without --project, the caller's team. Undefined before one exists.
  */
 export async function setupTeamOf(runtime: CliRuntime, asked: string | undefined): Promise<SetupTeam | undefined> {
-  const found = asked === undefined ? await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd])) : await pointerTeam(runtime.files, [asked]);
+  const found = asked === undefined ? await resolveTeam(runtime.files, runtime.env, teamFolders(runtime, [runtime.cwd])) : await pointerTeam(runtime.files, [asked]);
   switch (found.kind) {
     case 'none':
       return undefined;

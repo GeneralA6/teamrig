@@ -17,7 +17,7 @@ import { RefusedError, type CliRuntime } from './runtime.ts';
 export async function checkCommonFlags(args: ParsedArgs, runtime: CliRuntime): Promise<void> {
   const session = args.common.get('session');
   const team = args.common.get('team');
-  const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
+  const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime, [runtime.cwd]));
   const own = found.kind === 'team' ? found.team : undefined;
   if (team !== undefined && team !== own) {
     throw new RefusedError(`${KIT_NAME} ${args.command} runs for ${thisTeamText(found)}; --team ${team} names another team`);

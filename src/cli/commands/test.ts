@@ -42,7 +42,7 @@ function givenSession(args: ParsedArgs, runtime: CliRuntime): string | null {
  * kit home's logs folder and the default cap, so the command works in any folder.
  */
 async function logPlace(runtime: CliRuntime, session: string | null): Promise<LogPlace> {
-  const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
+  const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime, [runtime.cwd]));
   if (found.kind !== 'team') {
     return { dir: join(resolveKitHome(runtime.env, runtime.userHome), 'logs'), session, maxFailureChars: DEFAULT_TESTS.maxFailureChars, passEnv: DEFAULT_PASS_ENV, queued: false };
   }

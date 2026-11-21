@@ -1,6 +1,16 @@
 import { loadHostPorts, type HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import { isUnsupported, unsupported, type HookBridge, type HookEvent, type HookEventName, type HookReply, type HostPaths, type ShellCall } from '../ports/host/index.ts';
+import {
+  isUnsupported,
+  unsupported,
+  type HookBridge,
+  type HookEvent,
+  type HookEventName,
+  type HookReply,
+  type HostPaths,
+  type SessionIdentity,
+  type ShellCall,
+} from '../ports/host/index.ts';
 import { hostDeps } from './adapter-deps.ts';
 import { bareHost } from './bare-host.ts';
 
@@ -25,6 +35,21 @@ export const HOOKS_ONLY_HOST: HostSource = (given) => {
  * with no place of the host known, while its hooks, transcript and usage are still read.
  */
 export const NO_PATHS_HOST: HostSource = (given) => ({ ...SHIPPED_HOST(given), paths: unsupported('no folder of the host is known') });
+
+/**
+ * The shipped host, telling nothing of its sessions: every other port is the shipped one. For a spec of what a run
+ * does when its host names no folder a session started in, whatever the environment holds.
+ */
+export const NO_SESSION_HOST: HostSource = (given) => ({ ...SHIPPED_HOST(given), launcher: unsupported('no session of the host is told') });
+
+/**
+ * The shipped host, saying every run is `identity` whatever the environment holds: for a spec of a reader that must
+ * ask the host who the run is and read no variable of a host itself.
+ */
+export function hostTelling(identity: Partial<SessionIdentity>): HostSource {
+  const told: SessionIdentity = { projectDir: undefined, startedAs: undefined, sessionKind: undefined, ...identity };
+  return (given) => ({ ...SHIPPED_HOST(given), launcher: { identity: () => told } });
+}
 
 /** The shipped host's paths in the environment `env` on `platform`: where a spec's files are, as a run would be told them. */
 export function testPaths(env: Readonly<Record<string, string | undefined>> = {}, platform: NodeJS.Platform = 'linux'): HostPaths {

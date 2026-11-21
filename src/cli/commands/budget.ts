@@ -729,7 +729,7 @@ interface StatusLineReading {
 /** The status line setup of the team the session works in; outside a team, or with its config unreadable, the kit's default folder and display. */
 async function statusLineSetup(runtime: CliRuntime, cwd: string): Promise<StatusLineSetup> {
   const fallback: StatusLineSetup = { snapshotDir: defaultSnapshotDir(resolveKitHome(runtime.env, runtime.userHome)), show: DEFAULT_STATUS_LINE, paceSource: undefined, team: undefined };
-  const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd === '' ? undefined : cwd, runtime.cwd]));
+  const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime, [cwd === '' ? undefined : cwd, runtime.cwd]));
   if (found.kind !== 'team') {
     return fallback;
   }

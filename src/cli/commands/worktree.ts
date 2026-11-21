@@ -223,7 +223,7 @@ interface TeamAt {
 
 /** The team the folder the command runs in belongs to, with its kit and config; undefined outside a team. */
 async function teamAt(runtime: CliRuntime): Promise<TeamAt | undefined> {
-  const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
+  const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime, [runtime.cwd]));
   if (found.kind === 'none') {
     return undefined;
   }
