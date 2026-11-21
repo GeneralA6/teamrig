@@ -56,6 +56,18 @@ describe('release.yml', () => {
     assert.match(job('release-please'), /run: gh workflow run ci\.yml --repo "\$GITHUB_REPOSITORY" --ref "\$\(node -p 'JSON\.parse\(process\.env\.PR\)\.headBranchName'\)"\n/);
   });
 
+  it('stamps the release pull request before its CI run, with no build, as the Actions bot (#1768)', () => {
+    const text = job('release-please');
+    const stamp = text.indexOf('node tools/release/stamp-cli.ts\n');
+    assert.ok(stamp > 0, 'runs the stamp tool');
+    assert.ok(stamp < text.indexOf('gh workflow run ci.yml'), 'before the CI run, which must find the stamped head');
+    assert.doesNotMatch(text, /npm (ci|run|install)/);
+    assert.match(text, /commit --quiet --all --signoff -m "chore\(release\): stamp next as \$version"\n/);
+    assert.match(text, /user\.email='41898282\+github-actions\[bot\]@users\.noreply\.github\.com'/);
+    assert.match(text, /gh auth setup-git\n {10}git push --quiet origin "HEAD:\$branch"\n/);
+    assert.equal(text.match(/if: \$\{\{ steps\.release\.outputs\.pr != '' \}\}$/gm)?.length, 4, 'each step only when a release pull request is open');
+  });
+
   it('takes the release pull request in as a plain value, so a run that opens none still passes', () => {
     // A step's env is read even when its `if` skips it, and fromJSON of an empty output fails the job (run 44371173015).
     const text = job('release-please');

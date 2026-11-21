@@ -210,6 +210,8 @@ jobs:
       # Every link, anchor and Mermaid block in the Markdown must resolve on every OS; a design change's too, as
       # docs/design/ is Markdown a reader follows.
       - run: node tools/docs/doc-check-cli.ts
+      # A release stamp still to set (since next, a migration's firstRelease) sits only where the release sets it.
+      - run: node tools/release/stamp-cli.ts --check
 
   summary:
     name: every check passed

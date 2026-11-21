@@ -10,6 +10,8 @@ import {
   HIRE_CAP_DROPPED,
   IDLE_RETIRE_DROPPED,
   migrateConfig,
+  NEXT_RELEASE,
+  releaseName,
   RENAME_BLOCKED_TO_WAITING,
   RENAME_TIERS_TO_PRIORITIES,
   RENAME_TO_DELIVERY, RENAME_TO_PLAIN_WORDS,
@@ -454,6 +456,18 @@ describe('the shipped migrations', () => {
       assert.deepEqual(result.config['register'], { priorities: [], requireNoteOn: ['waiting'] });
       assert.deepEqual(result.config['delivery'], { checkTimeoutSeconds: 30, queue: { maxRunMinutes: 45 } });
       assert.deepEqual(result.config['hiring'], { policy: 'lead' });
+    }
+  });
+});
+
+describe('a migration step names the release that first reads its version (#1768)', () => {
+  it('names a cut release by its version, and an unstamped step as the next release', () => {
+    assert.deepEqual([releaseName('0.243.0'), releaseName(NEXT_RELEASE)], ['0.243.0', 'the next release']);
+  });
+
+  it("names each step's release as a version, or the word the release workflow sets to one", () => {
+    for (const migration of CONFIG_MIGRATIONS) {
+      assert.match(migration.firstRelease, /^(\d+\.\d+\.\d+|next)$/, `v${migration.from}`);
     }
   });
 });

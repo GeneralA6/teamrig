@@ -1,6 +1,7 @@
 import { extname, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { migrationBackupName, type ConfigLoad } from '../../config/load.ts';
+import { releaseName } from '../../config/migrate.ts';
 import { settingAt, settingValueOf, withSetting } from '../../config/setting-edit.ts';
 import { rowsUnder, settingRows, type SettingRow } from '../../config/settings.ts';
 import { isRecord, type JsonRecord } from '../../core/guards.ts';
@@ -221,7 +222,7 @@ export async function migrate(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
     runtime.out.stdout(`PREVIEW ${load.path} from version ${pending.fromVersion} to ${pending.toVersion}; nothing written`);
     pending.changes.forEach((change) => runtime.out.stdout(`  ${change}`));
     runtime.out.stdout(
-      `NOTE every command reads it as version ${pending.toVersion} already; once written, a tab on a teamrig before ${pending.firstRelease} refuses every write until it restarts. Restart those tabs, then: teamrig config migrate --yes`,
+      `NOTE every command reads it as version ${pending.toVersion} already; once written, a tab on a teamrig before ${releaseName(pending.firstRelease)} refuses every write until it restarts. Restart those tabs, then: teamrig config migrate --yes`,
     );
     return EXIT.ok;
   }

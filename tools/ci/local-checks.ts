@@ -61,12 +61,13 @@ const BUILD: readonly LocalCheck[] = [
 /** The plugin's own tests, in an empty home: no account, settings or other plugins. */
 const PLUGIN_TESTS: LocalCheck = { name: 'plugin tests', argv: ['claude', 'plugin', 'test', 'plugins/teamrig'], isolatedHome: true };
 
-/** The checks that hold the docs to the code: the pictures, the configuration reference, the parity page and the links. */
+/** The checks that hold the docs to the code: the pictures, the configuration reference, the parity page, the links and the release stamps. */
 const DOC_CHECKS: readonly LocalCheck[] = [
   { name: 'doc pictures', argv: ['node', 'tools/docs/images-cli.ts', '--check'] },
   { name: 'doc config reference', argv: ['node', 'tools/docs/configuration-cli.ts', '--check'] },
   { name: 'doc parity page', argv: ['node', 'tools/docs/parity-cli.ts', '--check'] },
   { name: 'doc links', argv: ['node', 'tools/docs/doc-check-cli.ts'] },
+  { name: 'release stamps', argv: ['node', 'tools/release/stamp-cli.ts', '--check'] },
 ];
 
 /** The scrub of the tree, then the scrub and the DCO sign-off of the commits since the base, their size and subjects. */

@@ -276,6 +276,11 @@ matrix.
   `plugin.json`, `src/core/version.ts` and `.release-please-manifest.json` to one version, so a raise by hand
   fails, and another (`tools/lib/marketplace.test.ts`) fails a marketplace entry that gives a version of its own,
   which Claude Code ignores. How users update: [Updating the plugin](docs/how-it-works.md#updating-the-plugin).
+- A change can't know the release that will ship it, so it never guesses one. A new config migration's
+  `firstRelease` is `NEXT_RELEASE` (the word `next`), and a docs, guide or config-schema line that says since when a
+  feature exists puts the word `next` after `since` in parentheses. The release workflow sets each one to the
+  release pull request's version (`tools/release/stamp-cli.ts`). The `release stamps` check (local gate, CI,
+  `npm run check`) fails on such a stamp in a file the release doesn't set it in.
 
 ## Issues
 [Issues and pull requests](docs/issues-and-pull-requests.md) is the short way in, for people and their AI tools.

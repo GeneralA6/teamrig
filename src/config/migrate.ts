@@ -8,13 +8,25 @@ export interface MigrationStep {
   readonly changes: readonly string[];
 }
 
+/**
+ * A step's `firstRelease` before its release is cut: written as this word, set to the version by the release workflow
+ * (tools/release/stamp.ts). A checkout from source between the two names "the next release" instead.
+ */
+export const NEXT_RELEASE = 'next';
+
+/** The release a step's `firstRelease` names, in words: `NEXT_RELEASE` before the release workflow sets it. */
+export function releaseName(firstRelease: string): string {
+  return firstRelease === NEXT_RELEASE ? 'the next release' : firstRelease;
+}
+
 /** One step of the chain. It must be pure and pass every key it does not own through unchanged. */
 export interface ConfigMigration {
   /** The version this step reads; it produces `from + 1`. */
   readonly from: number;
   /**
    * The first teamrig release that reads the version this step produces: once a file in that version is written, a
-   * tab running an older release refuses every write until it restarts.
+   * tab running an older release refuses every write until it restarts. A new step names `NEXT_RELEASE`, which the
+   * release workflow sets to the version of the release that ships it (tools/release/stamp.ts, #1768).
    */
   readonly firstRelease: string;
   apply(config: JsonRecord): MigrationStep;

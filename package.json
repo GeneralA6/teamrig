@@ -21,7 +21,7 @@
     "docs:check": "node tools/docs/doc-check-cli.ts",
     "docs:config": "node tools/docs/configuration-cli.ts",
     "docs:parity": "node tools/docs/parity-cli.ts",
-    "check": "node tools/setup/cli.ts --check && npm run typecheck && npm run build && npm run coverage && node tools/ci/dist-smoke-cli.ts && node tools/ci/fresh-install-cli.ts && node tools/docs/images-cli.ts --check && node tools/docs/configuration-cli.ts --check && node tools/docs/parity-cli.ts --check && node tools/ci/boundaries-cli.ts && node tools/docs/doc-check-cli.ts && node tools/ci/size-rule-cli.ts && node tools/ci/commit-subjects-cli.ts && npm run scrub"
+    "check": "node tools/setup/cli.ts --check && npm run typecheck && npm run build && npm run coverage && node tools/ci/dist-smoke-cli.ts && node tools/ci/fresh-install-cli.ts && node tools/docs/images-cli.ts --check && node tools/docs/configuration-cli.ts --check && node tools/docs/parity-cli.ts --check && node tools/ci/boundaries-cli.ts && node tools/docs/doc-check-cli.ts && node tools/release/stamp-cli.ts --check && node tools/ci/size-rule-cli.ts && node tools/ci/commit-subjects-cli.ts && npm run scrub"
   },
   "devDependencies": {
     "@types/node": "22.20.3",

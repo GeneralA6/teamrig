@@ -47,6 +47,34 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+      # Sets each `next` release stamp (#1768, tools/release/stamp-cli.ts) to the version this release pull request
+      # raises, so the release carries them into main. It runs before the CI run below: a push with the job token
+      # starts no workflow, so that run has to find the stamped head. release-please rewrites its branch on each push
+      # to main, and this stamps it again each time. No build: the build job compiles the dist from the commit the
+      # release merges as. The checkout keeps no credentials; gh's git credential helper pushes with the job token.
+      - if: ${{ steps.release.outputs.pr != '' }}
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - if: ${{ steps.release.outputs.pr != '' }}
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+      - name: stamp the release pull request
+        if: ${{ steps.release.outputs.pr != '' }}
+        run: |
+          branch="$(node -p 'JSON.parse(process.env.PR).headBranchName')"
+          git fetch --quiet --depth=1 origin "$branch"
+          git checkout --quiet -B "$branch" FETCH_HEAD
+          node tools/release/stamp-cli.ts
+          if git diff --quiet; then exit 0; fi
+          version="$(node -p 'JSON.parse(require("node:fs").readFileSync("plugins/teamrig/.claude-plugin/plugin.json", "utf8")).version')"
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit --quiet --all --signoff -m "chore(release): stamp next as $version"
+          gh auth setup-git
+          git push --quiet origin "HEAD:$branch"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.release.outputs.pr }}
       # A pull request the workflow's own token opens or updates starts no workflow, so the required check would
       # never report on it. A run by hand is the one event that token may start: ci.yml runs on the release branch's
       # head, where the pull request reads its checks. The pull request goes in as a plain value and the script reads
