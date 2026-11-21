@@ -134,7 +134,7 @@ function frontOf(waiter: InLine['waiter']): number | undefined {
 
 /**
  * The line in admission order. `serial` (or no rules): arrival order. `pipeline`: the steps of a task its lead put at
- * the front (T4082), the earliest put first; then p0 steps, in arrival order; then
+ * the front (T4082), the earliest put first; then blocker, then p0 steps, each in arrival order; then
  * the class whose turn it is (least virtual time in `turns`); inside a class, the aged priority; then arrival. A ticket
  * that names no request counts as `defaultClass` at {@link UNNAMED_PRIORITY}. A class `turns` lacks starts at the least
  * virtual time of the waiting classes it has (0 when it has none), so a class that had no step waiting banks no turns.
@@ -163,7 +163,7 @@ export function admissionOrder<T extends InLine>(line: readonly T[], now: number
 }
 
 /**
- * Fronted first, the earliest put there first; then urgent; between two urgent ones, neither (arrival decides); else the
+ * Fronted first, the earliest put there first; then urgent; between two urgent ones the blocker, else arrival decides; else the
  * least turn, then the most urgent aged priority.
  */
 function compareRanks(a: Rank, b: Rank): number {
@@ -177,7 +177,8 @@ function compareRanks(a: Rank, b: Rank): number {
     return a.urgent ? -1 : 1;
   }
   if (a.urgent) {
-    return 0;
+    // A blocker (-1) goes ahead of p0 (T4329); urgent priorities never age, so this is the level each step named.
+    return a.priority - b.priority;
   }
   return a.turn - b.turn || a.priority - b.priority;
 }

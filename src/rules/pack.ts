@@ -264,7 +264,12 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
     'task-order':
       `Work your own task list in plan order (\`${command} list --session <you>\`); self-made work is a task too, added with \`${command} add\` first,` +
       ' and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting (one-commit fixes exempt).' +
-      " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask your leader.",
+      // Owner order 11-18 (T4329, T4059 folded in): a blocker held a peer, a merge or the queue for hours when it was
+      // given a later deadline, so the level sits above p0 and its owner drops the rest. What counts as one is asked at
+      // `add` (register/policy.ts) and told in the guide, so the rule spends no words on it. To fit CORE_PACK_MAX_CHARS,
+      // rules 5, 10 and 16 took shorter words of the same meaning; rule 8 keeps every word.
+      ' A `blocker` comes first: drop the rest, fix it now.' +
+      " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. Looping or off your task: stop, ask your leader.",
     'owner-gates':
       `Silence is consent only within the sender's authority, never for owner gates: ${list(config.ownerGates)} [ownerGates].` +
       " An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new.",
@@ -303,7 +308,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
         ? ` Ask the owner only gates and business calls: stand alone, no bare ids; options, numbers, your pick, a security ask's verdict, a \`${DECISION_MARKER}\` line.`
         : " Ask the owner only on owner gates and business decisions: each stands alone, no bare ids; options, numbers, your pick and a security ask's verdict."),
     resources:
-      'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with its replacement: `stopgap T<id>`.',
+      'Rising memory, CPU, storage or token use needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with its replacement: `stopgap T<id>`.',
     data:
       "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
       ' Deleting derived data needs a verified regenerate tool and a parity run explaining each differing row; archive history and audit data before any TTL.' +
@@ -335,7 +340,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       'Edit in your own worktree and branch in each repo, never a main checkout.' +
       // Any other removal (`git worktree remove`, `rm -rf`, `Remove-Item -Recurse`) follows a node_modules junction
       // into the main checkout's folder and empties it (T1279).
-      (platform === 'win32' ? ` Remove a worktree only with \`${command} worktree remove <path>\`: any other removal may empty the main node_modules.` : '') +
+      (platform === 'win32' ? ` Remove a worktree only with \`${command} worktree remove <path>\`: other removals may empty main's node_modules.` : '') +
       // A reader of the code has only the repo: a task id is a trace, a path into a team's home leads nowhere (T1869).
       ' Comments say why, no path outside the repo, and change with their code or go;' +
       ' verify a load-bearing one or recorded number at its source;' +

@@ -97,10 +97,12 @@ export const DEFAULT_REGISTER: RegisterConfig = {
    * 3 at the median and 9 at the 90th percentile; the two days past 10 (36 and 19) were the run that raised the question.
    * goalProgressDays: a working day that moves no planned task is the drift to catch the next morning.
    * overSizeMultiple: the old register flagged a task whose cost passed twice its estimate (T327).
+   * blockerOpenAfterHours: a blocker is fixed now, so half a working day unfixed is the time to ask why (T4329).
    */
   check: {
     staleAfterHours: 72,
     notPickedUpAfterHours: 24,
+    blockerOpenAfterHours: 4,
     prioritySkipAfterHours: 24,
     maxSelfMadePerDay: 10,
     goalProgressDays: 1,

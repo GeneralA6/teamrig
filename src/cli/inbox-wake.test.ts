@@ -144,7 +144,13 @@ describe('teamrig inbox add --wake now', () => {
   });
 });
 
-describe('teamrig inbox add naming right-now work (T4414)', () => {
+/** Whether `id` of `team` holds a wake ask for `text`: found by text, since adding a blocker posts its leader or owner one too. */
+async function askedFor(kit: CliHarness, team: string, id: string, text: string): Promise<boolean> {
+  const asks = await new WakeAsks(kit.files, join(teamHomeOf(team), 'state', 'wake-asks')).read(id);
+  return asks.some(({ ask }) => ask?.text === text);
+}
+
+describe('teamrig inbox add naming blocker work (T4414, T4329)', () => {
   /** The tree with alpha's own T1 at `priority`. */
   async function withAlphaTask(priority: string): Promise<CliHarness> {
     const kit = await treeHarness(LED);
@@ -153,8 +159,8 @@ describe('teamrig inbox add naming right-now work (T4414)', () => {
     return kit;
   }
 
-  it('wakes as --wake now a line with no wake flag that names an unfinished p0, and says so', async () => {
-    const kit = await withAlphaTask('p0');
+  it('wakes as --wake now a line with no wake flag that names an unfinished blocker, and says so', async () => {
+    const kit = await withAlphaTask('blocker');
     const result = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'T1 needs your review', '--session', 'alpha']);
     assert.deepEqual(result, {
       code: EXIT.ok,
@@ -162,51 +168,58 @@ describe('teamrig inbox add naming right-now work (T4414)', () => {
         'POSTED to bravo; bravo is reminded at its next prompt',
         "WAKES bravo if its tab is idle, within about 3 minutes: at least about 210k W for the first call, cold; whole turns usually cost more, on app's budget line",
       ],
-      stderr: ['NOTE T1 is p0 work, so the line wakes as --wake now'],
+      stderr: ['NOTE T1 is blocker work, so the line wakes as --wake now'],
     });
     assert.equal(askOf(kit, 'app', 'bravo'), formatWakeAsk({ from: 'alpha', text: 'T1 needs your review', at: NOW }));
   });
 
-  it('posts with no wake, and says why, where --wake now would be refused: another team from a member', async () => {
+  it('wakes no one for a line with no wake flag that names an unfinished p0 (T4329)', async () => {
     const kit = await withAlphaTask('p0');
+    const result = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'T1 needs your review', '--session', 'alpha']);
+    assert.deepEqual(result, { code: EXIT.ok, stdout: ['POSTED to bravo; bravo is reminded at its next prompt'], stderr: [] });
+    assert.equal(askOf(kit, 'app', 'bravo'), undefined);
+  });
+
+  it('posts with no wake, and says why, where --wake now would be refused: another team from a member', async () => {
+    const kit = await withAlphaTask('blocker');
     const result = await kit.run(['inbox', 'add', '--to', 'web/front', '--text', 'T1 freezes main', '--session', 'alpha']);
     assert.equal(result.code, EXIT.ok);
     assert.equal(result.stderr.length, 1);
-    assert.match(result.stderr[0] ?? '', /^NOTE T1 is p0 work, but the line posts with no wake: --wake now reaches another team only from a team lead/);
+    assert.match(result.stderr[0] ?? '', /^NOTE T1 is blocker work, but the line posts with no wake: --wake now reaches another team only from a team lead/);
     assert.equal(kit.files.get(teamInboxOf('web', 'front')), '- 2030-01-08 10:00 app/alpha: T1 freezes main\n');
     assert.equal(askOf(kit, 'web', 'front'), undefined);
   });
 
   it('wakes no one for a line to many sessions none of whom acts on the work (T4431)', async () => {
-    const kit = await withAlphaTask('p0');
+    const kit = await withAlphaTask('blocker');
     const result = await kit.run(['inbox', 'add', '--to', 'all', '--text', 'T1 freezes main', '--session', 'alpha']);
     assert.equal(result.code, EXIT.ok);
     assert.deepEqual(result.stdout, ['POSTED to 3 sessions (lead, bravo, charlie); each is reminded at its next prompt']);
     assert.deepEqual(result.stderr, [
-      'NOTE T1 is p0 work, but the line wakes no one: none of its 3 receivers owns it or holds work it waits on, so each reads it at its next prompt',
+      'NOTE T1 is blocker work, but the line wakes no one: none of its 3 receivers owns it or holds work it waits on, so each reads it at its next prompt',
     ]);
     assert.equal(kit.files.get(teamInboxOf('app', 'bravo')), '- 2030-01-08 10:00 alpha: T1 freezes main\n');
     for (const id of ['lead', 'bravo', 'charlie']) {
-      assert.equal(askOf(kit, 'app', id), undefined, `no ask for ${id}`);
+      assert.equal(await askedFor(kit, 'app', id, 'T1 freezes main'), false, `no ask for ${id}`);
     }
   });
 
-  it('wakes no one for a line naming a p1, nor for a p0 once done', async () => {
+  it('wakes no one for a line naming a p1, nor for a blocker once done', async () => {
     const p1 = await withAlphaTask('p1');
     const plain = await p1.run(['inbox', 'add', '--to', 'bravo', '--text', 'T1 needs your review', '--session', 'alpha']);
     assert.deepEqual([plain.stdout, plain.stderr], [['POSTED to bravo; bravo is reminded at its next prompt'], []]);
     assert.equal(askOf(p1, 'app', 'bravo'), undefined);
 
-    const p0 = await withAlphaTask('p0');
-    const done = await p0.run(['set', 'T1', '--status', 'done', '--note', 'fixed', '--evidence', 'sha 1', '--skill', 'none', '--followups', 'none', '--session', 'alpha']);
+    const blocker = await withAlphaTask('blocker');
+    const done = await blocker.run(['set', 'T1', '--status', 'done', '--note', 'fixed', '--evidence', 'sha 1', '--skill', 'none', '--followups', 'none', '--session', 'alpha']);
     assert.equal(done.code, EXIT.ok, done.stderr.join('\n'));
-    const report = await p0.run(['inbox', 'add', '--to', 'bravo', '--text', 'T1 is done', '--session', 'alpha']);
+    const report = await blocker.run(['inbox', 'add', '--to', 'bravo', '--text', 'T1 is done', '--session', 'alpha']);
     assert.deepEqual(report.stderr, []);
-    assert.equal(askOf(p0, 'app', 'bravo'), undefined);
+    assert.equal(askOf(blocker, 'app', 'bravo'), undefined);
   });
 });
 
-describe('teamrig inbox add naming right-now work to many sessions (T4431)', () => {
+describe('teamrig inbox add naming blocker work to many sessions (T4431, T4329)', () => {
   /** A team of nine: `lead` leads the other eight. */
   const NINE = { sessions: ['lead', 'alpha', 'bravo', 'charlie', 'delta', 'echo', 'fox', 'golf', 'hotel'] };
   const RECEIVERS = NINE.sessions.filter((id) => id !== 'lead');
@@ -216,12 +229,6 @@ describe('teamrig inbox add naming right-now work to many sessions (T4431)', () 
     assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
   }
 
-  /** Whether `id` holds a wake ask for `text`: found by text, since a p0's `add --owner` may post its owner one too. */
-  async function askedFor(kit: CliHarness, id: string, text: string): Promise<boolean> {
-    const asks = await new WakeAsks(kit.files, join(teamHomeOf('app'), 'state', 'wake-asks')).read(id);
-    return asks.some(({ ask }) => ask?.text === text);
-  }
-
   /** Each receiver's inbox ends with the line; an owner's also holds the add's assignment line before it. */
   function assertEachHasLine(kit: CliHarness, line: string): void {
     for (const id of RECEIVERS) {
@@ -229,33 +236,30 @@ describe('teamrig inbox add naming right-now work to many sessions (T4431)', () 
     }
   }
 
-  it("wakes only the p0's owner of a line to the whole team; the others read it at their next prompt", async () => {
+  it("wakes only the blocker's owner of a line to the whole team; the others read it at their next prompt", async () => {
     const kit = await treeHarness(NINE);
-    await added(kit, ['--title', 'Fix the outage', '--priority', 'p0', '--owner', 'bravo']);
+    await added(kit, ['--title', 'Fix the outage', '--priority', 'blocker', '--owner', 'bravo']);
     const result = await kit.run(['inbox', 'add', '--to', 'all', '--text', 'T1 blocks the release', '--session', 'lead']);
     assert.equal(result.code, EXIT.ok);
     assert.deepEqual(result.stderr, [
-      'NOTE T1 is p0 work, so the line wakes as --wake now only the receivers who act on it now, its owner and the owners of work it waits on: bravo; the other 7 read it at their next prompt',
+      'NOTE T1 is blocker work, so the line wakes as --wake now only the receivers who act on it now, its owner and the owners of work it waits on: bravo; the other 7 read it at their next prompt',
     ]);
     assert.equal(result.stdout[1], "WAKES bravo if its tab is idle, within about 3 minutes: at least about 210k W for the first call, cold; whole turns usually cost more, on app's budget line");
     assertEachHasLine(kit, 'T1 blocks the release');
     for (const id of RECEIVERS) {
-      assert.equal(await askedFor(kit, id, 'T1 blocks the release'), id === 'bravo', `only bravo is asked to wake, not ${id}`);
+      assert.equal(await askedFor(kit, 'app', id, 'T1 blocks the release'), id === 'bravo', `only bravo is asked to wake, not ${id}`);
     }
   });
 
-  it('also wakes the owner of the unfinished task the p0 waits on', async () => {
+  it('wakes no one for a line naming a p0 to the whole team, and adds no note (T4329)', async () => {
     const kit = await treeHarness(NINE);
-    await added(kit, ['--title', 'Grant the deploy key', '--priority', 'p1', '--owner', 'charlie']);
-    await added(kit, ['--title', 'Fix the outage', '--priority', 'p0', '--owner', 'bravo', '--after', 'T1']);
-    const result = await kit.run(['inbox', 'add', '--to', 'all', '--text', 'T2 blocks the release', '--session', 'lead']);
-    assert.equal(result.code, EXIT.ok);
-    assert.deepEqual(result.stderr, [
-      'NOTE T2 is p0 work, so the line wakes as --wake now only the receivers who act on it now, its owner and the owners of work it waits on: bravo, charlie; the other 6 read it at their next prompt',
-    ]);
-    assertEachHasLine(kit, 'T2 blocks the release');
+    await added(kit, ['--title', 'Fix the outage', '--priority', 'p0', '--owner', 'bravo']);
+    const result = await kit.run(['inbox', 'add', '--to', 'all', '--text', 'T1 blocks the release', '--session', 'lead']);
+    assert.deepEqual([result.code, result.stderr], [EXIT.ok, []]);
+    assert.deepEqual(result.stdout, ['POSTED to 8 sessions (alpha, bravo, charlie, delta, echo, fox, golf, hotel); each is reminded at its next prompt']);
+    assertEachHasLine(kit, 'T1 blocks the release');
     for (const id of RECEIVERS) {
-      assert.equal(await askedFor(kit, id, 'T2 blocks the release'), id === 'bravo' || id === 'charlie', `wake ask for ${id}`);
+      assert.equal(await askedFor(kit, 'app', id, 'T1 blocks the release'), false, `no ask for ${id}`);
     }
   });
 });
