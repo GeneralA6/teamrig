@@ -71,6 +71,11 @@ export interface CliRuntime {
   readonly platform: NodeJS.Platform;
   /** The ports of the AI CLI this run works in, built for an environment and platform: read them with `hostOf` (host.ts). */
   readonly host: HostSource;
+  /**
+   * Every host adapter teamrig ships with, the one the run works in among them: for what holds on a machine whatever
+   * host runs the session, the hosts' own secret files (`secretFilesOf`, host.ts).
+   */
+  readonly shippedHosts: readonly HostSource[];
   /** Terminal launchers and Claude Code, for `teamrig open` and `teamrig launch`. */
   readonly processes: Processes;
   /** The running session's Claude Code process and its tab, which the automatic context refresh ends. */
