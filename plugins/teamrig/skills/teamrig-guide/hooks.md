@@ -1481,6 +1481,18 @@ read and reopened in its `launch.<id>.project`, the team's `team.project`, else 
 the key to set. A team whose pass fails this way is a `WARN` on the hook's stderr; the tab's wake answer and the other
 teams' passes stand.
 
+Work a session can start never keeps it open for good. A session quiet `open.headroom.closeIdleMinutes` with work it
+can start, its last turn ended, is woken for that work first (`WAKE` in the log): in `on` an
+[urgent line](#urgent-lines) from teamrig names its tasks, says how to be left alone (set a task it cannot move
+waiting on what it waits for) and when it closes; in both modes the log keeps the line and `state/idle-pass.json`
+marks the session woken for those tasks, and whether the line went out. It stays open while that wake is under
+`closeIdleMinutes` old; still quiet after, it closes as any idle session, and reopens when work is handed to it or a
+line wakes it. In `on`, a wake whose line never went out (one marked in `dry-run`, or a post that failed) closes
+nobody: once it is `closeIdleMinutes` old the session is woken again, a try at most each `closeIdleMinutes`. New
+work it was not woken for, or a quiet spell that began more than `closeIdleMinutes` after the wake (it worked on),
+wakes it again first. A task with a run of its own in the host queue (its label names the task) counts for nothing here: the run's
+end wakes the session.
+
 A tab held on a permission prompt runs no wake check of its own, so the pass watches for it too: a tab file in
 `state/tabs/` that has asked for a permission for 10 minutes, its Claude Code still running, pages the owner once
 through the same chat webhook an expired login pages ([alerts.pageWebhookFile] or [alerts.pageWebhookEnv], the team's

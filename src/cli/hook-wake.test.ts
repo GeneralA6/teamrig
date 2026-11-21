@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import type { Burst } from '../budget/burst.ts';
 import { BurstLog } from '../budget/burst-log.ts';
+import { projectTranscriptPath } from '../budget/discover.ts';
 import { MeterLog } from '../budget/calibration.ts';
 import { formatConfig } from '../config/load.ts';
 import type { Files } from '../core/files.ts';
@@ -894,7 +895,7 @@ describe('hook wake-check runs the idle pass', () => {
       [reopen],
     );
     const state: unknown = JSON.parse(kit.files.get(PASS_STATE) ?? '');
-    assert.deepEqual(state, { v: 1, at: started, kinds: { lead: 'away', alpha: 'away', bravo: 'reopen' }, logged: started, pending: { bravo: { act: 'reopen', at: started } } });
+    assert.deepEqual(state, { v: 2, at: started, kinds: { lead: 'away', alpha: 'away', bravo: 'reopen' }, logged: started, pending: { bravo: { act: 'reopen', at: started } } });
     kit.clock.advance(4 * MINUTE);
     await passCheck(kit, { processes });
     assert.equal(processes.hidden.length, 1, 'held while its reopen may still run');
@@ -957,6 +958,93 @@ describe('hook wake-check runs the idle pass', () => {
     const later = { kind: 'later', id: 'bravo', line: `LATER app-bravo (session bravo): work handed to it since its close: T1; the project folder ${gone} does not exist` };
     assert.deepEqual(await logLines(kit, PASS_LOG), [pass(at, [AWAY_LEAD, AWAY_ALPHA, later], 'on')]);
     assert.deepEqual(processes.hidden, []);
+  });
+
+  /**
+   * Bravo runs in Claude Code 9100 in tab 9000, quiet 75 min since `quietSince`, with p1 work handed to it; alpha's
+   * tab's wake check runs the pass.
+   */
+  async function quietBravo(kit: CliHarness, quietSince: number): Promise<(processes: FakeProcesses, files?: Files) => Promise<CliResult>> {
+    await handBravo(kit);
+    await new SessionRecordStore(kit.files, { sessions: join(STATE, 'sessions') }).write('bravo', { claudePid: 9100, claudeSession: 'claude-bravo', at: '2030-01-08T08:00:00.000Z' });
+    const transcript = projectTranscriptPath(join(USER_HOME, '.claude', 'projects'), APP, 'claude-bravo');
+    const line = `${JSON.stringify({ type: 'assistant', isSidechain: false, timestamp: new Date(quietSince).toISOString(), message: { role: 'assistant', usage: { input_tokens: 2, cache_read_input_tokens: 40_000, output_tokens: 50 } } })}\n`;
+    await kit.files.write(transcript, line);
+    const sessionProcesses = new FakeSessionProcesses()
+      .add({ pid: 9000, parentPid: 1, name: 'powershell.exe', commandLine: 'powershell -NoExit -Command claude --resume claude-bravo' })
+      .add({ pid: 9100, parentPid: 9000, name: 'claude.exe', commandLine: 'claude --resume claude-bravo' });
+    const memory = new FakeHostMemory().lists([{ pid: 9100, parent: 9000, bytes: 1100 * 2 ** 20 }], COMMIT);
+    return (processes, files) =>
+      kit.run(['hook', 'wake-check'], { stdin: payload(), platform: 'win32', processes, sessionProcesses, memory, ...(files === undefined ? {} : { files }), probe: new FakePathProbe({ folders: [APP] }), transcripts: new MemoryTranscripts({ [transcript]: line }, quietSince) });
+  }
+
+  /** Bravo's lines in the pass log, the wakes' lines marked. */
+  async function bravoLines(kit: CliHarness): Promise<string[]> {
+    return (await logLines(kit, PASS_LOG)).flatMap((record) => {
+      if (!isRecord(record) || !Array.isArray(record['steps'])) {
+        return isRecord(record) && record['kind'] === 'wake' && record['id'] === 'bravo' ? [`wake: ${String(record['line'])}`] : [];
+      }
+      return record['steps'].flatMap((step: unknown) => (isRecord(step) && step['id'] === 'bravo' ? [String(step['line'])] : []));
+    });
+  }
+
+  it('wakes a quiet session with work it can start once, then closes it still quiet, in dry-run changing nothing (T1247)', async () => {
+    const kit = await idleTeam();
+    const woken = kit.clock.now();
+    const pass = await quietBravo(kit, woken - 75 * MINUTE);
+    const processes = new FakeProcesses();
+    await pass(processes);
+    const wakeLine =
+      'The idle pass found you quiet with work you can start: T1. Start it now; one you cannot move yet, set waiting on what it waits for (teamrig set <id> waiting --waits ...). ' +
+      'Still quiet at 11:00 UTC, you are closed to free the host, and reopened when work is handed to you or a line wakes you.';
+    assert.deepEqual(await bravoLines(kit), [
+      'WAKE app-bravo (session bravo) has work it can start (T1) and has been quiet 75 min: the idle pass wakes it for that work, and closes it if it stays quiet 60 min after (open.headroom.closeIdleMinutes)',
+      `wake: ${wakeLine}`,
+    ]);
+    const state: unknown = JSON.parse(kit.files.get(PASS_STATE) ?? '');
+    assert.ok(isRecord(state));
+    assert.deepEqual(state['woken'], { bravo: { at: woken, ids: ['T1'], posted: false } });
+    assert.deepEqual(await new WakeAsks(kit.files, ASKS).read('bravo'), [], 'dry-run posts no wake');
+    kit.clock.advance(MINUTE);
+    await pass(processes);
+    kit.clock.advance(58 * MINUTE);
+    await pass(processes);
+    assert.equal((await bravoLines(kit)).length, 3, 'kept once woken, logged as it changed');
+    assert.match((await bravoLines(kit))[2] ?? '', /^KEEP app-bravo \(session bravo\) has work it can start \(T1\), woken for it at 10:00 UTC: it closes at 11:00 UTC if still quiet$/);
+    kit.clock.advance(MINUTE);
+    await pass(processes);
+    assert.match((await bravoLines(kit))[3] ?? '', /^CLOSE app-bravo \(session bravo\): quiet 135 min/);
+    assert.deepEqual(processes.hidden, [], 'and dry-run starts no close');
+  });
+
+  it('in mode on posts the wake as an urgent line from teamrig to the session (T1247)', async () => {
+    const kit = await idleTeam(ON);
+    const pass = await quietBravo(kit, kit.clock.now() - 75 * MINUTE);
+    await pass(new FakeProcesses());
+    const asks = (await new WakeAsks(kit.files, ASKS).read('bravo')).map(({ ask }) => `${ask?.from}: ${ask?.text}`);
+    assert.equal(asks.length, 1);
+    assert.match(asks[0] ?? '', /^teamrig: The idle pass found you quiet with work you can start: T1\. Start it now; .+ Still quiet at 11:00 UTC, you are closed/);
+    assert.match((await bravoLines(kit))[1] ?? '', /^wake: The idle pass found you quiet/);
+  });
+
+  it('in mode on marks a wake whose post failed as not posted, and wakes the session again, not closing it, once that wake is the threshold old (T1247)', async () => {
+    const kit = await idleTeam(ON);
+    const pass = await quietBravo(kit, kit.clock.now() - 75 * MINUTE);
+    const faulty = new FaultyFiles(kit.files).fail('append', join(STATE, 'inbox', 'bravo.md'), systemError('EACCES', 'EACCES: permission denied'));
+    const first = kit.clock.now();
+    const processes = new FakeProcesses();
+    await pass(processes, faulty);
+    const woken = (): unknown => {
+      const state: unknown = JSON.parse(kit.files.get(PASS_STATE) ?? '');
+      return isRecord(state) ? state['woken'] : undefined;
+    };
+    assert.deepEqual(woken(), { bravo: { at: first, ids: ['T1'], posted: false } });
+    assert.deepEqual(await new WakeAsks(kit.files, ASKS).read('bravo'), []);
+    kit.clock.advance(60 * MINUTE);
+    await pass(processes);
+    assert.deepEqual(woken(), { bravo: { at: kit.clock.now(), ids: ['T1'], posted: true } }, 'woken again, its line out this time');
+    assert.equal((await new WakeAsks(kit.files, ASKS).read('bravo')).length, 1);
+    assert.deepEqual(processes.hidden, [], 'and no close started');
   });
 
   it('logs a failed pass once until its error changes, keeps the wake answer, and logs every step once it runs through', async () => {

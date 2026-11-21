@@ -35,7 +35,7 @@ export async function close(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const facts = await idleFactsOf(runtime, kit, config, roster);
   const maxPriority = await restCappedPriority(runtime, kit, config, roster, facts.tasks, id, Number.POSITIVE_INFINITY);
   const verdict = await idleVerdictOf(runtime, config, roster, facts, id, { maxPriority, project });
-  if (verdict.kind === 'keep') {
+  if (verdict.kind !== 'close') {
     throw new RefusedError(verdict.why);
   }
   const { closable } = verdict;

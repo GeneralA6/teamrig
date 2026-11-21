@@ -64,7 +64,7 @@ export async function idleClose(args: ParsedArgs, runtime: CliRuntime): Promise<
     return report(runtime, kit, { ...act, ...unmeasured, at: runtime.clock.now(), outcome: 'failed', line: `FAILED to weigh ${label}: ${weighed.error}` });
   }
   const { verdict } = weighed;
-  if (verdict.kind === 'keep') {
+  if (verdict.kind !== 'close') {
     return report(runtime, kit, { ...act, ...unmeasured, at: runtime.clock.now(), outcome: 'kept', line: `KEPT ${verdict.why}` });
   }
   const before = await runtime.memory.commit();
@@ -91,6 +91,7 @@ function stayText(step: Exclude<JudgedStep, ReopenWish>): string {
   switch (step.kind) {
     case 'close':
     case 'keep':
+    case 'wake':
       return 'it is running';
     case 'closed':
       return 'still closed, nothing it can start';

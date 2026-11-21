@@ -358,7 +358,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       leaves each other session; it changes nothing
   close <id|name> [--project <dir>] [--yes]   (the lead) ends an idle session's Claude Code and its tab
       to free the host, logged, so teamrig open resumes it; it refuses the lead, the delivery owner,
-      a session with work it can start or a time wait ending within 30 min, quiet under
+      a session with work it can start (until a wake by the idle pass went unanswered) or a time
+      wait ending within 30 min, quiet under
       open.headroom.closeIdleMinutes, in a turn, at a tool call or waiting on a decision it put to the
       person, running background work or shells, or too big or old to resume with no refresh ready;
       without --yes it shows the close and ends nothing

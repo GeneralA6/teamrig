@@ -157,7 +157,7 @@ describe('teamrig sessions --pass', () => {
       'KEEP app-lead (session lead) holds the lead role: teamrig never closes it',
       'CLOSE app-alpha (session alpha): quiet 75 min, its Claude Code holds 1300 MB, 1800 MB committed',
       'AWAY app-bravo (session bravo): not running, and teamrig did not close it',
-      'PASS 3 session(s): 1 to close, 0 to reopen, 0 to reopen later, 1 kept open, 0 closed, 1 away; nothing changed',
+      'PASS 3 session(s): 1 to close, 0 to wake, 0 to reopen, 0 to reopen later, 1 kept open, 0 closed, 1 away; nothing changed',
     ]);
     assert.deepEqual(team.processes.ends, [], 'the pass ends nothing');
     assert.equal(team.kit.files.get(LOG), undefined, 'and logs nothing');
@@ -241,7 +241,7 @@ describe('teamrig sessions --pass', () => {
       'KEEP app-lead (session lead) holds the lead role: teamrig never closes it',
       `KEEP app-alpha (session alpha): the project folder ${gone} does not exist`,
       'AWAY app-bravo (session bravo): not running, and teamrig did not close it',
-      'PASS 3 session(s): 0 to close, 0 to reopen, 0 to reopen later, 2 kept open, 0 closed, 1 away; nothing changed',
+      'PASS 3 session(s): 0 to close, 0 to wake, 0 to reopen, 0 to reopen later, 2 kept open, 0 closed, 1 away; nothing changed',
     ]);
   });
 
@@ -256,7 +256,7 @@ describe('teamrig sessions --pass', () => {
       'AWAY app-lead (session lead): not running, and teamrig did not close it',
       `LATER app-alpha (session alpha): work handed to it since its close: T1; the project folder ${gone} does not exist`,
       'REOPEN app-bravo (session bravo): work handed to it since its close: T2',
-      'PASS 3 session(s): 0 to close, 1 to reopen, 1 to reopen later, 0 kept open, 0 closed, 1 away; nothing changed',
+      'PASS 3 session(s): 0 to close, 0 to wake, 1 to reopen, 1 to reopen later, 0 kept open, 0 closed, 1 away; nothing changed',
     ]);
   });
 
@@ -270,7 +270,7 @@ describe('teamrig sessions --pass', () => {
       'AWAY app-lead (session lead): not running, and teamrig did not close it',
       'REOPEN app-alpha (session alpha): work handed to it since its close: T1',
       'LATER app-bravo (session bravo): work handed to it since its close: T2; app-alpha reopens first, one a pass',
-      'PASS 3 session(s): 0 to close, 1 to reopen, 1 to reopen later, 0 kept open, 0 closed, 1 away; nothing changed',
+      'PASS 3 session(s): 0 to close, 0 to wake, 1 to reopen, 1 to reopen later, 0 kept open, 0 closed, 1 away; nothing changed',
     ]);
   });
 
@@ -286,7 +286,7 @@ describe('teamrig sessions --pass', () => {
       'CLOSED app-alpha (session alpha): nothing it can start',
       // The p0's add posted bravo a wake ask (T4414), so the pass reopens it for that line.
       'REOPEN app-bravo (session bravo): an urgent line from lead',
-      'PASS 3 session(s): 0 to close, 1 to reopen, 0 to reopen later, 0 kept open, 1 closed, 1 away; nothing changed',
+      'PASS 3 session(s): 0 to close, 0 to wake, 1 to reopen, 0 to reopen later, 0 kept open, 1 closed, 1 away; nothing changed',
     ]);
   });
 

@@ -1924,7 +1924,7 @@
           }
         },
         "idle": {
-          "description": "The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The delivery owner is never closed, nor the leads open.idle.leaders keeps.",
+          "description": "The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, wake one that quiet with work it can start first and close it if it stays quiet that long after, and reopen it when the wake check would wake it. The delivery owner is never closed, nor the leads open.idle.leaders keeps.",
           "type": "object",
           "properties": {
             "mode": {

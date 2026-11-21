@@ -68,6 +68,6 @@ describe('passTotalOf', () => {
       { kind: 'close', id: 'alpha', closable: CLOSABLE, project: APP },
       { kind: 'later', id: 'bravo', reopening: HANDED, why: 'no room' },
     ];
-    assert.equal(passTotalOf(steps), 'PASS 3 session(s): 1 to close, 0 to reopen, 1 to reopen later, 1 kept open, 0 closed, 0 away; nothing changed');
+    assert.equal(passTotalOf(steps), 'PASS 3 session(s): 1 to close, 0 to wake, 0 to reopen, 1 to reopen later, 1 kept open, 0 closed, 0 away; nothing changed');
   });
 });

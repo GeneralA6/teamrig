@@ -2710,7 +2710,9 @@ does not count. Then the host's free memory and commit charge (Windows, and Linu
 With `--pass` it prints, in the roster's order, what an idle pass would do, and changes nothing: `CLOSE` a running
 session [teamrig close](#teamrig-close) would close (quiet `open.headroom.closeIdleMinutes` or more, nothing it can
 start under the wake priority its budget leaves it, no [urgent line](hooks.md#urgent-lines) waiting to wake it),
-`KEEP` one it keeps open and why, `REOPEN` a session teamrig closed that the wake check would now wake (urgent lines
+`WAKE` a running session quiet that long with work it can start that the pass has not woken for it yet ([the idle
+pass](hooks.md#the-idle-pass) wakes it first, then closes it if it stays quiet), `KEEP` one it keeps open and why,
+`REOPEN` a session teamrig closed that the wake check would now wake (urgent lines
 posted for it, work handed to it since its close, or, unless its budget rests it, [open.idle.reopenUnreadLines] (10)
 inbox lines it has not seen, or the day's start with work it can start), `LATER` such a session
 this pass leaves for the next (one reopen a pass, urgent lines first, the oldest first, then the most urgent top task,
@@ -2758,7 +2760,7 @@ host: 21400 MB free; commit 85300 of 100700 MB (85%)
 KEEP shop-lead (session lead) holds the lead role: teamrig never closes it
 REOPEN shop-api (session api): work handed to it since its close: T12
 AWAY shop-site (session web): not running, and teamrig did not close it
-PASS 3 session(s): 0 to close, 1 to reopen, 0 to reopen later, 1 kept open, 0 closed, 1 away; nothing changed
+PASS 3 session(s): 0 to close, 0 to wake, 1 to reopen, 0 to reopen later, 1 kept open, 0 closed, 1 away; nothing changed
 ```
 
 ### teamrig close
@@ -2769,7 +2771,9 @@ It refuses the lead of the tree's root team (every team's lead with [open.idle.l
 session listed in `open.idle.keepOpen`, one in the owner's open booked
 meeting (started, under 4 hours, neither ended nor dropped: the owner talks to its tab), a lead or sub-lead that a
 live task's approval or decision waits on (the team's lead for the owner's too) or one of whose sessions runs, a session not running, one
-with work it can start or a time wait of its own ending within 30 minutes, one quiet under
+with work it can start (unless the idle pass woke it for that work `open.headroom.closeIdleMinutes` ago and it stayed
+quiet; a task whose own run waits in the host queue does not count) or a time wait of its own ending within 30
+minutes, one quiet under
 `open.headroom.closeIdleMinutes` (60) since its transcript's last entry of the person or the model (a slash command,
 an away summary or a file change with no entry is no activity), in a turn, at a tool call (running, or waiting on a permission or an answer), waiting on a decision it put to the
 person (a `Decision needed:` line) or still running background work, one whose Claude Code runs shells the end

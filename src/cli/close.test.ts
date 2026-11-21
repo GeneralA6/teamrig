@@ -20,6 +20,8 @@ import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { WakeAsks } from '../wake/asks.ts';
+import { formatRunRecord, RUN_RECORD_FORMAT, runRecordPathOf, type DetachedRunRecord } from '../delivery/detached-runs.ts';
+import { formatIdlePassState, passedState, type WokenMark } from './idle-pass-log.ts';
 import { EXIT } from './runtime.ts';
 
 const MB = 2 ** 20;
@@ -508,5 +510,89 @@ describe('teamrig idle-close', () => {
     assert.deepEqual(failed.stdout, ['FAILED to close app-alpha (session alpha): could not end process 8000: access denied']);
     assert.equal(stuck.kit.files.get(LOG), undefined);
     assert.equal(actsOf(stuck).length, 1);
+  });
+});
+
+const PASS_STATE = join(TEAM_HOME, 'state', 'idle-pass.json');
+const DETACHED = join(TEAM_HOME, 'state', 'deploys', 'detached');
+
+/** Alpha quiet 75 min with p1 work T1 where only p1 wakes, its last wake by the pass, if any, `woken`. */
+async function quietWithWork(woken?: WokenMark, transcript = reply(40_000, 75)): Promise<Alpha> {
+  const alpha = await runningAlpha(75, transcript, undefined, WAKES_P1);
+  ok(await alpha.kit.run(['add', '--title', 'Ship the release', '--description', 'what and why', '--priority', 'p1', '--owner', 'alpha', '--session', 'lead']));
+  if (woken !== undefined) {
+    await alpha.kit.files.write(PASS_STATE, formatIdlePassState(passedState(NOW - MINUTE_MS, [{ kind: 'keep', id: 'alpha', why: 'woken' }], {}, {}, undefined, { alpha: woken })));
+  }
+  return alpha;
+}
+
+describe('work it can start never keeps a quiet session for good (T1247, upstream #1354)', () => {
+  it('wakes a session quiet past the threshold with work it can start, not yet woken for it, and keeps it open for that', async () => {
+    const alpha = await quietWithWork();
+    const kept = await idleClose(alpha);
+    assert.equal(kept.code, 0, kept.stderr.join('\n'));
+    assert.deepEqual(kept.stdout, [
+      'KEPT app-alpha (session alpha) has work it can start (T1) and has been quiet 75 min: the idle pass wakes it for that work, and closes it if it stays quiet 60 min after (open.headroom.closeIdleMinutes)',
+    ]);
+    assertRefused(await close(alpha, ['alpha', '--yes', '--session', 'lead']), /has work it can start \(T1\) and has been quiet 75 min: the idle pass wakes it/);
+    assert.deepEqual(alpha.processes.ends, []);
+    assert.deepEqual(alpha.processes.described, [], 'a session the pass wakes costs no look at its process');
+  });
+
+  it('closes a session quiet past the threshold, woken for its startable task and still quiet', async () => {
+    const alpha = await quietWithWork({ at: NOW - 61 * MINUTE_MS, ids: ['T1'], posted: true });
+    const closed = await idleClose(alpha);
+    assert.equal(closed.code, 0, closed.stderr.join('\n'));
+    assert.deepEqual(closed.stdout, ['CLOSED app-alpha (session alpha): quiet 75 min, its Claude Code holds 1300 MB, now free']);
+    assert.deepEqual(alpha.processes.ends, [{ pid: TAB.pid, how: 'ask' }]);
+  });
+
+  it('keeps a session woken under the threshold ago, and wakes it again for new work or after it worked on past its wake', async () => {
+    const fresh = await quietWithWork({ at: NOW - 30 * MINUTE_MS, ids: ['T1'], posted: true });
+    assert.deepEqual((await idleClose(fresh)).stdout, ['KEPT app-alpha (session alpha) has work it can start (T1), woken for it at 09:30 UTC: it closes at 10:30 UTC if still quiet']);
+
+    const handed = await quietWithWork({ at: NOW - 61 * MINUTE_MS, ids: ['T1'], posted: true });
+    ok(await handed.kit.run(['add', '--title', 'Fix the outage', '--description', 'what and why', '--priority', 'p1', '--owner', 'alpha', '--session', 'lead']));
+    assert.match((await idleClose(handed)).stdout.join('\n'), /^KEPT app-alpha \(session alpha\) has work it can start \(T1, T2\) and has been quiet 75 min: the idle pass wakes it/);
+
+    const workedOn = await quietWithWork({ at: NOW - 200 * MINUTE_MS, ids: ['T1'], posted: true });
+    assert.match((await idleClose(workedOn)).stdout.join('\n'), /^KEPT app-alpha \(session alpha\) has work it can start \(T1\) and has been quiet 75 min: the idle pass wakes it/);
+    for (const kept of [fresh, handed, workedOn]) {
+      assert.deepEqual(kept.processes.ends, []);
+    }
+  });
+
+  it('wakes again, in mode on, a session whose wake posted no line (a dry-run mark, a failed post) once it is the threshold old, never closing it', async () => {
+    const fresh = await quietWithWork({ at: NOW - 30 * MINUTE_MS, ids: ['T1'], posted: false });
+    assert.deepEqual((await idleClose(fresh)).stdout, ['KEPT app-alpha (session alpha) has work it can start (T1), woken for it at 09:30 UTC: it closes at 10:30 UTC if still quiet']);
+
+    const unposted = await quietWithWork({ at: NOW - 61 * MINUTE_MS, ids: ['T1'], posted: false });
+    assert.deepEqual((await idleClose(unposted)).stdout, [
+      'KEPT app-alpha (session alpha) has work it can start (T1); its wake at 08:59 UTC posted no line, so the idle pass wakes it again rather than close it',
+    ]);
+    for (const kept of [fresh, unposted]) {
+      assert.deepEqual(kept.processes.ends, []);
+    }
+  });
+
+  it('closes a session whose only startable task has a run of its own queued in the host queue: the run ends it', async () => {
+    const alpha = await quietWithWork();
+    const id = '20300108-093000-5150';
+    const run: DetachedRunRecord = { v: RUN_RECORD_FORMAT, id, team: 'app', session: 'alpha', what: 'T1 ship the release', log: join(DETACHED, `${id}.log`), pid: 5150, startedAt: '2030-01-08T09:30:00.000Z' };
+    await alpha.kit.files.write(runRecordPathOf(DETACHED, id), formatRunRecord(run));
+    alpha.processes.add({ pid: 5150, parentPid: 1, name: 'node.exe', commandLine: 'node teamrig queue' });
+    const closed = await idleClose(alpha);
+    assert.deepEqual(closed.stdout, ['CLOSED app-alpha (session alpha): quiet 75 min, its Claude Code holds 1300 MB, now free'], closed.stderr.join('\n'));
+
+    const dead = await quietWithWork();
+    await dead.kit.files.write(runRecordPathOf(DETACHED, id), formatRunRecord(run));
+    assert.match((await idleClose(dead)).stdout.join('\n'), /^KEPT .+ has work it can start \(T1\) and has been quiet/, 'a run whose process is gone counts for nothing');
+  });
+
+  it('keeps a session woken and still quiet whose turn has not ended', async () => {
+    const call = { type: 'assistant', isSidechain: false, message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: {} }] } };
+    const alpha = await quietWithWork({ at: NOW - 61 * MINUTE_MS, ids: ['T1'], posted: true }, `${reply(40_000, 75)}${JSON.stringify(call)}\n`);
+    assert.match((await idleClose(alpha)).stdout.join('\n'), /^KEPT app-alpha \(session alpha\) is at a tool call/);
+    assert.deepEqual(alpha.processes.ends, []);
   });
 });

@@ -21,12 +21,14 @@ import {
   isPassDue,
   passedState,
   stepsToLog,
+  wokenAfter,
   type ActToStart,
   type IdleAct,
   type IdlePassRecord,
   type IdlePassState,
   type PendingAct,
 } from '../idle-pass-log.ts';
+import { MS_PER_MINUTE } from '../../core/time.ts';
 import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { postUrgentLine } from '../urgent-line.ts';
@@ -82,6 +84,40 @@ async function tellHookless(runtime: CliRuntime, kit: Kit, config: KitConfig, ro
   return told;
 }
 
+/** The line that wakes a quiet session for the work it can start (`ids`), naming when it closes if it stays quiet. */
+export function idleWakeLine(ids: readonly string[], closesAt: string): string {
+  const list = ids.join(', ');
+  return (
+    `The idle pass found you quiet with work you can start: ${list}. Start it now; one you cannot move yet, set waiting on what it waits for (${KIT_NAME} set <id> waiting --waits ...). ` +
+    `Still quiet at ${closesAt}, you are closed to free the host, and reopened when work is handed to you or a line wakes you.`
+  );
+}
+
+/**
+ * Wakes each session the pass found quiet with work it can start (T1247): in mode `on` with an urgent line from
+ * teamrig to the session (src/cli/urgent-line.ts), which its next wake check takes, and in both modes as a log
+ * record, with why the line was not posted. Each is marked woken all the same (`wokenAfter`), so a refusing inbox
+ * gets no line a minute; a mark whose line did not go out is woken again, not closed, once it is
+ * `open.headroom.closeIdleMinutes` old (`wokenFor`). The sessions whose line went out.
+ */
+async function wakeQuiet(runtime: CliRuntime, kit: Kit, config: KitConfig, steps: readonly PassStep[], now: number): Promise<ReadonlySet<string>> {
+  const { mode } = config.open.idle;
+  const closesAt = teamZone(config, runtime).clock(new Date(now + config.open.headroom.closeIdleMinutes * MS_PER_MINUTE));
+  const posted = new Set<string>();
+  for (const step of steps) {
+    if (step.kind !== 'wake') {
+      continue;
+    }
+    const line = idleWakeLine(step.ids, closesAt);
+    const problem = mode === 'on' ? await postUrgentLine(runtime, kit, config, { to: step.id, from: KIT_NAME, text: line }) : undefined;
+    if (mode === 'on' && problem === undefined) {
+      posted.add(step.id);
+    }
+    await runtime.files.append(kit.paths.idlePassLog, formatIdlePassRecord({ kind: 'wake', at: now, mode, id: step.id, line, problem }));
+  }
+  return posted;
+}
+
 /** The internal command that makes each act (idle-act.ts). */
 const ACT_COMMANDS: Readonly<Record<IdleAct, string>> = { close: 'idle-close', reopen: 'idle-open' };
 
@@ -123,7 +159,8 @@ async function startActs(runtime: CliRuntime, kit: Kit, roster: Roster, acts: re
 /**
  * One pass, under its lock: logs the steps whose kind changed, every step once the last pass record is an hour old
  * (`stepsToLog`), or a new failure, with the host's commit charge; in mode `on` starts each act its steps ask for and
- * none pending; tells of each new hookless reopen; and keeps the state for the next pass.
+ * none pending; wakes each quiet session with work it can start (`wakeQuiet`); tells of each new hookless reopen; and
+ * keeps the state for the next pass.
  */
 async function passOnce(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, folderOf: SessionFolderOf, previous: IdlePassState | undefined, now: number): Promise<IdlePassState> {
   const { mode } = config.open.idle;
@@ -144,8 +181,9 @@ async function passOnce(runtime: CliRuntime, kit: Kit, config: KitConfig, roster
   }
   const held = heldActs(previous?.pending, run.steps, now);
   const started = mode === 'on' ? await startActs(runtime, kit, roster, actsToStart(run.steps, held), now) : {};
+  const posted = await wakeQuiet(runtime, kit, config, run.steps, now);
   const told = await tellHookless(runtime, kit, config, roster, run.hookless, previous, now);
-  return passedState(now, run.steps, { ...held, ...started }, told, toLog.length > 0 ? now : previous?.logged);
+  return passedState(now, run.steps, { ...held, ...started }, told, toLog.length > 0 ? now : previous?.logged, wokenAfter(previous?.woken, run.steps, now, posted));
 }
 
 /**
@@ -154,8 +192,9 @@ async function passOnce(runtime: CliRuntime, kit: Kit, config: KitConfig, roster
  * appends to the team's pass log the steps whose kind changed since the last pass, and every step once its last
  * pass record is an hour old, with the host's commit charge;
  * a failed pass logs its error once until the error changes. It logs once each reopened tab no teamrig hook started
- * in (src/cli/hookless-reopen.ts). In dry-run it changes nothing else; in `on` it starts the closes and the reopen
- * its steps ask for, and tells the lead of each hookless reopen with an urgent line. In both it tells each of the team's
+ * in (src/cli/hookless-reopen.ts), and each wake of a quiet session with work it can start. In dry-run it changes
+ * nothing else; in `on` it starts the closes and the reopen its steps ask for, posts each such wake, and tells the
+ * lead of each hookless reopen with an urgent line. In both it tells each of the team's
  * detached queue runs that died with no end of its own (src/cli/detached-sweep.ts), and pages the owner once for each
  * tab held on a permission prompt (src/cli/prompt-hold-page.ts). With mode off it reads nothing. Each session is read
  * and acted on in the folder `folderOf` names. Whether this call ran the pass.

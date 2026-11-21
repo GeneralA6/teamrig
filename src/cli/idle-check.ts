@@ -1,6 +1,8 @@
 import { dirname } from 'node:path';
 import { claudeProjectsDir, findTranscript } from '../budget/discover.ts';
 import { LeadTree } from '../config/lead-tree.ts';
+import { liveRunsOf } from '../delivery/detached-runs.ts';
+import { detachedDirOf } from '../delivery/places.ts';
 import type { Roster } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
@@ -24,7 +26,10 @@ import { REPLY_TAIL_BYTES } from '../turn-log/reply.ts';
 import { seenLinesOf, unseenLinesOf } from '../inbox/inbox.ts';
 import { asksNowOf, urgentLinesText, WakeAsks, type WakeAsk } from '../wake/asks.ts';
 import { startableTasks } from '../wake/day-start.ts';
+import { queuedTasksOf } from '../wake/rush-poke.ts';
 import { inboxDepsOf } from './commands/inbox.ts';
+import { readIdlePassState } from './idle-pass-check.ts';
+import type { WokenMark } from './idle-pass-log.ts';
 import { measureTranscript, type LastSession } from './commands/rehire.ts';
 import { transcriptsIfKept } from './host.ts';
 import { teamZone, type Kit } from './kit.ts';
@@ -51,8 +56,14 @@ export function closableText(closable: Closable): string {
   return `quiet ${closable.idleMinutes} min, its Claude Code holds ${closable.heldMb} MB${committed}`;
 }
 
-/** Whether a session closes, and what; else why it stays open, as a sentence naming it. */
-export type IdleVerdict = { readonly kind: 'close'; readonly closable: Closable } | { readonly kind: 'keep'; readonly why: string };
+/**
+ * Whether a session closes, and what; whether the idle pass wakes it first for the work it can start (`ids`, T1247);
+ * else why it stays open, as a sentence naming it.
+ */
+export type IdleVerdict =
+  | { readonly kind: 'close'; readonly closable: Closable }
+  | { readonly kind: 'wake'; readonly ids: readonly string[]; readonly why: string }
+  | { readonly kind: 'keep'; readonly why: string };
 
 /** What every session's verdict reads, read once for all of them. */
 export interface IdleFacts {
@@ -68,6 +79,10 @@ export interface IdleFacts {
   readonly meetings: readonly ScheduledMeeting[];
   /** The sessions whose refresh is ready (`RefreshStore.readyHandover`): a reopen starts them fresh on their handover. */
   readonly readyHandovers: ReadonlySet<string>;
+  /** Each session's tasks with a run of its own queued or running in the host queue (`queuedTasksOf`): the run's end wakes it. */
+  readonly queued: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Each session's last wake by the idle pass for work it could start (`wokenAfter` in src/cli/idle-pass-log.ts). */
+  readonly woken: Readonly<Record<string, WokenMark>>;
   readonly now: number;
   readonly zone: TimeZone;
 }
@@ -111,7 +126,10 @@ export async function idleFactsOf(runtime: CliRuntime, kit: Kit, config: KitConf
       readyHandovers.add(id);
     }
   }
-  return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, meetings, readyHandovers, now, zone: teamZone(config, runtime) };
+  const runs = await liveRunsOf({ files: runtime.files, alive: (pid) => runtime.sessionProcesses.alive(pid) }, detachedDirOf(config.delivery, kit.paths), kit.paths.team);
+  const queued = new Map(roster.ids.map((id) => [id, queuedTasksOf(runs, id)]));
+  const woken = (await readIdlePassState(runtime.files, kit.paths))?.woken ?? {};
+  return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, meetings, readyHandovers, queued, woken, now, zone: teamZone(config, runtime) };
 }
 
 /** A session's transcript measured, with its last change known. */
@@ -180,6 +198,15 @@ function leaderHoldOfSession(config: KitConfig, roster: Roster, facts: IdleFacts
   return `has ${hold.task.id} waiting on it (${waitSpelling(hold.reason)})`;
 }
 
+/**
+ * The pass's wake that still answers for `ids`: one that named every one of them, with the session's quiet spell
+ * begun under `closeIdleMs` after it, as when it answered that wake and went quiet again. A session that worked on
+ * past that has a new quiet spell, and is woken again before it closes.
+ */
+function wokenFor(mark: WokenMark | undefined, ids: readonly string[], lastTurnAt: number, closeIdleMs: number): WokenMark | undefined {
+  return mark !== undefined && ids.every((id) => mark.ids.includes(id)) && lastTurnAt < mark.at + closeIdleMs ? mark : undefined;
+}
+
 function measuredOf(last: LastSession): MeasuredSession | undefined {
   const { changedAt } = last;
   return changedAt === undefined ? undefined : { ...last, changedAt };
@@ -188,16 +215,21 @@ function measuredOf(last: LastSession): MeasuredSession | undefined {
 /**
  * Whether `id` closes, with the checks in the order they cost: the delivery owner's role or a lead's that
  * open.idle.leaders keeps, open.idle.keepOpen or a started booked owner meeting it is in that keeps it, not running in
- * the host's process list, work it can start within `maxPriority`, an urgent line waiting to wake it (closed, it would
+ * the host's process list, an urgent line waiting to wake it (closed, it would
  * reopen at the next pass for it), as a leader a task waiting on its answer or a session it leads that runs (T3387), a
  * time wait of its own ending soon, quiet too briefly since its last own transcript entry, a
  * transcript in a project folder no folder `open` could resume it in has (`resumeFolderOf`: the project, or a folder
  * it ran in, which its close records), a turn not ended (under way, at a tool call, or a decision put to the person),
- * work running in the background, a last session too big or old to resume unless its refresh is ready (its reopen then
- * starts fresh on its handover, T1248), its
+ * work running in the background, work it can start within `maxPriority`, a last session too big or old to resume
+ * unless its refresh is ready (its reopen then starts fresh on its handover, T1248), its
  * process no longer a Claude Code, or shells
  * an end would cut off. The first that holds keeps it open. The last two look at the host's processes one by one
  * (about a second each on Windows), so only a session every other check would close pays for them.
+ *
+ * Work it can start never keeps a quiet session for good (T1247, upstream #1354): a task with a run of its own in the
+ * host queue does not count, as the run's end wakes it; for the rest the pass wakes it first (`wake`), keeps it while
+ * that wake is under `open.headroom.closeIdleMinutes` old, and then lets the checks after it close it, so one
+ * unanswered wake closes it. It reopens as any closed session does, for work handed to it or a line that wakes it.
  */
 export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, roster: Roster, facts: IdleFacts, id: string, options: IdleOptions): Promise<IdleVerdict> {
   const label = `${roster.nameOf(id) ?? id} (session ${id})`;
@@ -222,10 +254,6 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
     return keep(notRunning);
   }
   const { now, zone, tasks, elsewhere } = facts;
-  const startable = startableTasks(tasks, elsewhere, id, now, zone, parkRulesOf(config), options.maxPriority);
-  if (startable.length > 0) {
-    return keep(`has work it can start (${startable.map((task) => task.id).join(', ')})`);
-  }
   const asks = facts.asks.get(id) ?? [];
   if (asks.length > 0) {
     return keep(`has ${urgentLinesText(asks)} waiting to wake it`);
@@ -250,7 +278,8 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   }
   const { tail, cut } = await transcriptTailOf(runtime, last.transcript);
   // A tail with no timed own entry falls back to the file's last change, which is never earlier.
-  const idleMinutes = Math.floor((now - (lastTurnAtOf(reader, tail, cut) ?? last.changedAt)) / MINUTE_MS);
+  const lastTurnAt = lastTurnAtOf(reader, tail, cut) ?? last.changedAt;
+  const idleMinutes = Math.floor((now - lastTurnAt) / MINUTE_MS);
   const needed = config.open.headroom.closeIdleMinutes;
   if (idleMinutes < needed) {
     return keep(`has been quiet ${idleMinutes} min; it closes after ${needed} (open.headroom.closeIdleMinutes)`);
@@ -265,6 +294,25 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   }
   if ((await readRunningWork(reader, runtime.files, last.transcript, now)) > 0) {
     return keep('still runs background work its transcript shows');
+  }
+  const queued = facts.queued.get(id);
+  const startable = startableTasks(tasks, elsewhere, id, now, zone, parkRulesOf(config), options.maxPriority).filter((task) => queued?.has(task.id) !== true);
+  if (startable.length > 0) {
+    const ids = startable.map((task) => task.id);
+    const work = `has work it can start (${ids.join(', ')})`;
+    const woken = wokenFor(facts.woken[id], ids, lastTurnAt, needed * MINUTE_MS);
+    if (woken === undefined) {
+      return { kind: 'wake', ids, why: `${label} ${work} and has been quiet ${idleMinutes} min: the idle pass wakes it for that work, and closes it if it stays quiet ${needed} min after (open.headroom.closeIdleMinutes)` };
+    }
+    const closesAt = woken.at + needed * MINUTE_MS;
+    if (now < closesAt) {
+      return keep(`${work}, woken for it at ${zone.clock(new Date(woken.at))}: it closes at ${zone.clock(new Date(closesAt))} if still quiet`);
+    }
+    // A wake whose line never went out (one marked in dry-run, or a failed post) closes nobody: it is tried again, once
+    // per closeIdleMinutes.
+    if (!woken.posted && config.open.idle.mode === 'on') {
+      return { kind: 'wake', ids, why: `${label} ${work}; its wake at ${zone.clock(new Date(woken.at))} posted no line, so the idle pass wakes it again rather than close it` };
+    }
   }
   const resume = resumeVerdict({ claudeSession: record.claudeSession, changedAt: last.changedAt, tokens: last.tokens }, config.hiring, now);
   // A ready refresh reopens fresh on its handover (open.ts, T2354), so the size of the old context no longer matters.
