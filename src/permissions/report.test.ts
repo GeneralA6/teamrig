@@ -6,7 +6,9 @@ import { KeepList } from './allow-rules.ts';
 import { planLine, totalLine, wideAllowText, writeLine } from './report.ts';
 import type { SettingsFile } from './settings-scope.ts';
 import { planFile, rewritesOf, type FilePlan, type WideHolding } from './trim.ts';
+import { shippedPermissions } from '../testing/shipped-permissions.ts';
 
+const PERMISSIONS = shippedPermissions();
 /** A value a rule can hold; no line may carry it. Joined, so no source line holds a URL the secret redactor catches. */
 const HELD_VALUE = ['postgres://user:', 'hunter22', '@db.example.net'].join('');
 const KEEP = new KeepList(['Bash(kubectl get *)', 'WebSearch']);
@@ -16,7 +18,7 @@ const LOCAL: SettingsFile = { path: join('/repo', '.claude', 'settings.local.jso
 const ALLOW = ['Bash(kubectl get:*)', 'Bash(node:*)', `Bash(psql ${HELD_VALUE})`, 'Read', 'WebSearch'];
 
 function plan(file: SettingsFile, allow: readonly string[]): FilePlan {
-  return planFile(file, JSON.stringify({ permissions: { allow } }), KEEP, 'wide', SECRETS);
+  return planFile(PERMISSIONS, file, JSON.stringify({ permissions: { allow } }), KEEP, 'wide', SECRETS);
 }
 
 function assertNoSecret(lines: readonly (string | undefined)[]): void {
@@ -38,9 +40,9 @@ describe('planLine', () => {
   });
 
   it('says nothing of a missing file or one with no allow rule, and why it leaves an unreadable one', () => {
-    assert.equal(planLine(planFile(LOCAL, undefined, KEEP, 'wide', SECRETS)), undefined);
+    assert.equal(planLine(planFile(PERMISSIONS, LOCAL, undefined, KEEP, 'wide', SECRETS)), undefined);
     assert.equal(planLine(plan(LOCAL, [])), undefined);
-    const unreadable = planLine(planFile(LOCAL, `{"x": "${HELD_VALUE}"`, KEEP, 'wide', SECRETS));
+    const unreadable = planLine(planFile(PERMISSIONS, LOCAL, `{"x": "${HELD_VALUE}"`, KEEP, 'wide', SECRETS));
     assert.equal(unreadable, `  ${LOCAL.path}: left as it is, not a JSON object`);
   });
 });
