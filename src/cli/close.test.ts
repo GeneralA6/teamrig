@@ -249,6 +249,12 @@ describe('teamrig close', () => {
     assertRefused(await close(await runningAlpha(2, `${reply(40_000, 30)}${away}`), ['alpha', '--yes', '--session', 'lead']), /quiet 30 min; it closes after 60/);
   });
 
+  it('reads an entry stamped after the check began, as one written while it reads, as quiet 0 min, never negative (#1737)', async () => {
+    const ahead = await runningAlpha(0, reply(40_000, -3));
+    assertRefused(await close(ahead, ['alpha', '--yes', '--session', 'lead']), /has been quiet 0 min; it closes after 60 \(open\.headroom\.closeIdleMinutes\)/);
+    assert.deepEqual(ahead.processes.ends, []);
+  });
+
   it('weighs work as its budget lets it start it: one the budget holds closes with p1 work, and stays open for p0 (T1159)', async () => {
     const held = await runningAlpha(75, reply(40_000), undefined, { ...TEAM, budget: HOLDING_BUDGET });
     await holdAlpha(held.kit, CLAUDE_SESSION, LEAD_TAB);
