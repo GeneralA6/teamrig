@@ -521,7 +521,8 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
   The defaults: `**/.env`, `**/.env.*`, `~/.npmrc`, `~/.ssh/**`,
   `~/.aws/credentials`, `**/.kube/config`, `~/.docker/config.json`, `**/.git-credentials`, `~/.config/gh/hosts.yml`,
   `~/AppData/Roaming/GitHub CLI/hosts.yml` (gh's hosts file on Windows),
-  `~/.claude/.credentials.json`, `~/.claude/history.jsonl` (the prompt history), `**/.claude/settings.local.json`
+  `~/.claude/.credentials.json`, `~/.claude/history.jsonl` (the prompt history), both also in the folder
+  `CLAUDE_CONFIG_DIR` names by an absolute path, `**/.claude/settings.local.json`
   (its allow rules can hold a credential), `~/.bash_history`, `~/.zsh_history`, `**/PSReadLine/*_history.txt`, the
   key stores `**/*.pem`, `**/*.key`, `**/*.p12`, `**/*.pfx`, `**/*.jks` and `**/*.keystore`, the private keys
   `**/id_rsa`, `**/id_ecdsa` and `**/id_ed25519` (their `.pub` halves are not listed), and Terraform's state
