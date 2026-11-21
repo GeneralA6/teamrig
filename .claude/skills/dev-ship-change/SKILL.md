@@ -63,5 +63,9 @@ description: Land a finished teamrig change through small signed commits with Co
   `node tools/ship/ship.ts pr <repo dir> --head <branch> --approved <sha> --note-file <pr.md>`: it opens the pull
   request of origin's head when that head is the approved sha and clears on that approval as a merge would, takes
   the merge's title and body, runs no gate, merges nothing and prints the URL (an open one is found, not opened again).
+- An approved head rebased by the merge keeps its approval when `git range-diff` is all `=` apart from the dist and
+  what `tools/ship` masks: the version token of a version file, and a release stamp on a line the change adds (a
+  config migration's `firstRelease`, a `since <version>` in a Markdown file or the config schema) set to the version
+  the change ships in. Any other edit to a version file, or a stamp of any other version, needs a new approval.
 
 Last verified: 2026-11-20
