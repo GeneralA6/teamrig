@@ -94,8 +94,8 @@ A read returns a versioned JSON document built from parsed data, never a file's 
 ### What version 1 ships
 
 `teamrig read <document>... --json` serves the five documents of 1.0 and each one a minor version added since (1.1:
-`plan`, 1.2: `goals`); [the commands page](../commands.md) has its usage and the plugin's guide describes every field. What the
-design above left open is settled this way:
+`plan`, 1.2: `goals`, 1.3: `history`); [the commands page](../commands.md) has its usage and the plugin's guide
+describes every field. What the design above left open is settled this way:
 
 - **One line a document.** Each document asked is one JSON object on one line of stdout, in the order asked, and
   nothing else is written there: a refusal is one line on stderr. A run answers every document asked or none. With
@@ -142,6 +142,15 @@ design above left open is settled this way:
   and why) and judges nothing: done counts, pace and forecast are computed from tasks and time, so they belong to a
   document that says when it was judged, and would move this one's revision with every task. Its revision moves
   only with the goals files and the tree's configs.
+- **`history` (1.3).** `tasks` serves each task folded to what it is now, so a reader drawing how a task got there
+  parsed the register's log itself, and its archive for an old task. `history` serves one task's events in the
+  order written, the task named with `--task`: its creation, each status set, each change of its fields and a
+  move to another team. It is one task a run and never the whole log, which would be the register's bytes under
+  another name and grow without end. Each event is written out field by field, the fields `tasks` serves and no
+  other, so a field the register adds is not served by accident; a text is marked by the source the task had at
+  that event, and a cut names its event. An id with no event is answered empty, since a run answers every document
+  asked or none. A task whose events left the working set is read from the archive, the one read here that costs
+  more with the register's age, which the guide tells a reader.
 
 ## Act
 
