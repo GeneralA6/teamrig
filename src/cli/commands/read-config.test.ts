@@ -70,7 +70,7 @@ function teamless(config: JsonRecord | null = TEAM): CliHarness {
 describe('teamrig read config', () => {
   it('answers one JSON line with the envelope and the body in one order', async () => {
     const answer = served(await read(await teamWithSchema()));
-    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], ['1.1', 'config', [], []]);
+    assert.deepEqual([answer['interface'], answer['document'], answer['problems'], answer['cuts']], ['1.2', 'config', [], []]);
     assert.match(String(answer['revision']), /^[0-9a-f]{16}$/);
     assert.deepEqual([answer['team'], answer['teams'], answer['timeZone']], ['app', [], 'UTC']);
     assert.deepEqual(answer['priorities'], ['keep the lights on', 'correctness', 'scale', "this week's owner decisions", 'if budget allows']);
