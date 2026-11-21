@@ -68,6 +68,26 @@ export {
   type TeamInput,
   type TeamReach,
 } from './sessions.ts';
+export {
+  statsBody,
+  type ServedActive,
+  type ServedArea,
+  type ServedAreaCell,
+  type ServedAreaGroup,
+  type ServedBand,
+  type ServedBehind,
+  type ServedGoalProgress,
+  type ServedGoalStats,
+  type ServedHealth,
+  type ServedNewWork,
+  type ServedSpread,
+  type ServedStatsAll,
+  type ServedStatsDay,
+  type ServedStatsTask,
+  type ServedWaitStats,
+  type StatsBody,
+  type StatsBodyInput,
+} from './stats.ts';
 export { sourceOf,type ServedSource, type SourceKind, type SourceNames } from './source.ts';
 export { tasksBody, type ServedAnswer, type ServedDecision, type ServedTask, type ServedWait, type TasksBody, type TasksInput } from './tasks.ts';
 export { cutText, ServedText, type Cut, type MarkedText, type SecretShapes, type TextSource } from './text.ts';
