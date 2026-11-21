@@ -4,7 +4,7 @@ import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress, type SessionAddress } from '../../core/address.ts';
 import { errorMessage } from '../../core/guards.ts';
-import { ENV, KIT_NAME, type Env, type TeamPaths } from '../../core/home.ts';
+import { KIT_NAME, type TeamPaths } from '../../core/home.ts';
 import { NAME_RULE } from '../../core/ids.ts';
 import { PlainLogFile } from '../../core/log-file.ts';
 import { SecretScanner } from '../../core/secrets.ts';
@@ -25,6 +25,7 @@ import { refuseUnlessPerson, runBy, untoldRefusal } from '../agent-run.ts';
 import { noPositionals, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { closedByTeamrig, closedTimedWakeLine, closedWakeLine, wakeClosedSession } from '../closed-wake.ts';
 import { hookLogOf } from '../hook-logs.ts';
+import { identityOf } from '../host.ts';
 import { callerOf, instantOf, sessionRef } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -41,9 +42,9 @@ export function inboxDepsOf(runtime: CliRuntime, paths: TeamPaths): InboxDeps {
   };
 }
 
-/** The Claude Code session running the command, so the reminder hook can follow it; null outside one. */
-function claudeSessionOf(env: Env): string | null {
-  const id = env[ENV.claudeSession];
+/** The host's session running the command, as its host tells it, so the reminder hook can follow it; null outside one. */
+function claudeSessionOf(runtime: CliRuntime): string | null {
+  const id = identityOf(runtime).sessionId;
   return id !== undefined && CLAUDE_SESSION_ID.test(id) ? id : null;
 }
 
@@ -68,7 +69,7 @@ export async function read(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const config = requireConfig(kit, runtime, 'read');
   const roster = await rosterOf(runtime, kit, config);
   const area = sessionIdOf(roster, caller);
-  const claudeSession = claudeSessionOf(runtime.env);
+  const claudeSession = claudeSessionOf(runtime);
   const deps = inboxDepsOf(runtime, kit.paths);
   // Bind once (T3081): the person may move a tab, by /teamrig or in a terminal; a tool call, a script or a hook may not.
   // On a host that tells no agent's run from the person's, the tab stays where it is bound too.

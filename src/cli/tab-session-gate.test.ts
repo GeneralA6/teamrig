@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { CliHarness, TEAM } from '../testing/cli-harness.ts';
+import { hostTelling, NO_SESSION_HOST } from '../testing/host.ts';
 import { EXIT } from './runtime.ts';
 
 /** A Claude Code tab, by its session id; `inbox read --session <id>` binds it to that session. */
@@ -67,6 +68,26 @@ describe("runCli: a write runs only as its tab's own session (T3082)", () => {
     const fresh = { CLAUDE_CODE_SESSION_ID: '9f8e7d6c-aaaa-bbbb-cccc-ddddeeeeffff' };
     assert.equal((await kit.run(['inbox', 'read', '--session', 'bravo'], { env: fresh })).code, EXIT.ok, 'its first read binds it');
     assert.equal((await kit.run(['approve', 'T1', '--note', 'ok', '--session', 'lead'], { env: fresh })).code, EXIT.refused, 'and then it is bravo\'s');
+  });
+
+  it('takes the tab from the host: an id it tells, bound to another session, is refused, and where it tells none nothing is checked', async () => {
+    const kit = await alphaTab();
+    const told = { host: hostTelling({ sessionId: TAB.CLAUDE_CODE_SESSION_ID }) };
+    assert.deepEqual((await kit.run(['approve', 'T1', '--note', 'ok', '--session', 'lead'], told)).stdout, [
+      "REFUSED this tab is alpha's: a session runs teamrig's writes only as itself, not as lead",
+    ]);
+    assert.equal((await kit.run(['update', 'T1', '--note', 'mine', '--session', 'alpha'], told)).code, EXIT.ok, 'its own session');
+    const untold = await kit.run(['approve', 'T1', '--note', 'ok', '--session', 'lead'], { env: TAB, host: NO_SESSION_HOST });
+    assert.equal(untold.code, EXIT.ok, untold.stdout.join('\n'));
+  });
+
+  it('binds a tab by the id its host tells, with no variable of a host set', async () => {
+    const kit = await alphaTab();
+    const fresh = { host: hostTelling({ sessionId: '9f8e7d6c-aaaa-bbbb-cccc-ddddeeeeffff' }) };
+    assert.equal((await kit.run(['inbox', 'read', '--session', 'bravo'], fresh)).code, EXIT.ok, 'its first read binds it');
+    assert.deepEqual((await kit.run(['approve', 'T1', '--note', 'ok', '--session', 'lead'], fresh)).stdout, [
+      "REFUSED this tab is bravo's: a session runs teamrig's writes only as itself, not as lead",
+    ]);
   });
 
   it('leaves a tab with no team found, or a team config that does not load, to the command\'s own refusal', async () => {

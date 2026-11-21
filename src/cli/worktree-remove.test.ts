@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { CLAUDE_SESSION, CliHarness, TEAM } from '../testing/cli-harness.ts';
 import { FakeWorktreeFiles, FakeWorktreeGit, type FakeGitAnswers } from '../testing/fake-worktrees.ts';
-import { NO_PATHS_HOST } from '../testing/host.ts';
+import { hostTelling, NO_PATHS_HOST, NO_SESSION_HOST } from '../testing/host.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
 import { EXIT } from './runtime.ts';
 
@@ -192,6 +192,15 @@ describe('runCli: worktree remove in a team removes only what the caller may (T1
     assert.deepEqual(git.steps, []);
     const person = await kit.run(['worktree', 'remove', '/w/t4'], { worktrees: ports });
     assert.equal(person.code, EXIT.ok, person.stdout.join('\n'));
+  });
+
+  it('takes the tab from the host: an id it tells is a tab, and a host telling none checks nothing, whatever the environment holds', async () => {
+    const { kit, git, ports } = await teamWorld();
+    const tab = await kit.run(['worktree', 'remove', '/w/t4'], { worktrees: ports, host: hostTelling({ sessionId: CLAUDE_SESSION }) });
+    assert.deepEqual(tab.stdout, ['REFUSED this Claude Code tab is bound to no session of team app: give --session <id|name>']);
+    assert.deepEqual(git.steps, []);
+    const untold = await kit.run(['worktree', 'remove', '/w/t4'], { worktrees: ports, env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION }, host: NO_SESSION_HOST });
+    assert.equal(untold.code, EXIT.ok, untold.stdout.join('\n'));
   });
 });
 

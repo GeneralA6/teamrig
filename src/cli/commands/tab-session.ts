@@ -1,7 +1,7 @@
 import type { Roster } from '../../config/roster.ts';
-import { ENV } from '../../core/home.ts';
 import { resolveTeam } from '../../core/team.ts';
 import type { ParsedArgs } from '../args.ts';
+import { identityOf } from '../host.ts';
 import { sessionRef } from '../inputs.ts';
 import { openKit, rosterOf, sessionIdOf, teamFolders, type Kit } from '../kit.ts';
 import { RefusedError, type CliRuntime } from '../runtime.ts';
@@ -14,7 +14,7 @@ import { envSession, markedSessionOf } from './hook-input.ts';
  */
 export async function tabSessionOf(args: ParsedArgs, runtime: CliRuntime, kit: Kit, roster: Roster, own: string): Promise<string | undefined> {
   const named = args.flags.get('session') ?? envSession(runtime);
-  const bound = await markedSessionOf(runtime, kit, roster, runtime.env[ENV.claudeSession]?.trim() ?? null);
+  const bound = await markedSessionOf(runtime, kit, roster, identityOf(runtime).sessionId ?? null);
   if (named === undefined) {
     return bound;
   }
@@ -28,14 +28,14 @@ export async function tabSessionOf(args: ParsedArgs, runtime: CliRuntime, kit: K
 /**
  * Refuses a write that names, by `--session` or `$TEAMRIG_SESSION`, a session other than the one this Claude Code tab
  * is bound to (T3082), so a session's writes, its approvals and audits too, carry its own name. run.ts calls it for
- * every write before the command loads, so no command can miss it. It checks nothing outside a Claude Code tab (no
- * `$CLAUDE_CODE_SESSION_ID`: the owner's own shell), in a tab bound to no session yet, or where no team is found or
+ * every write before the command loads, so no command can miss it. It checks nothing outside a Claude Code tab (the
+ * host tells no session id: the owner's own shell), in a tab bound to no session yet, or where no team is found or
  * its config does not load: a command that needs the team refuses those itself. It rests on the tab's binding.
  */
 export async function refuseAnotherTabSession(args: ParsedArgs, runtime: CliRuntime): Promise<void> {
   const named = args.flags.get('session') ?? envSession(runtime);
-  const claudeSession = runtime.env[ENV.claudeSession]?.trim();
-  if (named === undefined || claudeSession === undefined || claudeSession === '') {
+  const claudeSession = identityOf(runtime).sessionId;
+  if (named === undefined || claudeSession === undefined) {
     return;
   }
   const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime, [runtime.cwd]));

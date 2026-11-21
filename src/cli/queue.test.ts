@@ -20,6 +20,7 @@ import { SHIP_TOOL_READS, SHIP_TOOL_REREAD_MS } from './ship-role-check.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { heldBy, OTHER, otherRuns } from '../testing/held-lock.ts';
+import { hostTelling, NO_SESSION_HOST } from '../testing/host.ts';
 import { lineRequests } from '../testing/line-tickets.ts';
 import { ROOMY_FREE_MB } from '../testing/quiet-world.ts';
 import { WakeAsks } from '../wake/asks.ts';
@@ -518,6 +519,21 @@ describe('teamrig queue', () => {
       ledgerOf(kit).map((record) => JSON.stringify(record).includes('"session":"alpha"')),
       [true, true],
     );
+  });
+
+  it("takes the tab's id from the host, and no tab where the host tells none, whatever the environment holds", async () => {
+    const { kit, steps } = harness();
+    const id = '9f8e7d6c-1111-2222-3333-444455556666';
+    const told = hostTelling({ sessionId: id });
+    await kit.run(['inbox', 'read', '--session', 'alpha'], { host: told });
+    const result = await kit.run(['queue', '--what', 'pre-commit checks', '--', 'npm', 'test'], { steps, host: told });
+    assert.equal(result.code, 0);
+    assert.deepEqual(
+      ledgerOf(kit).map((record) => JSON.stringify(record).includes('"session":"alpha"')),
+      [true, true],
+    );
+    const untold = await kit.run(['queue', '--what', 'build', '--', 'npm', 'test'], { steps, env: { CLAUDE_CODE_SESSION_ID: id }, host: NO_SESSION_HOST });
+    assert.equal(untold.code, 64, 'no tab is told, so a session must be named');
   });
 
   it('prints the usage when no session is named and the tab is bound to none', async () => {

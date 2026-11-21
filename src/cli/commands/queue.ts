@@ -29,6 +29,7 @@ import { TASK_ID } from '../../register/model.ts';
 import { commandLine } from '../../test-run/shell.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { hostLockOf, logLineOf, type Say, teamAdmissionOf } from '../delivery-ports.ts';
+import { identityOf } from '../host.ts';
 import { sessionRef, shellWordsOf } from '../inputs.ts';
 import { openTeamKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
 import { parentLockOf } from '../parent-lock.ts';
@@ -464,7 +465,7 @@ async function sessionOf(args: ParsedArgs, runtime: CliRuntime, kit: Kit, roster
   if (named !== undefined) {
     return sessionIdOf(roster, sessionRef('--session', named));
   }
-  const found = parent?.session ?? (await markedSessionOf(runtime, kit, roster, runtime.env[ENV.claudeSession]?.trim() ?? null));
+  const found = parent?.session ?? (await markedSessionOf(runtime, kit, roster, identityOf(runtime).sessionId ?? null));
   if (found === undefined) {
     throw new UsageError(`--session (or $${ENV.session}) is required outside a tab bound to a session`);
   }

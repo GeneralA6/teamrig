@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { LockWaiter } from '../delivery/host-lock.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { CliHarness, KIT, TEAM } from '../testing/cli-harness.ts';
+import { hostTelling, NO_SESSION_HOST } from '../testing/host.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
@@ -115,6 +116,17 @@ describe('teamrig withdraw', () => {
       [{ code: 2, stdout: ["REFUSED this tab is alpha's: a session runs teamrig's writes only as itself, not as bravo"], stderr: [] }, ['WITHDRAWN heavy: build api, waiting since 2030-01-08 09:58 UTC: it stops at its next look']],
     );
     assert.deepEqual(await kit.files.list(QUEUE), [nameOf(THEIRS)]);
+  });
+
+  it("takes the tab's id from the host, and no tab where the host tells none, whatever the environment holds", async () => {
+    const kit = new CliHarness(TEAM);
+    await queued(kit, BUILD, THEIRS);
+    const told = { host: hostTelling({ sessionId: TAB.CLAUDE_CODE_SESSION_ID }) };
+    await kit.run(['inbox', 'read', '--session', 'alpha'], told);
+    const own = await kit.run(['withdraw', '--all'], { ...told, sessionProcesses: running() });
+    assert.deepEqual(own.stdout, ['WITHDRAWN heavy: build api, waiting since 2030-01-08 09:58 UTC: it stops at its next look']);
+    const untold = await kit.run(['withdraw', '--all'], { env: TAB, host: NO_SESSION_HOST, sessionProcesses: running() });
+    assert.equal(untold.code, 64, 'no tab is told, so a session must be named');
   });
 
   it('is a usage error given both --what and --all, a blank --what, or no session outside a bound tab', async () => {

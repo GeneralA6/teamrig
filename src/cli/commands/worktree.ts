@@ -2,7 +2,6 @@ import { resolve } from 'node:path';
 import { LeadTree } from '../../config/lead-tree.ts';
 import type { DeliveryRepoConfig, KitConfig } from '../../config/types.ts';
 import { teamPlace } from '../../delivery/places.ts';
-import { ENV } from '../../core/home.ts';
 import { samePath } from '../../core/paths.ts';
 import { resolveTeam } from '../../core/team.ts';
 import { classOf } from '../../register/focus.ts';
@@ -14,6 +13,7 @@ import { removalRefusal } from '../../worktree/owner.ts';
 import { carryOut, clearLeftover, describeLeftover, describePlan, planRemoval, type RemovalPlan, type WorktreeFolder } from '../../worktree/remove.ts';
 import { credentialFreeHooks } from '../../deploy/hooks.ts';
 import { onePositional, UsageError, type ParsedArgs } from '../args.ts';
+import { identityOf } from '../host.ts';
 import { taskIdOf } from '../inputs.ts';
 import { openKit, requireConfig, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -185,7 +185,7 @@ async function callerRefusal(args: ParsedArgs, runtime: CliRuntime, team: TeamAt
   const { kit, config } = team;
   const caller = await tabSessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), 'removes worktrees only as itself');
   if (caller === undefined) {
-    const inClaudeCode = (runtime.env[ENV.claudeSession]?.trim() ?? '') !== '';
+    const inClaudeCode = identityOf(runtime).sessionId !== undefined;
     return inClaudeCode ? `this Claude Code tab is bound to no session of team ${team.name}: give --session <id|name>` : undefined;
   }
   const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
