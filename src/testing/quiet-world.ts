@@ -23,7 +23,7 @@ import { programOverGh } from './program-over-gh.ts';
 import { quietRestore } from './fake-restore.ts';
 
 /** The parts of a CLI run that reach outside the kit: git, the commit log, stdin and the operating system. */
-export type OutsideWorld = Pick<CliRuntime, 'git' | 'pointerGit' | 'commitLog' | 'secretsGit' | 'readStdin' | 'platform' | 'host' | 'processes' | 'sessionProcesses' | 'shell' | 'run' | 'credentials' | 'http' | 'probe' | 'pluginStore' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'restore' | 'mergeGit' | 'pulls' | 'trees' | 'hooks' | 'packageRegistry' | 'exec' | 'webhook' | 'steps' | 'memory' | 'cpu' | 'starters' | 'newId'>;
+export type OutsideWorld = Pick<CliRuntime, 'git' | 'pointerGit' | 'commitLog' | 'secretsGit' | 'readStdin' | 'platform' | 'host' | 'shippedHosts' | 'processes' | 'sessionProcesses' | 'shell' | 'run' | 'credentials' | 'http' | 'probe' | 'pluginStore' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'restore' | 'mergeGit' | 'pulls' | 'trees' | 'hooks' | 'packageRegistry' | 'exec' | 'webhook' | 'steps' | 'memory' | 'cpu' | 'starters' | 'newId'>;
 
 /**
  * The MB free on a quiet host: over the default floor plus a heavy step's reserve, so no step waits on the memory
@@ -50,6 +50,7 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
     readStdin: async () => stdin,
     platform: 'linux',
     host: SHIPPED_HOST,
+    shippedHosts: [SHIPPED_HOST],
     processes: { start: async () => ({ kind: 'missing' }), run: async () => ({ kind: 'missing' }), startHidden: async () => ({ kind: 'missing' }) },
     sessionProcesses: new FakeSessionProcesses(),
     shell: new FakeShell(),
