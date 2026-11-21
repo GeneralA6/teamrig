@@ -35,5 +35,5 @@ export async function readBursts(
   const account = await accountWeekOn(runtime, budget, paths, now);
   const use = account.statusUse;
   const period = await new PeriodStore(runtime.files, account.paths.period).peekAt(budget, use, now);
-  return { records, usedPct: use?.usedPct, window: period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start) };
+  return { records, usedPct: use?.usedPct, window: period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start, period.startPct) };
 }

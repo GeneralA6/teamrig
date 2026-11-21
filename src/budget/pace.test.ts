@@ -93,7 +93,7 @@ describe('weekWindow and paceLinePct', () => {
   });
 
   it('gives the target at once when the pace line has no length', () => {
-    assert.equal(paceLinePct({ start: RESET, paceEnd: RESET, reset: RESET }, 90, RESET - MS_PER_DAY, EVEN), 90);
+    assert.equal(paceLinePct({ start: RESET, startPct: 0, paceEnd: RESET, reset: RESET }, 90, RESET - MS_PER_DAY, EVEN), 90);
   });
 
   it('rises only in active time, so it is flat through the quiet hours', () => {
@@ -114,6 +114,24 @@ describe('weekWindow and paceLinePct', () => {
     const asleep = { activeMs: (): number => 0 };
     const half = window.start + (window.paceEnd - window.start) / 2;
     assert.equal(round(paceLinePct(window, 99.5, half, asleep)), 49.75);
+  });
+
+  it('starts at the use a reset inside the week left, not at 0 (T4864)', () => {
+    const resetAt = at('2026-10-17T12:00:00Z');
+    const afterReset = weekWindow(RESET, 1, resetAt, 41);
+    const half = resetAt + (afterReset.paceEnd - resetAt) / 2;
+    assert.equal(afterReset.startPct, 41);
+    assert.equal(paceLinePct(afterReset, 99.5, resetAt - MS_PER_HOUR, EVEN), 41);
+    assert.equal(paceLinePct(afterReset, 99.5, resetAt, EVEN), 41);
+    assert.equal(round(paceLinePct(afterReset, 99.5, half, EVEN)), round(41 + (99.5 - 41) / 2));
+    assert.equal(paceLinePct(afterReset, 99.5, afterReset.paceEnd, EVEN), 99.5);
+  });
+
+  it('holds flat at the target when a reset left the use above it', () => {
+    const resetAt = at('2026-10-17T12:00:00Z');
+    const above = weekWindow(RESET, 1, resetAt, 99.8);
+    assert.equal(paceLinePct(above, 99.5, resetAt, EVEN), 99.5);
+    assert.equal(paceLinePct(above, 99.5, resetAt + MS_PER_DAY, EVEN), 99.5);
   });
 });
 

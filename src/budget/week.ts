@@ -128,7 +128,7 @@ export interface WeekInput {
   /** The newest status line reading of the week, if any. */
   readonly statusUse: WeekUse | undefined;
   /** The span the use counts in (budget/period.ts); undefined while no reset is known. */
-  readonly period: Pick<Period, 'start' | 'end' | 'kind'> | undefined;
+  readonly period: Pick<Period, 'start' | 'end' | 'kind' | 'startPct'> | undefined;
   /** Every usage store on the account: each team session's, the outside one and each other team's sessions (T1778). */
   readonly states: readonly UsageState[];
   /** The meter log's fit and forecasts (budget/calibration.ts); the fit, once there is one, sets the rate. */
@@ -327,7 +327,7 @@ function teamAllowancePct(input: AllowanceInput, pool: ExtraPool | undefined, wP
 export function readWeek(input: WeekInput): WeekReading {
   const { budget, now, statusUse, states, period, calibration, readings, extra } = input;
   const reset = period?.end;
-  const window = period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start);
+  const window = period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start, period.startPct);
   const dayStart = now - (now % MS_PER_DAY);
   const todayFrom = window === undefined ? dayStart : Math.max(dayStart, window.start);
   const todayW = wSince(states, todayFrom, now);
