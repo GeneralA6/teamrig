@@ -5,12 +5,14 @@ import { generateKeyPairSync } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
+import { testPaths } from '../testing/host.ts';
 import { DEFAULT_SECRET_PATHS, normalisePath, SecretPaths, wordPath, type WordPlace, type WordReading } from './paths.ts';
 import { PUBLIC_KEY_MAX_BYTES, readKeyText } from './public-key.ts';
 
 const HOME = 'C:/u';
 const REPO = 'C:/work/app';
-const secrets = new SecretPaths([...DEFAULT_SECRET_PATHS, 'k8s/secrets/secrets.yaml', '~/.teamrig/teams/*/tools/*/secrets/**'], HOME, true);
+/** The list a run on the shipped host reads (`secretRulesOf`): the defaults, the host's own secret files, then a team's globs. */
+const secrets = new SecretPaths([...DEFAULT_SECRET_PATHS, ...testPaths().secretFiles(), 'k8s/secrets/secrets.yaml', '~/.teamrig/teams/*/tools/*/secrets/**'], HOME, true);
 /** A bash word, whose wildcards never reach a leading dot, and a word whose wildcards do (PowerShell, a script's glob). */
 const BASH_WORD: WordReading = { dotfiles: false, sets: 'bash' };
 const ANY_WORD: WordReading = { dotfiles: true, sets: 'bash' };

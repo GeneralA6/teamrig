@@ -2,11 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_SECRET_GUARD } from '../config/defaults.ts';
 import type { ShellDialect } from '../push-guard/tokenizer.ts';
+import { testPaths } from '../testing/host.ts';
 import { describeFinding } from './findings.ts';
 import { secretRulesOf } from './rules.ts';
 import { shellFindings } from './shell.ts';
 
-const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
+const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32', testPaths());
 
 function printed(command: string, dialect: ShellDialect = 'bash'): string[] {
   return shellFindings(command, { cwd: 'C:/w', home: 'C:/u', dialect }, rules).map(describeFinding);

@@ -4,7 +4,7 @@ import { DEFAULT_SECRET_GUARD } from '../config/defaults.ts';
 import { NO_SNAPSHOT } from '../readonly-shell/snapshot.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { secretRulesOf } from '../secret-guard/rules.ts';
-import { hookEventOf, replyText } from '../testing/host.ts';
+import { hookEventOf, replyText, testPaths } from '../testing/host.ts';
 import type { ReadonlyRules } from '../readonly-shell/rules.ts';
 import { READONLY_REASON, readonlyRulesOf, readonlyShellReply, type PrintsSecret } from './readonly-shell.ts';
 import { secretFindingsOf } from './secret-guard.ts';
@@ -65,7 +65,7 @@ describe('readonlyShellReply', () => {
   });
 
   it('never allows a line that prints a secret, whatever the secret guard decides', () => {
-    const secrets = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
+    const secrets = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32', testPaths());
     const printsSecret: PrintsSecret = (event) => secretFindingsOf(event, 'C:/w', secrets).length > 0;
     assert.equal(readonlyShellOutput(call('Bash', 'cat .env'), RULES, printsSecret, 'linux'), '');
     assert.equal(readonlyShellOutput(call('PowerShell', 'Get-Content ~/.npmrc'), RULES, printsSecret, 'linux'), '');
@@ -89,7 +89,7 @@ describe('readonlyShellReply on Windows, where the Bash tool halves backslash ru
   });
 
   it('checks the halved text for a secret too', () => {
-    const secrets = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
+    const secrets = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32', testPaths());
     const printsSecret: PrintsSecret = (event) => secretFindingsOf(event, 'C:/w', secrets).length > 0;
     assert.equal(readonlyShellOutput(call('Bash', `cat .e${bs(2)}nv`), RULES, printsSecret, 'win32'), '');
     assert.equal(readonlyShellOutput(call('Bash', `cat .e${bs(2)}nv`), RULES, printsSecret, 'linux'), ALLOW);

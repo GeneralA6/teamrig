@@ -2,11 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_SECRET_GUARD } from '../config/defaults.ts';
 import { programsOf, type ProgramRun } from '../package-guard/programs.ts';
+import { testPaths } from '../testing/host.ts';
 import { describeFinding } from './findings.ts';
 import { inlineFindings, printsInline } from './inline.ts';
 import { secretRulesOf } from './rules.ts';
 
-const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
+const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32', testPaths());
 
 function runs(command: string): ProgramRun[] {
   return programsOf(command, { cwd: 'C:/w', home: 'C:/u', dialect: 'bash' });
