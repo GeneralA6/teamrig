@@ -290,6 +290,7 @@ describe('config guard: every owner-gated key (T3083)', () => {
       ['delivery.passEnv', changed((c) => ({ ...c, delivery: { ...c.delivery, passEnv: ['GH_TOKEN'] } }))],
       ['pushGuard', changed((c) => ({ ...c, pushGuard: { pushToProtected: 'allow' } }))],
       ['alerts', changed((c) => ({ ...c, alerts: { webhookEnv: 'X' } }))],
+      ['ui', changed((c) => ({ ...c, ui: { path: 'C:/work/ui/main.js' } }))],
     ];
     for (const [key, content] of changes) {
       const output = decisionOf(await outputOf(call('Write', { file_path: CONFIG, content }), env({ text })));
