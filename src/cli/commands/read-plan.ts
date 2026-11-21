@@ -38,7 +38,7 @@ export function planSource(scope: ReadScope): DocumentSource {
       const loaded = await scope.tree();
       const configs = [...[...loaded.teams.values()].map((other) => other.kit.load.path), ...[...loaded.leftOut.values()].map((load) => load.path)];
       const teams = treeTeamsOf(loaded, team);
-      const rate = await readWPerPct(runtime, kit.paths, config, runtime.clock.now()).catch(() => undefined);
+      const rate = await readWPerPct(runtime, kit.paths, config, runtime.clock.now());
       return {
         document: 'plan',
         args: [
