@@ -52,6 +52,15 @@ export function hostTelling(identity: Partial<SessionIdentity>): HostSource {
   return (given) => ({ ...SHIPPED_HOST(given), launcher: { variables: testSessionVariables(), identity: () => told } });
 }
 
+/**
+ * The shipped host, its sessions told by `variables` in place of its own and each run's identity untold: for a spec
+ * of a run on a host that names marks of its own, or none.
+ */
+export function hostNaming(variables: SessionVariables): HostSource {
+  const untold: SessionIdentity = { projectDir: undefined, startedAs: undefined, sessionKind: undefined, sessionId: undefined };
+  return (given) => ({ ...SHIPPED_HOST(given), launcher: { variables, identity: () => untold } });
+}
+
 /** The session variables the shipped host hands a run: the ones its declaration names. */
 export function testSessionVariables(): SessionVariables {
   const { launcher } = SHIPPED_HOST({ env: {}, platform: 'linux' });

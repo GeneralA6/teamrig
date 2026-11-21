@@ -6,6 +6,7 @@ import {
   type HostPlugin,
   type HostPorts,
   type SessionIdentity,
+  type SessionVariables,
   type StatusLine,
   type TranscriptReader,
   type UsageMeter,
@@ -134,12 +135,30 @@ const UNTOLD: SessionIdentity = { projectDir: undefined, startedAs: undefined, s
 
 /**
  * Who the run's host says this run is: the folder its session started in, how the host was started, the kind of
- * session and the host's id of it. It never refuses: on a host that tells nothing of its sessions each part is untold, and a caller goes on
- * as in a run no session started, by the working folder and what its own input says.
+ * session and the host's id of it. It never refuses: on a host that tells nothing of its sessions each part is
+ * untold, and a caller goes on as in a run no session started, by the working folder and what its own input says.
  */
 export function identityOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): SessionIdentity {
   const { launcher } = hostOf(runtime);
   return isUnsupported(launcher) ? UNTOLD : launcher.identity();
+}
+
+/**
+ * The session variables teamrig holds in this run: those of every host adapter it ships with, then the running
+ * host's, each name once. A machine may run a host other than the one this run works in, and a variable says who a
+ * run is whatever host set it: so the running host adds to the shipped hosts' names and takes none away. It never
+ * refuses: a host that tells nothing of its sessions adds none.
+ */
+export function sessionVariablesOf(runtime: Pick<CliRuntime, 'host' | 'shippedHosts' | 'env' | 'platform'>): SessionVariables {
+  const seen = { env: runtime.env, platform: runtime.platform };
+  const named = [...runtime.shippedHosts, runtime.host].flatMap((source) => {
+    const { launcher } = source(seen);
+    return isUnsupported(launcher) ? [] : [launcher.variables];
+  });
+  return {
+    marks: [...new Set(named.flatMap((variables) => variables.marks))],
+    identity: [...new Set(named.flatMap((variables) => variables.identity))],
+  };
 }
 
 /** The host's own folder for the person of this run. A host whose folders teamrig does not know refuses, as `pathsOf` does. */
