@@ -87,7 +87,8 @@ once. A decision that frees only Improvements work waits for the weekly Improvem
 `focus.improvementsDay`, as on your agenda, and a dedicated session's is in no batch: it waits for its own meeting.
 In a tree of teams each team's lead holds its own meeting with you, over its subtree: its
 `DECISIONS` lists the waits of every team under it as `<team>/<id>`, and a card decided there never comes back on the
-root's agenda.
+root's agenda. A team named in its parent's `decisions.ownMeetingTeams` meets you itself: the parent's agenda leaves
+its waits, and those of the teams under it, out of `DECISIONS`, with one line counting them.
 
 ## Never stuck on a question
 

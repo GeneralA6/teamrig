@@ -1343,6 +1343,11 @@ export interface DecisionsConfig {
    * session and its full brief, never from a daily card or a batch (T868).
    */
   readonly dedicatedOwners: readonly string[];
+  /**
+   * Teams under this one whose lead meets the owner itself (#1430): this team's meeting agenda leaves their waits on
+   * the owner, and those of every team under them, out of DECISIONS, with one count line per team in their place.
+   */
+  readonly ownMeetingTeams: readonly string[];
 }
 
 /** `refresh.autoRestart`: on or off for every session, or on for the team's lead only. */

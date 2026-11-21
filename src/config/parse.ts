@@ -608,6 +608,7 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
       batchTimesUtc: read.stringList(decisions, 'batchTimesUtc', 'decisions', DEFAULT_DECISIONS.batchTimesUtc, isUtcTime, CONFIG_LIMITS.decisionBatchTimes.maxItems),
       batchAt: read.integer(decisions, 'batchAt', 'decisions', DEFAULT_DECISIONS.batchAt, CONFIG_LIMITS.decisionBatchAt),
       dedicatedOwners: read.stringList(decisions, 'dedicatedOwners', 'decisions', DEFAULT_DECISIONS.dedicatedOwners, isSessionName, CONFIG_LIMITS.dedicatedOwners.maxItems),
+      ownMeetingTeams: read.stringList(decisions, 'ownMeetingTeams', 'decisions', DEFAULT_DECISIONS.ownMeetingTeams, isSessionName, CONFIG_LIMITS.ownMeetingTeams.maxItems),
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
     needsYou: parseNeedsYou(read, read.section(raw, 'needsYou', '')),

@@ -1638,6 +1638,13 @@
           "maxItems": 32,
           "items": { "$ref": "#/$defs/sessionName" },
           "default": []
+        },
+        "ownMeetingTeams": {
+          "description": "Teams under this one whose lead meets the owner itself. This team's meeting agenda leaves their waits on the owner, and those of every team under them, out of DECISIONS, with one line per team counting them; that team's own meeting still lists them.",
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/sessionName" },
+          "default": []
         }
       }
     },

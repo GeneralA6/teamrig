@@ -26,13 +26,38 @@ export function agendaRegisterOf(rolled: RolledTeam, runtime: CliRuntime): Omit<
  * cards carried over (Meeting.carried, T2775), asked first.
  */
 export function decisionAgendaOf({ own, teams }: RollUp, runtime: CliRuntime, now: number, carried: readonly string[]): DecisionAgenda {
+  const below: AgendaTeam[] = [];
+  const ownMeetings = new Map<string, AgendaTeam[]>();
+  for (const rolled of teams.filter((team) => team.team !== own.team)) {
+    const register = { team: rolled.team, ...agendaRegisterOf(rolled, runtime) };
+    below.push(register);
+    const meets = ownMeetingTeamOf(rolled.team, own, teams);
+    if (meets !== undefined) {
+      ownMeetings.set(meets, [...(ownMeetings.get(meets) ?? []), register]);
+    }
+  }
   return {
     ...agendaRegisterOf(own, runtime),
-    below: teams.filter((rolled) => rolled.team !== own.team).map((rolled) => ({ team: rolled.team, ...agendaRegisterOf(rolled, runtime) })),
+    below,
     now,
     improvementsDay: own.config.focus.improvementsDay,
     carried,
+    ownMeetings: [...ownMeetings].map(([team, registers]) => ({ team, registers })),
   };
+}
+
+/**
+ * The team of the lead's `decisions.ownMeetingTeams` (#1430) whose own meeting covers `team`: that team itself or the
+ * one nearest the lead's above it; undefined when none does, so the lead's meeting asks its waits.
+ */
+function ownMeetingTeamOf(team: string, own: RolledTeam, teams: readonly RolledTeam[]): string | undefined {
+  const parents = new Map(teams.map((rolled) => [rolled.team, rolled.above?.team]));
+  const named = new Set(own.config.decisions.ownMeetingTeams);
+  let meets: string | undefined;
+  for (let at: string | undefined = team; at !== undefined && at !== own.team; at = parents.get(at)) {
+    meets = named.has(at) ? at : meets;
+  }
+  return meets;
 }
 
 /** Who records the owner's decisions on a register: the lead by its id in its own team, by `<team>/<id>` in a team under it. */

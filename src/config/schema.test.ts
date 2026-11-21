@@ -160,6 +160,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   shareFloorPct: 'budget.shareFloorPct',
   decisionBatchTimes: 'decisions.batchTimesUtc',
   dedicatedOwners: 'decisions.dedicatedOwners',
+  ownMeetingTeams: 'decisions.ownMeetingTeams',
   decisionBatchAt: 'decisions.batchAt',
   chainNudgeAt: 'loops.chainNudgeAt',
   leadOwnPaths: 'leadBoundary.ownPaths',

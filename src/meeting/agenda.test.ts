@@ -41,6 +41,7 @@ function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate =
     improvementsDay: 'wed',
     runFiles: new Map(),
     carried: [],
+    ownMeetings: [],
   };
 }
 

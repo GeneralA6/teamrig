@@ -81,6 +81,18 @@ export interface AgendaInput {
   readonly runFiles: RunFiles;
   /** The cards a meeting left unanswered (Meeting.carried, T2775), by decisionKey: asked first, as carried over. */
   readonly carried: readonly string[];
+  /**
+   * The teams under the lead's that meet the owner themselves (`decisions.ownMeetingTeams`, #1430), each with the
+   * registers its meeting covers. Those registers stay in `below`, so LATE, INCIDENTS, LATER and DONE still list them;
+   * only DECISIONS and DEDICATED leave their waits out, DECISIONS giving each such team one count line instead.
+   */
+  readonly ownMeetings: readonly OwnMeetingTeam[];
+}
+
+/** A team under the lead's whose own lead meets the owner (#1430), and the registers of it and the teams under it. */
+export interface OwnMeetingTeam {
+  readonly team: string;
+  readonly registers: readonly AgendaTeam[];
 }
 
 /** Text on one line: line breaks and runs of spaces become one space. */
@@ -180,7 +192,24 @@ export function laterLine(command: string, ownerMarker: string, lead: string, un
 }
 
 /** What the agenda reads the owner's decisions from: the lead's register, those under it, and the day for the batch. */
-export type DecisionAgenda = AgendaRegister & Pick<AgendaInput, 'below' | 'now' | 'improvementsDay' | 'carried'>;
+export type DecisionAgenda = AgendaRegister & Pick<AgendaInput, 'below' | 'now' | 'improvementsDay' | 'carried' | 'ownMeetings'>;
+
+/**
+ * One line per team that meets the owner itself (#1430) with waits on the owner, the dedicated ones too: their count
+ * and where they are asked, in place of their cards.
+ */
+function ownMeetingLines(input: AgendaInput): string[] {
+  return input.ownMeetings.flatMap(({ team, registers }) => {
+    const waits = registers.reduce((sum, register) => sum + ownerAsks(register).length, 0);
+    return waits === 0 ? [] : [`  Team ${team}: ${waits} more waiting on ${input.ownerMarker}, asked at its own lead's meeting with ${input.ownerMarker} (decisions.ownMeetingTeams), not here.`];
+  });
+}
+
+/** The teams under the lead's whose waits on the owner this meeting asks: every one but those that meet the owner themselves (#1430). */
+function askedHere(input: Pick<AgendaInput, 'below' | 'ownMeetings'>): readonly AgendaTeam[] {
+  const covered = new Set(input.ownMeetings.flatMap(({ registers }) => registers.map((register) => register.team)));
+  return input.below.filter((team) => !covered.has(team.team));
+}
 
 /**
  * The cards the agenda asks today, in its order: the carried over ones first (T2775), a batch one too on any day, as a
@@ -189,7 +218,7 @@ export type DecisionAgenda = AgendaRegister & Pick<AgendaInput, 'below' | 'now' 
  * in the same order (src/meeting/panel.ts).
  */
 export function askedDecisions(input: DecisionAgenda): { readonly daily: readonly Decision[]; readonly batch: readonly Decision[] } {
-  const order = decisionOrder([decisionRead(input, undefined), ...input.below.map((team) => decisionRead(team, team.team))]);
+  const order = decisionOrder([decisionRead(input, undefined), ...askedHere(input).map((team) => decisionRead(team, team.team))]);
   const carried = new Set(input.carried);
   const isCarried = (decision: Decision): boolean => carried.has(decisionKey(decision));
   const fresh = (decisions: readonly Decision[]): Decision[] => decisions.filter((decision) => !isCarried(decision));
@@ -222,7 +251,7 @@ function decisionLines(input: AgendaInput): string[] {
   const asked = [...daily, ...batch];
   const head = `DECISIONS ${asked.length} waiting on ${input.ownerMarker} (decision or approval)`;
   if (asked.length === 0) {
-    return [head];
+    return [head, ...ownMeetingLines(input)];
   }
   const below = asked.some((decision) => decision.team !== undefined);
   const labelled = below ? ' (<team>/<id> for a task of a team under yours, as its row names it)' : '';
@@ -243,6 +272,7 @@ function decisionLines(input: AgendaInput): string[] {
     ...carriedBlock,
     ...cardsOf(fresh, input.runFiles),
     ...(batch.length === 0 ? [] : [`  Improvements batch ${batch.length}, weekly, after the daily cards:`, ...cardsOf(batch, input.runFiles)]),
+    ...ownMeetingLines(input),
     `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
     askLine(input.ownerMarker),
     `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id>${handed} --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
@@ -295,7 +325,7 @@ function dedicatedGroupLines(group: DedicatedGroup, input: AgendaInput): string[
  * none is read out: each session gets its own meeting after the daily, with a full brief. No block when none waits.
  */
 function dedicatedLines(input: AgendaInput): string[] {
-  const groups = [dedicatedGroups(input, undefined), ...input.below.map((team) => dedicatedGroups(team, team.team))].flat();
+  const groups = [dedicatedGroups(input, undefined), ...askedHere(input).map((team) => dedicatedGroups(team, team.team))].flat();
   if (groups.length === 0) {
     return [];
   }
