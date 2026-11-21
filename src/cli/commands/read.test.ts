@@ -613,7 +613,7 @@ describe('teamrig read: an argument never becomes a path as typed', () => {
 describe('teamrig read: what is asked', () => {
   const USAGE_ERRORS: readonly (readonly [string, readonly string[], RegExp])[] = [
     ['no document', ['read', '--json'], /read needs a document: tasks, inbox, sessions, meetings, config/],
-    ['an unknown document', ['read', 'goals', '--json'], /unknown document "goals"; the documents are tasks, inbox, sessions, meetings, config/],
+    ['an unknown document', ['read', 'weather', '--json'], /unknown document "weather"; the documents are tasks, inbox, sessions, meetings, config, plan, goals/],
     ['a document twice', ['read', 'tasks', 'tasks', '--json'], /document tasks is asked twice/],
     ['a --conversation no host would give', [...READ_SESSIONS, '--conversation', 'a b'], /--conversation takes the host's conversation id/],
     ['inbox with no session named', ['read', 'inbox', '--json'], /inbox is one session's: name it with --session/],
@@ -626,7 +626,7 @@ describe('teamrig read: what is asked', () => {
     ['an --unless revision one character short', [...READ_TASKS, '--unless', `tasks=${HELD.slice(1)}`], /--unless takes <document>=<revision>/],
     ['an --unless revision in capitals', [...READ_TASKS, '--unless', `tasks=${HELD.toUpperCase()}`], /--unless takes <document>=<revision>/],
     ['an --unless revision with a second "="', [...READ_TASKS, '--unless', `tasks=${HELD}=x`], /--unless takes <document>=<revision>/],
-    ['an --unless document read does not have', [...READ_TASKS, '--unless', `goals=${HELD}`], /--unless names an unknown document "goals"; the documents are tasks, inbox/],
+    ['an --unless document read does not have', [...READ_TASKS, '--unless', `weather=${HELD}`], /--unless names an unknown document "weather"; the documents are tasks, inbox/],
     ['an --unless document the run does not ask', [...READ_TASKS, '--unless', `inbox=${HELD}`], /--unless names inbox, which this run does not ask for/],
     ['an --unless document named twice', [...READ_TASKS, '--unless', `tasks=${HELD},tasks=${HELD}`], /--unless names tasks twice/],
   ];
