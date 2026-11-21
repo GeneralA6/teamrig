@@ -66,7 +66,7 @@ removed route answering 404 proves the removal, not that its callers still work.
 From the first edit to a change that runs, in this order (rules 2, 7, 14 and 16):
 
 ```sh
-teamrig worktree add t4-parser
+teamrig worktree add --task T4
 teamrig test --session api -- npm test
 ```
 

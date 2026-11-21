@@ -8,6 +8,7 @@ import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
 import { rerunReason } from '../hooks/prompt-refuse.ts';
 import { APP, CLAUDE_SESSION, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { FakeMergeGit } from '../testing/fake-merge-git.ts';
 import { EXIT } from './runtime.ts';
 
 const ASKS_OFF: JsonRecord = { ...TEAM, prompts: { hookAsks: 'refuse' } };
@@ -74,11 +75,16 @@ describe('hook prompt-refuse', () => {
       pushTarget: () => undefined,
       config: (_dir, key) => (key === 'remote.origin.url' ? { kind: 'set', value: 'u' } : { kind: 'unset' }),
     };
-    const push = (command: string, env: Env): Promise<CliResult> => kit.run(HOOK, { stdin: bashRequest(command), env, git });
-    assert.deepEqual(permissionOf(await push('git push -u origin t1-x', { TEAMRIG_SESSION: 'alpha' })), { behavior: 'allow' });
-    assert.deepEqual(permissionOf(await push('git push -u origin t1-x', { TEAMRIG_SESSION: 'bravo' })), REFUSED('Bash'));
-    assert.deepEqual(permissionOf(await push('git push -u origin t1-x', {})), REFUSED('Bash'));
-    assert.deepEqual(permissionOf(await push('git push -u upstream t1-x', { TEAMRIG_SESSION: 'alpha' })), REFUSED('Bash'));
+    const push = (command: string, env: Env, mergeGit?: FakeMergeGit): Promise<CliResult> => kit.run(HOOK, { stdin: bashRequest(command), env, git, ...(mergeGit === undefined ? {} : { mergeGit }) });
+    assert.deepEqual(permissionOf(await push('git push -u origin feat/t1-x', { TEAMRIG_SESSION: 'alpha' })), { behavior: 'allow' });
+    assert.deepEqual(permissionOf(await push('git push -u origin feat/t1-x', { TEAMRIG_SESSION: 'bravo' })), REFUSED('Bash'));
+    assert.deepEqual(permissionOf(await push('git push -u origin feat/t1-x', {})), REFUSED('Bash'));
+    assert.deepEqual(permissionOf(await push('git push -u upstream feat/t1-x', { TEAMRIG_SESSION: 'alpha' })), REFUSED('Bash'));
+    // t1-x is off the default pattern: refused while origin lacks it, run once origin has it (#1433).
+    assert.deepEqual(permissionOf(await push('git push -u origin t1-x', { TEAMRIG_SESSION: 'alpha' })), REFUSED('Bash'));
+    const tracked = new FakeMergeGit();
+    tracked.tracking.set('origin/t1-x', 'c1');
+    assert.deepEqual(permissionOf(await push('git push -u origin t1-x', { TEAMRIG_SESSION: 'alpha' }, tracked)), { behavior: 'allow' });
   });
 
   it("refuses a route's line whose lookup fails, as a line it does not know", async () => {

@@ -76,6 +76,7 @@ describe('matchesGitPush', () => {
     ownsTask: async (task) => (asked.push(task), task === 'T1' || task === 'T3'),
     isRemote: async (folders, name) => (asked.push(`${folders.join('|')} ${name}`), name === 'origin' || name === 'up.stream'),
     pushesToSameName: async (folders, remote) => (asked.push(`same name ${folders.join('|')} ${remote}`), true),
+    mayPushBranch: async (folders, remote, branch) => (asked.push(`may ${folders.join('|')} ${remote} ${branch}`), true),
     protectedBranches: ['main', 't3-release'],
   };
   const push = async (line: string, at: GitContext = context): Promise<boolean> => matchesGitPush(words(line), at);
@@ -86,7 +87,14 @@ describe('matchesGitPush', () => {
     }
     asked.length = 0;
     assert.equal(await push('git -C C:/w -C sub push origin t1-x'), true);
-    assert.deepEqual(asked, ['T1', 'C:/w|sub origin', 'same name C:/w|sub origin']);
+    assert.deepEqual(asked, ['T1', 'C:/w|sub origin', 'same name C:/w|sub origin', 'may C:/w|sub origin t1-x']);
+  });
+
+  it("takes no push of a branch off the team's pattern that the remote lacks, asking that last (#1433)", async () => {
+    const offPattern: GitContext = { ...context, mayPushBranch: async (folders, remote, branch) => (asked.push(`may ${folders.join('|')} ${remote} ${branch}`), false) };
+    asked.length = 0;
+    assert.equal(await push('git -C C:/w push -u origin t1-x', offPattern), false);
+    assert.deepEqual(asked, ['T1', 'C:/w origin', 'same name C:/w origin', 'may C:/w origin t1-x']);
   });
 
   it("takes no push git's config sends to another branch than its own name, such as its upstream main", async () => {

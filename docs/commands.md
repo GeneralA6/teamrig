@@ -600,7 +600,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       with the main checkout's folder in TEAMRIG_MAIN_CHECKOUT; the repository is --repo's, else the
       one it runs in. --task: names the branch from the task by delivery.branches (default
       {type}/{id}-{slug}, such as feat/t12-parse-input: a task's feat, a bug's fix); --type: its
-      branch type instead, such as docs or chore. REFUSED before any change for a branch or folder
+      branch type instead, such as docs or chore. REFUSED before any change for a branch name that
+      matches none of the team's patterns (delivery.branches.enforce, default on), a branch or folder
       already there, a task the register lacks, or a pattern word the task has none of; FAILED when
       its setup fails, the worktree kept
   worktree remove <path> [--delete-branch [--base <ref>]] [--dry-run] [--session <id|name>]   removes a linked git worktree:

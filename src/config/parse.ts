@@ -1118,6 +1118,7 @@ function parseBranches(read: ConfigReader, raw: JsonRecord): BranchesConfig {
     itemTypes,
     classes: parseBranchMap(read, read.section(raw, 'classes', path), `${path}.classes`, isWorkClassName, isBranchTypeText),
     slugMax: read.integer(raw, 'slugMax', path, DEFAULT_BRANCHES.slugMax, CONFIG_LIMITS.branchSlugMax),
+    enforce: read.boolean(raw, 'enforce', path, DEFAULT_BRANCHES.enforce),
   };
 }
 

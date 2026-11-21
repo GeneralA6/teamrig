@@ -5254,10 +5254,13 @@ start a part of the name: it tells whose branch it is), `{issue}` (the number of
 [delivery.branches.slugMax], default 40) and `{session}` (the task's owner). The branch type is `--type` when
 given, else the one [delivery.branches.classes] maps the task's work class to, else the one
 [delivery.branches.itemTypes] maps its item type to (default: a task `feat`, a bug `fix`);
-[delivery.branches.typePatterns] gives a branch type its own pattern. Branches named before keep their names. To
-ship a branch again under a new name, add `-b` to it (`feat/t12-parse-input-b`), never a force-push.
+[delivery.branches.typePatterns] gives a branch type its own pattern. A branch name you give must match the pattern
+or a `typePatterns` entry too, so a project never mixes styles ([delivery.branches.enforce], default on; `false` lets
+any name through). Branches named before keep their names. To ship a branch again under a new name, add `-b` to it
+(`feat/t12-parse-input-b`), never a force-push.
 
-It refuses (exit 2) before any change for: a name that is no branch name; a folder already there; an `origin/HEAD`
+It refuses (exit 2) before any change for: a name that is no branch name; a name that matches none of the team's
+branch patterns while enforce is on (naming them, with an example); a folder already there; an `origin/HEAD`
 that names no default branch (`git remote set-head origin --auto` sets it); a branch that already exists; `--repo`
 outside a team or naming a repository the team does not list; and a folder in no git repository without `--repo`.
 With `--task` it also refuses a task the register lacks, `--task` outside a team, and a pattern naming a word the
@@ -5274,17 +5277,17 @@ Flags:
 Example:
 
 ```sh
-teamrig worktree add t12-parser
+teamrig worktree add feat/t12-parser
 teamrig worktree add --task T12 --type docs
 ```
 
 Output:
 
 ```text
-added the worktree /home/you/app/.claude/worktrees/t12-parser on the new branch t12-parser, from origin/main as just fetched
+added the worktree /home/you/app/.claude/worktrees/feat-t12-parser on the new branch feat/t12-parser, from origin/main as just fetched
 linked node_modules
 ran its setup node tools/link-modules.ts
-OK added /home/you/app/.claude/worktrees/t12-parser
+OK added /home/you/app/.claude/worktrees/feat-t12-parser
 ```
 
 ### teamrig worktree remove

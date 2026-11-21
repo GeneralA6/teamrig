@@ -1293,7 +1293,8 @@ export interface DeliveryConfig {
 /**
  * How `teamrig worktree add --task` names a new branch, and so its worktree folder (src/worktree/branch-name.ts,
  * T2690): a pattern of `{type}`, `{id}`, `{issue}`, `{slug}` and `{session}`, `{id}` starting a part so the branch
- * tells whose it is. Branches made before, or named by hand, keep their names.
+ * tells whose it is. A new branch named by hand must match a pattern too while `enforce` is on (T1433); branches
+ * already there keep their names.
  */
 export interface BranchesConfig {
   /** The pattern for every branch type without its own, such as `{type}/{id}-{slug}` (`feat/t12-parser`). */
@@ -1306,6 +1307,11 @@ export interface BranchesConfig {
   readonly classes: Readonly<Record<string, string>>;
   /** The slug, made from the task's title, is cut at a word to at most this many characters. */
   readonly slugMax: number;
+  /**
+   * A new branch whose name matches none of the patterns is refused (T1433), so a project never mixes styles: by
+   * `worktree add`, and by the git push route and a queued ship unless origin has the branch already.
+   */
+  readonly enforce: boolean;
 }
 
 export interface AlertsConfig {

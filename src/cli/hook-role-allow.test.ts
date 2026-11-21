@@ -161,6 +161,8 @@ async function shipKit(extra: JsonRecord = {}): Promise<{ kit: CliHarness; git: 
   git.checkouts.set('/repo/ship/tools/ship', shipCheckout);
   git.heads.set('/repo/ship', 'base');
   git.tracking.set('origin/main', 'base');
+  // t1-cli is off the default branch pattern; origin has it, so it ships as a branch made before the pattern (#1433).
+  git.tracking.set('origin/t1-cli', 'base');
   return { kit, git };
 }
 
@@ -237,6 +239,16 @@ describe('hook route-allow: the ship role (T2984)', () => {
     same.git.heads.set('/repo/ship', 'rebuilt');
     same.git.trees.set('rebuilt', 'tree-base');
     assert.equal(decisionOf(await same.kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: same.git })), 'allow', "another commit that makes main's tree");
+  });
+
+  it("gives no ship of a branch off the team's pattern that origin lacks, and ships one the pattern names (#1433)", async () => {
+    const fresh = await shipKit();
+    fresh.git.tracking.delete('origin/t1-cli');
+    assert.deepEqual(await fresh.kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: fresh.git }), NOTHING, 'a new branch off the pattern');
+    const named = await shipKit();
+    named.git.tracking.delete('origin/t1-cli');
+    named.git.checkouts.set(SHIP_WORKTREE, { top: SHIP_WORKTREE, branch: 'feat/t1-cli', mainCheckout: MAIN_CHECKOUT, linked: true });
+    assert.equal(decisionOf(await named.kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: named.git })), 'allow', 'a branch the pattern names, new to origin');
   });
 
   it("gives no ship when git does not answer a read of the tool's checkout (C5 fails closed, T3368)", async () => {

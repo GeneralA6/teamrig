@@ -10,6 +10,7 @@ import { taskBranchOf } from '../permissions/route-git.ts';
 import type { ShipRun } from '../permissions/ship-role-call.ts';
 import { JsonlEventLog } from '../register/store.ts';
 import { moduleSpecifiersOf } from './module-specifiers.ts';
+import { branchPatternRefusal } from '../worktree/branch-name.ts';
 import type { Kit } from './kit.ts';
 import type { CliRuntime } from './runtime.ts';
 import { worktreeFolderOf } from './worktree-folder.ts';
@@ -515,7 +516,7 @@ export async function shipBranchOf(runtime: CliRuntime, kit: Kit, config: KitCon
   const checkout = git.checkoutOf(run.worktree);
   const branch = checkout?.branch;
   const task = branch === undefined ? undefined : taskBranchOf(branch, config.pushGuard.protectedBranches);
-  if (checkout === undefined || !checkout.linked || !samePath(checkout.top, run.worktree) || task === undefined || (run.task !== undefined && run.task !== task)) {
+  if (checkout === undefined || branch === undefined || !checkout.linked || !samePath(checkout.top, run.worktree) || task === undefined || (run.task !== undefined && run.task !== task)) {
     return undefined;
   }
   const owner = await ownerOf(runtime, kit, task);
@@ -523,5 +524,7 @@ export async function shipBranchOf(runtime: CliRuntime, kit: Kit, config: KitCon
   if (owner !== holder || !run.files.every((file) => isInside(file, folder))) {
     return undefined;
   }
-  return sameRepository(git, run.worktree, repo.mainDir) && toolIsLanded(git, run.tool, repo.mainDir) ? branch : undefined;
+  // A branch off the team's pattern ships only when origin has it already, a branch made before the pattern (#1433).
+  const named = branchPatternRefusal(branch, config.delivery.branches) === undefined || git.sha(run.worktree, `refs/remotes/${ORIGIN}/${branch}`) !== undefined;
+  return named && sameRepository(git, run.worktree, repo.mainDir) && toolIsLanded(git, run.tool, repo.mainDir) ? branch : undefined;
 }

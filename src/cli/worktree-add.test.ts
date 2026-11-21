@@ -43,11 +43,11 @@ describe('runCli: worktree add (T1305)', () => {
   it('takes the folder and setup of the repository delivery.repos lists by its main checkout', async () => {
     const { git, ports } = world();
     const hooks = new FakeHooks().answer(SETUP, { lines: ['linked node_modules'] });
-    const path = resolve('/w/wt', 't9-parser');
-    const result = await new CliHarness(LISTED).run(['worktree', 'add', 't9-parser'], { worktrees: ports, hooks, cwd: '/w/t4', env: IN_TEAM });
+    const path = resolve('/w/wt', 'feat-t9-parser');
+    const result = await new CliHarness(LISTED).run(['worktree', 'add', 'feat/t9-parser'], { worktrees: ports, hooks, cwd: '/w/t4', env: IN_TEAM });
     assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
     assert.deepEqual(result.stdout.slice(1), ['linked node_modules', 'ran its setup node tools/link-modules.ts', `OK added ${path}`]);
-    assert.deepEqual(git.steps.slice(1), [`worktree add -b t9-parser ${path} origin/main in ${MAIN}`]);
+    assert.deepEqual(git.steps.slice(1), [`worktree add -b feat/t9-parser ${path} origin/main in ${MAIN}`]);
     assert.equal(hooks.ran[0]?.cwd, path);
     assert.equal(hooks.ran[0]?.env['TEAMRIG_MAIN_CHECKOUT'], MAIN);
   });
@@ -57,7 +57,7 @@ describe('runCli: worktree add (T1305)', () => {
     const hooks = new FakeHooks().answer(SETUP, { lines: [] });
     const config = { ...LISTED, delivery: { ...LISTED.delivery, passEnv: ['NPM_TOKEN'] } };
     const env = { ...IN_TEAM, GH_TOKEN: 'not-a-real-credential', NPM_TOKEN: 'not-a-real-credential' };
-    const result = await new CliHarness(config).run(['worktree', 'add', 't9-parser'], { worktrees: ports, hooks, cwd: '/w/t4', env });
+    const result = await new CliHarness(config).run(['worktree', 'add', 'feat/t9-parser'], { worktrees: ports, hooks, cwd: '/w/t4', env });
     assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
     assert.deepEqual([hooks.ran[0]?.env['GH_TOKEN'], hooks.ran[0]?.env['NPM_TOKEN']], [undefined, 'not-a-real-credential']);
   });
@@ -65,9 +65,9 @@ describe('runCli: worktree add (T1305)', () => {
   it('adds to the repository --repo names from any folder, and refuses one the team does not list', async () => {
     const { git, ports } = world({ worktrees: undefined });
     const kit = new CliHarness(LISTED);
-    const web = await kit.run(['worktree', 'add', 't9-page', '--repo', 'web'], { worktrees: ports, cwd: '/elsewhere', env: IN_TEAM });
+    const web = await kit.run(['worktree', 'add', 'feat/t9-page', '--repo', 'web'], { worktrees: ports, cwd: '/elsewhere', env: IN_TEAM });
     assert.equal(web.code, EXIT.ok, web.stdout.join('\n'));
-    assert.deepEqual(git.steps.slice(1), [`worktree add -b t9-page ${join(resolve('/w/web'), '.claude', 'worktrees', 't9-page')} origin/main in ${resolve('/w/web')}`]);
+    assert.deepEqual(git.steps.slice(1), [`worktree add -b feat/t9-page ${join(resolve('/w/web'), '.claude', 'worktrees', 'feat-t9-page')} origin/main in ${resolve('/w/web')}`]);
     const unknown = await kit.run(['worktree', 'add', 't9-page', '--repo', 'docs'], { worktrees: ports, cwd: '/elsewhere', env: IN_TEAM });
     assert.equal(unknown.code, EXIT.refused);
     assert.deepEqual(unknown.stdout, ['REFUSED team app has no delivery.repos.docs: it lists app, web']);
@@ -97,16 +97,31 @@ describe('runCli: worktree add (T1305)', () => {
   });
 
   it('refuses a branch that exists before any change, and fails a setup that fails, keeping the worktree', async () => {
-    const taken = world({ branches: ['main', 't9-parser'] });
-    const refused = await new CliHarness(LISTED).run(['worktree', 'add', 't9-parser'], { worktrees: taken.ports, cwd: '/w/t4', env: IN_TEAM });
+    const taken = world({ branches: ['main', 'feat/t9-parser'] });
+    const refused = await new CliHarness(LISTED).run(['worktree', 'add', 'feat/t9-parser'], { worktrees: taken.ports, cwd: '/w/t4', env: IN_TEAM });
     assert.equal(refused.code, EXIT.refused);
-    assert.deepEqual(refused.stdout, [`REFUSED branch t9-parser already exists in ${MAIN}: give a new branch name`]);
+    assert.deepEqual(refused.stdout, [`REFUSED branch feat/t9-parser already exists in ${MAIN}: give a new branch name`]);
     assert.deepEqual(taken.git.steps, []);
     const { ports } = world();
     const hooks = new FakeHooks().answer(SETUP, { end: 2 });
-    const failed = await new CliHarness(LISTED).run(['worktree', 'add', 't9-parser'], { worktrees: ports, hooks, cwd: '/w/t4', env: IN_TEAM });
+    const failed = await new CliHarness(LISTED).run(['worktree', 'add', 'feat/t9-parser'], { worktrees: ports, hooks, cwd: '/w/t4', env: IN_TEAM });
     assert.equal(failed.code, EXIT.failed);
     assert.match(failed.stdout.at(-1) ?? '', /^FAILED its setup node tools\/link-modules.ts exited 2; the worktree stays at .*t9-parser: finish its setup by hand/);
+  });
+
+  it("refuses a new branch off the team's pattern before any change, takes it with delivery.branches.enforce false, and checks none outside a team (#1433)", async () => {
+    const { git, ports } = world();
+    const refused = await new CliHarness(LISTED).run(['worktree', 'add', 't9-parser'], { worktrees: ports, cwd: '/w/t4', env: IN_TEAM });
+    assert.equal(refused.code, EXIT.refused);
+    assert.deepEqual(refused.stdout, [
+      'REFUSED "t9-parser" does not match the branch pattern {type}/{id}-{slug} (delivery.branches), such as feat/t12-parser; delivery.branches.enforce false lets any name through: give a name that does, or --task <T id> to name it from its task',
+    ]);
+    assert.deepEqual(git.steps, []);
+    const off = { ...LISTED, delivery: { ...LISTED.delivery, branches: { enforce: false } } };
+    const hooks = new FakeHooks().answer(SETUP, { lines: [] });
+    const taken = await new CliHarness(off).run(['worktree', 'add', 't9-parser'], { worktrees: ports, hooks, cwd: '/w/t4', env: IN_TEAM });
+    assert.equal(taken.code, EXIT.ok, taken.stdout.join('\n'));
+    assert.equal(git.steps.at(-1), `worktree add -b t9-parser ${resolve('/w/wt', 't9-parser')} origin/main in ${MAIN}`);
   });
 });
 

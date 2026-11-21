@@ -43,6 +43,8 @@ export function routeContextOf(runtime: CliRuntime, kit: Kit, config: KitConfig,
       caller: async () => teamSessionOf(runtime, kit, await rosterOf(runtime, kit, config), event.session ?? null),
       ownerOf: async (task) => (await new JsonlEventLog(runtime.files, kit.paths.events).read()).state.tasks.get(task)?.owner,
       protectedBranches: config.pushGuard.protectedBranches,
+      branches: config.delivery.branches,
+      hasRef: (dir, ref) => runtime.mergeGit.sha(dir, ref) !== undefined,
     }),
   };
 }

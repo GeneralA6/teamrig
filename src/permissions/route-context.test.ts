@@ -1,5 +1,6 @@
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { DEFAULT_BRANCHES } from '../config/defaults.ts';
 import type { ConfigValue } from '../push-guard/invocations.ts';
 import { gitContextOf, type GitPorts } from './route-context.ts';
 
@@ -17,11 +18,26 @@ function portsOf(overrides: Partial<GitPorts> = {}): GitPorts {
     caller: async () => 'alpha',
     ownerOf: async (task) => OWNERS.get(task),
     protectedBranches: ['main'],
+    branches: DEFAULT_BRANCHES,
+    hasRef: () => false,
     ...overrides,
   };
 }
 
 describe('gitContextOf', () => {
+  it("lets a branch the team's pattern names push, and one off it only when the remote-tracking ref shows the remote has it (#1433)", async () => {
+    const hasRef = mock.fn((dir: string, ref: string) => dir === 'C:\\w\\app' && ref === 'refs/remotes/origin/t9-old');
+    const context = gitContextOf(portsOf({ hasRef }));
+    assert.equal(await context.mayPushBranch([], 'origin', 'feat/t9-parser'), true);
+    assert.equal(hasRef.mock.callCount(), 0, 'a name the pattern makes reads no ref');
+    assert.equal(await context.mayPushBranch([], 'origin', 't9-old'), true);
+    assert.equal(await context.mayPushBranch([], 'origin', 't9-new'), false);
+    assert.equal(await context.mayPushBranch([], 'up', 't9-old'), false);
+    assert.deepEqual(hasRef.mock.calls.at(-1)?.arguments, ['C:\\w\\app', 'refs/remotes/up/t9-old']);
+    const off = gitContextOf(portsOf({ branches: { ...DEFAULT_BRANCHES, enforce: false } }));
+    assert.equal(await off.mayPushBranch([], 'origin', 't9-new'), true, 'enforce false lets any name through');
+  });
+
   it("owns only a task the register names the tab's session as owner of", async () => {
     const context = gitContextOf(portsOf());
     assert.equal(await context.ownsTask('T1'), true);

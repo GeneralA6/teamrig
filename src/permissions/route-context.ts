@@ -1,4 +1,6 @@
+import type { BranchesConfig } from '../config/types.ts';
 import type { GitConfigReader } from '../push-guard/invocations.ts';
+import { branchPatternRefusal } from '../worktree/branch-name.ts';
 import { bashDrivePath, resolveDir } from '../push-guard/location.ts';
 import type { GitContext } from './route-git.ts';
 
@@ -18,6 +20,10 @@ export interface GitPorts {
   /** The session the register names as a task's owner; undefined for a task it lacks. */
   readonly ownerOf: (task: string) => Promise<string | undefined>;
   readonly protectedBranches: readonly string[];
+  /** The team's branch naming (`delivery.branches`). */
+  readonly branches: BranchesConfig;
+  /** True when `ref` names a commit in the repository at `dir`; read from its local refs, never the remote. */
+  readonly hasRef: (dir: string, ref: string) => boolean;
 }
 
 /**
@@ -40,6 +46,13 @@ export function gitContextOf(ports: GitPorts): GitContext {
       }
       const pushDefault = ports.git.config(dir, 'push.default');
       return pushDefault.kind === 'unset' || (pushDefault.kind === 'set' && SAME_NAME_PUSH_DEFAULTS.has(pushDefault.value));
+    },
+    mayPushBranch: async (folders, remote, branch) => {
+      if (branchPatternRefusal(branch, ports.branches) === undefined) {
+        return true;
+      }
+      const dir = gitDirOf(ports, folders);
+      return dir !== undefined && ports.hasRef(dir, `refs/remotes/${remote}/${branch}`);
     },
     protectedBranches: ports.protectedBranches,
   };

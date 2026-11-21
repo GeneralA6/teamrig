@@ -9,6 +9,8 @@ export const MAIN_CHECKOUT = '/repo/app';
 
 const OK: GitOutcome = { ok: true };
 const BRANCH_REF = 'refs/heads/';
+/** A remote-tracking ref in full, `refs/remotes/origin/<branch>`, read from `tracking` as `origin/<branch>` is. */
+const REMOTES_REF = 'refs/remotes/';
 
 function failed(reason: string | undefined): GitOutcome {
   return reason === undefined ? OK : { ok: false, reason };
@@ -111,6 +113,9 @@ export class FakeMergeGit implements MergeGit {
   private commitOf(dir: string, ref: string): string | undefined {
     if (ref === 'HEAD') {
       return this.heads.get(dir);
+    }
+    if (ref.startsWith(REMOTES_REF)) {
+      return this.tracking.get(ref.slice(REMOTES_REF.length));
     }
     if (this.isTracking(ref)) {
       return this.tracking.get(ref);

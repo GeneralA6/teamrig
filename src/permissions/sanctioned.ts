@@ -76,7 +76,7 @@ export const SANCTIONED_ROUTES: readonly SanctionedRoute[] = [
   {
     id: 'git-push',
     purpose: 'push a task branch you own to a configured remote',
-    canary: 'git -C C:/canary push -u origin t1-canary',
+    canary: 'git -C C:/canary push -u origin feat/t1-canary',
     preToolUse: false,
     match: matchesGitPush,
   },
