@@ -1,7 +1,7 @@
 import { INTERFACE_VERSION } from './version.ts';
 
-/** The documents version 1 serves, in the order the help names them. */
-export const DOCUMENTS = ['tasks', 'inbox', 'sessions', 'meetings', 'config'] as const;
+/** The documents version 1 serves, in the order the help names them: the five of 1.0, then each a minor added. */
+export const DOCUMENTS = ['tasks', 'inbox', 'sessions', 'meetings', 'config', 'plan'] as const;
 export type DocumentName = (typeof DOCUMENTS)[number];
 
 export function isDocumentName(text: string): text is DocumentName {
