@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { STORE_FOLDERS_MAX } from '../core/plugin-store.ts';
+import { STORE_FOLDERS_MAX } from '../plugin-store/store.ts';
 import { shippedPlugin } from '../testing/shipped-plugin.ts';
 import {
   CHECK_MS,

@@ -11,7 +11,7 @@ import type { Files } from '../core/files.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
 import type { PathProbe } from '../core/path-probe.ts';
-import type { StoreFolders } from '../core/plugin-store.ts';
+import type { StoreFolders } from '../plugin-store/store.ts';
 import type { TranscriptSource } from '../budget/discover.ts';
 import type { HostSource } from '../composition/host-ports.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';

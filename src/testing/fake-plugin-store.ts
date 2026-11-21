@@ -1,4 +1,4 @@
-import type { StoreFolders } from '../core/plugin-store.ts';
+import type { StoreFolders } from '../plugin-store/store.ts';
 
 /** A path as the fake keys it: `\` and `/` one separator, so a test may spell its paths with `join`. */
 function keyOf(path: string): string {

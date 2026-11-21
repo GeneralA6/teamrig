@@ -1,7 +1,7 @@
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { errorCode } from './guards.ts';
-import type { StoreFolders } from './plugin-store.ts';
+import { errorCode } from '../core/guards.ts';
+import type { StoreFolders } from './store.ts';
 
 /** A path that is not there, or whose parent is a file. */
 function isMissing(error: unknown): boolean {

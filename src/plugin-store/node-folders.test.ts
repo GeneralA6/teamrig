@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { NODE_STORE_FOLDERS } from './node-store-folders.ts';
+import { NODE_STORE_FOLDERS } from './node-folders.ts';
 
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-store-'));
 after(() => rmSync(DIR, { recursive: true, force: true }));
