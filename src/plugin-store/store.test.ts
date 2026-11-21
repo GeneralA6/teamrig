@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { newestNear, parentOf } from './plugin-store.ts';
+import { newestNear, parentOf } from './store.ts';
 
 const TEAMRIG_FOLDER = 'C:\\Users\\me\\.claude\\plugins\\cache\\teamrig\\teamrig';
 

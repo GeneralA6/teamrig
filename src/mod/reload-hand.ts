@@ -9,11 +9,11 @@
  * reload per RELOAD_GAP_MS, waits as long after a refused one, and never runs two for the same installs.
  *
  * The mod runs inside Claude Code without Node, so this file imports nothing from Node, only the store's readers
- * (`core/installed-plugins.ts`, `core/plugin-store.ts`), which import none either: they compile to modules the mod
+ * (`plugin-store/installs.ts`, `plugin-store/store.ts`), which import none either: they compile to modules the mod
  * imports as they are. The host's plugin port, which reads the plugin list, comes in with the host.
  */
-import { appliesTo } from '../core/installed-plugins.ts';
-import { newestNear, storeTimesOf, type StoreFolders } from '../core/plugin-store.ts';
+import { appliesTo } from '../plugin-store/installs.ts';
+import { newestNear, storeTimesOf, type StoreFolders } from '../plugin-store/store.ts';
 import type { HostPlugin, PluginInstall } from '../ports/host/plugin.ts';
 
 /** How often the hand reads installed_plugins.json. */
