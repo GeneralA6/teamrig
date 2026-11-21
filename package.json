@@ -9,7 +9,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.mod.json",
     "build": "node tools/build/clean.ts && tsc -p tsconfig.build.json && node tools/build/integrity.ts",
     "test": "node --test \"tools/**/*.test.ts\" \"src/**/*.test.ts\"",
     "verify": "npm run typecheck && npm run build && npm test",

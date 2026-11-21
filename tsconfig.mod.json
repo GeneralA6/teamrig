@@ -1,0 +1,25 @@
+{
+  "//": "The mod's typecheck (npm run typecheck): plugins/teamrig/hooks (register.ts and its spec) under the same strict flags as src/. Its imports of ../dist/*.js resolve to the source under src/ (rootDirs), so the mod is checked against the source types, not the built dist: node10 resolution, because Bundler and NodeNext look for .js in the same pass as .ts and find a built dist file before rootDirs reaches src/ (TypeScript 6 deprecates node10; revisit then). The engine's modules are typed by plugins/teamrig/typecheck. Not named tsconfig.json, and not inside the plugin, so the engine that runs the plugin never reads it.",
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "node10",
+    "types": ["node"],
+    "rootDirs": ["plugins/teamrig/dist", "src"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true
+  },
+  "include": ["plugins/teamrig/hooks", "plugins/teamrig/types", "plugins/teamrig/typecheck"]
+}

@@ -1,5 +1,6 @@
 import type { On, RenderPropsOf, SessionCompacted, SessionContextBreakdown, SessionMessage, ToolCallResult } from 'claude-code';
 import { describe, expect, mock, test, type Engine, type MockClock, type Mounted } from 'claude-code/testing';
+import type { NeedsYouAsk } from '../dist/mod/needs-you-hand.js';
 
 /**
  * The mod's refresh wiring (`register.ts`) against the engine itself: the test's hooks stand for the engine
@@ -582,7 +583,7 @@ interface NeedsYouTab {
   readonly clock: MockClock;
   readonly runs: CliRun[];
   readonly toasts: { readonly text: string; readonly timeoutMs: number | undefined }[];
-  asks: readonly (typeof BRAVO_ASK)[];
+  asks: readonly NeedsYouAsk[];
 }
 
 /**

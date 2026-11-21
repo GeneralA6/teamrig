@@ -69,10 +69,10 @@ describe('prePushChecks (T4344)', () => {
   const full = new Map(localChecks('upstream/main').map((check) => [check.name, check]));
   const checks = prePushChecks('upstream/main');
 
-  it('runs the scrubs, the commit checks, the typecheck, the boundaries, the build, the plugin tests and the docs checks, in that order', () => {
+  it('runs the scrubs, the commit checks, the typechecks, the boundaries, the build, the plugin tests and the docs checks, in that order', () => {
     assert.deepEqual(
       checks.map((check) => check.name),
-      ['scrub: tree', 'scrub: commits', 'DCO', 'size rule', 'commit subjects', 'typecheck', 'boundaries', 'build: clean', 'build: compile', 'build: integrity', 'plugin tests', 'doc pictures', 'doc config reference', 'doc parity page', 'doc links'],
+      ['scrub: tree', 'scrub: commits', 'DCO', 'size rule', 'commit subjects', 'typecheck', 'typecheck: mod', 'boundaries', 'build: clean', 'build: compile', 'build: integrity', 'plugin tests', 'doc pictures', 'doc config reference', 'doc parity page', 'doc links'],
     );
   });
 
@@ -97,21 +97,21 @@ describe('prePushChecks (T4344)', () => {
 });
 
 describe('shortChecks (T3414)', () => {
-  it('runs the scrub, the DCO sign-off, the size rule, the commit subjects and the typecheck of the full list, then the given specs, and no suite or build (T4080 C1)', () => {
+  it('runs the scrub, the DCO sign-off, the size rule, the commit subjects and the typechecks of the full list, then the given specs, and no suite or build (T4080 C1)', () => {
     const full = new Map(localChecks('upstream/main').map((check) => [check.name, check]));
     const checks = shortChecks('upstream/main', ['src/a.test.ts', 'tools/b.test.ts']);
     assert.deepEqual(
       checks.map((check) => check.name),
-      ['scrub: tree', 'scrub: commits', 'DCO', 'size rule', 'commit subjects', 'typecheck', 'changed specs'],
+      ['scrub: tree', 'scrub: commits', 'DCO', 'size rule', 'commit subjects', 'typecheck', 'typecheck: mod', 'changed specs'],
     );
-    for (const check of checks.slice(0, 6)) assert.deepEqual(check, full.get(check.name), check.name);
+    for (const check of checks.slice(0, 7)) assert.deepEqual(check, full.get(check.name), check.name);
     assert.deepEqual(checks.at(-1)?.argv, ['node', '--test', 'src/a.test.ts', 'tools/b.test.ts']);
   });
 
   it('leaves the specs out when no changed file has one', () => {
     assert.deepEqual(
       shortChecks(DEFAULT_BASE, []).map((check) => check.name),
-      ['scrub: tree', 'scrub: commits', 'DCO', 'size rule', 'commit subjects', 'typecheck'],
+      ['scrub: tree', 'scrub: commits', 'DCO', 'size rule', 'commit subjects', 'typecheck', 'typecheck: mod'],
     );
   });
 });

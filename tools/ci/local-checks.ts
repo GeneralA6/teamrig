@@ -16,7 +16,7 @@ export const DEFAULT_BASE = 'origin/main';
 export function localChecks(base: string): readonly LocalCheck[] {
   return [
     ...commitChecks(base),
-    TYPECHECK,
+    ...TYPECHECKS,
     BOUNDARIES,
     ...BUILD,
     { name: 'coverage gate', argv: ['node', 'tools/ci/coverage-cli.ts'] },
@@ -38,7 +38,7 @@ export function localChecks(base: string): readonly LocalCheck[] {
 export function prePushChecks(base: string): readonly LocalCheck[] {
   return [
     ...commitChecks(base),
-    TYPECHECK,
+    ...TYPECHECKS,
     BOUNDARIES,
     ...BUILD,
     PLUGIN_TESTS,
@@ -46,7 +46,14 @@ export function prePushChecks(base: string): readonly LocalCheck[] {
   ];
 }
 
-const TYPECHECK: LocalCheck = { name: 'typecheck', argv: ['node', TSC, '-p', 'tsconfig.json'] };
+/**
+ * `npm run typecheck`: the source, then the plugin's mod (its hooks and state contract) under the same strict flags,
+ * each its own step so the check lists stay CI's (#664).
+ */
+const TYPECHECKS: readonly LocalCheck[] = [
+  { name: 'typecheck', argv: ['node', TSC, '-p', 'tsconfig.json'] },
+  { name: 'typecheck: mod', argv: ['node', TSC, '-p', 'tsconfig.mod.json'] },
+];
 
 /** The layer boundaries of `src`, counted in under a second; in warn mode it fails only when it cannot read the tree. */
 const BOUNDARIES: LocalCheck = { name: 'boundaries', argv: ['node', 'tools/ci/boundaries-cli.ts'] };
@@ -96,13 +103,13 @@ function commitShape(base: string): readonly LocalCheck[] {
 }
 
 /**
- * The short checks (check-scope.ts, T3414): the commit checks (scrub, DCO sign-off, size and subjects), the typecheck
+ * The short checks (check-scope.ts, T3414): the commit checks (scrub, DCO sign-off, size and subjects), the typechecks
  * and the given specs, for a branch whose main merges only on GitHub's required checks, which run the whole suite on
  * the pull request. The pre-push hook runs `teamrig secrets pushed` before them. With no spec to run, the specs' check
  * is left out.
  */
 export function shortChecks(base: string, specs: readonly string[]): readonly LocalCheck[] {
-  const checks = [...commitChecks(base), TYPECHECK];
+  const checks = [...commitChecks(base), ...TYPECHECKS];
   return specs.length === 0 ? checks : [...checks, { name: 'changed specs', argv: ['node', '--test', ...specs] }];
 }
 
