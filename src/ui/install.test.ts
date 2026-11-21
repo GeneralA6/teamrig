@@ -12,7 +12,7 @@ const FILES = [
 ];
 
 function sourceOf(files: UiArchive['files']): string {
-  return `${JSON.stringify({ format: ARCHIVE_FORMAT, version: '0.77.0', entry: 'ui/main.js', files })}\n`;
+  return `${JSON.stringify({ format: ARCHIVE_FORMAT, version: '0.77.0', interface: '1.0', entry: 'ui/main.js', files })}\n`;
 }
 
 const SOURCE = sourceOf(FILES);
