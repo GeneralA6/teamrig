@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { callsSecretScan, SECRET_HOOKS } from '../../src/cli/secret-hook-check.ts';
+import { SECRET_HOOKS } from '../../src/cli/secret-hook-check.ts';
+import { callsHookLine } from '../../src/git-hooks/hook-lines.ts';
 import { FakeGit } from '../lib/fake-git.ts';
 import { GitError } from '../lib/git.ts';
 import { checkHooks, configureHooks, HOOKS_PATH } from './hooks.ts';
@@ -80,7 +81,7 @@ describe('the repo hooks', () => {
   it('run the secret scan in each hook teamrig asks every repository to run it in (T1480)', () => {
     for (const hook of SECRET_HOOKS) {
       const script = readFileSync(fileURLToPath(new URL(`../../${HOOKS_PATH}/${hook.hook}`, import.meta.url)), 'utf8');
-      assert.ok(callsSecretScan(script, hook), `${HOOKS_PATH}/${hook.hook} runs no secrets ${hook.sub}`);
+      assert.ok(callsHookLine(script, hook), `${HOOKS_PATH}/${hook.hook} runs no secrets ${hook.sub}`);
     }
   });
 });
