@@ -5,7 +5,7 @@ import type { JsonRecord } from '../../core/guards.ts';
 import { INTERFACE_VERSION } from '../../interface/index.ts';
 import { layoutPaths } from '../../register/layout.ts';
 import { TEST_OWNER_CARD_FLAGS } from '../../testing/card.ts';
-import { CliHarness, TEAM_HOME, type RunOptions } from '../../testing/cli-harness.ts';
+import { CliHarness, KIT, TEAM_HOME, type RunOptions } from '../../testing/cli-harness.ts';
 import { normalisePath } from '../../testing/memory-files.ts';
 import { problemsOf, rowsOf, served } from '../../testing/read-answers.ts';
 import { rotateRegister } from '../../testing/rotation.ts';
@@ -157,6 +157,19 @@ describe('teamrig read plan', () => {
     await kit.files.write(join(teamHomeOf('web'), 'state', 'usage', 'back.json'), '{}\n');
     const afterSpend = await revision();
     assert.equal(new Set([first, afterRegister, afterGoal, afterSpend]).size, 4);
+  });
+
+  it('moves its revision by each file the week rate is read from: the usage of the account keeper, the snapshots, a rename', async () => {
+    const kit = await needingTheRoot();
+    const revision = async () => String(served(await kit.run(READ_PLAN, AS_WEB))['revision']);
+    const first = await revision();
+    await kit.files.write(join(TEAM_HOME, 'state', 'usage', 'meter-log.jsonl'), '{}\n');
+    const afterKeeper = await revision();
+    await kit.files.write(join(KIT, 'usage', 'live', 'tab.json'), '{}\n');
+    const afterSnapshot = await revision();
+    await ok(kit, ['rename', 'alpha', 'able', '--session', 'alpha']);
+    const afterRename = await revision();
+    assert.equal(new Set([first, afterKeeper, afterSnapshot, afterRename]).size, 4);
   });
 
   it('serves the plan beside a team folder whose config cannot be read, and moves its revision when that config is written', async () => {
