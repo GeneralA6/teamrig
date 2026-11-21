@@ -127,6 +127,8 @@ export interface SecretDeny {
 export interface ContextFinding extends Finding {
   readonly kind: 'context-size' | 'context-lists';
   readonly budget: keyof ContextFilesConfig;
+  /** The files or folders whose text is over the budget, so an open task naming one is known to cover the finding (#814). */
+  readonly paths?: readonly string[];
 }
 
 /** A page webhook that gives no URL: the team whose alerts name it, by which key, and why, in words that hold neither the URL nor a path. */
@@ -380,12 +382,12 @@ function tokensOf(chars: number): string {
   return `~${count(Math.round(chars / 400) * 100)} tokens`;
 }
 
-function sizeFinding(what: string, chars: number, budget: number, key: keyof ContextFilesConfig, fix: string): ContextFinding[] {
+function sizeFinding(what: string, chars: number, budget: number, key: keyof ContextFilesConfig, fix: string, paths: readonly string[]): ContextFinding[] {
   if (chars <= budget) {
     return [];
   }
   const detail = `${what}: ${count(chars)} characters (${tokensOf(chars)}), over its budget of ${count(budget)} [contextFiles.${key}]; every call re-reads this text, so ${fix}`;
-  return [{ kind: 'context-size', detail, budget: key }];
+  return [{ kind: 'context-size', detail, budget: key, paths }];
 }
 
 /** What the context findings weigh: the files every call re-reads, and the lists the newest session's context holds. */
@@ -397,11 +399,11 @@ function contextFindings({ contextFiles: { read, budgets } }: ContextInput): Con
   const memory = read.memoryIndex;
   const skills = `skill listing (${read.skills.count} skills in ${read.skills.folders.join(', ')})`;
   return [
-    ...sizeFinding(`CLAUDE.md files (${claudeMd})`, claudeMdChars, budgets.maxClaudeMdChars, 'maxClaudeMdChars', 'move how-tos into skills and facts into memory files'),
+    ...sizeFinding(`CLAUDE.md files (${claudeMd})`, claudeMdChars, budgets.maxClaudeMdChars, 'maxClaudeMdChars', 'move how-tos into skills and facts into memory files', read.claudeMd.map((file) => file.path)),
     ...(memory === undefined
       ? []
-      : sizeFinding(`memory index ${memory.path}`, memory.chars, budgets.maxMemoryIndexChars, 'maxMemoryIndexChars', 'keep one short line per memory and its detail in the memory file')),
-    ...sizeFinding(skills, read.skills.chars, budgets.maxSkillListingChars, 'maxSkillListingChars', 'shorten descriptions or merge skills'),
+      : sizeFinding(`memory index ${memory.path}`, memory.chars, budgets.maxMemoryIndexChars, 'maxMemoryIndexChars', 'keep one short line per memory and its detail in the memory file', [memory.path])),
+    ...sizeFinding(skills, read.skills.chars, budgets.maxSkillListingChars, 'maxSkillListingChars', 'shorten descriptions or merge skills', read.skills.folders),
   ];
 }
 

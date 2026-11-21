@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ContextFinding } from '../doctor/doctor.ts';
 import type { SkillFlag } from '../skills/lint.ts';
-import { splitUnowned, UNOWNED_NOTICE_CHARS, unownedHeading, unownedNotice, unownedRow, type UnownedWarning } from './unowned.ts';
+import { testTask } from '../testing/task.ts';
+import { coverUnowned, splitUnowned, UNOWNED_NOTICE_CHARS, unownedHeading, unownedNotice, unownedRow, type UnownedWarning } from './unowned.ts';
 
 const SESSIONS: ReadonlySet<string> = new Set(['lead', 'alpha']);
 const LISTS: ContextFinding = { kind: 'context-lists', detail: 'lists in the context of the newest session (a.jsonl): over its budget', budget: 'maxSessionListsChars' };
@@ -21,6 +22,7 @@ describe('splitUnowned', () => {
         key: 'context maxSessionListsChars',
         source: 'the context check [contextFiles.maxSessionListsChars]',
         text: 'WARN context-lists lists in the context of the newest session (a.jsonl): over its budget',
+        names: ['contextFiles.maxSessionListsChars'],
       },
       { key: 'skill UNVERIFIED orphan', source: 'the skill check of skills-dir', text: 'SKILL UNVERIFIED (no "Last verified: YYYY-MM-DD") - orphan' },
       { key: 'skill UNVERIFIED ghost-sync', source: 'the skill check of skills-dir', text: 'SKILL UNVERIFIED (no "Last verified: YYYY-MM-DD") ghost ghost-sync' },
@@ -75,5 +77,49 @@ describe('the unowned lines', () => {
     const text = /yours as lead: (.*); fix it/.exec(notice)?.[1] ?? '';
     assert.equal(text.length, UNOWNED_NOTICE_CHARS);
     assert.match(text, /^first second x+\.\.\.$/);
+  });
+});
+
+describe('coverUnowned (#814)', () => {
+  const memory: UnownedWarning = { key: 'context maxMemoryIndexChars', source: 'the context check', text: 'WARN context-size memory index', names: ['contextFiles.maxMemoryIndexChars', '/m/MEMORY.md'] };
+  const nameless: UnownedWarning = { key: 'idle-pass failed', source: 'the idle pass check', text: 'FLEET-STALE' };
+
+  it('covers a warning by the first open task naming its file or config key, and leaves one with no names unowned', () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'done', title: 'Trim /m/MEMORY.md' }),
+      testTask({ id: 'T2', status: 'dropped', title: 'Trim /m/MEMORY.md' }),
+      testTask({ id: 'T3', status: 'waiting', owner: 'bravo', title: 'Memory', description: 'raise contextFiles.maxMemoryIndexChars' }),
+      testTask({ id: 'T4', status: 'open', title: 'Trim /m/MEMORY.md' }),
+    ];
+    const { unowned, covered } = coverUnowned([memory, nameless], tasks, '/h/u');
+    assert.deepEqual(unowned, [nameless]);
+    assert.deepEqual(covered.map(({ warning, task }) => [warning.key, task.id, task.owner]), [['context maxMemoryIndexChars', 'T3', 'bravo']]);
+  });
+
+  it('covers nothing with only done or dropped tasks', () => {
+    const tasks = [testTask({ id: 'T1', status: 'done', title: 'Trim /m/MEMORY.md' }), testTask({ id: 'T2', status: 'dropped', title: 'Trim /m/MEMORY.md' })];
+    assert.deepEqual(coverUnowned([memory], tasks, '/h/u'), { unowned: [memory], covered: [] });
+  });
+
+  it('covers a warning on a total across files only by its config key, never by a task naming one of the files', () => {
+    const total = (budget: 'maxClaudeMdChars' | 'maxSkillListingChars', paths: string[]): UnownedWarning =>
+      splitUnowned([{ kind: 'context-size', detail: 'over', budget, paths }], [], SESSIONS, 'skills-dir').unowned[0]!;
+    const claudeMd = total('maxClaudeMdChars', ['/p/CLAUDE.md', '/h/u/.claude/CLAUDE.md']);
+    const listing = total('maxSkillListingChars', ['/s/alpha-deploy', '/s/bravo-sync']);
+    const byFile = [testTask({ id: 'T6', status: 'open', title: 'Add a rule to /p/CLAUDE.md' }), testTask({ id: 'T7', status: 'open', title: 'Fix /s/alpha-deploy' })];
+    assert.deepEqual(coverUnowned([claudeMd, listing], byFile, '/h/u'), { unowned: [claudeMd, listing], covered: [] });
+    const byKey = [testTask({ id: 'T8', status: 'open', title: 'Trim skills', description: 'under contextFiles.maxSkillListingChars' })];
+    assert.deepEqual(
+      coverUnowned([claudeMd, listing], byKey, '/h/u').covered.map(({ warning, task }) => [warning.key, task.id]),
+      [['context maxSkillListingChars', 'T8']],
+    );
+    const memory = splitUnowned([{ kind: 'context-size', detail: 'over', budget: 'maxMemoryIndexChars', paths: ['/m/MEMORY.md'] }], [], SESSIONS, 'skills-dir').unowned[0]!;
+    assert.deepEqual(memory.names, ['contextFiles.maxMemoryIndexChars', '/m/MEMORY.md']);
+  });
+
+  it('covers a warning on a file under the home folder by a task naming it as ~/...', () => {
+    const home: UnownedWarning = { ...memory, names: ['/h/u/.claude/MEMORY.md'] };
+    const { covered } = coverUnowned([home], [testTask({ id: 'T5', status: 'open', title: 'Trim ~/.claude/MEMORY.md' })], '/h/u');
+    assert.deepEqual(covered.map(({ task }) => task.id), ['T5']);
   });
 });

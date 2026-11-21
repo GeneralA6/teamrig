@@ -9,7 +9,7 @@ import type { TaskStatus } from '../register/model.ts';
 import { planOrder, type TaskTree, type WaitingOnYou } from '../register/tree.ts';
 import { aheadText, formatShortTask, formatTask, formatWaitingOnYou, type PlacedRow } from '../register/views.ts';
 import { formatSkillFlag, type SkillFlag } from '../skills/lint.ts';
-import { unownedHeading, unownedRow, type UnownedWarning } from './unowned.ts';
+import { coveredHeading, coveredRow, unownedHeading, unownedRow, type CoveredWarning, type UnownedWarning } from './unowned.ts';
 
 /**
  * What `list` and `check` print. A session's reads stay in its context and are re-read on every later call, so by
@@ -61,6 +61,8 @@ export interface CheckReport {
    * and the five-hour window's FIVE-HOUR; they go to the lead, printed only when there are some.
    */
   readonly unowned: readonly UnownedWarning[];
+  /** The warnings no session owns that an open task already covers (#814), printed apart, naming the task, and never told to the lead. */
+  readonly covered: readonly CoveredWarning[];
   /** The own team's lead, whom the unowned warnings go to. */
   readonly lead: string;
   /** The own team's batch of the owner's decisions, for its lead; printed only while a batch is due. */
@@ -94,6 +96,7 @@ export function ownCheck(report: CheckReport, owner: string, group: readonly str
     skills: report.skills.filter((flag) => flag.owner === owner),
     hires: report.hires.filter((flag) => flag.session === owner),
     unowned: [],
+    covered: [],
     decisions: report.decisions?.lead === owner ? report.decisions : undefined,
   };
 }
@@ -201,6 +204,11 @@ function unownedLines({ unowned, lead }: CheckReport, indent: string, shown: num
   return unowned.length === 0 ? [] : [unownedHeading(unowned.length, lead), ...firstOf(unowned.map((warning) => `${indent}${unownedRow(warning)}`), shown)];
 }
 
+/** The `COVERED` heading, then the first `shown` warnings an open task covers, each naming its task; nothing while none is. */
+function coveredLines({ covered }: CheckReport, indent: string, shown: number): string[] {
+  return covered.length === 0 ? [] : [coveredHeading(covered.length), ...firstOf(covered.map((one) => `${indent}${coveredRow(one)}`), shown)];
+}
+
 /** The lead's `DECISIONS` line while a batch of the owner's decisions is due; nothing otherwise. */
 function decisionLines({ decisions }: CheckReport): string[] {
   return decisions === undefined ? [] : checkDecisionLines(decisions.batch, KIT_NAME, decisions.lead, decisions.zone);
@@ -215,6 +223,7 @@ function longCheck(report: CheckReport): string[] {
     ]),
     ...hireLines(report, ''),
     ...unownedLines(report, '', report.unowned.length),
+    ...coveredLines(report, '', report.covered.length),
     ...decisionLines(report),
     skillsLine(report),
     ...report.skills.map(formatSkillFlag),
@@ -244,13 +253,14 @@ function shortCheck(report: CheckReport): string[] {
     rows: flags.filter(({ flag }) => flag.kind === kind).sort((x, y) => planOrder(x.tree.placeOf(x.flag.task), y.tree.placeOf(y.flag.task))),
   })).filter(({ rows }) => rows.length > 0);
   const teams = report.sections.length > 1 ? ` in ${report.sections.length} team(s)` : '';
-  const hint = flags.length + report.skills.length + report.hires.length + report.unowned.length > 0 ? ' (short form; --all for every flag in full)' : '';
+  const hint = flags.length + report.skills.length + report.hires.length + report.unowned.length + report.covered.length > 0 ? ' (short form; --all for every flag in full)' : '';
   const head = `CHECK ${flags.length} flag(s)${teams}, ${report.scope}${hint}`;
   const linesShowing = (shown: number): string[] => [
     head,
     ...kinds.flatMap(({ kind, rows }) => kindLines(kind, rows, shown)),
     ...hireLines(report, '  '),
     ...unownedLines(report, '  ', shown),
+    ...coveredLines(report, '  ', shown),
     ...decisionLines(report),
     skillsLine(report),
     ...firstOf(

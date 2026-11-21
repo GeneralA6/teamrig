@@ -51,6 +51,55 @@ describe('the warnings no session owns go to the lead (T951)', () => {
     );
   });
 
+  it('names the open task that already covers a warning in place of listing it as unowned, and tells the lead nothing (#814)', async () => {
+    const kit = new CliHarness({ ...TEAM, contextFiles: { maxClaudeMdChars: BUDGET } });
+    await kit.holdSecretDeny();
+    await kit.files.write(join(APP, 'CLAUDE.md'), 'x'.repeat(BUDGET + 1));
+    const added = await kit.run(['add', '--owner', 'alpha', '--title', 'Trim the CLAUDE.md files under contextFiles.maxClaudeMdChars', '--description', 'over its context budget', '--priority', 'p2'], AS_LEAD);
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    const id = /\bT\d+\b/.exec(added.stdout.join('\n'))?.[0] ?? '';
+    assert.notEqual(id, '', added.stdout.join('\n'));
+    for (const argv of [['check'], ['check', '--all']]) {
+      const result = await kit.run(argv, AS_LEAD);
+      assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+      const out = result.stdout.join('\n');
+      assert.equal(result.stdout.some((line) => line.startsWith('UNOWNED')), false, out);
+      assert.equal(result.stdout.includes('COVERED 1 warning(s) an open task already covers, so no new task: work them in that task'), true, out);
+      assert.match(out, new RegExp(`from the context check \\[contextFiles\\.maxClaudeMdChars\\]: WARN context-size .*; covered by ${id} \\(alpha\\)$`, 'm'));
+    }
+    assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
+    assert.equal((await leadNotices(kit)).length, 0, 'a covered warning asks the lead for no new task');
+
+    const dropped = await kit.run(['set', id, '--status', 'dropped', '--note', 'not needed'], AS_ALPHA);
+    assert.equal(dropped.code, EXIT.ok, dropped.stderr.join('\n'));
+    const after = await kit.run(['check'], AS_LEAD);
+    assert.equal(after.stdout.some((line) => HEADING.test(line)), true, `a dropped task covers nothing:\n${after.stdout.join('\n')}`);
+    assert.equal(after.stdout.some((line) => line.startsWith('COVERED')), false, after.stdout.join('\n'));
+  });
+
+  it('leaves the CLAUDE.md total unowned when a task names one CLAUDE.md for its own reasons (#814)', async () => {
+    const kit = new CliHarness({ ...TEAM, contextFiles: { maxClaudeMdChars: BUDGET } });
+    await kit.holdSecretDeny();
+    const claudeMd = join(APP, 'CLAUDE.md');
+    await kit.files.write(claudeMd, 'x'.repeat(BUDGET + 1));
+    const added = await kit.run(['add', '--owner', 'alpha', '--title', `Add a rule to ${claudeMd}`, '--description', 'a new team rule', '--priority', 'p2'], AS_LEAD);
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    const result = await kit.run(['check'], AS_LEAD);
+    assert.equal(result.stdout.some((line) => HEADING.test(line)), true, result.stdout.join('\n'));
+    assert.equal(result.stdout.some((line) => line.startsWith('COVERED')), false, result.stdout.join('\n'));
+  });
+
+  it('counts a task that names the check\'s config key as covering its warning (#814)', async () => {
+    const kit = new CliHarness({ ...TEAM, contextFiles: { maxClaudeMdChars: BUDGET } });
+    await kit.holdSecretDeny();
+    await kit.files.write(join(APP, 'CLAUDE.md'), 'x'.repeat(BUDGET + 1));
+    const added = await kit.run(['add', '--owner', 'alpha', '--title', 'Settle the context check', '--description', 'contextFiles.maxClaudeMdChars is over', '--priority', 'p2'], AS_LEAD);
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    const result = await kit.run(['check'], AS_LEAD);
+    assert.equal(result.stdout.some((line) => line.startsWith('UNOWNED')), false, result.stdout.join('\n'));
+    assert.equal(result.stdout.some((line) => line.startsWith('COVERED 1 ')), true, result.stdout.join('\n'));
+  });
+
   it("moves a skill's flags out of SKILLS into the lead's UNOWNED when its owner is no session on the team", async () => {
     const kit = new CliHarness(TEAM);
     await kit.files.write(join(SKILLS_DIR, 'orphan', 'SKILL.md'), '---\nname: orphan\ndescription: A skill with an owner who left.\n---\nOwner: ghost\nLast verified: 2030-01-01\n');

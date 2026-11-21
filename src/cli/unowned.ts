@@ -1,6 +1,10 @@
 import type { IdleMode } from '../config/types.ts';
 import { clipEnd } from '../core/clip.ts';
+import { isAbsolute } from 'node:path';
 import { KIT_NAME } from '../core/home.ts';
+import { homeRelative } from '../core/paths.ts';
+import type { Task } from '../register/fold.ts';
+import { ACTIVE_STATUSES } from '../register/model.ts';
 import { formatFinding, type AllowFinding, type ContextFinding, type DenyFinding } from '../doctor/doctor.ts';
 import { formatSkillFlag, type SkillFlag } from '../skills/lint.ts';
 import { formatIdlePassTrouble, type IdlePassTrouble } from './idle-pass-log.ts';
@@ -31,6 +35,17 @@ export interface UnownedWarning {
   readonly source: string;
   /** Its flag line, as `check --all` prints it. */
   readonly text: string;
+  /**
+   * What an open task may name the warning by: the config key of its check, and the file it warns about when it is
+   * about one file. A task that names one already covers it, so it is not told as unowned again (#814).
+   */
+  readonly names?: readonly string[];
+}
+
+/** A warning an open task already covers, with that task. */
+export interface CoveredWarning {
+  readonly warning: UnownedWarning;
+  readonly task: Pick<Task, 'id' | 'owner'>;
 }
 
 /** The skill flags a session on the team owns, and every warning no session does. */
@@ -42,6 +57,12 @@ export interface SplitWarnings {
 /** A doctor finding no session owns: the context findings, one per budget, the wide allow rules and the missing secret deny lines. */
 export type UnownedFinding = ContextFinding | AllowFinding | DenyFinding;
 
+/**
+ * The budgets that total many files: every CLAUDE.md, every skill folder. A task names one of those files for its own
+ * reasons ("add a rule to CLAUDE.md", any task about one skill), so only the config key covers such a warning (#814).
+ */
+const TOTAL_BUDGETS: ReadonlySet<string> = new Set(['maxClaudeMdChars', 'maxSkillListingChars']);
+
 function findingWarning(finding: UnownedFinding): UnownedWarning {
   const text = formatFinding(finding);
   switch (finding.kind) {
@@ -50,7 +71,12 @@ function findingWarning(finding: UnownedFinding): UnownedWarning {
     case 'deny-missing':
       return { key: 'permissions deny-missing', source: "the secret deny check of the Claude Code settings' permissions.deny", text };
     default:
-      return { key: `context ${finding.budget}`, source: `the context check [contextFiles.${finding.budget}]`, text };
+      return {
+        key: `context ${finding.budget}`,
+        source: `the context check [contextFiles.${finding.budget}]`,
+        text,
+        names: [`contextFiles.${finding.budget}`, ...(TOTAL_BUDGETS.has(finding.budget) ? [] : (finding.paths ?? []))],
+      };
   }
 }
 
@@ -73,6 +99,44 @@ export function splitUnowned(findings: readonly UnownedFinding[], skills: readon
     skills: skills.filter(owned),
     unowned: [...findings.map(findingWarning), ...skills.filter((flag) => !owned(flag)).map((flag) => skillWarning(flag, skillsDir))],
   };
+}
+
+/**
+ * The warnings an open task already covers, each with the first such task in `tasks`' order, and the rest, still
+ * unowned. A task covers a warning when its title or description names one of the warning's names, a file under
+ * `userHome` by its full path or as `~/...`; a done or dropped
+ * task covers nothing, so a warning that comes back after its fix is told again.
+ */
+export function coverUnowned(
+  warnings: readonly UnownedWarning[],
+  tasks: Iterable<Task>,
+  userHome: string,
+): { readonly unowned: UnownedWarning[]; readonly covered: CoveredWarning[] } {
+  const open = [...tasks].filter((task) => ACTIVE_STATUSES.includes(task.status));
+  // A task names a file under the home folder as `~/...` as often as by its full path (`homeRelative`).
+  const formsOf = (name: string): readonly string[] => (isAbsolute(name) ? [name, homeRelative(name, userHome)] : [name]);
+  const unowned: UnownedWarning[] = [];
+  const covered: CoveredWarning[] = [];
+  for (const warning of warnings) {
+    const names = (warning.names ?? []).flatMap(formsOf);
+    const task = open.find(({ title, description }) => names.some((name) => title.includes(name) || (description ?? '').includes(name)));
+    if (task === undefined) {
+      unowned.push(warning);
+    } else {
+      covered.push({ warning, task });
+    }
+  }
+  return { unowned, covered };
+}
+
+/** `COVERED 1 warning(s) an open task already covers, so no new task: ...`, the heading `check` prints over them. */
+export function coveredHeading(count: number): string {
+  return `COVERED ${count} warning(s) an open task already covers, so no new task: work them in that task`;
+}
+
+/** `from the context check [contextFiles.maxMemoryIndexChars]: WARN context-size ...; covered by T12 (alpha)`. */
+export function coveredRow({ warning, task }: CoveredWarning): string {
+  return `${unownedRow(warning)}; covered by ${task.id} (${task.owner})`;
 }
 
 /** `UNOWNED 2 warning(s) no session owns, so they go to the lead (lead): ...`, the heading `check` prints over them. */
