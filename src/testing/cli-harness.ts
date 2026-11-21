@@ -10,7 +10,6 @@ import type { FileBytes } from '../core/file-bytes.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
-import { ghHostsDenyLine, secretDenyLines } from '../doctor/deny-lines.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import type { StoreFolders } from '../core/plugin-store.ts';
 import type { TranscriptSource } from '../budget/discover.ts';
@@ -44,6 +43,7 @@ import { FakeClock } from './fake-clock.ts';
 import { FakeSessionProcesses } from './fake-session-processes.ts';
 import { MemoryFiles } from './memory-files.ts';
 import { quietWorld } from './quiet-world.ts';
+import { shippedPermissions } from './shipped-permissions.ts';
 import { textFileBytes } from './text-file-bytes.ts';
 
 /** The user's home folder the CLI sees; the default skills folder lives under it. */
@@ -59,7 +59,12 @@ export const SKILLS_DIR = join(USER_HOME, '.claude', 'skills');
 /** The user's Claude Code settings, where doctor tells the user to paste the secret deny lines no settings file holds. */
 export const USER_SETTINGS = join(USER_HOME, '.claude', 'settings.json');
 /** Claude Code settings that hold every secret deny line of every platform, for a spec that writes the user's settings itself. */
-export const HELD_DENY: JsonRecord = { permissions: { deny: [...secretDenyLines('linux'), ghHostsDenyLine('win32')] } };
+export const HELD_DENY: JsonRecord = { permissions: { deny: heldDenyLines() } };
+
+function heldDenyLines(): string[] {
+  const permissions = shippedPermissions();
+  return [...new Set([...permissions.denyLines('linux'), ...permissions.denyLines('win32')])];
+}
 /** The project folder the CLI runs in, tied to team `app` by its pointer. */
 export const APP = resolve('/', 'work', 'app');
 export const POINTER = join(APP, '.teamrig.json');

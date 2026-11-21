@@ -55,7 +55,7 @@ export const UNREAD_INBOX_DAYS = 7;
  *   removes them, run by the owner);
  * - `quiet-ask`: `budget.quietHours.action` is `ask`, so a helper launch in the quiet hours waits on a permission prompt
  *   nobody at the host answers at night, and its tab stalls;
- * - `deny-missing`: secret deny lines (the platform's `secretDenyLines`) in no settings file a session reads, so a hook's allow or
+ * - `deny-missing`: secret deny lines (the host's deny lines for the platform) in no settings file a session reads, so a hook's allow or
  *   auto mode can approve a read of a credential file or an environment dump; the user pastes the lines printed;
  * - `project-missing`: a `team.project` or `launch.<id>.project` that is no folder on this machine, so a tab `open`
  *   starts there refuses to launch;
@@ -114,8 +114,9 @@ export interface DenyFinding extends Finding {
 }
 
 /**
- * The `permissions.deny` lines of the settings files a session in the project reads, the secret deny lines this
- * machine's platform needs (`secretDenyLines`), and the user's file, where the missing ones go.
+ * The deny lines of the settings files a session in the project reads, the secret deny lines this machine's platform
+ * needs (the host's deny lines), and the user's file, where the missing ones go; no line on a host that keeps no
+ * permission rule.
  */
 export interface SecretDeny {
   readonly files: readonly SettingsDeny[];
