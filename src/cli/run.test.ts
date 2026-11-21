@@ -14,6 +14,7 @@ import { configChangedMeanwhile, hired } from '../testing/config-race.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
 import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, reasonOf, SKILLS_DIR, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { HOOKS_ONLY_HOST, NO_PATHS_HOST, SHIPPED_HOST } from '../testing/host.ts';
 import { cutLineMessage } from './cmd-shim.ts';
 import { FULL_HELP_POINTER } from './help.ts';
 import { SHORT_FORM_CHARS } from './reports.ts';
@@ -816,6 +817,17 @@ describe('runCli: hook secret-guard', () => {
     assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { stdin: bash('cat .env') })), 'deny');
     assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { stdin: read(join(APP, '.env')) })), 'deny');
     assert.deepEqual((await kit.run(['hook', 'secret-guard'], { stdin: bash('cat .env | wc -c') })).stdout, []);
+  });
+
+  it("refuses a Read and a cat of a shipped host's login file under every host, one telling none of its folders too", async () => {
+    const userHome = resolve(USER_HOME);
+    const login = join(userHome, '.claude', '.credentials.json');
+    for (const host of [SHIPPED_HOST, NO_PATHS_HOST, HOOKS_ONLY_HOST]) {
+      const kit = new CliHarness();
+      assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { host, userHome, stdin: read(login) })), 'deny');
+      assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { host, userHome, stdin: bash('cat ~/.claude/.credentials.json') })), 'deny');
+      assert.deepEqual((await kit.run(['hook', 'secret-guard'], { host, userHome, stdin: read(join(userHome, '.claude', 'settings.json')) })).stdout, []);
+    }
   });
 
   it('refuses a Write whose text holds a secret, and lets one that writes a secret file run', async () => {
