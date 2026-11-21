@@ -85,9 +85,10 @@ host whose adapter serves them.
 
 ## Holding it: the provider-word check
 
-- Each declaration names its product's words: `terms: ['GitHub', 'gh ', 'pull request']`,
+- Each declaration names its product's words: `terms: ['GitHub', 'gh', 'pull request']`,
   `['Claude Code', 'CLAUDE.md', '.claude/', '/clear']`, `['Jira', 'JQL']`. Optional, so the plugin API version
-  takes a minor step.
+  takes a minor step. A term matches as a whole word at its word-character edges, so `gh` never hits `high`. Until
+  step 3 moves them into the declarations, the terms live in the check's own `tools/ci/provider-words.ts`.
 - `tools/ci/provider-words-cli.ts` counts each term in `plugins/teamrig/skills/**` and `.claude/skills/**`, with a
   baseline file per skill like `tools/ci/boundaries-cli.ts`: warn mode first, a count may fall but never rise, and it
   fails once a skill reaches zero. Step texts (`steps.md`) and docs about one product are outside its reach.
