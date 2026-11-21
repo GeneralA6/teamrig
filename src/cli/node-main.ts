@@ -102,7 +102,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     secretsGit: gitSecrets(process.env),
     out: entry.out,
     platform: process.platform,
-    host: await loadHostPorts(hostPrograms),
+    host: await loadHostPorts(hostPrograms, undefined, process.env['TEAMRIG_HOST']?.trim() || undefined),
     shippedHosts: await loadShippedHosts(hostPrograms),
     processes: nodeProcesses(),
     sessionProcesses,
