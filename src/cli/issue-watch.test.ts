@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import type { Sleep } from '../core/lock.ts';
 import { KIT_VERSION } from '../core/version.ts';
-import { formatWatchLease, LIFETIME_MS, parseWatchLease } from '../github/watch.ts';
+import { formatWatchLease, LIFETIME_MS, parseWatchLease } from '../sync/watch.ts';
 import type { HiddenRequest, StartOutcome } from '../open/processes.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CLAUDE_SESSION, CLI_PID, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';

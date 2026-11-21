@@ -1,5 +1,5 @@
-import { githubRepoOf } from '../github/pull-conflicts.ts';
 import type { ShellWord } from '../push-guard/tokenizer.ts';
+import { githubRepoOf } from '../sync/pull-conflicts.ts';
 
 /**
  * What a raw `gh` call does, read from its words as gh reads them (T3002, T4819). gh writes with the login its

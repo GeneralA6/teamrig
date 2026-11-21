@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { SECRET_BODY } from '../github/map.ts';
+import { SECRET_BODY } from '../sync/map.ts';
 import { testTask } from '../testing/task.ts';
 import { issueDoc, mirroredIssues, similarIssues, tokens, type SimilarDoc } from './similar.ts';
 

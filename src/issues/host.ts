@@ -1,7 +1,7 @@
 /**
  * The issue host port: where a team's issues and pull requests live, behind names that hold for any host. teamrig
  * writes to a host only through this port, split by kind (Tracker, CodeHost) into small capabilities, and each host
- * (GitHub is the only one so far, src/github/host.ts, and it is both kinds) is an adapter that keeps its own access
+ * (GitHub is the only one so far, src/adapters/connectors/github/host.ts, and it is both kinds) is an adapter that keeps its own access
  * rules. A repository reaches a host only when the team config lists it there.
  */
 
@@ -30,6 +30,16 @@ export function parseIssueTarget(text: string): IssueTarget | undefined {
 /** `owner/name#number`. */
 export function targetText(target: IssueTarget): string {
   return `${target.repo}#${target.number}`;
+}
+
+/**
+ * An issue's page on GitHub, built from its repository and number. Every address teamrig keeps or serves for an
+ * issue is this one, never the string GitHub's API sent: that string is outside text, and a kept field is served
+ * as the team's own. The sync writes it as a closed issue's evidence, and the GitHub adapter serves it as a ref's
+ * page, so it sits beside the issue ref both read.
+ */
+export function issuePage(repo: string, number: number): string {
+  return `https://github.com/${repo}/issues/${number}`;
 }
 
 /** Why an issue was closed, as the host shows it: done, not to be done, or a duplicate of another. */

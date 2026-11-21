@@ -3,8 +3,9 @@ import type { LabelNaming, LabelSpec } from './host.ts';
 import { STATUS_LABEL_SPECS } from './status-push.ts';
 
 /**
- * Every label teamrig makes in a repository that lacks it: the status push's five and the design label. github/gh.ts
- * allows the create of these and no other, word for word, so teamrig never makes a label the docs do not name.
+ * Every label teamrig makes in a repository that lacks it: the status push's five and the design label.
+ * adapters/connectors/github/gh.ts allows the create of these and no other, word for word, so teamrig never makes a
+ * label the docs do not name.
  */
 export const MANAGED_LABEL_SPECS: readonly LabelSpec[] = [...STATUS_LABEL_SPECS, DESIGN_LABEL_SPEC];
 

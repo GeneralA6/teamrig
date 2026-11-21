@@ -1,7 +1,7 @@
 import type { KitConfig } from '../../config/types.ts';
 import { writableObject } from '../../core/jsonl.ts';
-import { addFollow, dropFollow, followTarget, FOLLOWS_FORMAT, formatFollows, parseFollows, type Follows } from '../../github/follows.ts';
-import { issueRef } from '../../github/map.ts';
+import { addFollow, dropFollow, followTarget, FOLLOWS_FORMAT, formatFollows, parseFollows, type Follows } from '../../sync/follows.ts';
+import { issueRef } from '../../sync/map.ts';
 import { noPositionals, onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { fileLockOf } from '../file-locks.ts';
 import { callerOf } from '../inputs.ts';
@@ -11,7 +11,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 /**
  * `follow <owner/name#n>`, `follow --list` and `unfollow <owner/name#n>`: the issues and pull requests a session
  * follows, whose activity the automatic sync tells it as it tells a task's owner the activity of its task's item
- * (github.activity). They are kept in one team file (github/follows.ts), changed under the sync's lock.
+ * (github.activity). They are kept in one team file (sync/follows.ts), changed under the sync's lock.
  */
 
 /** What a follow brings, in the line that confirms it. */
