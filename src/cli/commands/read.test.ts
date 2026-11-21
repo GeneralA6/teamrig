@@ -36,7 +36,7 @@ const HELD = '0123456789abcdef';
  * Every document in one run, the inbox being alpha's and the history that of the first task a team adds: the five of
  * interface 1.0 and those a minor added, so the specs that hold the store unwritten cover each new one.
  */
-const ALL_DOCUMENTS = ['tasks', 'inbox', 'sessions', 'meetings', 'config', 'plan', 'goals', 'history'] as const;
+const ALL_DOCUMENTS = ['tasks', 'inbox', 'sessions', 'meetings', 'config', 'plan', 'goals', 'history', 'stats'] as const;
 const READ_ALL = ['read', ...ALL_DOCUMENTS, '--task', 'T1', '--json', '--session', 'alpha'] as const;
 const ALL_UNCHANGED = ALL_DOCUMENTS.map(() => true);
 /** A text one of teamrig's own secret shapes matches, built from parts so this file holds none. */
@@ -683,7 +683,7 @@ describe('teamrig read --unless', () => {
     const [tasks, , , meetings] = first;
     assert.ok(tasks !== undefined && meetings !== undefined);
     const again = allServed(await kit.run([...READ_ALL, '--unless', heldOf([meetings, tasks])]));
-    assert.deepEqual(unchangedOf(again), [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', false], ['plan', false], ['goals', false], ['history', false]]);
+    assert.deepEqual(unchangedOf(again), [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', false], ['plan', false], ['goals', false], ['history', false], ['stats', false]]);
     assert.deepEqual(again[0], { interface: '1.3', document: 'tasks', revision: tasks['revision'], unchanged: true });
     assert.deepEqual(again.slice(1, 3), first.slice(1, 3));
   });
@@ -710,7 +710,7 @@ describe('teamrig read --unless', () => {
     await post(kit, 'lead', 'alpha', 'the gate is merged');
     assert.deepEqual(
       unchangedOf(allServed(await kit.run([...READ_ALL, '--unless', held]))),
-      [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', true], ['plan', true], ['goals', true], ['history', true]],
+      [['tasks', true], ['inbox', false], ['sessions', false], ['meetings', true], ['config', true], ['plan', true], ['goals', true], ['history', true], ['stats', true]],
     );
   });
 

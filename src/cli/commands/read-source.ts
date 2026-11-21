@@ -5,6 +5,7 @@ import type { TeamPaths } from '../../core/home.ts';
 import type { RevisionParts, SessionPlace } from '../../interface/index.ts';
 import type { Task } from '../../register/fold.ts';
 import type { RegisterEvent } from '../../register/events.ts';
+import type { StatsRange } from '../../register/stats.ts';
 import { MissingSegmentError, readHistory, readWorkingSet, type LayoutPaths } from '../../register/layout.ts';
 import { lacksEventsOf, type RegisterSnapshot } from '../../register/snapshot.ts';
 import type { Kit, LoadedConfig } from '../kit.ts';
@@ -35,6 +36,8 @@ export interface ReadScope {
   readonly sinceHours: number;
   /** The task whose history is served (`--task`); null when the run names none, which only `history` minds. */
   readonly task: string | null;
+  /** The calendar days `stats` counts over (`--range`); `7d` when the run names none, which only `stats` minds. */
+  readonly range: StatsRange;
   /** What the config's own read has to tell: every document is read through it, so each carries these. */
   readonly warnings: readonly string[];
 }
