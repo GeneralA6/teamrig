@@ -1776,7 +1776,7 @@
       "type": "object",
       "properties": {
         "path": {
-          "description": "The absolute path of a UI entry script to start in place of the released UI: a build of your own, for work on the UI itself. Node.js runs it as you, so name only a script you trust. Unset: the released UI.",
+          "description": "The absolute path of a UI entry script to start in place of the released UI: a build of your own, for work on the UI itself. Node.js runs it as you, outside every Claude Code guard, so name only a script you trust and never one in a working tree a session edits. The owner's key: the config guard refuses a session changing it. Unset: the released UI.",
           "type": "string",
           "pattern": "^(?:[A-Za-z]:)?[\\\\/][^\\r\\n]*$"
         }

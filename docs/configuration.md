@@ -756,7 +756,7 @@ The dedicated UI that teamrig ui starts in the terminal it is run in.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `path` | string (matching `^(?:[A-Za-z]:)?[\\/][^\r\n]*$`) |  | The absolute path of a UI entry script to start in place of the released UI: a build of your own, for work on the UI itself. Node.js runs it as you, so name only a script you trust. Unset: the released UI. |
+| `path` | string (matching `^(?:[A-Za-z]:)?[\\/][^\r\n]*$`) |  | The absolute path of a UI entry script to start in place of the released UI: a build of your own, for work on the UI itself. Node.js runs it as you, outside every Claude Code guard, so name only a script you trust and never one in a working tree a session edits. The owner's key: the config guard refuses a session changing it. Unset: the released UI. |
 
 ## `meetingNotices`
 
