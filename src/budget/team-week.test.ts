@@ -33,7 +33,7 @@ const ROOT_KEEPS: WeekFiles = { paths: PATHS, keeper: 'root' };
 
 /** The week's period as stored an hour ago, at `lastPct`. */
 async function storedAt(files: MemoryFiles, lastPct: number): Promise<Period> {
-  const stored: Period = { start: START, end: END, kind: 'week', lastPct, lastAt: NOW - MS_PER_HOUR };
+  const stored: Period = { start: START, end: END, kind: 'week', startPct: 0, lastPct, lastAt: NOW - MS_PER_HOUR };
   await files.write(PATHS.period, formatPeriod(stored));
   return stored;
 }
