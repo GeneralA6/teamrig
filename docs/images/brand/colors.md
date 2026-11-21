@@ -5,8 +5,8 @@ teamrig has two colors, the ones of the README's wordmark ([`../wordmark.svg`](.
 
 | Color | Role | Light theme | Dark theme | Used for |
 | --- | --- | --- | --- | --- |
-| Purple | accent: the "rig" | `#8957e5` | `#a371f7` | the word "rig" (regular weight); in the mark, the frame: the rig that holds the team's panes |
-| Gray | base: the "team" | `#6e7781` | `#8b949e` | the word "team" (bold); in the mark, the three panes: the team's sessions |
+| Purple | accent: the "rig" | `#8957e5` | `#a371f7` | the word "rig" (bold); in the mark, the rig: the frame, the tall lead pane and the two bridges from it |
+| Gray | base: the "team" | `#6e7781` | `#8b949e` | the word "team" (regular weight); in the mark, the two team panes: the sessions the lead runs |
 
 - The dark values come in through `@media (prefers-color-scheme: dark)` in `logo.svg` and `icon.svg`, as in the
   wordmark.
