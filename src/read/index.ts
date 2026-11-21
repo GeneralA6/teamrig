@@ -103,6 +103,11 @@ export {
   type LaterCard,
   type OwnerCards,
 } from '../register/owner-waits.ts';
+// A card's security verdict line in teamrig's words, whether the verdict still reads the card as it asks now, and the
+// escape teamrig prints outside text with (control characters and bidi marks), so a reader draws a card as teamrig does.
+export { securityLine } from '../register/card.ts';
+export { verdictIsCurrent, type SecurityVerdict, type SecurityVerdictPin, type VerdictRead } from '../register/security-verdict.ts';
+export { printable } from '../core/printable.ts';
 
 // Each team and session against the others and its own usual (T1866), as `teamrig stats` and the pane's Bottlenecks read it.
 export {

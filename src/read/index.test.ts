@@ -188,4 +188,14 @@ describe('the read entry', () => {
     assert.deepEqual(['alpha', 'bravo'].map((session) => read.closedOf(log.records, session)), [undefined, bravo]);
     assert.deepEqual(read.SESSION_LOG_IN_STATE, ['session-log.jsonl']);
   });
+
+  it("draws a decision card's security line and escapes outside text as teamrig prints them (#1656)", () => {
+    const card = { question: 'Grant the deploy key', options: ['Grant it', 'Hold it'], recommend: 'Grant it', byDefault: 'Hold it' };
+    const verdict = { text: 'Pass: scoped key', read: { question: card.question, options: card.options, recommend: card.recommend }, by: 'bravo', at: '2030-01-08T09:00:00.000Z' };
+    assert.equal(read.verdictIsCurrent(verdict, card), true);
+    assert.equal(read.securityLine(card, verdict), 'security: Pass: scoped key (verdict by bravo)');
+    assert.equal(read.verdictIsCurrent(verdict, { ...card, recommend: 'Hold it' }), false);
+    assert.match(read.securityLine({ ...card, recommend: 'Hold it' }, verdict) ?? '', /^security: STALE: /);
+    assert.equal(read.printable('a\nb‮'), 'a\\nb\\u202e');
+  });
 });

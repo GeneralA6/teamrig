@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD } from '../testing/card.ts';
-import { cardLines, cardProblem, cardTexts, gateChoices, gateOf, keptCard, namedTaskIds, parseCard, plainWords, proofWordOf, sameCard, securityWordOf, typedHandStep } from './card.ts';
+import { cardLines, cardProblem, cardTexts, gateChoices, gateOf, keptCard, namedTaskIds, parseCard, plainWords, proofWordOf, sameCard, securityLine, securityWordOf, typedHandStep } from './card.ts';
 import type { HandStepAudit, RunFiles } from './hand-step.ts';
 
 const WHY_ASK = 'the ordered tier cannot ship at that price';
@@ -119,6 +119,26 @@ describe('the decision card', () => {
     assert.equal(cardLines({ ...TEST_OWNER_CARD, byDefault: 'Pro ships on the due date' }, '  ', [], NO_FILES, verdict)[2], '  security: Pass: read only (verdict by bravo)', 'the default is not what it read');
     assert.equal(cardLines(TEST_OWNER_CARD, '  ', [], NO_FILES, null).length, cardLines(TEST_OWNER_CARD, '  ', [], NO_FILES, verdict).length - 1, 'no verdict, no line');
     assert.equal(cardLines({ ...TEST_OWNER_CARD, security: true }, '  ', [], NO_FILES, null)[2], "  security: no verdict yet; it reaches the owner only with the security reviewer's", 'a card marked --security says it waits on one');
+  });
+
+  it("gives a card's security line from its verdict as cardLines prints it, for a reader that draws the card (#1656)", () => {
+    const read = { question: TEST_CARD.question, options: TEST_CARD.options, recommend: TEST_CARD.recommend };
+    const verdict = { text: 'Pass: read only', read, by: 'bravo', at: '2030-01-08T09:00:00.000Z' };
+    const cards = [TEST_OWNER_CARD, { ...TEST_OWNER_CARD, recommend: 'Pro, the bigger launch' }, { ...TEST_OWNER_CARD, security: true as const }];
+    assert.equal(securityLine(TEST_OWNER_CARD, verdict), 'security: Pass: read only (verdict by bravo)');
+    assert.equal(securityLine(cards[1]!, verdict), "security: STALE: bravo's verdict read another question, options or recommendation; do not decide until it is read again");
+    assert.equal(securityLine({ ...TEST_OWNER_CARD, security: true }, null), "security: no verdict yet; it reaches the owner only with the security reviewer's");
+    assert.equal(securityLine(TEST_OWNER_CARD, null), undefined, 'no verdict and no --security mark: no line');
+    for (const card of cards) {
+      for (const given of [verdict, null]) {
+        const line = securityLine(card, given);
+        assert.deepEqual(
+          cardLines(card, '  ', [], NO_FILES, given).filter((printed) => printed.startsWith('  security: ')),
+          line === undefined ? [] : [`  ${line}`],
+          'cardLines prints the same words',
+        );
+      }
+    }
   });
 
   it('reads and keeps the --security mark as long as the card, and refuses any other value (T2761)', () => {
