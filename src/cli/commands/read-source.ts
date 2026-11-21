@@ -4,8 +4,9 @@ import type { KitConfig } from '../../config/types.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import type { RevisionParts, SessionPlace } from '../../interface/index.ts';
 import type { Task } from '../../register/fold.ts';
-import { MissingSegmentError, readWorkingSet, type LayoutPaths } from '../../register/layout.ts';
-import type { RegisterSnapshot } from '../../register/snapshot.ts';
+import type { RegisterEvent } from '../../register/events.ts';
+import { MissingSegmentError, readHistory, readWorkingSet, type LayoutPaths } from '../../register/layout.ts';
+import { lacksEventsOf, type RegisterSnapshot } from '../../register/snapshot.ts';
 import type { Kit, LoadedConfig } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import type { KitTree } from '../tree.ts';
@@ -32,6 +33,8 @@ export interface ReadScope {
   /** Every team of the kit home, read once for the whole run by whichever part asks first. */
   readonly tree: () => Promise<KitTree>;
   readonly sinceHours: number;
+  /** The task whose history is served (`--task`); null when the run names none, which only `history` minds. */
+  readonly task: string | null;
   /** What the config's own read has to tell: every document is read through it, so each carries these. */
   readonly warnings: readonly string[];
 }
@@ -117,6 +120,32 @@ export async function workingSetOf(runtime: CliRuntime, folder: ServedFolder, la
     if (error instanceof MissingSegmentError) {
       const segment = servedPathOf(folder, error.path);
       return { tasks: new Map(), problems: [`${segment}: missing, so the register's archive is incomplete and its tasks cannot be read`] };
+    }
+    throw error;
+  }
+}
+
+/** One task's events as a document reads them, and what could not be read of the register. */
+export interface TaskEvents {
+  readonly events: readonly RegisterEvent[];
+  readonly problems: readonly string[];
+}
+
+/**
+ * Every event the register holds of task `id`, in the order they were written, as `show` reads them: from the
+ * working set where it holds them all, else from the whole history, whose cost grows with the archive. An archive
+ * with a segment gone serves no event and says why, as {@link workingSetOf} does: half a history would read as a
+ * whole one.
+ */
+export async function taskEventsOf(runtime: CliRuntime, folder: ServedFolder, layout: LayoutPaths, id: string): Promise<TaskEvents> {
+  try {
+    const recent = await readWorkingSet(runtime.files, layout);
+    const snapshot = lacksEventsOf(recent, id) ? await readHistory(runtime.files, layout) : recent;
+    return { events: snapshot.read.events.filter((event) => event.id === id), problems: damageOf(snapshot, folder, layout.tail) };
+  } catch (error) {
+    if (error instanceof MissingSegmentError) {
+      const segment = servedPathOf(folder, error.path);
+      return { events: [], problems: [`${segment}: missing, so the register's archive is incomplete and the task's history cannot be read`] };
     }
     throw error;
   }
