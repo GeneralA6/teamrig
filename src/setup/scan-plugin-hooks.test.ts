@@ -2,9 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { SecretScanner } from '../core/secrets.ts';
+import type { HostPlugin } from '../ports/host/index.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { shippedPlugin } from '../testing/shipped-plugin.ts';
 import { hookOutputKey, type HookOutputs } from './scan-hook-output.ts';
 import { scanPluginHooks, type PluginHookLocations } from './scan-plugin-hooks.ts';
+
+const PLUGIN = shippedPlugin();
 
 const CLAUDE_DIR = join(resolve('/', 'u'), '.claude');
 const PROJECT = resolve('/', 'work', 'app');
@@ -52,7 +56,7 @@ const START_FINDING = /^SessionStart hook "node \$\{CLAUDE_PLUGIN_ROOT\}\/main\.
 describe('scanPluginHooks', () => {
   it('names a plugin hook that printed into the context, with its plugin and hooks file, once over its matchers', async () => {
     const files = new MemoryFiles({ [PLUGIN_LIST]: pluginList({ 'kit@mk': [USER_INSTALL] }), [KIT_HOOKS]: KIT_HOOKS_FILE });
-    const found = await scanPluginHooks(files, AT, HOOKS, SECRETS);
+    const found = await scanPluginHooks(files, PLUGIN, AT, HOOKS, SECRETS);
     assert.deepEqual(
       found.map((finding) => [finding.kind, finding.path, finding.copies]),
       [['context-hook', KIT_HOOKS, 0]],
@@ -63,13 +67,13 @@ describe('scanPluginHooks', () => {
   it('names one finding for two installs of one plugin that apply', async () => {
     const project = { scope: 'project', installPath: KIT, version: '1.0.0', projectPath: PROJECT };
     const files = new MemoryFiles({ [PLUGIN_LIST]: pluginList({ 'kit@mk': [USER_INSTALL, project] }), [KIT_HOOKS]: KIT_HOOKS_FILE });
-    assert.equal((await scanPluginHooks(files, AT, HOOKS, SECRETS)).length, 1);
+    assert.equal((await scanPluginHooks(files, PLUGIN, AT, HOOKS, SECRETS)).length, 1);
   });
 
   it('skips a plugin installed for another project', async () => {
     const elsewhere = { scope: 'local', installPath: KIT, version: '1.0.0', projectPath: OTHER_PROJECT };
     const files = new MemoryFiles({ [PLUGIN_LIST]: pluginList({ 'kit@mk': [elsewhere] }), [KIT_HOOKS]: KIT_HOOKS_FILE });
-    assert.deepEqual(await scanPluginHooks(files, AT, HOOKS, SECRETS), []);
+    assert.deepEqual(await scanPluginHooks(files, PLUGIN, AT, HOOKS, SECRETS), []);
   });
 
   it('skips a plugin the last settings file to name it turns off, and keeps one it turns back on', async () => {
@@ -80,16 +84,16 @@ describe('scanPluginHooks', () => {
       [USER_SETTINGS]: json({ enabledPlugins: { 'kit@mk': true } }),
       [LOCAL_SETTINGS]: json({ enabledPlugins: { 'kit@mk': false } }),
     });
-    assert.deepEqual(await scanPluginHooks(off, AT, HOOKS, SECRETS), []);
+    assert.deepEqual(await scanPluginHooks(off, PLUGIN, AT, HOOKS, SECRETS), []);
     // The order is the one it is told the host reads the files in, not one of its own.
-    assert.equal((await scanPluginHooks(off, { ...AT, sessionSettings: [LOCAL_SETTINGS, USER_SETTINGS] }, HOOKS, SECRETS)).length, 1);
+    assert.equal((await scanPluginHooks(off, PLUGIN, { ...AT, sessionSettings: [LOCAL_SETTINGS, USER_SETTINGS] }, HOOKS, SECRETS)).length, 1);
     const on = new MemoryFiles({
       [PLUGIN_LIST]: list,
       [KIT_HOOKS]: KIT_HOOKS_FILE,
       [USER_SETTINGS]: json({ enabledPlugins: { 'kit@mk': false } }),
       [LOCAL_SETTINGS]: json({ enabledPlugins: { 'kit@mk': true, 'other@mk': 'yes' } }),
     });
-    assert.equal((await scanPluginHooks(on, AT, HOOKS, SECRETS)).length, 1);
+    assert.equal((await scanPluginHooks(on, PLUGIN, AT, HOOKS, SECRETS)).length, 1);
   });
 
   it('reads the hooks files a manifest names, each once, and hooks a manifest holds inline', async () => {
@@ -104,7 +108,7 @@ describe('scanPluginHooks', () => {
       [inlineManifest]: json({ name: 'tool', hooks: { UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'tool remind' }] }] } }),
     });
     const hooks: HookOutputs = new Map([...HOOKS, [hookOutputKey('UserPromptSubmit', 'tool remind'), { runs: 4, printed: 4, chars: 800 }]]);
-    const found = await scanPluginHooks(files, AT, hooks, SECRETS);
+    const found = await scanPluginHooks(files, PLUGIN, AT, hooks, SECRETS);
     assert.deepEqual(
       found.map((finding) => finding.path),
       [extra, inlineManifest],
@@ -119,15 +123,24 @@ describe('scanPluginHooks', () => {
       [join(KIT, 'extra.json')]: KIT_HOOKS_FILE,
     });
     assert.deepEqual(
-      (await scanPluginHooks(files, AT, HOOKS, SECRETS)).map((finding) => finding.path),
+      (await scanPluginHooks(files, PLUGIN, AT, HOOKS, SECRETS)).map((finding) => finding.path),
       [join(KIT, 'extra.json')],
     );
   });
 
   it('finds nothing with no plugin list, a list of another shape, or a hooks file that is not JSON', async () => {
-    assert.deepEqual(await scanPluginHooks(new MemoryFiles({}), AT, HOOKS, SECRETS), []);
-    assert.deepEqual(await scanPluginHooks(new MemoryFiles({ [PLUGIN_LIST]: json({ plugins: { 'kit@mk': 'bad' } }) }), AT, HOOKS, SECRETS), []);
+    assert.deepEqual(await scanPluginHooks(new MemoryFiles({}), PLUGIN, AT, HOOKS, SECRETS), []);
+    assert.deepEqual(await scanPluginHooks(new MemoryFiles({ [PLUGIN_LIST]: json({ plugins: { 'kit@mk': 'bad' } }) }), PLUGIN, AT, HOOKS, SECRETS), []);
     const notJson = new MemoryFiles({ [PLUGIN_LIST]: pluginList({ 'kit@mk': [USER_INSTALL] }), [KIT_HOOKS]: '{ not json' });
-    assert.deepEqual(await scanPluginHooks(notJson, AT, HOOKS, SECRETS), []);
+    assert.deepEqual(await scanPluginHooks(notJson, PLUGIN, AT, HOOKS, SECRETS), []);
+  });
+
+  it("reads the list the host's plugin port names, with the installs it reads there", async () => {
+    const stub: Pick<HostPlugin, 'installs' | 'listFile'> = {
+      listFile: 'list.txt',
+      installs: (text) => (text === 'one' ? [{ key: 'kit@mk', plugin: 'kit', marketplace: 'mk', reach: { kind: 'every project' }, installPath: KIT, version: '1.0.0', revision: '' }] : undefined),
+    };
+    const files = new MemoryFiles({ [join(CLAUDE_DIR, 'plugins', 'list.txt')]: 'one', [KIT_HOOKS]: KIT_HOOKS_FILE });
+    assert.match((await scanPluginHooks(files, stub, AT, HOOKS, SECRETS))[0]?.what ?? '', START_FINDING);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { STORE_FOLDERS_MAX } from '../core/plugin-store.ts';
+import { shippedPlugin } from '../testing/shipped-plugin.ts';
 import {
   CHECK_MS,
   installedFingerprint,
@@ -51,8 +52,10 @@ const AT_42 = installed({ [TEAMRIG]: [teamrig('0.42.0', 'bbb')], [PANE]: [pane('
 const AT_43 = installed({ [TEAMRIG]: [teamrig('0.43.0', 'ccc')], [PANE]: [pane('0.7.0')] });
 const AT_42_PANE_8 = installed({ [TEAMRIG]: [teamrig('0.42.0', 'bbb')], [PANE]: [pane('0.8.0')] });
 
+const PLUGIN = shippedPlugin();
+
 function fingerprintOf(text: string): string {
-  const fingerprint = installedFingerprint(text, ROOT);
+  const fingerprint = installedFingerprint(PLUGIN, text, ROOT);
   assert.ok(fingerprint !== undefined, 'a test file of the right shape');
   return fingerprint;
 }
@@ -63,6 +66,7 @@ function fingerprintOf(text: string): string {
  */
 class FakeHost implements ReloadHandHost {
   readonly pluginsFolder = PLUGINS;
+  readonly plugin = PLUGIN;
   time = 0;
   root = ROOT;
   /** When each path of the plugin store last changed; a path not here is missing. */
@@ -494,12 +498,19 @@ describe('installedFingerprint', () => {
     const bare = { scope: 'user', installPath: '/home/me/.claude/plugins/cache/m/p/1.0.0' };
     const a = installed({ [TEAMRIG]: [teamrig('0.41.0', 'aaa')], 'p@m': [bare] });
     const b = installed({ 'p@m': [bare], [TEAMRIG]: [teamrig('0.41.0', 'aaa')] });
-    assert.equal(installedFingerprint(a, ROOT), installedFingerprint(b, ROOT));
+    assert.equal(installedFingerprint(PLUGIN, a, ROOT), installedFingerprint(PLUGIN, b, ROOT));
     assert.equal(
-      installedFingerprint(installed({ 'p@m': [bare] }), ROOT),
+      installedFingerprint(PLUGIN, installed({ 'p@m': [bare] }), ROOT),
       JSON.stringify(['p@m', '/home/me/.claude/plugins/cache/m/p/1.0.0', '', '']),
     );
-    assert.equal(installedFingerprint('{"version": 2, "plugins": {}}', ROOT), '');
+    assert.equal(installedFingerprint(PLUGIN, '{"version": 2, "plugins": {}}', ROOT), '');
+  });
+
+  it("reads the list through the host's plugin port, whatever its shape", () => {
+    const install = { key: 'k', plugin: 'p', marketplace: 'm', reach: { kind: 'every project' }, installPath: '/store/p', version: '2', revision: 'r' } as const;
+    const stub = { installs: (text: string) => (text === 'the list' ? [install] : undefined) };
+    assert.equal(installedFingerprint(stub, 'the list', ROOT), JSON.stringify(['k', '/store/p', '2', 'r']));
+    assert.equal(installedFingerprint(stub, AT_41, ROOT), undefined);
   });
 
   it('changes with an install added, removed or moved to another version or commit', () => {

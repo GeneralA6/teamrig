@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeHooks } from '../testing/fake-hooks.ts';
+import { shippedPlugin } from '../testing/shipped-plugin.ts';
 import { APPLY_TIMEOUT_MS, applyUpdate, GIT_TIMEOUT_MS, hookGit } from './runner.ts';
 
 describe('hookGit', () => {
@@ -26,10 +27,11 @@ describe('hookGit', () => {
 
 describe('applyUpdate', () => {
   const claude = { command: '/bin/node', prefix: ['/lib/claude/cli.js'] };
+  const plugin = shippedPlugin();
 
   it('updates the marketplace, then the plugin, through Claude Code', async () => {
     const hooks = new FakeHooks();
-    assert.deepEqual(await applyUpdate({ hooks, env: { PATH: '/bin' }, claude, cwd: '/home' }, 'teamrig', 'kit'), { ok: true });
+    assert.deepEqual(await applyUpdate({ hooks, env: { PATH: '/bin' }, claude, cwd: '/home', plugin }, 'teamrig', 'kit'), { ok: true });
     assert.deepEqual(hooks.commands, [
       '/bin/node /lib/claude/cli.js plugin marketplace update kit',
       '/bin/node /lib/claude/cli.js plugin update teamrig@kit',
@@ -40,11 +42,18 @@ describe('applyUpdate', () => {
 
   it('stops at the first step that fails, naming it with what it printed', async () => {
     const hooks = new FakeHooks().answer(['/bin/node', '/lib/claude/cli.js', 'plugin', 'marketplace', 'update', 'kit'], { lines: ['network down '], end: 1 });
-    assert.deepEqual(await applyUpdate({ hooks, env: {}, claude, cwd: '/home' }, 'teamrig', 'kit'), {
+    assert.deepEqual(await applyUpdate({ hooks, env: {}, claude, cwd: '/home', plugin }, 'teamrig', 'kit'), {
       ok: false,
       step: 'claude plugin marketplace update kit',
       said: 'network down',
     });
     assert.equal(hooks.ran.length, 1);
+  });
+
+  it("runs the steps the host's plugin port names, in its order", async () => {
+    const hooks = new FakeHooks();
+    const steps = { updateSteps: (name: string, from: string) => [['refresh', from], ['install', name]] };
+    assert.deepEqual(await applyUpdate({ hooks, env: {}, claude, cwd: '/home', plugin: steps }, 'teamrig', 'kit'), { ok: true });
+    assert.deepEqual(hooks.commands, ['/bin/node /lib/claude/cli.js refresh kit', '/bin/node /lib/claude/cli.js install teamrig']);
   });
 });
