@@ -33,7 +33,9 @@ Flags:
   refused: `REFUSED add needs --description "<what and why, in plain words>"`. `teamrig show` prints it under
   the title line.
 - `--priority p<n>`: required; `p1` keep the lights on, `p2` correctness, `p3` scale, `p4` this week's owner
-  decisions, `p5` if budget allows (the defaults).
+  decisions, `p5` if budget allows (the defaults); above them every team has `p0`, urgent right now, and `blocker`,
+  drop everything and fix it now, which needs a description and no wait on another task (see the guide's tasks.md,
+  Priority).
 - `--owner <session>`: who does it; default you. Another session gets an inbox line naming the task, and stderr
   says so (`NOTE api has an inbox line: ...`). A p0 also wakes the owner at its idle prompt, its team's wake check
   reading the task from its register (on another team's too), and stderr says so: `NOTE api is woken at its idle
@@ -77,7 +79,8 @@ Flags:
   there is sourced `owner`, its history naming the lead as the writer; from any other session it is refused, and
   any other source is refused too.
 - `--issue "<public title>"`: opens the task's GitHub issue with this title and `--issue-body`, labelled by
-  `--type` (`bug`, else `enhancement`) and `--priority` (p0 and p1 as `p1`, p2 as `p2`, lower as `p3`), and points
+  `--type` (`bug`, else `enhancement`) and `--priority` (a blocker, p0 and p1 as `p1`, p2 as `p2`, lower as `p3`:
+  teamrig creates no label but its own), and points
   the task's ref at it, so the sync adds no second task for it. The issue is public: one-line title, no task id,
   no secret, no private data (a home folder path, an e-mail address, an IP address, an internal host); the task
   keeps its own title and description. It opens with the token saved for the repository's owner. All or nothing:
@@ -348,7 +351,8 @@ Flags:
 - `--description "<what and why>"|none`: a new description; the owner only. `none` clears it only when
   `register.requireDescription` is off.
 - `--owner <session>`: hand the task to another session, which gets an inbox line naming it.
-- `--priority p<n>`: a new priority.
+- `--priority p<n>`: a new priority, `blocker` included; making a task a blocker posts its owner's leader and the
+  lead a line with a wake ask.
 - `--ref <where>|none`: a new pointer, or `none` to clear it.
 - `--due <date>|none`: a new deadline, or `none` to clear it.
 - `--goals a,b|none`: new goal tags, or `none`: the task serves no goal. Under `register.goals` `checked` or
@@ -1958,14 +1962,15 @@ Flags:
   to wake, so it is never counted in `WAKES`: its reopen starts at once through the idle pass's own reopen, judged and
   limited as the pass does, and `REOPENS <id>` says so, or `CLOSED: <id> was not woken: <why>` when the host has no room,
   an install is not settled or the idle pass is off; the next pass tries again each minute, or `teamrig open <id>`.
-  A line sent with neither `--wake now` nor `--wake-by` that names right-now work by id (an open, in-progress,
-  verifying or waiting task at p0 or more urgent, read as `teamrig show` reads the id) wakes as `--wake now`, since
-  such work never waits for a prompt, and a `NOTE` on stderr says so; where `--wake now` would be refused (a group
-  from a session that leads no one, another team from a member), the line posts with no wake and the `NOTE` says why.
-  A line to more than one receiver wakes only those of them who act on the work now: its owner, the owner of each
-  unfinished task it is planned after or waits on, and each session asked for one of its open decisions or approvals;
-  the rest read it at their next prompt, and when none of them acts on it the line wakes no one. A p0 named to `all`
-  so wakes one tab, not the whole team. A finished task wakes no one, so set a task's status before the line that says
+  A line sent with neither `--wake now` nor `--wake-by` that names a blocker by id (an open, in-progress, verifying
+  or waiting task at priority blocker, read as `teamrig show` reads the id) wakes as `--wake now`, since a blocker
+  never waits for a prompt, and a `NOTE` on stderr says so; where `--wake now` would be refused (a group from a
+  session that leads no one, another team from a member), the line posts with no wake and the `NOTE` says why. A line
+  naming p0 work wakes no one by itself: the receiver's team's wake check wakes it for p0 work it can go on with,
+  within `wake.minGapMinutes`. A line to more than one receiver wakes only those of them who act on the blocker now:
+  its owner, the owner of each unfinished task it is planned after or waits on, and each session asked for one of its
+  open decisions or approvals; the rest read it at their next prompt, and when none of them acts on it the line wakes
+  no one. A blocker named to `all` so wakes one tab, not the whole team. A finished task wakes no one, so set a task's status before the line that says
   it is done.
 - `--wake-by <time>`: wakes each receiver at that time instead (`HH:MM` on the team's clock, or `YYYY-MM-DD HH:MM`),
   and only if it has not seen the line by then: a receiver that read it, or was shown it at a prompt or a tool

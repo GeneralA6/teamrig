@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CliHarness, TEAM } from '../testing/cli-harness.ts';
+import { join } from 'node:path';
+import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { WakeAsks } from '../wake/asks.ts';
 import { EXIT } from './runtime.ts';
 
 const TOLD = 'NOTE bravo has an inbox line: T1 is yours (p2, due 2030-01-10): Ship the docs';
@@ -89,9 +91,53 @@ describe("runCli: a p0 handed to another session says its team's wake check wake
     assert.deepEqual(await handed(new CliHarness(), 'p1'), ['NOTE bravo has an inbox line: T1 is yours (p1): Ship the change']);
   });
 
+  it('names the wake of a blocker, the level above p0 (T4329)', async () => {
+    assert.deepEqual(await handed(new CliHarness(), 'blocker'), [
+      'NOTE bravo has an inbox line: T1 is yours (blocker): Ship the change',
+      'NOTE bravo is woken at its idle prompt for T1, a blocker, so no --wake now is needed',
+      'NOTE lead has an inbox line: T1 is a blocker of bravo: Ship the change; bravo drops the rest to fix it now (take it over, or lower it to p0 if it blocks no one)',
+    ]);
+  });
+
   it('names no wake while the team has wakes off, nor for a line it could not post', async () => {
     assert.deepEqual(await handed(new CliHarness({ ...TEAM, wake: { enabled: false } }), 'p0'), ['NOTE bravo has an inbox line: T1 is yours (p0): Ship the change']);
     const unsent = await handed(new CliHarness({ ...TEAM, register: { secretPatterns: ['is yours'] } }), 'p0');
     assert.deepEqual(unsent.map((line) => line.split(':')[0]), ['WARN bravo was not told of T1']);
+  });
+});
+
+describe("runCli: a task made a blocker wakes the owner's leader and the lead at once (T4329)", () => {
+  const ASKS = join(TEAM_HOME, 'state', 'wake-asks');
+  const NOTICE = 'T1 is a blocker of bravo: Restore the queue; bravo drops the rest to fix it now (take it over, or lower it to p0 if it blocks no one)';
+
+  async function asksOf(kit: CliHarness, session: string): Promise<(string | undefined)[]> {
+    return (await new WakeAsks(kit.files, ASKS).read(session)).map((stored) => stored.ask?.text);
+  }
+
+  it("tells the owner's sub-lead, with a wake ask, and not the lead who added it", async () => {
+    const kit = new CliHarness({ ...TEAM, leads: { alpha: ['bravo'] } });
+    const added = await kit.run(['add', '--title', 'Restore the queue', '--description', 'every merge waits on it', '--priority', 'blocker', '--owner', 'bravo', '--session', 'lead']);
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    assert.deepEqual(await inboxOf(kit, 'alpha'), [`- 2030-01-08 10:00 UTC lead: ${NOTICE}`]);
+    assert.deepEqual(await asksOf(kit, 'alpha'), [NOTICE]);
+    assert.deepEqual(await inboxOf(kit, 'lead'), []);
+  });
+
+  it('tells the lead when the owner raises its own task to a blocker, and nobody when it already was one', async () => {
+    const kit = new CliHarness();
+    await kit.run(['add', '--title', 'Restore the queue', '--description', 'every merge waits on it', '--priority', 'p1', '--session', 'bravo']);
+    const raised = await kit.run(['update', 'T1', '--priority', 'blocker', '--session', 'bravo']);
+    assert.equal(raised.code, EXIT.ok, raised.stderr.join('\n'));
+    assert.deepEqual(await inboxOf(kit, 'lead'), [`- 2030-01-08 10:00 UTC bravo: ${NOTICE}`]);
+    assert.deepEqual(await asksOf(kit, 'lead'), [NOTICE]);
+
+    const noted = await kit.run(['update', 'T1', '--note', 'the queue log shows the lock held', '--session', 'bravo']);
+    assert.deepEqual([noted.code, await inboxOf(kit, 'lead')], [EXIT.ok, []]);
+  });
+
+  it('tells no leader of a p0', async () => {
+    const kit = new CliHarness();
+    await kit.run(['add', '--title', 'Restore the queue', '--description', 'every merge waits on it', '--priority', 'p0', '--session', 'bravo']);
+    assert.deepEqual(await inboxOf(kit, 'lead'), []);
   });
 });

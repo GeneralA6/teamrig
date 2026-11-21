@@ -1,8 +1,8 @@
 import type { FocusConfig } from '../config/types.ts';
-import { isNonNegativeInteger, isRecord } from '../core/guards.ts';
+import { isRecord } from '../core/guards.ts';
 import { classOf } from '../register/focus.ts';
 import type { Task } from '../register/fold.ts';
-import { ACTIVE_STATUSES, TASK_ID } from '../register/model.ts';
+import { ACTIVE_STATUSES, isPriorityId, TASK_ID } from '../register/model.ts';
 import type { LineFront } from './line-front.ts';
 
 /**
@@ -130,7 +130,7 @@ export function isLineRequest(value: unknown): value is LineRequest {
   return (
     isStepKind(kind) &&
     (task === undefined || typeof task === 'string') &&
-    (priority === undefined || isNonNegativeInteger(priority)) &&
+    (priority === undefined || isPriorityId(priority)) &&
     typeof workClass === 'string' &&
     typeof classPct === 'number' &&
     Number.isFinite(classPct) &&

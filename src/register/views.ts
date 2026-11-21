@@ -214,15 +214,15 @@ export interface PlacedRow {
  * Why `row` sorts ahead of `next`, the row after it, in plan order: the first plan key on which they differ, in words:
  * `expedite`, `can move` (`next` has a need not finished), `score 21.3 (A1 #1)` (its score, and the ranked goal it
  * serves), `in progress`, `due` (the row shows the date), `unblocks T566 p1 +2` (the best task that needs it, its
- * priority and how many more), `in week 01-07`, `size 0.5%`. Undefined when the row shows it already (pinned, or a band
- * the row's class names), when only the number decides (age, the older first), when they tie, or when `next` sorts
- * ahead. Each row is placed by its own register's tree.
+ * priority and how many more), `in week 01-07`, `size 0.5%`. Undefined when the row shows it already (a blocker its
+ * priority names, pinned, or a band the row's class names), when only the number decides (age, the older first), when
+ * they tie, or when `next` sorts ahead. Each row is placed by its own register's tree.
  */
 export function aheadReason(row: PlacedRow, next: PlacedRow): string | undefined {
   const place = row.tree.placeOf(row.task);
   const other = next.tree.placeOf(next.task);
   const key = decidingKey(place, other);
-  if (key === undefined || key === 'pinned' || key === 'age' || planOrder(place, other) > 0) {
+  if (key === undefined || key === 'holding' || key === 'pinned' || key === 'age' || planOrder(place, other) > 0) {
     return undefined;
   }
   switch (key) {
@@ -607,6 +607,15 @@ export function formatWaitingOnYou(entry: WaitingOnYou, titleChars: number, tree
  */
 export function assignedNotice(task: Pick<Task, 'id' | 'priority' | 'due' | 'title'>, zone: TimeZone): string {
   return `${task.id} is yours (${priorityAndDue(task, zone)}): ${task.title}`;
+}
+
+/**
+ * The line the owner's leader and the lead get when a task becomes a blocker (T4329), so the ones who set work order
+ * can take it over or lower it: `T5 is a blocker of bravo: Restore the queue; bravo drops the rest to fix it now (take
+ * it over, or lower it to p0 if it blocks no one)`.
+ */
+export function blockerNotice(task: Pick<Task, 'id' | 'owner' | 'title'>): string {
+  return `${task.id} is a blocker of ${task.owner}: ${task.title}; ${task.owner} drops the rest to fix it now (take it over, or lower it to p0 if it blocks no one)`;
 }
 
 /**

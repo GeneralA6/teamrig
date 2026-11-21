@@ -745,11 +745,17 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(issues), ['contextFiles.maxMemoryIndexChars']);
   });
 
+  it('refuses a blocker allowance under an hour and keeps the default (T4329)', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, register: { check: { blockerOpenAfterHours: 0 } } });
+    assert.equal(config.register.check.blockerOpenAfterHours, 4);
+    assert.deepEqual(paths(issues), ['register.check.blockerOpenAfterHours']);
+  });
+
   it('keeps valid overrides', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
       roles: { lead: 'alpha', deliveryOwner: 'bravo', securityReviewer: 'bravo' },
-      register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['waiting'], check: { prioritySkipAfterHours: 12, maxSelfMadePerDay: 0, goalProgressDays: 2, overSizeMultiple: 1.5 } },
+      register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['waiting'], check: { prioritySkipAfterHours: 12, blockerOpenAfterHours: 2, maxSelfMadePerDay: 0, goalProgressDays: 2, overSizeMultiple: 1.5 } },
       delivery: { schedule: { queueCutoffUtc: '22:30' } },
       budget: { enabled: true, targetPct: 95 },
       paths: { inbox: '/srv/team/inbox' },
@@ -763,6 +769,7 @@ describe('parseConfig', () => {
       staleAfterHours: 72,
       notPickedUpAfterHours: 24,
       prioritySkipAfterHours: 12,
+      blockerOpenAfterHours: 2,
       maxSelfMadePerDay: 0,
       goalProgressDays: 2,
       overSizeMultiple: 1.5,

@@ -23,6 +23,7 @@ teamrig plan                                       # the week in force, grouped 
 ```
 
 - What goes first: `list`, `plan` and `start` rank by band, then score, and each row shows its class and score. A
+  `blocker` its owner can take up comes before all (its owner starts nothing else until it is fixed). A `blocker` or
   `p0`, a Maintenance task marked critical and a `p1` you asked for go ahead of every score, then Roadmap and
   Maintenance, then the rest. Within a band, a task that cannot move yet (a wait not cleared, or it comes after a task
   not finished) goes after the ones that can. The score is what a delay costs (the value of the class and the best goal

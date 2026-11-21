@@ -1,4 +1,4 @@
-import { NOW_PRIORITY, priorityLevels } from '../config/priorities.ts';
+import { isRightNow, priorityLevels } from '../config/priorities.ts';
 import type { PriorityConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, recordField } from '../core/guards.ts';
@@ -63,7 +63,7 @@ export function workWeightOf(work: WorkByPriority | undefined): number {
 export interface QueuedWork {
   /** Each session's top queued task's weight under its priority (`workWeights`); a session with no queued work is not in it. */
   readonly weights: ReadonlyMap<string, WorkByPriority>;
-  /** Each session's queued p0 task ids, in the register's order; a session with none is not in it. */
+  /** Each session's queued p0 and blocker task ids, in the register's order; a session with none is not in it. */
   readonly urgent: ReadonlyMap<string, readonly string[]>;
   /** Each session's answers another session waits on (`awaitedAnswers`), which go on past the daily stop as p0 work does. */
   readonly awaited: ReadonlyMap<string, readonly string[]>;
@@ -122,7 +122,7 @@ export function awaitedAnswers(all: readonly WorkTask[]): Map<string, string[]> 
 }
 
 /**
- * The sessions' queued work at `now`: `workWeights`, each session's open and in-progress p0 tasks, the answers others
+ * The sessions' queued work at `now`: `workWeights`, each session's open and in-progress p0 and blocker tasks, the answers others
  * wait on it for, every task's size base, and the like tasks.
  */
 export function queuedWork(tasks: Iterable<WorkTask>, priorities: readonly PriorityConfig[], now: number): QueuedWork {
@@ -130,7 +130,7 @@ export function queuedWork(tasks: Iterable<WorkTask>, priorities: readonly Prior
   const queued = all.filter((task) => QUEUED.has(task.status));
   const urgent = new Map<string, string[]>();
   for (const task of queued) {
-    if (task.priority === NOW_PRIORITY.id) {
+    if (isRightNow(task.priority)) {
       appended(urgent, task.owner, task.id);
     }
   }

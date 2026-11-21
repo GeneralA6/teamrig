@@ -8,6 +8,7 @@ import { testTask } from '../testing/task.ts';
 import { checkTasks, formatFlag, leaderWaitFlags, noIssueFlags, PACE_DAYS, peerWaitFlags, runFileFlags, unknownGoalFlags, untriagedFlags } from './check.ts';
 import { RETAIN_DAYS } from './compaction.ts';
 import type { Task } from './fold.ts';
+import { BLOCKER_PRIORITY_ID } from './model.ts';
 import type { RunFiles } from './hand-step.ts';
 import { NO_TASKS_ELSEWHERE, TaskTree } from './tree.ts';
 import { WATCH_USAGE } from './verify.ts';
@@ -184,6 +185,12 @@ describe('checkTasks: URGENT', () => {
     assert.equal(formatFlag(first, undefined, TREE),'URGENT (p0: start it now, ahead of the task in hand) T1 open, p0, owner alpha, from lead | Add a health check');
   });
 
+  it('flags an open blocker as URGENT under its own name (T4329)', () => {
+    const blocker = testTask({ id: 'T4', priority: BLOCKER_PRIORITY_ID, ...seen });
+    assert.deepEqual(urgentIds([blocker]), ['T4']);
+    assert.equal(flags([blocker])[0]?.detail, 'blocker: start it now, ahead of the task in hand');
+  });
+
   it("names the lead's deadline burst on its effective due, typed on the team's clock: its own or a later task's", () => {
     const own = flags([{ ...urgent, due: '2030-01-12 09:30' }])[0]?.detail;
     assert.equal(own, 'p0: start it now, ahead of the task in hand; to finish it by its due, the lead may run burst start deadline --task T1 --by "2030-01-12 09:30 UTC" --stop-pct <n> --reason "<why>"');
@@ -199,6 +206,32 @@ describe('checkTasks: URGENT', () => {
     assert.deepEqual(urgentIds([{ ...urgent, after: ['T3'] }, first]), []);
     assert.deepEqual(urgentIds([{ ...urgent, priority: 1 }]), []);
     assert.deepEqual(urgentIds([{ ...urgent, after: ['T3'] }, { ...first, status: 'done' }]), ['T1'], 'free once the task before it finished');
+  });
+});
+
+describe('checkTasks: BLOCKER-OPEN (T4329)', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+  const blocker = testTask({ id: 'T1', priority: BLOCKER_PRIORITY_ID, status: 'in-progress', priorityAt: '2030-01-10T07:00:00.000Z', ...seen });
+  const openIds = (tasks: Parameters<typeof checkTasks>[0], config = CONFIG) =>
+    checkTasks(tasks, NOW, TimeZone.UTC, null, config).filter((flag) => flag.kind === 'BLOCKER-OPEN').map((flag) => flag.task.id);
+
+  it('flags a blocker unfixed past the allowance since it became one, right after URGENT', () => {
+    const raised = checkTasks([{ ...blocker, status: 'open' }], NOW, TimeZone.UTC, null, CONFIG);
+    assert.deepEqual(raised.map((flag) => flag.kind), ['URGENT', 'BLOCKER-OPEN']);
+    assert.equal(raised[1]?.detail, 'a blocker since 01-10 07:00 UTC, 5 h, past 4 h: its owner fixes it now, or its leader takes it over or lowers it');
+  });
+
+  it('flags one in progress or waiting too, and none shipped, inside the allowance or below blocker', () => {
+    assert.deepEqual(openIds([blocker]), ['T1']);
+    assert.deepEqual(openIds([{ ...blocker, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD }]), ['T1']);
+    assert.deepEqual(openIds([{ ...blocker, status: 'verifying' }]), []);
+    assert.deepEqual(openIds([{ ...blocker, priorityAt: '2030-01-10T09:00:00.000Z' }]), []);
+    assert.deepEqual(openIds([{ ...blocker, priority: 0 }]), []);
+  });
+
+  it('reads its allowance from the config', () => {
+    const quick = testConfig({ register: { check: { blockerOpenAfterHours: 2 } } }).register;
+    assert.deepEqual(openIds([{ ...blocker, priorityAt: '2030-01-10T09:00:00.000Z' }], quick), ['T1']);
   });
 });
 

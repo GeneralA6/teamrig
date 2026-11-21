@@ -1,3 +1,4 @@
+import { isNonNegativeInteger } from '../core/guards.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 
 /**
@@ -72,9 +73,24 @@ export function hasIssueOrReason(ref: string | null): boolean {
   return isIssueRef(ref) || (ref !== null && ref.startsWith(LOCAL_REF_PREFIX));
 }
 
-/** A priority as the CLI prints and takes it: `p1`, the most urgent, `p2` and so on. */
+/**
+ * The blocker level (T4329), above p0: drop everything and fix it now. Lower is more urgent, so every sort and every
+ * `<= p0` test already puts it first. On disk it is `priority: 0` with `blocker: true` (events.ts), so an older teamrig,
+ * which refuses a negative priority, reads it as p0.
+ */
+export const BLOCKER_PRIORITY_ID = -1;
+
+/** Whether a stored value is a priority id: the blocker's, or p0 and below. */
+export function isPriorityId(value: unknown): value is number {
+  return value === BLOCKER_PRIORITY_ID || isNonNegativeInteger(value);
+}
+
+/** How the blocker level is typed and printed. */
+export const BLOCKER_PRIORITY_TEXT = 'blocker';
+
+/** A priority as the CLI prints and takes it: `blocker`, then `p0`, `p1` and so on, most urgent first. */
 export function priorityText(priority: number): string {
-  return `p${priority}`;
+  return priority === BLOCKER_PRIORITY_ID ? BLOCKER_PRIORITY_TEXT : `p${priority}`;
 }
 
 /**
@@ -83,7 +99,7 @@ export function priorityText(priority: number): string {
  */
 export const WORK_CLASS_NAME = /^[A-Za-z][A-Za-z0-9 _-]{0,31}$/;
 
-/** Whether a priority is at the top: `p1`, or a `p0` above it, so an urgent task never falls out of a top count. */
+/** Whether a priority is at the top: `p1`, or a `p0` or blocker above it, so an urgent task never falls out of a top count. */
 export function isTopPriority(priority: number): boolean {
   return priority <= 1;
 }

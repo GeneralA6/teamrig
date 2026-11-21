@@ -9,6 +9,7 @@ import { NO_TASKS_ELSEWHERE, TaskTree } from '../register/tree.ts';
 import { testConfig } from '../testing/config.ts';
 import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
+import { BLOCKER_PRIORITY_ID } from '../register/model.ts';
 import type { HireFlag } from './due.ts';
 import type { HireRecord } from './record.ts';
 import { scaleOutFlags, type ScaleOutInput } from './scale-out.ts';
@@ -90,6 +91,12 @@ describe('scaleOutFlags: when an area is behind', () => {
   it("counts teamrig's p0 tasks beside the top priorities, without taking one of their places", () => {
     const one = config({ scaleOut: { topPriorities: 1 } });
     const tasks = [...finished('alpha', 7, 100), ...dated('alpha', [1, 2]), ...dated('alpha', [3, 4], { priority: 0 })];
+    assert.match(scaleOut(tasks, { config: one })[0]?.detail ?? '', /^4 due by 01-10 00:00 UTC, /);
+  });
+
+  it('counts a blocker beside p0 and the top priorities (T4329)', () => {
+    const one = config({ scaleOut: { topPriorities: 1 } });
+    const tasks = [...finished('alpha', 7, 100), ...dated('alpha', [1, 2]), ...dated('alpha', [3, 4], { priority: BLOCKER_PRIORITY_ID })];
     assert.match(scaleOut(tasks, { config: one })[0]?.detail ?? '', /^4 due by 01-10 00:00 UTC, /);
   });
 
