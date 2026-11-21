@@ -596,7 +596,7 @@ export function runsOfReadings(readings: readonly string[], context: ProgramsCon
  * settings writer's write (`permissions trim --yes` and the rest of SETTINGS_WRITERS), as it changes a permission, or
  * a `teamrig hook` command, as it trusts the stdin the line gives it; whenever a bound tab's `teamrig start` or `teamrig
  * inbox read`, through any client, binds it to another session (`bindRefusalOf`); whenever the line changes
- * `$CLAUDECODE`, which tells teamrig a command runs under Claude Code; and when a shell on the line takes its commands
+ * a mark of an agent's run (`sessionVariables.marks`), which tells teamrig a command runs under a host; and when a shell on the line takes its commands
  * from a pipe the guard cannot read, or a package runner hands its line to a shell the line names that the guard
  * cannot read; and for each raw `gh` write on the team's GitHub repositories (`ghWriteRefusals`). Else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec`
  * calls start once, and reads the tab's session only for a line that holds a review, or a bind that names a session

@@ -203,7 +203,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   open: { effect: 'write', flags: ['prompt', 'terminal', 'project'], switches: ['resume'], load: async () => (await openCommands()).open },
   meet: { effect: 'write', flags: ['session', 'terminal', 'project'], switches: ['cards'], load: async () => (await meetCommands()).meet },
   // No --session: the owner's actions are always written as register.ownerSource; a hook refuses them from an agent's
-  // tool call (src/hooks/exec-guard.ts), and their writes refuse themselves under CLAUDECODE (commands/owner.ts).
+  // tool call (src/hooks/exec-guard.ts), and their writes refuse themselves in an agent's run (commands/owner.ts).
   'owner note': { effect: 'write', flags: ['text'], load: async () => (await ownerCommands()).ownerNote },
   'owner next': { effect: 'write', flags: [], switches: ['preview'], load: async () => (await ownerCommands()).ownerNext },
   'owner wake': { effect: 'write', flags: ['terminal', 'project'], load: async () => (await ownerWakeCommands()).ownerWake },

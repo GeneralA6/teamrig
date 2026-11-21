@@ -131,7 +131,7 @@ export async function ownerNote(args: ParsedArgs, runtime: CliRuntime): Promise<
  * above every other task on its session's list (moving that session's earlier pin), wakes the session to start it once
  * the step in hand is done, and tells the team's lead without a wake. `--preview` prints what it would do and writes
  * nothing, for the pane's confirm step. Refused on a done, dropped or in-progress task, or one the owner put next already,
- * and, but for `--preview`, under CLAUDECODE.
+ * and, but for `--preview`, where the host does not say the person runs it (`refuseUnlessPerson`).
  */
 export async function ownerNext(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const preview = args.switches.has('preview');
