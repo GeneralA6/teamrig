@@ -38,7 +38,7 @@ import { overSizeFlags } from '../../register/over-size.ts';
 import type { AddInput, AskInput, StatusInput, Verdict } from '../../register/policy.ts';
 import type { GoalTagsReader, Register, RotationOutcome, WriteResult } from '../../register/register.ts';
 import { ACTIVE_STATUSES, type TaskStatus } from '../../register/model.ts';
-import { windowOpensAfter, type RegisterSnapshot } from '../../register/snapshot.ts';
+import { lacksEventsOf, type RegisterSnapshot } from '../../register/snapshot.ts';
 import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopgap.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, watchQueue, type DueVerify } from '../../register/verify.ts';
 import { readAs, TaskTree, type TaskElsewhere } from '../../register/tree.ts';
@@ -884,10 +884,7 @@ function weekMayBeRetired(week: string): HistoryNeed {
  * line only once its create event is before the window, so `show` prints such a description from the history.
  */
 function showNeedsHistory(id: string): HistoryNeed {
-  return (snapshot) => {
-    const task = snapshot.state.tasks.get(id);
-    return task === undefined ? snapshot.retired !== null : windowOpensAfter(snapshot, Date.parse(task.createdAt));
-  };
+  return (snapshot) => lacksEventsOf(snapshot, id);
 }
 
 /** The filter with `list`'s switches read for one team, as `--untriaged` asks for that team's own leaders. */

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EVENT_VERSION, TASK_LINE_VERSION } from './events.ts';
 import { FIRST_LAYOUT_VERSION, NEWEST_LAYOUT_VERSION } from './marker.ts';
-import { isWritable, readEvents, readRegister, snapshotOf } from './snapshot.ts';
+import { isWritable, lacksEventsOf, readEvents, readRegister, snapshotOf } from './snapshot.ts';
 
 const CREATE_T1 = `{"v":2,"type":"create","id":"T1","at":"2030-01-07T09:00:00.000Z","by":"lead","task":{"title":"First","owner":"alpha","source":"owner","ref":null,"priority":2,"due":null,"goals":[],"week":null}}`;
 const DONE_T1 = `{"v":2,"type":"status","id":"T1","at":"2030-01-07T10:00:00.000Z","by":"alpha","status":"done","note":"shipped","evidence":"commit abc1234","skill":"none"}`;
@@ -65,6 +65,28 @@ describe('snapshotOf', () => {
     const snapshot = snapshotOf(read);
     assert.equal(snapshot.read, read);
     assert.equal(snapshot.state.tasks.get('T1')?.priority, 2);
+  });
+});
+
+describe('lacksEventsOf', () => {
+  const whole = snapshotOf(readEvents([CREATE_T1, DONE_T1].join('\n')));
+
+  it('finds every event of a task in a whole log, and none to look for of an id it never held', () => {
+    assert.equal(lacksEventsOf(whole, 'T1'), false);
+    assert.equal(lacksEventsOf(whole, 'T7'), false, 'no archive holds what the log lacks');
+  });
+
+  it('sends a task the working set lacks to the history once tasks were left to the archive', () => {
+    const working = { ...whole, retired: { count: 3, lastWeek: null } };
+    assert.equal(lacksEventsOf(working, 'T7'), true);
+    assert.equal(lacksEventsOf(working, 'T1'), false, 'a held task with no event window has its events here');
+  });
+
+  it('sends a held task to the history only when it was created before the event window opened', () => {
+    const windowFrom = (from: string) => ({ ...whole, window: { from, tasks: whole.state.tasks } });
+    assert.equal(lacksEventsOf(windowFrom('2030-01-07T09:30:00.000Z'), 'T1'), true, 'created 09:00, the window opens 09:30');
+    assert.equal(lacksEventsOf(windowFrom('2030-01-07T09:00:00.000Z'), 'T1'), false, 'the create event is the first of the window');
+    assert.equal(lacksEventsOf(windowFrom('2030-01-07T09:30:00.000Z'), 'T7'), false, 'an unknown id, with nothing retired');
   });
 });
 
