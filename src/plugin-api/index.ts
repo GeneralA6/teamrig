@@ -121,6 +121,8 @@ export {
   type ScheduledCarryEntry,
   type ScheduledJob,
   type SearchCall,
+  type SessionIdentity,
+  type SessionLauncher,
   type ShellCall,
   type ShellDialect,
   type SkillCall,

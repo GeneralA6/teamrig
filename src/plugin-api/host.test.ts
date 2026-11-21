@@ -35,6 +35,7 @@ describe('defineHost', () => {
         paths: unsupported('no folder is known'),
         permissions: unsupported('no permission rule is kept'),
         plugin: unsupported('no plugin is installed'),
+        launcher: unsupported('no session is told'),
       }),
     });
     assert.equal(adapter.declaration, data);
@@ -47,6 +48,7 @@ describe('defineHost', () => {
       paths: { kind: 'unsupported', notice: 'no folder is known' },
       permissions: { kind: 'unsupported', notice: 'no permission rule is kept' },
       plugin: { kind: 'unsupported', notice: 'no plugin is installed' },
+      launcher: { kind: 'unsupported', notice: 'no session is told' },
     });
     assert.equal(isHostAdapter(adapter), true);
   });

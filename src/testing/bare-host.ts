@@ -14,5 +14,6 @@ export function bareHost(): HostPorts {
     paths: unsupported('no folder of the host is known'),
     permissions: unsupported('no permission rule is kept'),
     plugin: unsupported('no plugin is installed'),
+    launcher: unsupported('no session of the host is told'),
   };
 }
