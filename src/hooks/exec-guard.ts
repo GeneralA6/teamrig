@@ -28,7 +28,7 @@ import { changesVariable } from './variable-change.ts';
  * `teamrig` the shell's PATH search finds, where a `~/bin/teamrig` wins over the plugin bin the Bash tool appends
  * last; a call through a program only known when it runs (`$T exec ...`) is refused, as no file can be checked.
  *
- * It refuses every `teamrig owner` call too (T1298): `owner note`, `owner next` and `owner wake` write or wake as the
+ * It refuses every `teamrig owner` call too (T1298): `owner note`, `next`, `wake`, `decide` and `later` write or wake as the
  * owner (register.ownerSource) whoever runs them, so only the owner's own routes run them: the pane, their own terminal, or
  * `/teamrig owner ...` typed in a tab, which the mod runs as a write only when the person types it. Like the review
  * check, it reads only a Bash or PowerShell tool call: a script the agent writes that starts the CLI is no such call.
@@ -48,7 +48,7 @@ export const REVIEW_ACTIONS: ReadonlySet<string> = new Set(['approve', 'refuse',
 export const EXEC_COMMANDS: ReadonlySet<string> = new Set(['request', 'dry-run', ...REVIEW_ACTIONS, 'run', 'status']);
 
 /** Every `teamrig owner` command, by which a call through an unknown program reads as a teamrig call. */
-export const OWNER_COMMANDS: ReadonlySet<string> = new Set(['note', 'next', 'wake']);
+export const OWNER_COMMANDS: ReadonlySet<string> = new Set(['note', 'next', 'wake', 'decide', 'later']);
 
 /** Every `teamrig hook` command, by which a call through an unknown program reads as a teamrig call, not as `git hook run`. */
 export const HOOK_COMMANDS: ReadonlySet<string> = new Set([

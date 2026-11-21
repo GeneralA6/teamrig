@@ -205,6 +205,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   // tool call (src/hooks/exec-guard.ts), and their writes refuse themselves under CLAUDECODE (commands/owner.ts).
   'owner note': { effect: 'write', flags: ['text'], load: async () => (await ownerCommands()).ownerNote },
   'owner next': { effect: 'write', flags: [], switches: ['preview'], load: async () => (await ownerCommands()).ownerNext },
+  'owner decide': { effect: 'write', flags: ['option', 'read', 'note'], switches: ['approve', 'decline'], load: async () => (await ownerCommands()).ownerDecide },
+  'owner later': { effect: 'write', flags: ['until', 'note'], load: async () => (await ownerCommands()).ownerLater },
   'owner wake': { effect: 'write', flags: ['terminal', 'project'], load: async () => (await ownerWakeCommands()).ownerWake },
   launch: { effect: 'internal', flags: ['team', 'project', 'home', 'encoded-prompt', 'resume', 'effort'], switches: ['no-prompt'], load: async () => (await openCommands()).launch },
   restore: { effect: 'read', flags: [], load: async () => (await restoreCommands()).restorePreview },
@@ -420,6 +422,16 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       other task on its session's list (moving that session's earlier pin), wakes the session to start
       it once the step in hand is done, and tells the lead; refused on a done, dropped or in-progress
       task, and where Claude Code sets $CLAUDECODE; --preview prints what it would do and writes nothing
+  owner decide <[team/]T<id>> --option <n>|--approve|--decline [--read <digest>] [--note ".."]   the owner
+      answers a card from the pane: recorded as the owner's Decided (the wait on the owner goes, the
+      task reads decided), its note naming the option or approved or declined, then --note; wakes the
+      session; --read binds the answer to the card read (its cardDigest); refused on a task not
+      waiting on the owner, an option its card lacks, --approve or --decline with no approval wait of
+      the owner's, a --read the card no longer matches, a security card without its current verdict,
+      and where Claude Code sets $CLAUDECODE
+  owner later <[team/]T<id>> --until <time> [--note ".."]   the owner puts a card off from the pane: a
+      Later written as the owner's, so the card comes back then; tells the session without a wake;
+      refused on a task not waiting on the owner, a time gone by, and where Claude Code sets $CLAUDECODE
   owner wake <[team/]id|name> [--terminal <name>] [--project <dir>]   the owner wakes one session from the
       pane: a running idle tab gets an inbox line that wakes it at once to work its list (none more while
       that ask waits), a closed one opens in a new tab; refused on a tab in a turn, at a tool call or with

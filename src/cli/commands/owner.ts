@@ -1,10 +1,13 @@
 import { formatAddress } from '../../core/address.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
+import { isCardDigest } from '../../register/card-digest.ts';
 import type { Task } from '../../register/fold.ts';
+import { ownerAnswerWords, type OwnerAnswer } from '../../register/policy.ts';
 import type { OwnerNextPreview } from '../../register/register.ts';
-import { onePositional, type ParsedArgs } from '../args.ts';
+import { weekdayText } from '../../register/waits.ts';
+import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { underClaudeCode } from '../claude-code-env.ts';
-import { taskRefOf } from '../inputs.ts';
+import { deadlineOf, taskRefOf } from '../inputs.ts';
 import { findTeam, openKit, type Access, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { postUrgentLine } from '../urgent-line.ts';
@@ -25,10 +28,10 @@ export function namesOf(label: string | undefined): Names {
 }
 
 /** The pane button that runs each owner action. */
-const BUTTON = { note: 'Note', next: 'Next', wake: 'Wake' } as const;
+const BUTTON = { note: 'Note', next: 'Next', wake: 'Wake', decide: 'Decide', later: 'Later' } as const;
 
 /**
- * Refuses an owner action (note, next, wake) where Claude Code set CLAUDECODE: an agent's tool call, a script one
+ * Refuses an owner action (note, next, wake, decide, later) where Claude Code set CLAUDECODE: an agent's tool call, a script one
  * runs, a hook command (T1780). The exec guard reads only the tool call's own line, so a script the agent writes slips past it; this
  * refusal holds there too. The pane's buttons and a typed `/teamrig owner ..` run through the plugin's mod with Claude
  * Code's own environment, which lacks the variable, so the owner's routes still write. A script that unsets it still
@@ -156,6 +159,91 @@ export async function ownerNext(args: ParsedArgs, runtime: CliRuntime): Promise<
       const shownLead = names.session(lead);
       await tellLine(runtime, team, owner, lead, ownerNextLeadLine(owner, task, names), `${shownLead} was not told ${owner} put ${names.task(task.id)} next`, shownLead);
     }
+  }
+  return code;
+}
+
+/** The line that wakes the task's session with the owner's answer to its card. */
+export function ownerDecideLine(owner: string, task: string, words: string): string {
+  return `${owner} decided ${task}: ${words}; the wait on ${owner} is gone, so go on as decided`;
+}
+
+/** The line the task's session gets, without a wake, when the owner puts its card off. */
+export function ownerLaterLine(owner: string, task: string, until: string): string {
+  return `${owner} put off the card on ${task} until ${until}; it comes back to ${owner} then`;
+}
+
+/** The answer `owner decide` was given: exactly one of --option <n>, --approve and --decline. */
+function ownerAnswerOf(args: ParsedArgs): OwnerAnswer {
+  const option = args.flags.get('option');
+  const given = [option !== undefined, args.switches.has('approve'), args.switches.has('decline')].filter(Boolean).length;
+  if (given !== 1) {
+    throw new UsageError('owner decide takes exactly one answer: --option <n>, --approve or --decline');
+  }
+  if (option !== undefined) {
+    if (!/^\d+$/.test(option)) {
+      throw new UsageError(`--option takes the number of one of the card's options, not "${option}"`);
+    }
+    return { kind: 'option', option: Number(option) };
+  }
+  return { kind: args.switches.has('approve') ? 'approve' : 'decline' };
+}
+
+/** The card digest `owner decide --read` was given (cardDigest), if any. */
+function readDigestOf(args: ParsedArgs): string | undefined {
+  const read = args.flags.get('read');
+  if (read !== undefined && !isCardDigest(read)) {
+    throw new UsageError(`--read takes the digest of the card that was read, 64 hex characters (cardDigest in teamrig's read entry), not "${read}"`);
+  }
+  return read;
+}
+
+/**
+ * `owner decide <[team/]T<id>> --option <n>|--approve|--decline [--read <digest>] [--note ".."]`: the owner answers a card from the
+ * pane's Decisions tab (#1517). Written as the owner (register.ownerSource), as a Decided (`update --decided`): the
+ * task's wait on the owner goes and it is marked decided, its note saying what was chosen and the owner's own words.
+ * The session gets an inbox line that wakes it to go on. Refused on a task not waiting on the owner, an option its
+ * card lacks, an approval's answer on a task with no approval wait of the owner's, a `--read` digest the card no
+ * longer has, a security-related card without its current verdict, and under CLAUDECODE.
+ */
+export async function ownerDecide(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  refuseUnderClaudeCode(runtime, 'decide');
+  const answer = ownerAnswerOf(args);
+  const target = await targetOf(runtime, onePositional(args, '[team/]T<id>'), 'write');
+  const { team, names } = target;
+  const owner = team.config.register.ownerSource;
+  const note = args.flags.get('note');
+  const written = await team.register.ownerDecide(target.id, answer, note, readDigestOf(args));
+  const code = report(runtime, written, 'DECIDED', team, target.label);
+  if (written.ok) {
+    const { task } = written.value;
+    const own = note?.trim() ?? '';
+    const words = ownerAnswerWords(answer, task.card);
+    await wakeLine(runtime, target, task.owner, ownerDecideLine(owner, names.task(task.id), own === '' ? words : `${words}; ${own}`));
+  }
+  return code;
+}
+
+/**
+ * `owner later <[team/]T<id>> --until <time> [--note ".."]`: the owner puts a card off from the pane's Decisions tab
+ * (#1517). Written as the owner, as a Later (`update --later`): a time wait beside the wait on the owner, so the card
+ * comes back then. The session gets an inbox line without a wake, as it has nothing to do until then. Refused on a
+ * task not waiting on the owner, a time gone by, and under CLAUDECODE.
+ */
+export async function ownerLater(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  refuseUnderClaudeCode(runtime, 'later');
+  const typed = requiredFlag(args.flags, 'until');
+  const target = await targetOf(runtime, onePositional(args, '[team/]T<id>'), 'write');
+  const { team, names } = target;
+  const owner = team.config.register.ownerSource;
+  const until = deadlineOf('--until', typed, { nowMs: runtime.clock.now(), zone: team.zone });
+  const written = await team.register.ownerDefer(target.id, until, args.flags.get('note'));
+  const code = report(runtime, written, 'LATER', team, target.label);
+  if (written.ok) {
+    const { task } = written.value;
+    const shown = names.session(task.owner);
+    const text = ownerLaterLine(owner, names.task(task.id), weekdayText(until, team.zone));
+    await tellLine(runtime, team, owner, task.owner, text, `${shown} was not told ${owner} put off the card on ${names.task(task.id)}`, shown);
   }
   return code;
 }

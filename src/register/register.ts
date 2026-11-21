@@ -6,7 +6,7 @@ import { EVENT_VERSION, TASK_LINE_VERSION, type ApprovalVerdict, type CreateEven
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { NO_SLICED_GOALS, type SlicedGoal } from './focus.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
-import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type AuditChange, type AuditSubject, type DeferChange, type ImportChanges, type ImportInput, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type TriageChanges, type UpdateChange, type Verdict } from './policy.ts';
+import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type AuditChange, type AuditSubject, type DeferChange, type ImportChanges, type ImportInput, type OwnerAnswer, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type TriageChanges, type UpdateChange, type Verdict } from './policy.ts';
 import { ACTIVE_STATUSES } from './model.ts';
 import type { TaskNumbering } from './numbering.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
@@ -352,6 +352,16 @@ export class Register {
    */
   ownerNote(id: string, note: string | undefined): Promise<Verdict<WriteResult>> {
     return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.ownerEvent(task, this.deps.policy.ownerNote(task, note)))));
+  }
+
+  /** The owner's answer to a card from the pane (#1517): a Decided written as the owner, as in ownerNote. */
+  ownerDecide(id: string, answer: OwnerAnswer, note: string | undefined, read?: string): Promise<Verdict<WriteResult>> {
+    return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.ownerEvent(task, this.deps.policy.ownerDecide(task, answer, note, read)))));
+  }
+
+  /** The owner's Later from the pane (#1517): a card put off to `until` (stored form), written as the owner, as in ownerNote. */
+  ownerDefer(id: string, until: string, note: string | undefined): Promise<Verdict<WriteResult>> {
+    return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.ownerEvent(task, this.deps.policy.ownerDefer(task, until, note, this.timeContext())))));
   }
 
   /** The owner's Next from the pane (T1298): the owner's pin after the unpins it moves down, in one append, written as in ownerNote. */

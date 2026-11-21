@@ -10,6 +10,7 @@ import { waitAnswerersOf } from './approval.ts';
 import type { SlicedGoal } from './focus.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
 import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, SECURITY_FLAG, typedHandStep, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
+import { cardDigest } from './card-digest.ts';
 import { holdsDescription } from './description-cut.ts';
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256, type AuditPin } from './hand-step.ts';
 import { verdictIsCurrent, verdictReadOf, type SecurityVerdictPin } from './security-verdict.ts';
@@ -22,7 +23,7 @@ import { waitsOnOwner } from './owner-waits.ts';
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts, type ProblemReview } from './review.ts';
 import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText, type TasksElsewhere } from './tree.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, startHolds, WATCH_USAGE } from './verify.ts';
-import { isPeerWait, isReady, sameWait, sameWaits, unfinishedAfter, waitContext, waitSpelling, type PersonWait, type PersonWaitKind, type WaitReason } from './waits.ts';
+import { isPeerWait, isReady, sameWait, sameWaits, unfinishedAfter, waitContext, waitSpelling, weekdayText, type PersonWait, type PersonWaitKind, type WaitReason } from './waits.ts';
 import { wipHold } from './wip.ts';
 import { MIGRATE_COMMAND } from '../permissions/service-commands.ts';
 import { roleHolding } from '../permissions/service-roles.ts';
@@ -228,6 +229,30 @@ export interface DecideChange extends DeferChange {
 /** An owner's action from the pane (T1298): an update written as `by`, the team's register.ownerSource. */
 export interface OwnerChange extends UpdateChange {
   readonly by: string;
+}
+
+/** The owner's answer to a card from the pane (#1517): one of the card's options, numbered from 1, or an approval's yes or no. */
+export type OwnerAnswer = { readonly kind: 'option'; readonly option: number } | { readonly kind: 'approve' } | { readonly kind: 'decline' };
+
+/**
+ * `answer` as its Decided note stores it: `option 2`, `approved` or `declined`. The option's text stays on the card, so
+ * it takes none of the room register.maxText leaves the owner's own words.
+ */
+export function ownerAnswerTag(answer: OwnerAnswer): string {
+  switch (answer.kind) {
+    case 'option':
+      return `option ${answer.option}`;
+    case 'approve':
+      return 'approved';
+    case 'decline':
+      return 'declined';
+  }
+}
+
+/** `answer` in the words the session's line gives it: `option 2: <its text>`, `approved` or `declined`. */
+export function ownerAnswerWords(answer: OwnerAnswer, card: Pick<DecisionCard, 'options'> | null): string {
+  const tag = ownerAnswerTag(answer);
+  return answer.kind === 'option' ? `${tag}: ${card?.options[answer.option - 1] ?? ''}` : tag;
 }
 
 /**
@@ -765,6 +790,24 @@ export class RegisterPolicy {
    * on a wait on the session's leader, and keeps its parts when the wait moves to the owner.
    */
   private securityProblem(task: Task, card: DecisionCard): string | undefined {
+    const gap = this.securityGap(task, card);
+    if (gap === undefined) {
+      return undefined;
+    }
+    const { ownerSource } = this.config.register;
+    const leader = this.leaderOf(task);
+    const first = leader === undefined ? 'set the card on a wait on the security reviewer first' : `set the card on a wait on your leader first (--waits decision:${leader})`;
+    const route = `${first}, have it read (${this.auditorsText(task.owner)}, with teamrig audit ${task.id} --verdict "<what the review found>"), then wait on ${ownerSource} with the card unchanged`;
+    const why = gap.stale ? `${gap.text}: an edit needs a new verdict (core rule 9)` : `${gap.text}: it reaches ${ownerSource} only with one (core rule 9)`;
+    return `${why}; ${route}`;
+  }
+
+  /**
+   * What securityProblem finds missing on a security-related card, without the route: no verdict, or a stale one
+   * (`stale`); undefined when the card needs none or holds a current one. `owner decide` holds the answer to the same
+   * rule, as a card can change while it sits on the owner (#1751 review).
+   */
+  private securityGap(task: Task, card: DecisionCard): { readonly text: string; readonly stale: boolean } | undefined {
     const gate = card.gate?.toLowerCase();
     const gated = gate !== undefined && this.config.securityGates.some((security) => security.toLowerCase() === gate);
     if (card.run !== undefined || (!gated && card.security !== true)) {
@@ -775,14 +818,9 @@ export class RegisterPolicy {
       return undefined;
     }
     const { ownerSource } = this.config.register;
-    const leader = this.leaderOf(task);
-    const first = leader === undefined ? 'set the card on a wait on the security reviewer first' : `set the card on a wait on your leader first (--waits decision:${leader})`;
-    const route = `${first}, have it read (${this.auditorsText(task.owner)}, with teamrig audit ${task.id} --verdict "<what the review found>"), then wait on ${ownerSource} with the card unchanged`;
-    const why =
-      verdict === null
-        ? `${task.id}'s card ${gated ? `asks ${ownerSource} about ${card.gate}, a security gate [securityGates],` : `is marked ${SECURITY_FLAG}`} and has no security verdict: it reaches ${ownerSource} only with one (core rule 9)`
-        : `the security verdict ${verdict.by} gave on ${task.id}'s card read another question, options or recommendation: an edit needs a new verdict (core rule 9)`;
-    return `${why}; ${route}`;
+    return verdict === null
+      ? { text: `${task.id}'s card ${gated ? `asks ${ownerSource} about ${card.gate}, a security gate [securityGates],` : `is marked ${SECURITY_FLAG}`} and has no security verdict`, stale: false }
+      : { text: `the security verdict ${verdict.by} gave on ${task.id}'s card read another question, options or recommendation`, stale: true };
   }
 
   /** Who leads the task's owner: its sub-lead or the lead, and for the lead, the parent team's lead; undefined at the root. */
@@ -1065,6 +1103,79 @@ export class RegisterPolicy {
     }
     const verdictProblem = this.checkText('verdict', verdict);
     return verdictProblem === undefined ? ok({ changes: {}, note: text, securityVerdict: { text: verdict, read: verdictReadOf(task.card) } }) : refuse(verdictProblem);
+  }
+
+  /**
+   * The owner's answer from the pane (#1517): a Decided ({@link decideFrom}) written as the owner, its note saying what
+   * was chosen (`<owner> decided: option 2`, `approved`, `declined`) and then the owner's own words, if any.
+   * Only on a task waiting on the owner; an option the card has, or an approval's answer on a task waiting on the
+   * owner's approval. With `read`, the digest of the card the owner read (cardDigest), only while the card still has
+   * it, so an option number never lands on a card edited in between. A security-related card needs its current
+   * verdict, as on its move to the owner (securityGap), since it may have changed while on the owner (#1751 review).
+   */
+  ownerDecide(task: Task, answer: OwnerAnswer, note: string | undefined, read?: string): Verdict<DecideChange & OwnerChange> {
+    const by = this.config.register.ownerSource;
+    if (!waitsOnOwner(task, by)) {
+      return refuse(`${task.id} waits on no decision or approval of ${by}: only such a card is decided`);
+    }
+    if (read !== undefined) {
+      if (task.card === null) {
+        return refuse(`${task.id} has no card, so --read matches nothing: decide it without --read`);
+      }
+      const now = cardDigest(task.card);
+      if (read.toLowerCase() !== now) {
+        return refuse(`--read ${shortSha256(read.toLowerCase())} is not ${task.id}'s card as it stands (now ${shortSha256(now)}): its question, options or recommendation changed since it was read; read the card again and answer that`);
+      }
+    }
+    const gap = task.card === null ? undefined : this.securityGap(task, task.card);
+    if (gap !== undefined) {
+      const when = gap.stale ? 'only after a new verdict' : 'only with one';
+      return refuse(`${gap.text}: ${by} decides it ${when} (core rule 9); its session has the card read (${this.auditorsText(task.owner)}, with teamrig audit ${task.id} --verdict "<what the review found>")`);
+    }
+    if (answer.kind === 'option') {
+      const count = task.card?.options.length ?? 0;
+      if (!Number.isInteger(answer.option) || answer.option < 1 || answer.option > count) {
+        return refuse(count === 0 ? `${task.id} has no card with options: answer an approval with --approve or --decline` : `--option takes 1 to ${count}: ${task.id}'s card has ${count} options`);
+      }
+    } else if (!task.waits.some((reason) => reason.kind === 'approval' && reason.who === by)) {
+      return refuse(`${task.id} waits on no approval of ${by}: --${answer.kind} answers an approval; choose an option with --option <n>`);
+    }
+    const text = this.ownerNoteText(`${by} decided: ${ownerAnswerTag(answer)}`, note);
+    if (!text.ok) {
+      return text;
+    }
+    const change = this.decideFrom(task, text.value);
+    return change.ok ? ok({ ...change.value, by }) : change;
+  }
+
+  /**
+   * The owner's Later from the pane (#1517): a Later ({@link deferFrom}) to time `until` (stored form) written as the
+   * owner, its note saying until when and then the owner's own words, if any.
+   */
+  ownerDefer(task: Task, until: string, note: string | undefined, context: Pick<StatusContext, 'now' | 'zone'>): Verdict<DeferChange & OwnerChange> {
+    const by = this.config.register.ownerSource;
+    const text = this.ownerNoteText(`${by} put the card off until ${weekdayText(until, context.zone)}`, note);
+    if (!text.ok) {
+      return text;
+    }
+    const change = this.deferFrom(task, until, text.value, context);
+    return change.ok ? ok({ ...change.value, by }) : change;
+  }
+
+  /**
+   * The note of an owner's Decide or Later: `prefix`, then `; ` and the owner's own words, if any. Their words are judged
+   * against the room register.maxText leaves after the prefix, so a refusal names a count the owner can act on, not
+   * one that holds characters they never typed (#1751 review).
+   */
+  private ownerNoteText(prefix: string, note: string | undefined): Verdict<string> {
+    const own = blankToNull(note);
+    if (own === null) {
+      return ok(prefix);
+    }
+    const lead = `${prefix}; `;
+    const { maxText } = this.config.register;
+    const room = Math.max(0, maxText - lead.length);
+    return own.length > room ? refuse(`--note takes at most ${room} characters here: the note starts "${lead}" and the limit is ${maxText}`) : ok(`${lead}${own}`);
   }
 
   /**

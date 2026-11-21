@@ -29,6 +29,8 @@ export {
   type SnapshotRead,
 } from '../register/layout.ts';
 export { LAYOUT_VERSION } from '../register/marker.ts';
+// The digest of what a card asks (#1751 review), so a pane binds `owner decide --read` to the card it showed.
+export { cardDigest, isCardDigest, type DigestedCard } from '../register/card-digest.ts';
 export { readEvents, readRegister, snapshotOf, type EventLogRead, type RegisterSnapshot, type RetiredTasks } from '../register/snapshot.ts';
 export {
   loopFix,
