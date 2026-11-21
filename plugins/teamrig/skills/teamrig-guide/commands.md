@@ -2451,16 +2451,17 @@ The read side of teamrig's public interface, for a program such as a pane, a das
 Nothing else is written to stdout, so every line there parses; a refusal is one `REFUSED` line on stderr with exit 2
 and no document, where other commands print it to stdout. It writes no file, marks nothing read and takes no lock.
 
-The five documents of interface 1.0 are served, and `plan`, which 1.1 added, and `goals`, which 1.2 added. `tasks`
-is the register's working set, the active tasks and the finished ones not yet archived. `plan` is the team's active
-tasks in plan order, each as teamrig's own lists place it. `goals` is the goals a task of the team may serve.
-`inbox` is the asking session's own inbox. `sessions` is every session of your tree of teams. `meetings` is the
-team's meetings still scheduled or started. `config` is the team's config key by key, and the one document a run
-with no team is answered.
+The five documents of interface 1.0 are served, and `plan`, which 1.1 added, `goals`, which 1.2 added, and
+`history`, which 1.3 added. `tasks` is the register's working set, the active tasks and the finished ones not yet
+archived. `plan` is the team's active tasks in plan order, each as teamrig's own lists place it. `goals` is the
+goals a task of the team may serve. `history` is every event of the one task `--task` names. `inbox` is the asking
+session's own inbox. `sessions` is every session of your tree of teams. `meetings` is the team's meetings still
+scheduled or started. `config` is the team's config key by key, and the one document a run with no team is
+answered.
 
 Every document carries:
 
-- `interface`: the interface version that wrote it (`1.2`). Ignore fields you do not know: a minor version adds some.
+- `interface`: the interface version that wrote it (`1.3`). Ignore fields you do not know: a minor version adds some.
 - `document`: its name.
 - `revision`: 16 characters that stay the same while the files the document is read from, what you asked and the
   teamrig version stay the same. Compare it with the one you hold to know whether to draw again; it has no other
@@ -2546,6 +2547,39 @@ It serves what is stored of a goal and judges nothing: a goal's done counts, pac
 be served are counted in `problems`, the file named from its team's folder down: unreadable lines, lines a newer
 teamrig wrote, and records of no goal. Its `revision` moves with those goals files and the configs of your tree, so
 `--unless` holds it for days on a team whose goals stand still.
+
+`history` (since interface 1.3) adds `task`, `events` and `cuts`: every event the team's register holds of one
+task, the oldest first, which is what `teamrig show <id> --history` reads. It is one task's, so the run names it
+with `--task T<id>`; `--owner` does not narrow it.
+
+- `task`: the id asked.
+- `events`: each starts with `kind`, `at` (when it was written, a UTC instant) and `by` (the session that wrote
+  it). The rest goes by `kind`; a minor version may add a kind, so pass over one you do not know.
+  - `create`: the task was added. `task` holds the fields it was added with, named and formed as the `tasks`
+    document serves them: `title`, `description`, `owner`, `priority`, `type`, `critical`, `due`, `source`, `ref`,
+    `goals`, `week`, `size`, `pin`, `workClass` and `after`.
+  - `status`: its status was set. It holds `status`, `note`, `evidence`, `skill`, `proof`, `watch`, `met`,
+    `oneCommit`, `waits` and `followups`. What the event did not write is `null`: `waits` and `followups` are then
+    `null` and not empty, since an empty list is itself something a change can say.
+  - `update`: fields were changed, or a leader answered what it waits on. `changes` holds only the fields the event
+    gave, under the names of `create`, each with its new value: a field left out stayed as it was, and one that is
+    `null` was cleared. Beside it are `note`, `verdict` (the answer to the task's approval wait, else `null`),
+    `waits` (what a put-off or a decision left it waiting on, else `null`) and `decided` (`true` when the update
+    records the owner's decision on the task's card).
+  - `moved`: the task went to the team `to` names; its later events are in that team's register.
+- `cuts`: each text cut for matching a secret shape, as `{ "id", "field", "shape" }`: `id` is the event, as the
+  task's id, `#` and the event's place in `events` counted from 0 (`T12#3`), and `field` the text within it, such
+  as `note`, `task.title` or `changes.description`.
+
+A title or a description is marked by the source the task had once the event was written, so a tracker's import is
+`outside` in every event that carries it. The fields named above are the ones served: what else the register
+keeps of a task is no part of this document yet. An id the register holds no event of is answered with no event
+and no problem, and is not refused. A task that moved to another team ends here at its move.
+
+A task whose older events have left the working set is read from the register's archive, every segment of it, so
+its history costs more than a recent task's: ask it when a person opens the task, not in a loop. When an archive
+segment is gone, `events` is empty and `problems` names the segment. Its `revision` moves with the team's register
+(an event of any task), its archive, the renames and the config, and differs for each task.
 
 `inbox` adds `session` (`{ "id", "name" }`), `unread` (how many lines the session has not read; `null` when it never
 ran `teamrig inbox read`, and then every line counts as unread), `lines` and `cuts`. `lines` holds every unread line
@@ -2639,8 +2673,10 @@ Flags:
   and `inbox` serves the session of your team holding it when no `--session` is given (a usage error when none
   does). Like `--session` it is a label and proves nothing.
 - `--team <id>`: reads a team above yours in your tree instead of your own, for `tasks`, `plan`, `goals`,
-  `meetings` and `config`. A team beside or below yours is refused.
+  `history`, `meetings` and `config`. A team beside or below yours is refused.
 - `--owner <id|name>`: keeps the tasks one session owns, of `tasks` and of `plan`.
+- `--task T<id>`: the one task `history` is asked of. A run asking `history` without it, or giving it without
+  asking `history`, is a usage error, as is a text that is no task id.
 - `--since <hours>`: how far back `inbox` serves the lines already read, in whole hours; 24 when left out, and 0
   serves the unread ones only.
 - `--unless <document>=<revision>[,<document>=<revision>...]`: the revision you already hold of a document this run
@@ -2660,7 +2696,7 @@ teamrig read tasks --json --owner api
 Output:
 
 ```text
-{"interface":"1.2","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
+{"interface":"1.3","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
 ```
 
 ### teamrig sessions
