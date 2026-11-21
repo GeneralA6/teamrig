@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MS_PER_MINUTE } from '../core/time.ts';
+import { formatConfig } from '../config/load.ts';
 import { readMeetings, type ScheduledMeeting } from '../meeting/schedule.ts';
 import { SPOTLIGHT_VARS } from '../meeting/spotlight.ts';
 import { SpotlitStore, type SpotlitMeeting } from '../meeting/spotlit.ts';
@@ -12,6 +13,7 @@ import { APP, CliHarness, KIT, TEAM, TEAM_HOME, type CliResult, type RunOptions 
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
+import { teamConfigOf, teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import { WakeAsks } from '../wake/asks.ts';
 import { openingPrompt } from './commands/meetings.ts';
 import { EXIT } from './runtime.ts';
@@ -50,6 +52,52 @@ async function stored(kit: CliHarness, id: string): Promise<ScheduledMeeting | u
 }
 
 describe('runCli: meeting schedule', () => {
+  it("books a meeting with a session of a team in its tree by <team>/<id>, in that team's schedule, and refuses one outside the tree or a caller not the lead (#834)", async () => {
+    const kit = await treeHarness();
+    const webMeetings = () => readMeetings(kit.files.get(join(teamHomeOf('web'), 'state', 'meetings.jsonl')) ?? '').meetings;
+    const result = await kit.run(['meeting', 'schedule', '--meets', 'web/front', '--at', '2030-01-08 14:00', '--about', 'the pane', '--session', 'lead']);
+    assert.equal(result.code, EXIT.ok, said(result));
+    assert.match(result.stdout[0] ?? '', /^SCHEDULED M1 scheduled, Tue 01-08 14:00 UTC, \d+ min, front \| the pane$/);
+    assert.deepEqual(webMeetings().map((meeting) => [meeting.id, meeting.session, meeting.by, meeting.status]), [['M1', 'front', 'app/lead', 'scheduled']]);
+    assert.equal(kit.files.get(MEETINGS_PATH), undefined, "nothing lands in the caller's own schedule");
+    assert.match(kit.files.get(teamInboxOf('web', 'front')) ?? '', /app\/lead: Meeting M1 with the owner booked/);
+    // front runs in a tab of its own, which the opening prompt reaches.
+    await new SessionRecordStore(kit.files, { sessions: join(teamHomeOf('web'), 'state', 'sessions') }).write('front', { claudePid: CLAUDE_PID, claudeSession: 'c0', at: '2030-01-08T09:00:00.000Z' });
+    const runs = {
+      sessionProcesses: new FakeSessionProcesses().add({ pid: CLAUDE_PID, parentPid: 1, name: 'claude.exe', commandLine: 'claude' }),
+      memory: new FakeHostMemory().lists([{ pid: CLAUDE_PID, parent: 1, bytes: 400 * MB, startedMs: Date.parse('2030-01-08T08:59:00Z') }]),
+    };
+    const now = await kit.run(['meeting', 'start', '--meets', 'web/front', '--about', 'a quick look', '--session', 'lead'], runs);
+    assert.equal(now.code, EXIT.ok, said(now));
+    assert.match(said(now), /^TOLD front$/m);
+    assert.deepEqual(webMeetings().map((meeting) => [meeting.id, meeting.status]), [['M1', 'scheduled'], ['M2', 'started']]);
+    const own = await kit.run(['meeting', 'schedule', '--meets', 'app/alpha', '--at', '2030-01-08 15:00', '--about', 'own team', '--session', 'lead']);
+    assert.equal(own.code, EXIT.ok, said(own));
+    assert.equal((await stored(kit, 'M1'))?.session, 'alpha', 'its own team by name books as a bare id does');
+    await kit.files.write(teamConfigOf('shop'), formatConfig({ configVersion: 1, team: { id: 'shop' }, sessions: ['lead', 'till'], roles: { lead: 'lead' } }));
+    const refused: readonly (readonly [readonly string[], RegExp])[] = [
+      [['--meets', 'shop/till', '--session', 'lead'], /team shop is not below team app/],
+      [['--meets', 'nowhere/till', '--session', 'lead'], /team nowhere is not below team app/],
+      [['--meets', 'web/front', '--session', 'alpha'], /only the lead \(app-lead\) books a meeting for a session of team web/],
+      [['--meets', 'web/nobody', '--session', 'lead'], /nobody/],
+      [['--meets', 'web/front', '--tasks', 'T1', '--session', 'lead'], /--tasks links tasks of your own team; a meeting booked in team web's schedule takes none/],
+    ];
+    // A sub-team's lead books below only: not up into the root's schedule, nor across into a sibling's.
+    const asWeb = { env: { TEAMRIG_TEAM: 'web', TEAMRIG_SESSION: 'lead' } };
+    for (const [meets, reason] of [['app/alpha', /team app is not below team web/], ['ops/run', /team ops is not below team web/]] as const) {
+      const run = await kit.run(['meeting', 'schedule', '--meets', meets, '--at', '2030-01-08 16:00', '--about', 'refused'], asWeb);
+      assert.equal(run.code, EXIT.refused, said(run));
+      assert.match(said(run), reason);
+    }
+    assert.equal(kit.files.get(join(teamHomeOf('ops'), 'state', 'meetings.jsonl')), undefined, "nothing lands in the sibling's schedule");
+    for (const [flags, reason] of refused) {
+      const run = await kit.run(['meeting', 'schedule', ...flags, '--at', '2030-01-08 16:00', '--about', 'refused']);
+      assert.equal(run.code, EXIT.refused, said(run));
+      assert.match(said(run), reason);
+    }
+    assert.equal(webMeetings().length, 2, 'a refused booking writes nothing');
+  });
+
   it('books a meeting, prints its id and tells the session met and those joining, not the caller', async () => {
     const kit = await team();
     const result = await kit.run([...BOOK, '--minutes', '45', '--with', 'bravo', '--tasks', 'T1', '--brief', 'notes/alpha/brief.md', '--session', 'lead']);

@@ -3443,7 +3443,7 @@ focus where it was. A session that is not the lead and runs `meeting start` with
 
 - `--session <area>`: who you are: the lead, or for a scheduled meeting any session.
 - `--about "<one line>"`: with no id, start a meeting on the spot about it.
-- `--meets <id|name>`: with `--about`, the session the owner meets; the caller by default.
+- `--meets <id|name|team/id>`: with `--about`, the session the owner meets; the caller by default. A `team/id` of a team below the caller's books it in that team's schedule; only the caller's own lead may.
 - `--minutes <n>`: with `--about`, how long it runs, as in `meeting schedule`.
 - `--with a,b`: with `--about`, the sessions joining, as in `meeting schedule`.
 - `--tasks T1,T2`: with `--about`, the tasks it is about, as in `meeting schedule`.
@@ -3603,7 +3603,7 @@ each, written under a lock; a finished one stays 8 days.
 
 Flags:
 
-- `--meets <id|name>`: the session met; at its time the meeting starts in that session's tab.
+- `--meets <id|name|team/id>`: the session met; at its time the meeting starts in that session's tab. A `team/id` of a team below the caller's, such as a sub-team's worker, books it in that team's schedule, where its tab and status line see it; only the caller's own lead may, with no `--tasks` (they are the caller's register's).
 - `--at <time>`: when it starts, ahead of now: a time on the team's clock (`14:00`, `"2030-01-10 09:00"`) or an
   ISO time with its zone.
 - `--about "<one line>"`: what it settles, one line of plain text of at most 200 characters, with no control

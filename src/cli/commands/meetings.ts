@@ -41,6 +41,7 @@ import { focusLine, openSession } from './open.ts';
 import { ownRegister } from './register.ts';
 import { sessionProjectOf } from './setup.ts';
 import { fileLockOf } from '../file-locks.ts';
+import { loadTree } from '../tree.ts';
 
 /**
  * `meeting schedule|list|move|start <id>|start --about|end <id>|drop` (T1358): the owner's meetings with one session,
@@ -60,6 +61,10 @@ const SECOND_MS = 1000;
 
 interface MeetingsKit {
   readonly kit: Kit;
+  /** The team whose schedule this is. */
+  readonly team: string;
+  /** The caller leads a team above this one, and booked through `--meets <team>/<id>` (#834). */
+  readonly leadAbove: boolean;
   /** The pointer file or `$TEAMRIG_TEAM` the team was found by, which names the team's project folder. */
   readonly from: string;
   readonly config: KitConfig;
@@ -79,6 +84,8 @@ async function meetingsKit(args: ParsedArgs, runtime: CliRuntime, access: Access
   const { files, clock } = runtime;
   return {
     kit,
+    team: found.team,
+    leadAbove: false,
     from: found.from,
     config,
     roster,
@@ -88,6 +95,44 @@ async function meetingsKit(args: ParsedArgs, runtime: CliRuntime, access: Access
     now: clock.now(),
     zone: teamZone(config, runtime),
   };
+}
+
+/**
+ * The kit and session `--meets` names: a bare id or name on the caller's own team, or `<team>/<id>` on a team below it
+ * (#834), booked in that team's schedule so its tab, status line and held messages see the meeting as one of its
+ * own. Only the caller's own lead books for another team, and that team's lines name it `<team>/<id>`.
+ */
+async function meetsOf(runtime: CliRuntime, mk: MeetingsKit, access: Access, meets: string): Promise<{ readonly mk: MeetingsKit; readonly session: string }> {
+  const slash = meets.indexOf('/');
+  const team = slash < 0 ? undefined : meets.slice(0, slash);
+  if (team === undefined || team === mk.team) {
+    return { mk, session: sessionIdOf(mk.roster, slash < 0 ? meets : meets.slice(slash + 1)) };
+  }
+  const { tree } = await loadTree(runtime);
+  // Below only, as audit, exec and budget: the booking acts as a lead above the team met (leadAbove).
+  if (!tree.ancestorsOf(team).includes(mk.team)) {
+    throw new RefusedError(`team ${team} is not below team ${mk.team}: --meets <team>/<id> names a session of a team below yours`);
+  }
+  const lead = mk.roster.holderOf('lead');
+  if (mk.caller !== lead) {
+    throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${mk.roster.nameOf(lead) ?? lead})`} books a meeting for a session of team ${team}`);
+  }
+  const kit = await openKit(runtime, team);
+  const config = requireConfig(kit, runtime, access);
+  const roster = await rosterOf(runtime, kit, config);
+  const other: MeetingsKit = {
+    ...mk,
+    kit,
+    team,
+    leadAbove: true,
+    config,
+    roster,
+    caller: `${mk.team}/${mk.caller}`,
+    schedule: new MeetingSchedule(runtime.files, kit.paths.meetings),
+    lock: fileLockOf(runtime, kit.paths.meetingsLock, config.lock),
+    zone: teamZone(config, runtime),
+  };
+  return { mk: other, session: sessionIdOf(roster, meets.slice(slash + 1)) };
 }
 
 /** One meeting as a list line: its id, status (a scheduled one past its slot reads missed), time, length, sessions, tasks and what it is about. */
@@ -201,7 +246,7 @@ async function tasksOf(runtime: CliRuntime, text: string | undefined): Promise<s
 /** The lead and the session met change a meeting; anyone else is refused, told who may `what`. */
 function mayChange(mk: MeetingsKit, session: string, what: string): void {
   const lead = mk.roster.holderOf('lead');
-  if (mk.caller !== lead && mk.caller !== session) {
+  if (mk.caller !== lead && mk.caller !== session && !mk.leadAbove) {
     throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${mk.roster.nameOf(lead) ?? lead})`} or ${session}, the session met, may ${what}`);
   }
 }
@@ -246,6 +291,10 @@ async function bookingOf(args: ParsedArgs, runtime: CliRuntime, mk: MeetingsKit,
   const secrets = new SecretScanner(mk.config.register.secretPatterns);
   const withText = args.flags.get('with');
   const brief = args.flags.get('brief')?.trim();
+  // The ids are the caller's register's, but the team met reads them against its own, where they name other tasks.
+  if (mk.leadAbove && args.flags.get('tasks') !== undefined) {
+    throw new RefusedError(`--tasks links tasks of your own team; a meeting booked in team ${mk.team}'s schedule takes none`);
+  }
   return {
     with: withText === undefined ? [] : [...new Set(listOf('--with', withText).map((each) => sessionIdOf(mk.roster, each)))].filter((each) => each !== session),
     at,
@@ -259,8 +308,7 @@ async function bookingOf(args: ParsedArgs, runtime: CliRuntime, mk: MeetingsKit,
 /** `meeting schedule`: books a meeting and tells the session met and those joining. */
 export async function meetingSchedule(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const mk = await meetingsKit(args, runtime, 'write');
-  const session = sessionIdOf(mk.roster, requiredFlag(args.flags, 'meets'));
+  const { mk, session } = await meetsOf(runtime, await meetingsKit(args, runtime, 'write'), 'write', requiredFlag(args.flags, 'meets'));
   mayChange(mk, session, `book a meeting with ${session}`);
   const fields = await bookingOf(args, runtime, mk, session, futureAt(requiredFlag(args.flags, 'at'), mk));
   const meeting = await mk.lock.run(async () => {
@@ -443,9 +491,9 @@ export async function meetingStartScheduled(args: ParsedArgs, runtime: CliRuntim
  */
 export async function meetingStartNow(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const mk = await meetingsKit(args, runtime, 'write');
+  const own = await meetingsKit(args, runtime, 'write');
   const meets = args.flags.get('meets');
-  const session = meets === undefined ? mk.caller : sessionIdOf(mk.roster, meets);
+  const { mk, session } = meets === undefined ? { mk: own, session: own.caller } : await meetsOf(runtime, own, 'write', meets);
   mayChange(mk, session, `start a meeting with ${session}`);
   const fields = await bookingOf(args, runtime, mk, session, mk.now);
   const started = await mk.lock.run(async () => {

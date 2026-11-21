@@ -102,7 +102,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       line, and no other session, and carries each card asked with no answer to the next meeting, whose
       agenda asks it first; in a tree of teams each team's lead holds its own, and its stats,
       decisions and end cover every team under it; a card decided there leaves the root's agenda
-  meeting schedule --meets <id|name> --at <time> --about "<one line>" [--minutes <n>] [--with a,b]
+  meeting schedule --meets <id|name|team/id> --at <time> --about "<one line>" [--minutes <n>] [--with a,b]
       [--tasks T1,T2] [--brief <path>]   books the owner's meeting with one session at a set time, apart
       from the daily one: it prints its id (M3) and tells the session met and those joining by one inbox
       line; the lead or the session met books, moves, ends and drops one
@@ -115,7 +115,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       opening prompt (the topic, tasks, brief and those joining), its running tab brought to the front
       and woken once idle or a closed one opened, and those joining are told by one inbox line; started
       in the session met's own tab, the prompt prints there instead
-  meeting start --about "<one line>" [--meets <id|name>] [--minutes <n>] [--with a,b] [--tasks T1,T2]
+  meeting start --about "<one line>" [--meets <id|name|team/id>] [--minutes <n>] [--with a,b] [--tasks T1,T2]
       [--brief <path>]   the owner's meeting on the spot with any session, a worker too: the caller's own,
       else --meets's; booked and started at once (M3), refused while that session is in one already.
       While a meeting is on, its tab is in meeting mode: messages to its session are held but CRITICAL
