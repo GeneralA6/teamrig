@@ -205,6 +205,7 @@ import {
   type PriorityConfig,
   type TeamLink,
   type TurnLogConfig,
+  type UiConfig,
   type NeedsYouConfig,
   type MeetingNoticesConfig,
   type WakeConfig,
@@ -613,6 +614,7 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
     pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', true) },
     meeting: parseMeeting(read, read.section(raw, 'meeting', '')),
     turnLog: parseTurnLog(read, read.section(raw, 'turnLog', '')),
+    ui: parseUi(read, read.section(raw, 'ui', '')),
     meetingNotices: parseMeetingNotices(read, read.section(raw, 'meetingNotices', '')),
     readonlyShell: parseReadonlyShell(read, read.section(raw, 'readonlyShell', '')),
     permissions: parsePermissions(read, read.section(raw, 'permissions', '')),
@@ -1666,6 +1668,12 @@ function parseExec(read: ConfigReader, raw: JsonRecord): ExecConfig {
     path: read.stringList(raw, 'path', path, DEFAULT_EXEC.path, shortLine(CONFIG_LIMITS.execPath.maxLength, EXEC_DIRECTORY), CONFIG_LIMITS.execPath.maxItems),
     ...(webhookEnv === undefined ? {} : { webhookEnv }),
   };
+}
+
+/** `ui`: a bad path is dropped, so `teamrig ui` starts the released UI rather than a file nobody named. */
+function parseUi(read: ConfigReader, raw: JsonRecord): UiConfig {
+  const path = read.optionalString(raw, 'path', 'ui', isAbsoluteFile);
+  return path === undefined ? {} : { path };
 }
 
 function parseAlerts(read: ConfigReader, raw: JsonRecord): AlertsConfig {
