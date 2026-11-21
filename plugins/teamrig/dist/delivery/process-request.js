@@ -1,6 +1,6 @@
-import { isNonNegativeInteger, isRecord } from "../core/guards.js";
+import { isRecord } from "../core/guards.js";
 import { classOf } from "../register/focus.js";
-import { ACTIVE_STATUSES, TASK_ID } from "../register/model.js";
+import { ACTIVE_STATUSES, isPriorityId, TASK_ID } from "../register/model.js";
 /**
  * What kind of work a queued step is: given with `queue --kind`, else read from its command (`kindOfCommand`); merge and
  * deploy name their own, and a ship tool's merge (it pushes and merges a change) says so with `--kind ship`; its run without --merge only
@@ -59,7 +59,7 @@ export function isLineRequest(value) {
     const { kind, task, priority, class: workClass, classPct, frontAt } = value;
     return (isStepKind(kind) &&
         (task === undefined || typeof task === 'string') &&
-        (priority === undefined || isNonNegativeInteger(priority)) &&
+        (priority === undefined || isPriorityId(priority)) &&
         typeof workClass === 'string' &&
         typeof classPct === 'number' &&
         Number.isFinite(classPct) &&

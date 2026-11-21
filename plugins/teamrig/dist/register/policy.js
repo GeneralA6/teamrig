@@ -5,6 +5,7 @@ import { ADDRESS_PATTERN } from "../core/address.js";
 import { SecretScanner } from "../core/secrets.js";
 import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from "../core/time.js";
 import { waitAnswerersOf } from "./approval.js";
+import { blockerHold } from "./blocker-hold.js";
 import { NO_GOAL_TAGS } from "./goals.js";
 import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, SECURITY_FLAG, typedHandStep, WHY_ASK_FLAG, whyAskUsage } from "./card.js";
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256 } from "./hand-step.js";
@@ -12,7 +13,7 @@ import { verdictIsCurrent, verdictReadOf } from "./security-verdict.js";
 import { ITEM_TYPES, sizeProblem } from "./events.js";
 import { droppedApproval, isRepark, taskNumber } from "./fold.js";
 import { commitsNamed } from "./head-sha.js";
-import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
+import { ACTIVE_STATUSES, BLOCKER_PRIORITY_ID, FOLLOWUP_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
 import { ITEM_TYPE_TRAITS, traitsOf } from "./item-types.js";
 import { waitsOnOwner } from "./owner-waits.js";
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts } from "./review.js";
@@ -38,6 +39,31 @@ export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size',
  * when the notes it points at move (T1830).
  */
 export const LEFT_OWNER_LEAD_FIELDS = [...LEAD_FIELDS, 'ref'];
+/**
+ * The refusal of a blocker (T4329) with no description: the level means drop everything now, so the task says what
+ * leaving it unfixed costs, whatever `register.requireDescription` says.
+ */
+export const BLOCKER_WHY = 'a blocker needs --description saying what it costs left unfixed: a terrible bottleneck, irreversible damage or an important operation blocked';
+/** The refusal of a blocker that waits on another task: that is a plain dependency, which stays a wait at p0 or lower. */
+function blockerWaitText(id, other) {
+    return `a blocker is fixed now, never after another task: ${id} waiting on ${other} is a plain wait, so give it p0 or lower, or make ${other} the blocker`;
+}
+/** Why `fields` cannot be a blocker: no description, or a plan after another task, or a task wait it already holds. */
+function blockerProblem(task, fields) {
+    if (fields.priority !== BLOCKER_PRIORITY_ID) {
+        return undefined;
+    }
+    if (fields.description === null) {
+        return BLOCKER_WHY;
+    }
+    const id = task?.id ?? 'the task';
+    const planned = fields.after[0];
+    if (planned !== undefined) {
+        return blockerWaitText(id, planned);
+    }
+    const waited = task?.status === 'waiting' ? task.waits.find((wait) => wait.kind === 'task') : undefined;
+    return waited === undefined ? undefined : blockerWaitText(id, waited.id);
+}
 /** The refusal of an `add` with no description while `register.requireDescription` is on. */
 export const DESCRIPTION_NEEDED = 'add needs --description "<what and why, in plain words>"';
 /** How a card is typed, for the refusals that ask for one. */
@@ -152,7 +178,7 @@ export class RegisterPolicy {
         if (fields.description === null && this.config.register.requireDescription) {
             return refuse(DESCRIPTION_NEEDED);
         }
-        const problem = this.checkFields(fields, sourceRule) ?? afterProblem(null, fields.after, state, elsewhere) ?? this.goalProblem(fields.goals, goalTags);
+        const problem = this.checkFields(fields, sourceRule) ?? blockerProblem(null, fields) ?? afterProblem(null, fields.after, state, elsewhere) ?? this.goalProblem(fields.goals, goalTags);
         if (problem !== undefined) {
             return refuse(problem);
         }
@@ -223,9 +249,15 @@ export class RegisterPolicy {
         }
         // Ranked work goes first and work in progress stays few (T2076); `warn` lets the start through and the CLI warns.
         const { focus } = this.config;
-        const wip = wipHold({ ...input, task, goals: context.goals }, context.state.tasks.values(), waitContext(context.state.tasks, context.now, context.zone, context.elsewhere), focus, register.ownerSource);
+        const moves = waitContext(context.state.tasks, context.now, context.zone, context.elsewhere);
+        const wip = wipHold({ ...input, task, goals: context.goals }, context.state.tasks.values(), moves, focus, register.ownerSource);
         if (wip !== undefined && focus.wip.mode === 'refuse') {
             return refuse(wip);
+        }
+        // A blocker is fixed before anything else its owner starts (T4329): no mode and no --one-commit way past.
+        const blocker = blockerHold(task, input.status, context.state.tasks.values(), moves);
+        if (blocker !== undefined) {
+            return refuse(blocker);
         }
         const note = blankToNull(input.note);
         const evidence = blankToNull(input.evidence);
@@ -613,6 +645,9 @@ export class RegisterPolicy {
             case 'approval':
                 return this.personWaitProblem(task, reason);
             case 'task':
+                if (status === 'waiting' && task.priority === BLOCKER_PRIORITY_ID) {
+                    return blockerWaitText(task.id, reason.id);
+                }
                 return taskWaitProblem(task, reason.id, context.state, context.elsewhere) ?? (status === 'verifying' ? unstartedProofTask(task, reason.id, context) : undefined);
             case 'time':
                 return timeProblem(reason.at, context);
@@ -892,7 +927,9 @@ export class RegisterPolicy {
         const sourceRule = (source) => (source === task.source ? undefined : this.teamSourceProblem(source));
         const after = changes.after === undefined ? undefined : afterChangeProblem(task, changes.after, state, elsewhere);
         const goals = changes.goals === undefined ? undefined : this.goalProblem(changes.goals, goalTags);
-        const problem = after ?? this.checkFields(merged, sourceRule, task) ?? goals ?? this.checkText('note', text);
+        // Only a change to what a blocker rests on is judged, so a blocker added before these rules still takes other edits.
+        const blocker = changes.priority === undefined && changes.after === undefined && changes.description === undefined ? undefined : blockerProblem(task, merged);
+        const problem = after ?? this.checkFields(merged, sourceRule, task) ?? blocker ?? goals ?? this.checkText('note', text);
         return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
     }
     /**

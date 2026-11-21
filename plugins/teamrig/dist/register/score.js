@@ -1,4 +1,4 @@
-import { NOW_PRIORITY } from "../config/priorities.js";
+import { isRightNow } from "../config/priorities.js";
 import { MS_PER_DAY } from "../core/time.js";
 /** A task's own value: a Roadmap task's by its goal rank, a Maintenance task's by its severity, any other class's flat. */
 export function valueOf(facts, focus) {
@@ -48,12 +48,12 @@ export function sizePctOf(facts, score) {
     return Math.max(wholeSizePctOf(facts, score) - facts.spentPct, score.minSizePct);
 }
 /**
- * The band of a task. A p0 always expedites: it means started ahead of the task in hand, whatever its class or who
+ * The band of a task. A p0 or a blocker always expedites: it means started ahead of the task in hand, whatever its class or who
  * asked, so no config turns it off. Every other expedite needs its arm on in `focus.expedite`.
  */
 export function bandOf(facts, focus) {
     const maintenance = facts.workClass === focus.maintenanceClass;
-    if (facts.priority === NOW_PRIORITY.id || (focus.expedite.critical && maintenance && facts.critical) || (focus.expedite.ownerP1 && facts.ownerSourced && facts.priority === 1)) {
+    if (isRightNow(facts.priority) || (focus.expedite.critical && maintenance && facts.critical) || (focus.expedite.ownerP1 && facts.ownerSourced && facts.priority === 1)) {
         return 0;
     }
     return maintenance || facts.workClass === focus.roadmapClass ? 1 : 2;

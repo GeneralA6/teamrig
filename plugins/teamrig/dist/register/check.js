@@ -1,11 +1,11 @@
 import { MS_PER_DAY, MS_PER_HOUR, parseDayStart, showStored } from "../core/time.js";
-import { NOW_PRIORITY, topPriority } from "../config/priorities.js";
+import { isRightNow, topPriority } from "../config/priorities.js";
 import { approvalCleared, waitAnswerersOf } from "./approval.js";
 import { AFFECTS_USAGE, CARD_FLAGS, GATE_FLAG, proofWordOf, RUN_FLAG, whyAskUsage } from "./card.js";
 import { taskNumber } from "./fold.js";
 import { auditOf, runFileDrift } from "./hand-step.js";
 import { leaderHolds, waitedMinutes } from "./leader-wait.js";
-import { ACTIVE_STATUSES, hasIssueOrReason, priorityText } from "./model.js";
+import { ACTIVE_STATUSES, BLOCKER_PRIORITY_ID, hasIssueOrReason, priorityText } from "./model.js";
 import { isProofAsk, isUngated, unreviewedSecurityWord } from "./owner-waits.js";
 import { isUntriaged } from "./park.js";
 import { loopFix, NO_TASKS_ELSEWHERE, pathText, planBand, TaskTree } from "./tree.js";
@@ -15,6 +15,7 @@ import { allReady, isPeerWait, isReady, unfinishedAfter, waitSpelling } from "./
 /** In report order: the most urgent first. */
 export const FLAG_KINDS = [
     'URGENT',
+    'BLOCKER-OPEN',
     'OVERDUE',
     'VERIFY-OVERDUE',
     'SLICE-LATE',
@@ -62,9 +63,11 @@ const FINISHED_STATUSES = ['done', 'verifying'];
 const IN_HAND = 1;
 /**
  * The daily flags over active tasks:
- * - URGENT: open at p0 (teamrig's own level, NOW_PRIORITY) and free to start (every task it comes after finished):
+ * - URGENT: open at p0 or the blocker above it (teamrig's own levels, isRightNow) and free to start (every task it comes after finished):
  *   its owner starts it now, ahead of the task in hand; with an effective due, the detail names the lead's deadline
  *   burst that may pay for finishing it by then;
+ * - BLOCKER-OPEN: a blocker not yet shipped (open, in progress or waiting) longer than `blockerOpenAfterHours` after it
+ *   became one: a blocker is fixed now, so its owner fixes it, or its leader takes it over or lowers it (T4329);
  * - OVERDUE: past its effective deadline (its own due, or an earlier one of a task that needs it, named in the detail
  *   as `due 01-10, from T5`); VERIFY-OVERDUE when the task is verifying: that date is the date to verify it by;
  * - LOOP: the lowest-numbered task of a loop among active tasks (`T2 -> T5 -> T2`), which none of them can finish:
@@ -143,6 +146,7 @@ export function checkTasks(tasks, now, zone, week, config, elsewhere = NO_TASKS_
     const runs = selfMadeRuns(all, at, config.check.maxSelfMadePerDay);
     const flags = active.flatMap((task) => [
         ...urgentFlags(task, tree),
+        ...blockerOpenFlags(task, at, config.check, tree),
         ...verifyFlags(task, tree, piles, config.maxVerifying),
         ...reparkedFlags(task, config.maxReparks),
         ...selfMadeFlags(task, runs, config.check.maxSelfMadePerDay),
@@ -362,16 +366,26 @@ function readyFlags(task, context, ownerSource) {
 function waitsForTime(task, context) {
     return task.waits.some((reason) => reason.kind === 'time' && !isReady(reason, context));
 }
-/** OVERDUE or VERIFY-OVERDUE on the effective due, then NOT-PICKED-UP or else STALE. */
 /** URGENT, with the lead's deadline burst on the effective due, typed on the team's clock, when the task has one. */
 function urgentFlags(task, tree) {
-    if (task.priority !== NOW_PRIORITY.id || task.status !== 'open' || unfinishedAfter(task.after, tree.context).length > 0) {
+    if (!isRightNow(task.priority) || task.status !== 'open' || unfinishedAfter(task.after, tree.context).length > 0) {
         return [];
     }
     const due = tree.effectiveDue(task.id);
     const burst = due === undefined ? '' : `; to finish it by its due, the lead may run burst start deadline --task ${task.id} --by "${tree.zone.minute(new Date(due.at))}" --stop-pct <n> --reason "<why>"`;
-    return [{ kind: 'URGENT', task, detail: `p0: start it now, ahead of the task in hand${burst}` }];
+    return [{ kind: 'URGENT', task, detail: `${priorityText(task.priority)}: start it now, ahead of the task in hand${burst}` }];
 }
+/** BLOCKER-OPEN: a blocker held (not yet shipped) past `blockerOpenAfterHours` since it became one. */
+function blockerOpenFlags(task, at, check, tree) {
+    const heldMs = at - Date.parse(task.priorityAt);
+    if (task.priority !== BLOCKER_PRIORITY_ID || !HELD_STATUSES.includes(task.status) || heldMs <= check.blockerOpenAfterHours * MS_PER_HOUR) {
+        return [];
+    }
+    const hours = Math.floor(heldMs / MS_PER_HOUR);
+    const detail = `a blocker since ${minute(task.priorityAt, tree.zone)}, ${hours} h, past ${check.blockerOpenAfterHours} h: its owner fixes it now, or its leader takes it over or lowers it`;
+    return [{ kind: 'BLOCKER-OPEN', task, detail }];
+}
+/** OVERDUE or VERIFY-OVERDUE on the effective due, then NOT-PICKED-UP or else STALE. */
 function timeFlags(task, at, check, tree) {
     const flags = [];
     const effective = tree.effectiveDue(task.id);

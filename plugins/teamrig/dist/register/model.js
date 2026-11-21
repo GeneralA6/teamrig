@@ -1,3 +1,4 @@
+import { isNonNegativeInteger } from "../core/guards.js";
 import { ID_PATTERN } from "../core/ids.js";
 /**
  * Task states. The first four are active: the task still needs its owner. `verifying` is a change that has
@@ -45,16 +46,28 @@ export const LOCAL_REF_PREFIX = 'local: ';
 export function hasIssueOrReason(ref) {
     return ref !== null && (ref.startsWith(ISSUE_REF_PREFIX) || ref.startsWith(LOCAL_REF_PREFIX));
 }
-/** A priority as the CLI prints and takes it: `p1`, the most urgent, `p2` and so on. */
+/**
+ * The blocker level (T4329), above p0: drop everything and fix it now. Lower is more urgent, so every sort and every
+ * `<= p0` test already puts it first. On disk it is `priority: 0` with `blocker: true` (events.ts), so an older teamrig,
+ * which refuses a negative priority, reads it as p0.
+ */
+export const BLOCKER_PRIORITY_ID = -1;
+/** Whether a stored value is a priority id: the blocker's, or p0 and below. */
+export function isPriorityId(value) {
+    return value === BLOCKER_PRIORITY_ID || isNonNegativeInteger(value);
+}
+/** How the blocker level is typed and printed. */
+export const BLOCKER_PRIORITY_TEXT = 'blocker';
+/** A priority as the CLI prints and takes it: `blocker`, then `p0`, `p1` and so on, most urgent first. */
 export function priorityText(priority) {
-    return `p${priority}`;
+    return priority === BLOCKER_PRIORITY_ID ? BLOCKER_PRIORITY_TEXT : `p${priority}`;
 }
 /**
  * How a work class is spelled (`Roadmap`, `Tech debt`; T2076): a letter, then up to 31 letters, digits, spaces, `_` or
  * `-`. Kept here so the register's parse and the config's `focus.classes` share it.
  */
 export const WORK_CLASS_NAME = /^[A-Za-z][A-Za-z0-9 _-]{0,31}$/;
-/** Whether a priority is at the top: `p1`, or a `p0` above it, so an urgent task never falls out of a top count. */
+/** Whether a priority is at the top: `p1`, or a `p0` or blocker above it, so an urgent task never falls out of a top count. */
 export function isTopPriority(priority) {
     return priority <= 1;
 }

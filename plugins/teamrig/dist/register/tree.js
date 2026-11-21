@@ -2,7 +2,7 @@ import { parseDeadline } from "../core/time.js";
 import { answerTo } from "./approval.js";
 import { canMove } from "./can-move.js";
 import { taskNumber } from "./fold.js";
-import { ACTIVE_STATUSES } from "./model.js";
+import { ACTIVE_STATUSES, BLOCKER_PRIORITY_ID } from "./model.js";
 import { wouldPark } from "./park.js";
 import { scoreOf, valueOf } from "./score.js";
 import { isFinished, isReady, waitContext } from "./waits.js";
@@ -75,16 +75,18 @@ function placeBand(place) {
     return place.ranked === undefined ? undefined : planBand(place.ranked);
 }
 /**
- * The keys of plan order, in order: the first one on which two tasks differ puts one ahead: `pinned` (a task the
- * owner's leader pinned, above every other key); `band` (expedite, then near-term prep, then Roadmap and Maintenance,
+ * The keys of plan order, in order: the first one on which two tasks differ puts one ahead: `holding` (a blocker its
+ * owner can take up: `start` refuses every other task while it is held, src/register/blocker-hold.ts, so it comes even
+ * before a pin, T4329); `pinned` (a task the owner's leader pinned, above every later key); `band` (expedite, then near-term prep, then Roadmap and Maintenance,
  * then the rest; score.ts, {@link planBand}); `ready` (a task that can move before one that cannot, whose value still reaches any need of it through
  * that need's score); `score` (the highest WSJF score first; score.ts); `started` (an in-progress task stays on top of
  * its equals); `due` (effective due, the earliest first, undated last); `unblocks` (the best priority among the active
  * tasks that need it, then the most of them; none last); `week` (in the week plan in force first); `size` (the smallest
  * first, unsized last); `age` (the lowest number first).
  */
-export const PLAN_KEYS = ['pinned', 'band', 'ready', 'score', 'started', 'due', 'unblocks', 'week', 'size', 'age'];
+export const PLAN_KEYS = ['holding', 'pinned', 'band', 'ready', 'score', 'started', 'due', 'unblocks', 'week', 'size', 'age'];
 const BY_KEY = {
+    holding: (a, b) => trueFirst(a.holding, b.holding),
     pinned: (a, b) => trueFirst(a.pinned, b.pinned),
     band: (a, b) => lowFirst(placeBand(a), placeBand(b)),
     ready: (a, b) => trueFirst(b.blocked, a.blocked),
@@ -274,11 +276,13 @@ export class TaskTree {
      * several registers together, each placed by its own register's tree ({@link planOrder}).
      */
     placeOf(task) {
+        const blocked = this.isBlocked(task);
         return {
             id: task.id,
+            holding: task.priority === BLOCKER_PRIORITY_ID && (task.status === 'open' || task.status === 'in-progress') && !blocked,
             pinned: task.pin !== undefined && task.pin !== null,
             ranked: this.rankedOf(task),
-            blocked: this.isBlocked(task),
+            blocked,
             at: this.dueTime(task),
             started: task.status === 'in-progress',
             unblocks: this.unblocks(task.id),

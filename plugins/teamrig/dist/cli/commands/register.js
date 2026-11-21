@@ -29,11 +29,11 @@ import { readGoals } from "../../register/goals.js";
 import { noProgressFlag } from "../../register/progress.js";
 import { sliceLateFlags } from "../../register/slice-late.js";
 import { overSizeFlags } from "../../register/over-size.js";
-import { ACTIVE_STATUSES } from "../../register/model.js";
+import { ACTIVE_STATUSES, BLOCKER_PRIORITY_ID } from "../../register/model.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, watchQueue } from "../../register/verify.js";
 import { readAs, TaskTree } from "../../register/tree.js";
-import { approvalNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, formatWatchRow, personWaitNotice, selectTasks } from "../../register/views.js";
+import { approvalNotice, blockerNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, formatWatchRow, personWaitNotice, selectTasks } from "../../register/views.js";
 import { isPeerWait, sameWait, waitContext } from "../../register/waits.js";
 import { wipHold } from "../../register/wip.js";
 import { lintSkills } from "../../skills/lint.js";
@@ -215,7 +215,8 @@ async function addHere(args, runtime, caller) {
             runtime.out.stdout(`OPENED ${end.verdict.value.task.id} ${end.ref}`);
         }
     }
-    await wakeWaitedOn(runtime, team, by, end.verdict, await tellNewOwner(runtime, team, by, end.verdict));
+    const told = [...(await tellNewOwner(runtime, team, by, end.verdict)), ...(await tellLeadersOfBlocker(runtime, team, by, end.verdict))];
+    await wakeWaitedOn(runtime, team, by, end.verdict, told);
     return code;
 }
 /** A NOTE asking to mark the task a bug when its text reads like one and no one gave it a type (register/bug-hint.ts). */
@@ -250,6 +251,29 @@ async function tellNewOwner(runtime, team, by, verdict) {
         return [];
     }
     return (await tellAssigned(runtime, team, by, task)) ? [task.owner] : [];
+}
+/**
+ * A task this write made a blocker (T4329), by `add` or `update --priority blocker`: an inbox line with a wake ask to
+ * the owner's leader and to the lead, so the sessions that set work order hear it at once, not at their next prompt;
+ * never to the writer or the owner, and nothing for a task that already was one. Returns the sessions told.
+ */
+async function tellLeadersOfBlocker(runtime, team, by, verdict) {
+    if (!verdict.ok) {
+        return [];
+    }
+    const { task, before } = verdict.value;
+    if (task.priority !== BLOCKER_PRIORITY_ID || before?.priority === BLOCKER_PRIORITY_ID) {
+        return [];
+    }
+    const { lead } = team.config.roles;
+    const receivers = new Set([new LeadTree(team.config, team.above).leaderOf(task.owner) ?? lead, lead]);
+    const told = [];
+    for (const receiver of receivers) {
+        if (receiver !== by && receiver !== task.owner && (await tellAnswer(runtime, team, by, receiver, blockerNotice(task), `${receiver} was not told that ${task.id} is a blocker`))) {
+            told.push(receiver);
+        }
+    }
+    return told;
 }
 /** What a write that told none of its writer's leaders prints: the change is in the register, and the lead's prompt digest shows it. */
 export const REGISTER_ONLY_LINE = 'NOTED in the register (the lead sees it at its next prompt)';
@@ -676,7 +700,7 @@ export async function update(args, runtime) {
     const sizeBase = typeof changes.size === 'number' ? await readSizeBase(runtime, team.paths, team.config.sessions, id, runtime.clock.now()) : undefined;
     const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'), sizeBase);
     const code = report(runtime, verdict, 'UPDATED', team);
-    const told = await tellNewOwner(runtime, team, by, verdict);
+    const told = [...(await tellNewOwner(runtime, team, by, verdict)), ...(await tellLeadersOfBlocker(runtime, team, by, verdict))];
     noteRegisterOnly(runtime, team, by, args.flags.get('note'), verdict, [...told, ...(await wakeWaitedOn(runtime, team, by, verdict, told))]);
     return code;
 }

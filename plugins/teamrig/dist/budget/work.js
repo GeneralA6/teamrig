@@ -1,4 +1,4 @@
-import { NOW_PRIORITY, priorityLevels } from "../config/priorities.js";
+import { isRightNow, priorityLevels } from "../config/priorities.js";
 import { isRecord, recordField } from "../core/guards.js";
 import { parseObject, recordVersion, VERSION_FIELD } from "../core/jsonl.js";
 import { isItemType, parseSizeBase } from "../register/events.js";
@@ -79,7 +79,7 @@ export function awaitedAnswers(all) {
     return awaited;
 }
 /**
- * The sessions' queued work at `now`: `workWeights`, each session's open and in-progress p0 tasks, the answers others
+ * The sessions' queued work at `now`: `workWeights`, each session's open and in-progress p0 and blocker tasks, the answers others
  * wait on it for, every task's size base, and the like tasks.
  */
 export function queuedWork(tasks, priorities, now) {
@@ -87,7 +87,7 @@ export function queuedWork(tasks, priorities, now) {
     const queued = all.filter((task) => QUEUED.has(task.status));
     const urgent = new Map();
     for (const task of queued) {
-        if (task.priority === NOW_PRIORITY.id) {
+        if (isRightNow(task.priority)) {
             appended(urgent, task.owner, task.id);
         }
     }

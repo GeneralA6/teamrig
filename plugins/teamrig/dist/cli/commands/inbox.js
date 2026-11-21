@@ -12,7 +12,7 @@ import { formatRead, formatStatus, inboxLineOf, inboxStatus, lineOnClock, postLi
 import { lineHash } from "../../inbox/line-hash.js";
 import { boundElsewhereOf, CLAUDE_SESSION_ID, RECEIVER_TABS, tabsOf } from "../../inbox/marks.js";
 import { reachOf } from "../../inbox/reach.js";
-import { rightNowNamedIn } from "../../inbox/right-now.js";
+import { blockerNamedIn } from "../../inbox/blocker-named.js";
 import { routeReminderOf } from "../../inbox/route.js";
 import { InboxDir, JsonlMarkLog } from "../../inbox/store.js";
 import { WAKE_AT_ONCE, WAKE_NOW, wakeByOf, wakeRefusal, wakesLine } from "../../inbox/wake-now.js";
@@ -399,14 +399,14 @@ function wakeWhenOf(wake, wakeBy, now, zone) {
     return wakeByOf(at, now, zone);
 }
 /**
- * The wake a line sent with neither `--wake now` nor `--wake-by` takes (T4414): `--wake now` when it names unfinished
- * right-now work of the sender's tree ({@link rightNowNamedIn}), since such work never waits for a prompt; none
- * otherwise. Where `--wake now` would be refused (a group from a session that leads no one, another team from a
- * member), the line still posts, with no wake and a note saying why: the sender never asked for one.
+ * The wake a line sent with neither `--wake now` nor `--wake-by` takes (T4414): `--wake now` when it names an
+ * unfinished blocker of the sender's tree ({@link blockerNamedIn}), since a blocker never waits for a prompt; none
+ * otherwise, p0 work included (T4329). Where `--wake now` would be refused (a group from a session that leads no one,
+ * another team from a member), the line still posts, with no wake and a note saying why: the sender never asked for one.
  */
-async function rightNowWakeOf(reads, team, text, refusalOf) {
+async function blockerWakeOf(reads, team, text, refusalOf) {
     const registers = await reads.treeRegisters();
-    const task = registers === undefined ? undefined : rightNowNamedIn(text, registers.map(({ team: holder, snapshot }) => ({ team: holder, tasks: snapshot.state.tasks })), team);
+    const task = registers === undefined ? undefined : blockerNamedIn(text, registers.map(({ team: holder, snapshot }) => ({ team: holder, tasks: snapshot.state.tasks })), team);
     if (task === undefined) {
         return { when: undefined, note: undefined };
     }
@@ -429,8 +429,8 @@ const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>,
  * its prompt within about 3 minutes (`wake.batchSeconds`), and says what that costs; `--wake-by <time>` (T1148) wakes
  * it at that time instead, and only if it has not seen the line by then. A group is woken only by a leader, another
  * team only by a team lead (a team below its own, any team's lead, a role holder its config names), else nothing is
- * posted. A line with neither flag that names unfinished right-now work wakes as `--wake now` where that gate lets it,
- * and posts with no wake where it does not (T4414).
+ * posted. A line with neither flag that names an unfinished blocker wakes as `--wake now` where that gate lets it,
+ * and posts with no wake where it does not (T4414); one naming p0 work posts with no wake (T4329).
  */
 export async function add(args, runtime) {
     noPositionals(args);
@@ -469,7 +469,7 @@ export async function add(args, runtime) {
             throw new RefusedError(refusal);
         }
     }
-    const { when, note } = asked === undefined ? await rightNowWakeOf(reads, team, text, refusalOf) : { when: asked, note: undefined };
+    const { when, note } = asked === undefined ? await blockerWakeOf(reads, team, text, refusalOf) : { when: asked, note: undefined };
     const secrets = new SecretScanner([
         ...config.register.secretPatterns,
         ...recipients.filter((recipient) => recipient.crossing).flatMap((recipient) => recipient.config.register.secretPatterns),

@@ -9,6 +9,7 @@ import { isCold } from "../hooks/cold-send.js";
 import { answerTo } from "../register/approval.js";
 import { waitsLetGoOn } from "../register/can-move.js";
 import { taskNumber } from "../register/fold.js";
+import { priorityText } from "../register/model.js";
 import { wouldPark } from "../register/park.js";
 import { neededIds } from "../register/tree.js";
 import { unfinishedAfter, waitContext } from "../register/waits.js";
@@ -262,13 +263,13 @@ export function taskListText(tasks) {
  */
 function taskTag(task) {
     if (!goesOnByWaits(task.status)) {
-        return `p${task.priority}`;
+        return priorityText(task.priority);
     }
     if (task.decided !== null) {
-        return `p${task.priority}, ${task.status}: ${task.decided.by} recorded the owner's decision`;
+        return `${priorityText(task.priority)}, ${task.status}: ${task.decided.by} recorded the owner's decision`;
     }
     const answer = task.waits.map((reason) => answerTo(task, reason)).find((found) => found !== undefined);
-    return `p${task.priority}, ${task.status}: ${answer === undefined ? 'every wait cleared' : `${answer.by} ${answer.verdict} it`}`;
+    return `${priorityText(task.priority)}, ${task.status}: ${answer === undefined ? 'every wait cleared' : `${answer.by} ${answer.verdict} it`}`;
 }
 /** The prompt the session reads, under the plugin's name. */
 export function wakePrompt(session, tasks, cost) {

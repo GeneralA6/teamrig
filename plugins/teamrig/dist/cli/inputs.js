@@ -4,7 +4,7 @@ import { parseTypedInstant, parseUtcDay, storedDeadline, typedDeadline, typedTim
 import { OPTION_SEPARATOR, optionsSplitText, splitOptions } from "../register/card.js";
 import { isItemType, ITEM_TYPES, MAX_SIZE_PCT, sizeProblem } from "../register/events.js";
 import { FIRST_SLICE, GOAL_TAG, isSlice } from "../register/goals.js";
-import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES } from "../register/model.js";
+import { BLOCKER_PRIORITY_ID, BLOCKER_PRIORITY_TEXT, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES } from "../register/model.js";
 import { WAITS_USAGE } from "../register/policy.js";
 import { REVIEW_FLAGS, REVIEW_ORDER } from "../register/review.js";
 import { isWaitKind, waitOf } from "../register/waits.js";
@@ -76,8 +76,14 @@ const PRIORITY_TEXT = /^p(0|[1-9]\d?)$/;
 const OLD_TIER_TEXT = /^t([1-9]\d?)$/i;
 /** A bare level, such as `2`: what `--tier` took. */
 const BARE_LEVEL_TEXT = /^(0|[1-9]\d?)$/;
-/** `--priority p2`: a level in the shape `p<n>`; the old `t2` and a bare `2` are refused with the spelling to use. */
+/**
+ * `--priority p2`: `blocker` (T4329) or a level in the shape `p<n>`; the old `t2` and a bare `2` are refused with the
+ * spelling to use.
+ */
 export function priorityOf(text) {
+    if (text === BLOCKER_PRIORITY_TEXT) {
+        return BLOCKER_PRIORITY_ID;
+    }
     const level = PRIORITY_TEXT.exec(text)?.[1];
     if (level !== undefined) {
         return Number(level);
@@ -89,7 +95,7 @@ export function priorityOf(text) {
     if (BARE_LEVEL_TEXT.test(text)) {
         throw new UsageError(`priority "${text}" is not p<n>: write ${priorityText(Number(text))}`);
     }
-    throw new UsageError(`priority "${text}" is not p<n>`);
+    throw new UsageError(`priority "${text}" is not ${BLOCKER_PRIORITY_TEXT} or p<n>`);
 }
 /** A comma list flag, its items trimmed; refused when it names none. */
 export function listOf(flag, text) {
