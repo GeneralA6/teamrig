@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_SECRET_ENV_NAMES, SecretNames } from './names.ts';
 import type { SecretGuardConfig } from '../config/types.ts';
-import { secretRulesOf } from './rules.ts';
+import { testPaths } from '../testing/host.ts';
+import { secretRulesOf, type HostSecretFiles } from './rules.ts';
 
 const names = new SecretNames(DEFAULT_SECRET_ENV_NAMES);
 
@@ -56,15 +57,39 @@ describe('SecretNames', () => {
 describe('secretRulesOf', () => {
   it('puts the team globs after the defaults, and ignores case only where the host does', () => {
     const config: SecretGuardConfig = { secretReads: 'deny', writes: 'deny', paths: ['!**/fixtures/*.pem'], envNames: [], commands: [], redact: true };
-    const windows = secretRulesOf(config, 'C:/u', 'win32');
+    const windows = secretRulesOf(config, 'C:/u', 'win32', testPaths());
     assert.equal(windows.paths.listed('C:/r/test/fixtures/a.pem'), false);
     assert.equal(windows.paths.listed('C:/r/A.PEM'), true);
-    assert.equal(secretRulesOf(config, '/u', 'linux').paths.listed('/r/A.PEM'), false);
+    assert.equal(secretRulesOf(config, '/u', 'linux', testPaths()).paths.listed('/r/A.PEM'), false);
+  });
+
+  it("reads the host's own secret files after the defaults and before the team's globs, naming no file of a host itself", () => {
+    const config: SecretGuardConfig = { secretReads: 'deny', writes: 'deny', paths: ['!**/fixtures/.agent/local.json'], envNames: [], commands: [], redact: true };
+    const told: HostSecretFiles = { secretFiles: () => ['~/.agent/login.json', '**/.agent/local.json'] };
+    const { paths } = secretRulesOf(config, '/u', 'linux', told);
+    assert.equal(paths.listed('/u/.agent/login.json'), true);
+    assert.equal(paths.listed('/r/.agent/local.json'), true);
+    assert.equal(paths.listed('/r/fixtures/.agent/local.json'), false, "a team's !glob still keeps one of the host's readable");
+    assert.equal(paths.listed('/r/.env'), true, 'the defaults stay');
+    const shipped = secretRulesOf(config, '/u', 'linux', testPaths()).paths;
+    for (const path of ['/u/.claude/.credentials.json', '/u/.claude/history.jsonl', '/r/.claude/settings.local.json']) {
+      assert.equal(shipped.listed(path), true, path);
+      assert.equal(paths.listed(path), false, `${path}: only the host that keeps the file names it`);
+    }
+    assert.equal(shipped.listed('/u/.agent/login.json'), false);
+  });
+
+  it("leaves out a !glob a host names: a host adds secret files, and only a team's !glob keeps one readable", () => {
+    const config: SecretGuardConfig = { secretReads: 'deny', writes: 'deny', paths: [], envNames: [], commands: [], redact: true };
+    const opening: HostSecretFiles = { secretFiles: () => ['~/.agent/login.json', '!**/.env', '!~/.agent/login.json'] };
+    const { paths } = secretRulesOf(config, '/u', 'linux', opening);
+    assert.equal(paths.listed('/r/.env'), true);
+    assert.equal(paths.listed('/u/.agent/login.json'), true);
   });
 
   it('puts the team commands after the default ones, so a !pattern lets a default command print', () => {
     const config: SecretGuardConfig = { secretReads: 'deny', writes: 'deny', paths: [], envNames: [], commands: ['^vault\\s+read\\s', '!--minify'], redact: true };
-    const { commands } = secretRulesOf(config, 'C:/u', 'win32');
+    const { commands } = secretRulesOf(config, 'C:/u', 'win32', testPaths());
     assert.equal(commands.matches('kubectl config view --raw'), true);
     assert.equal(commands.matches('vault read secret/app'), true);
     assert.equal(commands.matches('kubectl config view --minify --raw'), false);
