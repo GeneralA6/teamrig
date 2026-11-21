@@ -68,6 +68,7 @@ const secretsCommands = () => import('./commands/secrets.ts');
 const doctorCommands = () => import('./commands/doctor.ts');
 const pageCommands = () => import('./commands/page.ts');
 const filesCommands = () => import('./commands/files.ts');
+const uiCommands = () => import('./commands/ui.ts');
 const worktreeCommands = () => import('./commands/worktree.ts');
 const refreshCommands = () => import('./commands/refresh.ts');
 const setupCommands = () => import('./commands/setup.ts');
@@ -235,6 +236,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'roles list': { effect: 'read', flags: [], load: async () => (await rolesCommands()).list },
   refresh: { effect: 'write', flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
   doctor: { effect: 'read', flags: [], load: async () => (await doctorCommands()).doctor },
+  ui: { effect: 'read', flags: ['session', 'team'], load: async () => (await uiCommands()).ui },
   'page test': { effect: 'write', flags: [], load: async () => (await pageCommands()).pageTest },
   compact: { effect: 'write', flags: [], switches: ['dry-run', 'from-history'], load: async () => (await compactCommands()).compact },
   'issue sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto', 'push'], load: async () => (await issueSyncCommands()).issueSync },
@@ -758,6 +760,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix;
       also a variable that overrides every model or effort choice, and a launch with a model but no effort,
       and a page webhook that gives no https URL
+  ui [--session <id|name>] [--team <team>]   starts the dedicated UI in this terminal, for the team here or the
+      one named, on that session's view; it runs the entry script ui.path names, and is refused while
+      the key is unset (no released UI is pinned yet) or names no file
   page test                    posts one page marked TEST through the team's page webhook, as an expired login's
       page goes; prints which team's alerts key paged, or why none went and fails, never the URL
   compact [--dry-run] [--from-history]   archives the task list's log and rewrites its snapshot, so reads
