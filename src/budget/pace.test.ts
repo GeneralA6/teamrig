@@ -8,6 +8,7 @@ import {
   dayPacePct,
   hasRoom,
   holdsPastPart,
+  holdsTeamPast,
   nextConfiguredReset,
   paceLineOfWeek,
   paceLinePct,
@@ -261,6 +262,14 @@ describe('dayPacePct and hasRoom', () => {
     assert.equal(holdsPastPart({ usedPct: 3, pacePct: 3 }, false), true);
     assert.equal(holdsPastPart(undefined, false), true);
     assert.equal(holdsPastPart({ usedPct: 2.9, pacePct: 3 }, true), true);
+  });
+
+  it('holds the team for the day only past its own part and without room, never while either is unknown (#1737)', () => {
+    assert.equal(holdsTeamPast({ usedPct: 3, pacePct: 3 }, 2.1, 2), true);
+    assert.equal(holdsTeamPast({ usedPct: 2.9, pacePct: 3 }, 2.1, 2), false);
+    assert.equal(holdsTeamPast({ usedPct: 3, pacePct: 3 }, 2, 2), false);
+    assert.equal(holdsTeamPast({ usedPct: 3, pacePct: 3 }, undefined, 2), false);
+    assert.equal(holdsTeamPast({ usedPct: 3, pacePct: 3 }, 2.1, undefined), false);
   });
 });
 

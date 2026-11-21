@@ -191,6 +191,21 @@ export function holdsPastPart(day: TeamDay | undefined, cut: boolean): boolean {
   return cut || day === undefined || !hasRoom(day);
 }
 
+/** Whether use today (`usedPct`) is past a daily part (`partPct`), both in % of the week; never while either is unknown. */
+export function isPastPart(usedPct: number | undefined, partPct: number | undefined): boolean {
+  return usedPct !== undefined && partPct !== undefined && usedPct > partPct;
+}
+
+/**
+ * Whether the team is held for the day: its own use today (`usedPct`) past its part of the account's day (`partPct`)
+ * while it has no room (`holdsPastPart`, no cut). `teamrig budget` names the team on its held line by it, and the wake
+ * and idle pass cap the team's sessions at p0 by it (`wakeRestOf`), so the report never tells the team to start no new
+ * work while its sessions are still kept open or woken for p1 work (#1737).
+ */
+export function holdsTeamPast(day: TeamDay | undefined, usedPct: number | undefined, partPct: number | undefined): boolean {
+  return isPastPart(usedPct, partPct) && holdsPastPart(day, false);
+}
+
 export type PaceState = 'ahead' | 'behind' | 'on pace';
 
 /** Where the week stands against the pace line now. */
