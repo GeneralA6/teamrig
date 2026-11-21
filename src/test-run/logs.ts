@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import type { ShellEnd } from '../core/shell-end.ts';
+import { cleanOutput } from './parse.ts';
 
 /** How many logs are kept for each session (and for runs with no session); older ones are removed. */
 export const KEPT_LOGS = 20;
@@ -61,12 +62,59 @@ export function commandHeader(command: string): string {
   return `$ ${command}\n`;
 }
 
+/** The log's line for a run that stopped reading a pipe an orphaned process still held after the command ended. */
+export const HELD_OPEN_LINE = 'a process the command started still held its output open after the command ended, so the run stopped reading it';
+
 /**
- * What a log holds after its command line: everything the command printed and how it ended. It is
- * appended, never written over the log: on Windows a file a reader or a virus scan holds open cannot
+ * A run's log after its command line, written as the output arrives: each whole line as it comes, cleaned as
+ * `cleanOutput` cleans the whole output (a line's colour codes and `\r` rewrites stay within it), so a run that
+ * hangs or is killed leaves every line it printed (#719). `end` adds the last part line and how the run ended.
+ * Everything is appended, never written over the log: on Windows a file a reader or a virus scan holds open cannot
  * be replaced (T696).
  */
-export function logBody(output: string, end: ShellEnd): string {
-  const printed = output === '' || output.endsWith('\n') ? output : `${output}\n`;
-  return `${printed}${endLine(end)}\n`;
+export class LiveLog {
+  private readonly files: Files;
+  private readonly path: string;
+  private pending = '';
+  private written: Promise<void> = Promise.resolve();
+  private failure: { readonly error: unknown } | undefined;
+
+  constructor(files: Files, path: string) {
+    this.files = files;
+    this.path = path;
+  }
+
+  /** Takes a piece of output; the whole lines it completes go to the log, in order. */
+  write(chunk: string): void {
+    this.pending += chunk;
+    const last = this.pending.lastIndexOf('\n');
+    if (last !== -1) {
+      this.append(cleanOutput(this.pending.slice(0, last + 1)));
+      this.pending = this.pending.slice(last + 1);
+    }
+  }
+
+  /** Writes the output's last part line, `heldOpen`'s line and how the run ended; throws the first write that failed. */
+  async end(end: ShellEnd, heldOpen: boolean): Promise<void> {
+    const rest = cleanOutput(this.pending);
+    this.pending = '';
+    this.append(`${rest === '' || rest.endsWith('\n') ? rest : `${rest}\n`}${heldOpen ? `${HELD_OPEN_LINE}\n` : ''}${endLine(end)}\n`);
+    await this.written;
+    if (this.failure !== undefined) {
+      throw this.failure.error;
+    }
+  }
+
+  private append(text: string): void {
+    if (text === '') {
+      return;
+    }
+    this.written = this.written.then(async () => {
+      if (this.failure === undefined) {
+        await this.files.append(this.path, text).catch((error: unknown) => {
+          this.failure = { error };
+        });
+      }
+    });
+  }
 }

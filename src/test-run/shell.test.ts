@@ -101,6 +101,31 @@ describe('nodeShellRunner', () => {
     assert.deepEqual(JSON.parse(output), { cwd: realpathSync(DIR), probe: 'probe value', input: '' });
   });
 
+  it('hands each piece of output to onOutput as it arrives, all of it in order', async () => {
+    const command = script('pieces.mjs', "process.stdout.write('one\\n');\nsetTimeout(() => process.stderr.write('two\\n'), 40);\n");
+    const pieces: string[] = [];
+    const result = await shell.run({ command, cwd: DIR, env: ENV, onOutput: (chunk) => pieces.push(chunk) });
+    assert.equal(pieces.join(''), 'one\ntwo\n');
+    assert.equal(result.output, 'one\ntwo\n');
+    assert.equal(result.heldOpen, undefined);
+  });
+
+  it('ends a grace after the command exits while a process it started holds the output, with the command end (#719)', async () => {
+    // The command prints, starts a child that keeps stdout and stderr open for 5 s, and exits 3 at once. The child is
+    // detached: on Windows a child that is not dies with its parent's job object, and never holds the pipe.
+    const command = script(
+      'orphan.mjs',
+      "import { spawn } from 'node:child_process';\nconsole.log('before');\n" +
+        "spawn(process.execPath, ['-e', 'setTimeout(() => {}, 5000)'], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] }).unref();\nprocess.exitCode = 3;\n",
+    );
+    const started = Date.now();
+    // The orphan outlives the test and keeps its working folder busy; on Windows that folder cannot be removed
+    // until it exits, so it runs in the system temp folder, not in DIR, which after() removes.
+    const result = await nodeShellRunner(200).run({ command, cwd: tmpdir(), env: ENV });
+    assert.ok(Date.now() - started < 4_000, `ended ${Date.now() - started} ms after the start, not when the orphan let go`);
+    assert.deepEqual(result, { end: { kind: 'exited', code: 3 }, output: 'before\n', heldOpen: true });
+  });
+
   it('rejects when the command cannot start, such as in a missing folder', async () => {
     await assert.rejects(shell.run({ command: 'node --version', cwd: join(DIR, 'missing'), env: ENV }), /ENOENT/);
   });

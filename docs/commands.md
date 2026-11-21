@@ -721,11 +721,12 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       reset blackout, the deploy freezes and jobs still open, and what each repository with a deploy block
       has pushed but not deployed (it fetches each main checkout)
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
-      to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
-      test within tests.maxFailureChars; in a team through teamrig queue --kind test, one node spec
-      file as --small, anything more as a heavy step; exit 0 when the command passed, 1 otherwise. One
-      quoted word runs as a shell line ("npm run build && npm test"); several run as one command, each
-      word passed as is, so a word that is only &&, || or ; is REFUSED before anything runs
+      to a log as it arrives (each session keeps its newest 20) and prints one PASS or FAIL line, then each
+      failing test within tests.maxFailureChars; a process the command left holding its output is let go
+      2 s after the command ends, and the log says so; in a team through teamrig queue --kind test, one
+      node spec file as --small, anything more as a heavy step; exit 0 when the command passed, 1
+      otherwise. One quoted word runs as a shell line ("npm run build && npm test"); several run as one
+      command, each word passed as is, so a word that is only &&, || or ; is REFUSED before anything runs
   hook push-guard | hook package-guard | hook secret-guard | hook db-write-guard | hook exec-guard | hook pass-record-guard | hook service-role-guard | hook cold-send | hook failed-send | hook missing-cli | hook route-reminder | hook loop-nudge | hook secret-redact | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook effort-writeback | hook tab-status | hook pre-compact | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse | hook route-allow
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold [--why <reason>]] [--end]

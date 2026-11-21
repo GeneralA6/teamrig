@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { HELD_OPEN_LINE } from '../test-run/logs.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeShell } from '../testing/fake-shell.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
@@ -30,6 +31,28 @@ describe('teamrig test', () => {
     const log = join(LOGS, 'test-alpha-1.log');
     assert.deepEqual(result, { code: 0, stdout: [`PASS npm test: 1,532 tests in 41 s. Log: ${log}`], stderr: [] });
     assert.equal(kit.files.get(log), `$ npm test\n${PASSED}exit 0\n`);
+  });
+
+  it('logs what a run printed while it still runs, so a run that never ends leaves its lines (#719)', async () => {
+    const { kit, shell } = harness();
+    let release = (): void => {};
+    const hung = kit.run(['test', '--session', 'alpha', '--', 'npm', 'test'], { shell: shell.prints('ok 1\nok 2\n').hangsUntil(new Promise((done) => (release = done))) });
+    const log = join(LOGS, 'test-alpha-1.log');
+    for (let turn = 0; turn < 20 && kit.files.get(log) !== '$ npm test\nok 1\nok 2\n'; turn += 1) {
+      await new Promise((done) => setImmediate(done));
+    }
+    assert.equal(kit.files.get(log), '$ npm test\nok 1\nok 2\n', 'the lines are in the log before the run ends');
+    release();
+    assert.equal((await hung).code, 0);
+    assert.equal(kit.files.get(log), '$ npm test\nok 1\nok 2\nexit 0\n');
+  });
+
+  it("says in the log when a process held the run's output open after the command ended, and reports the command's end (#719)", async () => {
+    const { kit, shell } = harness();
+    const result = await kit.run(['test', '--', 'npm', 'test'], { shell: shell.prints(PASSED, 0, 1_000).heldOpen() });
+    const log = join(LOGS, 'test-1.log');
+    assert.deepEqual(result.stdout, [`PASS npm test: 1,532 tests in 1.0 s. Log: ${log}`]);
+    assert.equal(kit.files.get(log), `$ npm test\n${PASSED}${HELD_OPEN_LINE}\nexit 0\n`);
   });
 
   it('runs the command line in the shell, in the current folder with the environment as it is', async () => {

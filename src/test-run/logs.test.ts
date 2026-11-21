@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { ShellEnd } from '../core/shell-end.ts';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { commandHeader, endLine, KEPT_LOGS, logBody, pruneLogs, reserveLog } from './logs.ts';
+import { commandHeader, endLine, HELD_OPEN_LINE, KEPT_LOGS, LiveLog, pruneLogs, reserveLog } from './logs.ts';
 
 const DIR = '/kit/teams/app/state/logs';
 
@@ -78,11 +80,48 @@ describe('pruneLogs', () => {
   });
 });
 
-describe('logBody', () => {
-  it('holds what the command printed and how it ended, for the line after the command', () => {
-    assert.equal(logBody('ok 1\nnot ok 2', { kind: 'exited', code: 1 }), 'ok 1\nnot ok 2\nexit 1\n');
-    assert.equal(logBody('done\n', { kind: 'exited', code: 0 }), 'done\nexit 0\n');
-    assert.equal(logBody('', { kind: 'signal', signal: 'SIGTERM' }), 'ended by SIGTERM\n');
+describe('LiveLog', () => {
+  const LOG = `${DIR}/test-1.log`;
+  /** The log after `chunks` and the run's end, as `LiveLog` writes it. */
+  async function logged(chunks: readonly string[], end: ShellEnd, heldOpen = false): Promise<string | undefined> {
+    const files = new MemoryFiles({ [LOG]: '$ npm test\n' });
+    const live = new LiveLog(files, LOG);
+    for (const chunk of chunks) {
+      live.write(chunk);
+    }
+    await live.end(end, heldOpen);
+    return files.get(LOG);
+  }
+
+  it('holds what the command printed and how it ended, for the line after the command', async () => {
+    assert.equal(await logged(['ok 1\nnot ok 2'], { kind: 'exited', code: 1 }), '$ npm test\nok 1\nnot ok 2\nexit 1\n');
+    assert.equal(await logged(['done\n'], { kind: 'exited', code: 0 }), '$ npm test\ndone\nexit 0\n');
+    assert.equal(await logged([], { kind: 'signal', signal: 'SIGTERM' }), '$ npm test\nended by SIGTERM\n');
+  });
+
+  it('writes each whole line as it arrives, before the run ends (#719)', async () => {
+    const files = new MemoryFiles({ [LOG]: '$ npm test\n' });
+    const live = new LiveLog(files, LOG);
+    live.write('ok 1\nok ');
+    live.write('2\nok 3');
+    await new Promise((done) => setImmediate(done));
+    assert.equal(files.get(LOG), '$ npm test\nok 1\nok 2\n', 'the part line waits for its end');
+  });
+
+  it('cleans the lines as the whole output is cleaned, across pieces that split a line end or a colour code', async () => {
+    const chunks = ['\u001b[31mnot ok 1\u001b[39m\r', '\nprogress 10%\rprogress 100%\n\u001b[3', '2mok 2\u001b[39m\n'];
+    assert.equal(await logged(chunks, { kind: 'exited', code: 1 }), '$ npm test\nnot ok 1\nprogress 100%\nok 2\nexit 1\n');
+  });
+
+  it('says when a process the command started still held its output open (#719)', async () => {
+    assert.equal(await logged(['ok 1\n'], { kind: 'exited', code: 0 }, true), `$ npm test\nok 1\n${HELD_OPEN_LINE}\nexit 0\n`);
+  });
+
+  it('throws the first write that failed at its end, and writes nothing after it', async () => {
+    const files = new FaultyFiles(new MemoryFiles({ [LOG]: '$ npm test\n' })).fail('append', LOG, systemError('ENOSPC'));
+    const live = new LiveLog(files, LOG);
+    live.write('ok 1\n');
+    await assert.rejects(live.end({ kind: 'exited', code: 0 }, false), /ENOSPC/);
   });
 
   it('says how a command ended in one line', () => {

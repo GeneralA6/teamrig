@@ -6097,7 +6097,11 @@ app: 2 commits pushed, not deployed (c1a2b3c4..d5e6f7a8)
 
 Runs a test command in the shell and prints a few lines instead of all it printed, so a long test run costs the
 model little. The whole output goes to a numbered log, `test-<session>-<n>.log` in the team's `state/logs` folder
-(the kit home's `logs` folder outside a team); each session keeps its newest 20. Then one `PASS` or `FAIL` line with
+(the kit home's `logs` folder outside a team), written as the output arrives, so a run that hangs or is killed
+leaves every line it printed; each session keeps its newest 20. When the command ends but a process it started
+still holds its output open 2 s later, the run stops reading, and the log says so on its own line ("a process the
+command started still held its output open after the command ended, so the run stopped reading it") before the
+command's end. Then one `PASS` or `FAIL` line with
 the counts, the time and the log's path, and for a failed run each failing test in full within
 `tests.maxFailureChars` (4,000 characters by default), or the output's last 40 lines when no test runner is
 recognised. It reads the Node.js test runner (spec and TAP), Jest and Vitest. Exit 0 when the command passed,

@@ -8,18 +8,28 @@ export interface ShellRequest {
   readonly command: string;
   readonly cwd: string;
   readonly env: Env;
+  /** Called with each piece of output as it arrives, stdout and stderr together, so a run that never ends still leaves what it printed (#719). */
+  readonly onOutput?: (chunk: string) => void;
 }
 
 export interface ShellResult {
   readonly end: ShellEnd;
   /** What it printed on stdout and stderr together, in the order it arrived. */
   readonly output: string;
+  /**
+   * True when the command ended but a process it started still held its output open past the grace, so the run
+   * stopped reading: an orphaned grandchild, such as a test runner a time-boxed script left behind (#719).
+   */
+  readonly heldOpen?: true;
 }
 
 /** Runs a shell command line to its end, with no stdin, and keeps everything it printed. */
 export interface ShellRunner {
   run(request: ShellRequest): Promise<ShellResult>;
 }
+
+/** How long the run still reads output after the command itself ended, before it takes the pipe as held by an orphan. */
+export const HELD_OUTPUT_GRACE_MS = 2_000;
 
 /** Characters a POSIX shell reads as plain text; a word with any other is single-quoted. */
 const POSIX_PLAIN = /^[\w@%+=:,./-]+$/;
@@ -82,8 +92,12 @@ function cmdWord(word: string): string {
   return word !== '' && !CMD_SPECIAL.test(word) ? word : `"${word.replaceAll('"', '\\"')}"`;
 }
 
-/** The real shell: Node's `spawn` with `shell: true`, stdin closed, stdout and stderr read as they come. */
-export function nodeShellRunner(): ShellRunner {
+/**
+ * The real shell: Node's `spawn` with `shell: true`, stdin closed, stdout and stderr read as they come. It ends at
+ * `close`, once every pipe has ended; when the command exits while a process it started still holds a pipe, it stops
+ * reading `graceMs` later and ends with the command's own end, `heldOpen` set (#719).
+ */
+export function nodeShellRunner(graceMs: number = HELD_OUTPUT_GRACE_MS): ShellRunner {
   return {
     run: (request) =>
       new Promise((resolve, reject) => {
@@ -97,11 +111,28 @@ export function nodeShellRunner(): ShellRunner {
         const chunks: string[] = [];
         const keep = (chunk: string): void => {
           chunks.push(chunk);
+          request.onOutput?.(chunk);
+        };
+        let grace: NodeJS.Timeout | undefined;
+        let settled = false;
+        const settle = (result: ShellResult): void => {
+          clearTimeout(grace);
+          if (!settled) {
+            settled = true;
+            resolve(result);
+          }
         };
         child.stdout.setEncoding('utf8').on('data', keep);
         child.stderr.setEncoding('utf8').on('data', keep);
         child.once('error', reject);
-        child.once('close', (code, signal) => resolve({ end: endOf(code, signal), output: chunks.join('') }));
+        child.once('exit', (code, signal) => {
+          grace = setTimeout(() => {
+            child.stdout.destroy();
+            child.stderr.destroy();
+            settle({ end: endOf(code, signal), output: chunks.join(''), heldOpen: true });
+          }, graceMs);
+        });
+        child.once('close', (code, signal) => settle({ end: endOf(code, signal), output: chunks.join('') }));
       }),
   };
 }

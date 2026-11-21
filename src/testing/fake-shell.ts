@@ -15,6 +15,7 @@ export class FakeShell implements ShellRunner {
   private result: ShellResult = { end: { kind: 'exited', code: 0 }, output: '' };
   private takesMs = 0;
   private failure: Error | undefined;
+  private hanging: { readonly release: Promise<void> } | undefined;
 
   private readonly clock: Advancing | null;
 
@@ -29,6 +30,21 @@ export class FakeShell implements ShellRunner {
     return this;
   }
 
+  /** From now on, every run that prints holds its output open, as an orphaned grandchild does: it ends with `heldOpen`. */
+  heldOpen(): this {
+    this.result = { ...this.result, heldOpen: true };
+    return this;
+  }
+
+  /**
+   * From now on, every run prints its output and then does not end until `release` settles, as a run a process holds
+   * open does until the queue kills it.
+   */
+  hangsUntil(release: Promise<void>): this {
+    this.hanging = { release };
+    return this;
+  }
+
   /** From now on, every run fails to start with `error`, as a missing folder does. */
   failsWith(error: Error): this {
     this.failure = error;
@@ -40,6 +56,10 @@ export class FakeShell implements ShellRunner {
     if (this.failure !== undefined) {
       throw this.failure;
     }
+    if (this.result.output !== '') {
+      request.onOutput?.(this.result.output);
+    }
+    await this.hanging?.release;
     this.clock?.advance(this.takesMs);
     return this.result;
   }
