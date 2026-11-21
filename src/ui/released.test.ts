@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { INTERFACE_MAJOR, INTERFACE_MINOR, INTERFACE_VERSION } from '../interface/version.ts';
 import { FakeHttp } from '../testing/fake-http.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
 import { ARCHIVE_FORMAT, sha256Hex } from './archive.ts';
@@ -10,10 +11,11 @@ const HOME = '/kit';
 const URL_A = 'https://releases.example/pane/teamrig-ui.json';
 const URL_B = 'https://store.example/files/abc';
 
-function textOf(version: string): string {
+function textOf(version: string, speaks: string = INTERFACE_VERSION): string {
   const document = {
     format: ARCHIVE_FORMAT,
     version,
+    interface: speaks,
     entry: 'ui/main.js',
     files: [
       { path: 'package.json', text: '{"type":"module"}\n' },
@@ -137,6 +139,30 @@ describe('releasedEntry', () => {
     const result = await releasedEntry(depsOf(files, http), HOME, pinOf(text));
     assert.deepEqual(result, { ok: false, reason: 'the fetched UI was refused: it is version 0.78.0, not the pinned 0.77.0' });
     assert.deepEqual(files.paths(), []);
+  });
+
+  it('refuses an archive written against an interface this teamrig does not serve, and writes nothing', async () => {
+    const cases = [
+      [`${INTERFACE_MAJOR + 1}.0`, 'update teamrig'],
+      [`${INTERFACE_MAJOR}.${INTERFACE_MINOR + 1}`, 'update teamrig'],
+      [`${INTERFACE_MAJOR - 1}.0`, 'update the reader'],
+    ] as const;
+    for (const [speaks, side] of cases) {
+      const files = new MemoryFiles();
+      const text = textOf('0.77.0', speaks);
+      const result = await releasedEntry(depsOf(files, new FakeHttp().answers('GET', URL_A, 200, text)), HOME, pinOf(text));
+      assert.equal(result.ok, false, speaks);
+      assert.match(result.ok ? '' : result.reason, new RegExp(`^the fetched UI 0\\.77\\.0 was refused: interface ${speaks.replace('.', '\\.')} .*${side}$`), speaks);
+      assert.deepEqual(files.paths(), [], speaks);
+    }
+  });
+
+  it('starts an archive written against an older minor of the served major', async () => {
+    const speaks = `${INTERFACE_MAJOR}.0`;
+    const text = textOf('0.77.0', speaks);
+    const pin = pinOf(text);
+    const result = await releasedEntry(depsOf(new MemoryFiles(), new FakeHttp().answers('GET', URL_A, 200, text)), HOME, pin);
+    assert.equal(entryOf(result), `/kit/ui/0.77.0-${pin.sha256}/ui/main.js`);
   });
 
   it('says why a fetch failed, and writes nothing', async () => {
