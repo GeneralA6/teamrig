@@ -22,7 +22,7 @@ const SESSION_NAMES = new Map([
 
 const NAMES: SourceNames = { owner: 'owner', connectors: [TRACKER], nameOf: (session) => SESSION_NAMES.get(session) };
 
-/** Every field a served task has, in the order the document writes them: the contract of interface 1.0. */
+/** Every field a served task has, in the order the document writes them: the contract of interface 1.0, then 1.6's. */
 const SERVED_FIELDS = [
   'id',
   'title',
@@ -56,6 +56,13 @@ const SERVED_FIELDS = [
   'answer',
   'decided',
   'after',
+  'card',
+  'descriptionCut',
+  'sizeBase',
+  'prepares',
+  'noGoal',
+  'startedAt',
+  'waitsAt',
 ];
 
 function bodyOf(tasks: readonly Task[], owner: string | null = null): TasksBody {
@@ -77,7 +84,7 @@ function secretShape(): string {
 
 describe('the tasks document', () => {
   it('serves exactly the fields of the contract, and none of the register-only ones', () => {
-    const task = only(bodyOf([testTask({ card: null, watch: 'the next run', reparks: 2, followups: ['T9'], noGoal: true, startedAt: '2030-01-07T10:00:00.000Z' })]));
+    const task = only(bodyOf([testTask({ watch: 'the next run', reparks: 2, followups: ['T9'] })]));
 
     assert.deepEqual(Object.keys(task), SERVED_FIELDS);
   });
@@ -136,6 +143,13 @@ describe('the tasks document', () => {
       answer: null,
       decided: null,
       after: ['T5', 'T6'],
+      card: null,
+      descriptionCut: null,
+      sizeBase: null,
+      prepares: null,
+      noGoal: false,
+      startedAt: null,
+      waitsAt: '2030-01-07T09:00:00.000Z',
     });
   });
 
@@ -197,6 +211,65 @@ describe('the tasks document', () => {
     assert.deepEqual(task.decided, { by: 'lead', at: '2030-01-07T12:00:00.000Z', note: null });
   });
 
+  it("serves an owner card's every part, a part it leaves out as null", () => {
+    const [full, bare] = bodyOf([
+      testTask({
+        id: 'T1',
+        status: 'waiting',
+        waits: [{ kind: 'decision', who: 'owner' }],
+        card: {
+          question: 'Raise the cap?',
+          options: ['1. to 6 GB', '2. keep 4 GB'],
+          recommend: '1, the builds wait less',
+          byDefault: 'keep 4 GB',
+          whyAsk: 'the order named 4 GB',
+          gate: 'resource changes',
+          run: 'C:/steps/cap.ts',
+          affects: 'the cap',
+          security: true,
+        },
+      }),
+      testTask({ id: 'T2', status: 'waiting', waits: [{ kind: 'approval', who: 'lead' }], card: { question: 'Merge it?', options: [], recommend: 'yes', byDefault: 'it waits' } }),
+    ]).tasks;
+
+    assert.deepEqual(full?.card, {
+      question: 'Raise the cap?',
+      options: ['1. to 6 GB', '2. keep 4 GB'],
+      recommend: '1, the builds wait less',
+      byDefault: 'keep 4 GB',
+      whyAsk: 'the order named 4 GB',
+      gate: 'resource changes',
+      run: 'C:/steps/cap.ts',
+      affects: 'the cap',
+      security: true,
+    });
+    assert.deepEqual(bare?.card, { question: 'Merge it?', options: [], recommend: 'yes', byDefault: 'it waits', whyAsk: null, gate: null, run: null, affects: null, security: false });
+  });
+
+  it('serves the size base, the prep marker, the goal mark, the left-out description and the start and wait times', () => {
+    const task = only(
+      bodyOf([
+        testTask({
+          description: null,
+          descriptionCut: { chars: 812, hash: '1a2b3c4d' },
+          size: 2,
+          sizeBase: { day: '2030-01-06', w: 1200 },
+          prepares: { goal: 'g1', slice: 2 },
+          noGoal: true,
+          status: 'waiting',
+          startedAt: '2030-01-07T10:00:00.000Z',
+          waitsAt: '2030-01-07T11:00:00.000Z',
+        }),
+      ]),
+    );
+
+    assert.equal(task.description, null);
+    assert.deepEqual(
+      [task.descriptionCut, task.sizeBase, task.prepares, task.noGoal, task.startedAt, task.waitsAt],
+      [{ chars: 812, hash: '1a2b3c4d' }, { day: '2030-01-06', w: 1200 }, { goal: 'g1', slice: 2 }, true, '2030-01-07T10:00:00.000Z', '2030-01-07T11:00:00.000Z'],
+    );
+  });
+
   it('cuts every free text that matches a secret shape and lists each cut by task and field', () => {
     const shape = secretShape();
     const cut = cutText(shape);
@@ -213,6 +286,7 @@ describe('the tasks document', () => {
         skill: SECRET,
         answer: { verdict: 'declined', by: 'lead', at: '2030-01-07T11:00:00.000Z', note: SECRET },
         decided: { by: 'lead', at: '2030-01-07T12:00:00.000Z', note: SECRET },
+        card: { question: SECRET, options: ['keep it', SECRET], recommend: SECRET, byDefault: SECRET, whyAsk: SECRET, gate: SECRET, run: SECRET, affects: SECRET },
       }),
     ]);
     const task = only(body);
@@ -222,9 +296,28 @@ describe('the tasks document', () => {
     assert.equal(task.description?.text, cut);
     assert.deepEqual(task.ref, { text: cut, connector: null, id: null, label: null, url: null });
     assert.deepEqual([task.note, task.proof, task.evidence, task.skill, task.answer?.note, task.decided?.note], [cut, cut, cut, cut, cut, cut]);
+    assert.deepEqual(task.card, { question: cut, options: ['keep it', cut], recommend: cut, byDefault: cut, whyAsk: cut, gate: cut, run: cut, affects: cut, security: false });
     assert.deepEqual(
       body.cuts,
-      ['title', 'description', 'note', 'proof', 'evidence', 'skill', 'ref', 'answer.note', 'decided.note'].map((field) => ({ id: 'T3', field, shape })),
+      [
+        'title',
+        'description',
+        'note',
+        'proof',
+        'evidence',
+        'skill',
+        'ref',
+        'answer.note',
+        'decided.note',
+        'card.question',
+        'card.options',
+        'card.recommend',
+        'card.byDefault',
+        'card.whyAsk',
+        'card.gate',
+        'card.run',
+        'card.affects',
+      ].map((field) => ({ id: 'T3', field, shape })),
     );
   });
 

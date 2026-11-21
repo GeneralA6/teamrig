@@ -4,6 +4,7 @@
  * built-ins, and `interface/index.test.ts` fails if anything reachable from here imports one. The command
  * (src/cli/commands/read.ts) gathers through the ports and calls these.
  */
+export { servedCard, type ServedCard } from './card.ts';
 export {
   configBody,
   KEPT_NOTE,
@@ -91,6 +92,17 @@ export {
   type StatsBodyInput,
 } from './stats.ts';
 export { sourceOf,type ServedSource, type SourceKind, type SourceNames } from './source.ts';
-export { tasksBody, type ServedAnswer, type ServedDecision, type ServedTask, type ServedWait, type TasksBody, type TasksInput } from './tasks.ts';
+export {
+  tasksBody,
+  type ServedAnswer,
+  type ServedDecision,
+  type ServedDescriptionCut,
+  type ServedPrep,
+  type ServedSizeBase,
+  type ServedTask,
+  type ServedWait,
+  type TasksBody,
+  type TasksInput,
+} from './tasks.ts';
 export { cutText, ServedText, type Cut, type MarkedText, type SecretShapes, type TextSource } from './text.ts';
 export { checkInterfaceRange, INTERFACE_MAJOR, INTERFACE_MINOR, INTERFACE_VERSION, parseInterfaceVersion, type InterfaceVersion, type RangeCheck } from './version.ts';
