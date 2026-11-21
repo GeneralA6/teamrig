@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { basename, join } from 'node:path';
 import type { Files } from '../core/files.ts';
-import { isRecord, isStringArray } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
 import { jsonObjectOf } from '../doctor/settings-env.ts';
+import type { HostPermissions } from '../ports/host/index.ts';
 import { countOf, mergeCounts, planAllowTrim, type AllowTrim, type ClassCounts, type KeepList, type SecretFinder, type TrimMode } from './allow-rules.ts';
 import type { SettingsFile } from './settings-scope.ts';
 
@@ -34,7 +34,14 @@ export type FilePlan =
 export type ReadPlan = Extract<FilePlan, { kind: 'read' }>;
 
 /** The plan for one file's text (undefined: no file). A parse error's message is never kept: it can quote the file. */
-export function planFile(file: SettingsFile, text: string | undefined, keep: KeepList, mode: TrimMode, secrets: SecretFinder): FilePlan {
+export function planFile(
+  permissions: HostPermissions,
+  file: SettingsFile,
+  text: string | undefined,
+  keep: KeepList,
+  mode: TrimMode,
+  secrets: SecretFinder,
+): FilePlan {
   if (text === undefined) {
     return { file, kind: 'absent' };
   }
@@ -42,23 +49,30 @@ export function planFile(file: SettingsFile, text: string | undefined, keep: Kee
   if (json === undefined) {
     return { file, kind: 'unreadable', why: 'not a JSON object' };
   }
-  const permissions = json['permissions'] ?? {};
-  if (!isRecord(permissions)) {
-    return { file, kind: 'unreadable', why: 'permissions is not an object' };
+  const allow = permissions.read(json).allow;
+  if (!allow.ok) {
+    return { file, kind: 'unreadable', why: allow.problem };
   }
-  const allow = permissions['allow'] ?? [];
-  if (!isStringArray(allow)) {
-    return { file, kind: 'unreadable', why: 'permissions.allow is not a list of texts' };
+  const trim = planAllowTrim(allow.value, keep, mode, secrets);
+  const rewrites = trim.after.length < allow.value.length && file.kind !== 'shared';
+  const written = rewrites ? permissions.writeAllow(json, trim.after) : undefined;
+  if (written !== undefined && !written.ok) {
+    return { file, kind: 'unreadable', why: written.problem };
   }
-  const trim = planAllowTrim(allow, keep, mode, secrets);
-  const rewrites = trim.after.length < allow.length && file.kind !== 'shared';
-  const next = rewrites ? settingsText({ ...json, permissions: { ...permissions, allow: trim.after } }) : undefined;
-  return { file, kind: 'read', text, total: allow.length, trim, next };
+  const next = written === undefined ? undefined : settingsText(written.value);
+  return { file, kind: 'read', text, total: allow.value.length, trim, next };
 }
 
 /** The plan of every file in scope, read now. */
-export async function planScope(files: Files, scope: readonly SettingsFile[], keep: KeepList, mode: TrimMode, secrets: SecretFinder): Promise<FilePlan[]> {
-  return Promise.all(scope.map(async (file) => planFile(file, await files.read(file.path), keep, mode, secrets)));
+export async function planScope(
+  permissions: HostPermissions,
+  files: Files,
+  scope: readonly SettingsFile[],
+  keep: KeepList,
+  mode: TrimMode,
+  secrets: SecretFinder,
+): Promise<FilePlan[]> {
+  return Promise.all(scope.map(async (file) => planFile(permissions, file, await files.read(file.path), keep, mode, secrets)));
 }
 
 /** Rules off the keep-list that approve a whole tool or program or hold a credential: how many files hold them, and their classes. */
@@ -83,7 +97,7 @@ export function wideAllowOf(plans: readonly FilePlan[]): WideAllow {
   return { local: of(false), committed: of(true) };
 }
 
-/** Settings as Claude Code writes them: two-space JSON and a final line break. */
+/** Settings as the host writes them: two-space JSON and a final line break. */
 function settingsText(json: Readonly<Record<string, unknown>>): string {
   return `${JSON.stringify(json, null, 2)}\n`;
 }
@@ -127,10 +141,10 @@ function sha256(text: string): string {
 }
 
 /** The allow list of a file as written, or undefined when it cannot be read as one. */
-function allowOf(text: string | undefined): readonly string[] | undefined {
-  const permissions = text === undefined ? undefined : jsonObjectOf(text)?.['permissions'];
-  const allow = isRecord(permissions) ? permissions['allow'] : undefined;
-  return isStringArray(allow) ? allow : undefined;
+function allowOf(permissions: HostPermissions, text: string | undefined): readonly string[] | undefined {
+  const json = text === undefined ? undefined : jsonObjectOf(text);
+  const allow = json === undefined ? undefined : permissions.read(json).allow;
+  return allow?.ok === true ? allow.value : undefined;
 }
 
 function sameList(left: readonly string[], right: readonly string[]): boolean {
@@ -142,7 +156,7 @@ function sameList(left: readonly string[], right: readonly string[]): boolean {
  * before any settings file is written), writes the manifest, then rewrites each file that still holds the text it was
  * planned from and reads it back.
  */
-export async function applyTrim(files: Files, plans: readonly FilePlan[], backupDir: string, now: number): Promise<TrimWrite[]> {
+export async function applyTrim(permissions: HostPermissions, files: Files, plans: readonly FilePlan[], backupDir: string, now: number): Promise<TrimWrite[]> {
   const steps = rewritesOf(plans).map((plan, index) => ({ plan, name: `${String(index + 1).padStart(2, '0')}-${basename(plan.file.path)}` }));
   for (const { plan, name } of steps) {
     await claim(files, join(backupDir, name), plan.text);
@@ -154,7 +168,7 @@ export async function applyTrim(files: Files, plans: readonly FilePlan[], backup
   await claim(files, join(backupDir, MANIFEST), settingsText(manifest));
   const written: TrimWrite[] = [];
   for (const { plan, name } of steps) {
-    written.push({ plan, backup: join(backupDir, name), result: await rewrite(files, plan) });
+    written.push({ plan, backup: join(backupDir, name), result: await rewrite(permissions, files, plan) });
   }
   return written;
 }
@@ -165,11 +179,11 @@ async function claim(files: Files, path: string, text: string): Promise<void> {
   }
 }
 
-async function rewrite(files: Files, plan: Rewrite): Promise<WriteResult> {
+async function rewrite(permissions: HostPermissions, files: Files, plan: Rewrite): Promise<WriteResult> {
   if ((await files.read(plan.file.path)) !== plan.text) {
     return 'changed-since-read';
   }
   await files.write(plan.file.path, plan.next);
-  const after = allowOf(await files.read(plan.file.path));
+  const after = allowOf(permissions, await files.read(plan.file.path));
   return after !== undefined && sameList(after, plan.trim.after) ? 'wrote' : 'not-verified';
 }
