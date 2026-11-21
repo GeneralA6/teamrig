@@ -1,8 +1,8 @@
 import { resolve } from 'node:path';
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { issueRef } from '../../github/map.ts';
-import { countsLine, parseMigrateRows, planMigration, previewMarkdown, replacedRefNote, type MigrateCreate, type MigratePlan, type MigrateRow, type RefJudge } from '../../github/migrate.ts';
+import { issueRef } from '../../sync/map.ts';
+import { countsLine, parseMigrateRows, planMigration, previewMarkdown, replacedRefNote, type MigrateCreate, type MigratePlan, type MigrateRow, type RefJudge } from '../../sync/migrate.ts';
 import { GITHUB_REPOS_HOST } from '../../issues/host.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { onePositional, type ParsedArgs } from '../args.ts';
@@ -19,7 +19,7 @@ export const SHOWN_UNROWED = 20;
 
 /**
  * `issue migrate <file> [--out <preview.md>] [--yes]` (T2550): moves the caller's team's tasks to GitHub issues from a
- * file of JSON-lines rows (github/migrate.ts), each a task's public wording or the reason it stays local. Without
+ * file of JSON-lines rows (sync/migrate.ts), each a task's public wording or the reason it stays local. Without
  * `--yes` it writes nothing but the `--out` preview, a page with every issue in full for a reviewer. `--yes` opens
  * each planned issue through the issue host port (issues/host.ts; on GitHub with the token saved for the repository's
  * owner, never the gh login; no saved token, or one the store could not read, stops the run), then points

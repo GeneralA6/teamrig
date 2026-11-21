@@ -1,4 +1,4 @@
-import { SECRET_BODY } from '../github/map.ts';
+import { SECRET_BODY } from '../sync/map.ts';
 import { ACTIVE_STATUSES, isIssueRef } from '../register/model.ts';
 import type { Task } from '../register/fold.ts';
 

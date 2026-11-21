@@ -19,7 +19,7 @@ describe('boundaryFindings: what the core imports', () => {
 
   it('lets a core spec use the fakes, and no other core file', () => {
     assert.deepEqual(found(file('src/core/run.test.ts', "import { fake } from '../testing/fake.ts';", "import { b } from '../cli/b.ts';")), ['2 core-imports src/cli/b.ts']);
-    assert.deepEqual(found(file('src/core/run.ts', "import { fake } from '../testing/fake.ts';")), ['1 core-imports src/testing/fake.ts']);
+    assert.deepEqual(found(file('src/core/run.ts', "import { fake } from '../testing/fake.ts';")), ['1 core-imports src/testing/fake.ts', '1 fakes-reach src/testing/fake.ts']);
   });
 
   it('holds only what the core imports from src, and only the core', () => {
@@ -32,6 +32,24 @@ describe('boundaryFindings: who imports an adapter', () => {
   it('finds an import of an adapter from another src folder and from the tools', () => {
     assert.deepEqual(found(file('src/cli/run.ts', "import host from '../adapters/hosts/first/index.ts';")), ['1 adapter-reach src/adapters/hosts/first/index.ts']);
     assert.deepEqual(found(file('tools/docs/pages/draw.ts', "import host from '../../../src/adapters/hosts/first/index.ts';")), ['1 adapter-reach src/adapters/hosts/first/index.ts']);
+  });
+
+  it('refuses shipped code importing an adapter, and lets the spec beside it and the fakes drive one', () => {
+    const adapter = "import { isIssueQuery } from '../adapters/connectors/first/testing/requests.ts';";
+    assert.deepEqual(found(file('src/cli/issue-sync.ts', adapter)), ['1 adapter-reach src/adapters/connectors/first/testing/requests.ts']);
+    assert.deepEqual(found(file('src/cli/issue-sync.test.ts', adapter)), []);
+    assert.deepEqual(found(file('src/testing/cli-harness.ts', adapter)), []);
+  });
+
+  it('lets no spec or fake outside src reach an adapter, and no shipped file whose name only holds the word test', () => {
+    const adapter = "import host from '../../../src/adapters/hosts/first/index.ts';";
+    assert.deepEqual(found(file('tools/docs/pages/draw.test.ts', adapter)), ['1 adapter-reach src/adapters/hosts/first/index.ts']);
+    assert.deepEqual(found(file('tools/docs/testing/draw.ts', adapter)), ['1 adapter-reach src/adapters/hosts/first/index.ts']);
+    assert.deepEqual(found(file('src/cli/test.ts', "import host from '../adapters/hosts/first/index.ts';")), ['1 adapter-reach src/adapters/hosts/first/index.ts']);
+  });
+
+  it('still holds a core spec importing an adapter to the core rule', () => {
+    assert.deepEqual(found(file('src/core/run.test.ts', "import host from '../adapters/hosts/first/index.ts';")), ['1 core-imports src/adapters/hosts/first/index.ts']);
   });
 
   it('counts a core file importing an adapter under both rules', () => {
@@ -57,7 +75,7 @@ describe('boundaryFindings: what an adapter imports', () => {
 
   it('lets an adapter spec use the fakes, and no other adapter file', () => {
     assert.deepEqual(found(file('src/adapters/hosts/first/index.test.ts', "import { hostDeps } from '../../../testing/adapter-deps.ts';")), []);
-    assert.deepEqual(found(file('src/adapters/hosts/first/index.ts', "import { hostDeps } from '../../../testing/adapter-deps.ts';")), ['1 adapter-imports src/testing/adapter-deps.ts']);
+    assert.deepEqual(found(file('src/adapters/hosts/first/index.ts', "import { hostDeps } from '../../../testing/adapter-deps.ts';")), ['1 adapter-imports src/testing/adapter-deps.ts', '1 fakes-reach src/testing/adapter-deps.ts']);
   });
 
   it("lets an adapter spec bind its contracts from the conformance kit's one file, and no other adapter file", () => {
@@ -69,6 +87,25 @@ describe('boundaryFindings: what an adapter imports', () => {
   it('holds a file above the adapter folders to its own folder', () => {
     const shared = file('src/adapters/hosts/shared.ts', "import first from './first/index.ts';", "import second from '../connectors/second/index.ts';");
     assert.deepEqual(found(shared), ['2 adapter-imports src/adapters/connectors/second/index.ts']);
+  });
+});
+
+describe('boundaryFindings: who imports the fakes', () => {
+  it('finds shipped code of src importing a fake, which may import an adapter, and lets a spec and another fake', () => {
+    const fake = "import { FakeTool } from '../testing/fake-tool.ts';";
+    assert.deepEqual(found(file('src/cli/issue-sync.ts', fake)), ['1 fakes-reach src/testing/fake-tool.ts']);
+    assert.deepEqual(found(file('src/cli/issue-sync.test.ts', fake)), []);
+    assert.deepEqual(found(file('src/testing/cli-harness.ts', "import { FakeTool } from './fake-tool.ts';")), []);
+    assert.deepEqual(found(file('src/testing/cli-harness.test.ts', "import { FakeTool } from './fake-tool.ts';")), []);
+  });
+
+  it('holds the composition too, and a shipped file whose name only holds the word test', () => {
+    assert.deepEqual(found(file('src/composition/adapters.ts', "import { FakeTool } from '../testing/fake-tool.ts';")), ['1 fakes-reach src/testing/fake-tool.ts']);
+    assert.deepEqual(found(file('src/cli/test.ts', "import { FakeTool } from '../testing/fake-tool.ts';")), ['1 fakes-reach src/testing/fake-tool.ts']);
+  });
+
+  it('reads no file outside src: the tools ship nothing', () => {
+    assert.deepEqual(found(file('tools/ci/draw.ts', "import { FakeTool } from '../../src/testing/fake-tool.ts';")), []);
   });
 });
 
@@ -95,8 +132,9 @@ describe('boundaryCounts', () => {
     const findings = boundaryFindings([file('src/core/run.ts', "import { b } from '../cli/b.ts';", 'const jiraKey = 1;', 'const grokKey = 2;'), file('src/adapters/hosts/first/index.ts', "import { isRecord } from '../../../core/guards.ts';")]);
     assert.deepEqual(boundaryCounts(findings), [
       '1 imports from src/core into another src folder',
-      '0 imports of an adapter from outside src/adapters and src/composition',
+      '0 imports of an adapter by shipped code outside src/adapters and src/composition',
       '1 imports by an adapter beyond its own folder and the plugin API',
+      '0 imports of src/testing by shipped code of src',
       '2 lines naming a tool outside src/adapters and src/composition',
     ]);
   });

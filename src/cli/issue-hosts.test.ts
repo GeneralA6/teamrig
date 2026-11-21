@@ -4,36 +4,27 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { loadConnector } from '../composition/loader.ts';
 import { SecretScanner } from '../core/secrets.ts';
-import { GH_PROGRAM, NotGhError } from '../github/gh-program.ts';
-import type { GhRequest, GhResult, GhRunner } from '../github/gh.ts';
 import { GITHUB_REPOS_HOST } from '../issues/host.ts';
-import type { ConnectorDeps, ConnectorPorts } from '../plugin-api/index.ts';
+import type { ConnectorDeps, ConnectorPorts, ProgramRunner } from '../plugin-api/index.ts';
 import { FakeCredentials, TEST_OWNERS } from '../testing/fake-credentials.ts';
 import { FakeGh } from '../testing/fake-gh.ts';
 import { FakeHttp } from '../testing/fake-http.ts';
 import { FakeIssueHost } from '../testing/fake-issue-host.ts';
 import { connectorDeclarationData } from '../testing/manifests.ts';
+import { programOverGh } from '../testing/program-over-gh.ts';
 import { SRC_DIR, sourcesUnder, underSrc } from '../testing/source-files.ts';
 import { codeHostOnly, trackerOnly } from '../testing/split-hosts.ts';
 import { hostsOf, reposOf, type ConnectorLoader, type HostRuntime } from './issue-hosts.ts';
 import { RefusedError } from './runtime.ts';
 
-const RESULT: GhResult = { end: { kind: 'exited', code: 0 }, stdout: 'out', stderr: '' };
 const OWN_ENV = { HOME: '/own' };
 
-/** A GhRunner that keeps each request and answers RESULT. */
-class RecordingGh implements GhRunner {
-  readonly ran: GhRequest[] = [];
+/** A program runner no spec here lets run: the hosts built over it are fakes. */
+const noProgram: ProgramRunner = () => Promise.reject(new Error('no program runs here'));
 
-  run(request: GhRequest): Promise<GhResult> {
-    this.ran.push(request);
-    return Promise.resolve(RESULT);
-  }
-}
-
-/** The part of a CLI run a host is built from, with `gh` as its gh runner, an HTTP client of its own and a key saved for each test owner. */
-function runtimeWith(gh: GhRunner): HostRuntime {
-  return { gh, http: new FakeHttp(), credentials: new FakeCredentials().savesTokensFor(TEST_OWNERS), env: OWN_ENV };
+/** The part of a CLI run a host is built from, with `run` as its runner of a connector's tool, an HTTP client of its own and a key saved for each test owner. */
+function runtimeWith(run: ProgramRunner = noProgram): HostRuntime {
+  return { run, http: new FakeHttp(), credentials: new FakeCredentials().savesTokensFor(TEST_OWNERS), env: OWN_ENV };
 }
 
 /**
@@ -66,7 +57,7 @@ describe('hostsOf', () => {
   it('gives the tracker and the code host its connector adapter builds', async () => {
     const ports = bothPorts();
     const { load } = serving(ports);
-    const hosts = await hostsOf(GITHUB_REPOS_HOST, runtimeWith(new RecordingGh()), new SecretScanner(), true, load);
+    const hosts = await hostsOf(GITHUB_REPOS_HOST, runtimeWith(), new SecretScanner(), true, load);
     assert.equal(hosts.tracker, ports.tracker);
     assert.equal(hosts.codeHost, ports.codeHost);
   });
@@ -74,7 +65,7 @@ describe('hostsOf', () => {
   it("hands the adapter the run's HTTP client, saved secrets and environment, the scanner and the stamp as given", async () => {
     for (const stamp of [true, false]) {
       const { load, given } = serving(bothPorts());
-      const runtime = runtimeWith(new RecordingGh());
+      const runtime = runtimeWith();
       const scanner = new SecretScanner();
       await hostsOf(GITHUB_REPOS_HOST, runtime, scanner, stamp, load);
       const deps = onlyDeps(given);
@@ -86,30 +77,16 @@ describe('hostsOf', () => {
     }
   });
 
-  it("hands the adapter the run's own gh runner as its program runner, so each gh run passes that runner's rules", async () => {
-    const gh = new RecordingGh();
+  it("hands the adapter the run's own program runner, so each run of its tool keeps the connector limits that runner holds", async () => {
     const { load, given } = serving(bothPorts());
-    await hostsOf(GITHUB_REPOS_HOST, runtimeWith(gh), new SecretScanner(), true, load);
-    const { run } = onlyDeps(given);
-    assert.equal(await run({ program: GH_PROGRAM, args: ['api', 'user'], env: { GH_TOKEN: 'a-key' } }), RESULT);
-    await run({ program: GH_PROGRAM, args: ['issue', 'list'] });
-    assert.deepEqual(gh.ran, [
-      { args: ['api', 'user'], env: { GH_TOKEN: 'a-key' } },
-      { args: ['issue', 'list'], env: OWN_ENV },
-    ]);
-  });
-
-  it('lets the adapter run no program but gh', async () => {
-    const gh = new RecordingGh();
-    const { load, given } = serving(bothPorts());
-    await hostsOf(GITHUB_REPOS_HOST, runtimeWith(gh), new SecretScanner(), true, load);
-    await assert.rejects(onlyDeps(given).run({ program: 'git', args: ['status'] }), new NotGhError('git'));
-    assert.deepEqual(gh.ran, []);
+    const runtime = runtimeWith();
+    await hostsOf(GITHUB_REPOS_HOST, runtime, new SecretScanner(), true, load);
+    assert.equal(onlyDeps(given).run, runtime.run);
   });
 
   it('fails, naming every reason, when the loader refuses the adapter', async () => {
     const load: ConnectorLoader = (id) => Promise.resolve({ kind: 'refused', id, notices: ['it needs a name', 'its kinds must list tracker, codehost or both, each once'] });
-    await assert.rejects(hostsOf(GITHUB_REPOS_HOST, runtimeWith(new RecordingGh()), new SecretScanner(), true, load), {
+    await assert.rejects(hostsOf(GITHUB_REPOS_HOST, runtimeWith(), new SecretScanner(), true, load), {
       name: 'HostAdapterError',
       message: 'the github connector adapter gave no host: it needs a name; its kinds must list tracker, codehost or both, each once',
     });
@@ -117,7 +94,7 @@ describe('hostsOf', () => {
 
   it('fails as a failure and not a refusal, since no caller asked wrongly', async () => {
     const load: ConnectorLoader = (id) => Promise.resolve({ kind: 'refused', id, notices: ['it needs a name'] });
-    await assert.rejects(hostsOf(GITHUB_REPOS_HOST, runtimeWith(new RecordingGh()), new SecretScanner(), true, load), (error) => error instanceof Error && !(error instanceof RefusedError));
+    await assert.rejects(hostsOf(GITHUB_REPOS_HOST, runtimeWith(), new SecretScanner(), true, load), (error) => error instanceof Error && !(error instanceof RefusedError));
   });
 
   it('fails, naming each port it lacks, when the adapter builds no tracker or no code host', async () => {
@@ -128,7 +105,7 @@ describe('hostsOf', () => {
       [{ codeHost }, 'it builds no tracker'],
     ];
     for (const [ports, reasons] of cases) {
-      await assert.rejects(hostsOf(GITHUB_REPOS_HOST, runtimeWith(new RecordingGh()), new SecretScanner(), true, serving(ports).load), {
+      await assert.rejects(hostsOf(GITHUB_REPOS_HOST, runtimeWith(), new SecretScanner(), true, serving(ports).load), {
         name: 'HostAdapterError',
         message: `the github connector adapter gave no host: ${reasons}`,
       });
@@ -136,7 +113,7 @@ describe('hostsOf', () => {
   });
 
   it('loads the GitHub adapter teamrig ships when no loader is given', async () => {
-    const hosts = await hostsOf(GITHUB_REPOS_HOST, runtimeWith(new FakeGh()), new SecretScanner(), true);
+    const hosts = await hostsOf(GITHUB_REPOS_HOST, runtimeWith(programOverGh(new FakeGh())), new SecretScanner(), true);
     assert.equal(hosts.tracker.name, 'GitHub');
     assert.equal(hosts.codeHost.name, 'GitHub');
     assert.equal((await hosts.tracker.reach('acme/web', 'read')).kind, 'reached');
@@ -219,7 +196,7 @@ describe('hostNamings', () => {
     const source = [
       'const hosts = await hostsOf(GITHUB_REPOS_HOST, runtime, scanner, stamp);',
       'const other = await hostsOf(kind, runtime, scanner, stamp);',
-      "import type { GitHubIssueHost } from '../github/host.ts';",
+      "import type { GitHubIssueHost } from '../adapters/connectors/github/host.ts';",
       'function named(host: GitHubIssueHost): string { return host.name; }',
       'const fake = new FakeIssueHost();',
       "const text = 'new GitHubIssueHost(gh)';",
