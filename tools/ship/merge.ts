@@ -105,7 +105,7 @@ export async function waitForChecks(
   const rerun = new Set<number>();
   let readFailed = false;
   for (;;) {
-    const read = readOnceMore(() => readChecks(gh, repo, sha, branch, required), readFailed, log);
+    const read = readOnceMore(() => readChecks(gh, repo, sha, branch, required, waiter.now()), readFailed, log);
     readFailed = read instanceof Error;
     if (read instanceof Error) {
       if (waiter.now() >= deadline) throw read;
@@ -772,7 +772,7 @@ export async function mergeRun(args: MergeArgs, deps: MergeDeps, gate: MergeGate
   const gh = deps.ghFor(credential.secret);
   const polling = { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 };
   const main = mainBranchOf(git, profile.main);
-  const checks = (): Proof => ciProof(gh, repo, head, { names: profile.checks, summary: profile.summary, flaky: profile.flaky, conditional: profile.conditional }, deps.waiter, polling);
+  const checks = (): Proof => ciProof(gh, repo, head, { names: profile.checks, summary: profile.summary, flaky: profile.flaky, conditional: profile.conditional, checkMinutes: profile.checkMinutes }, deps.waiter, polling);
   // Under the merge queue the queue orders the landings, so the head takes no landing turn: one would hold every
   // queued head of the repo behind the oldest for nothing (T3386).
   const proof = profile.queue

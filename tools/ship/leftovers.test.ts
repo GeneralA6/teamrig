@@ -31,7 +31,7 @@ const A = 'a'.repeat(40);
 const B = 'b'.repeat(40);
 const C = 'c'.repeat(40);
 const REGENERATED = ['dist/', 'plugin.json'] as const;
-const PROFILE: RepoProfile = { slug: 'O/R', aliases: [], main: 'main', gate: 'local', checks: [], summary: null, local: { runner: 'tools/ci/local.ts' }, regenerated: REGENERATED, flaky: [], conditional: [], mergeChecks: 'full', pullSections: [], release: null, queue: false };
+const PROFILE: RepoProfile = { slug: 'O/R', aliases: [], main: 'main', gate: 'local', checks: [], summary: null, local: { runner: 'tools/ci/local.ts' }, regenerated: REGENERATED, flaky: [], conditional: [], mergeChecks: 'full', pullSections: [], release: null, queue: false, checkMinutes: 30 };
 
 test('parses each NUL-led record of sha, parents and files, a merge with two parents', () => {
   const text = `\0${A} ${B}\n\nsrc/a.ts\ndist/a.js\n\0${B} ${C} ${A}\n\0${C}\n\nplugin.json\n`;

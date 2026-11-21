@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { CHECK_MINUTES_DEFAULT } from './github.ts';
 
 /**
  * Each repo ship merges, keyed by its GitHub slug (not a local path, so moving a checkout changes nothing
@@ -90,6 +91,11 @@ export interface RepoProfile {
    * listed; true needs the `ci` gate, since the queue lands only what its required checks pass.
    */
   queue: boolean;
+  /**
+   * The minutes an awaited check may stay queued or running before the merge counts it failed, so a stuck check frees
+   * the ship slot (#1341): a positive whole number; CHECK_MINUTES_DEFAULT (30) when not listed.
+   */
+  checkMinutes: number;
 }
 
 export const PROFILES_PATH = new URL('./repos.json', import.meta.url);
@@ -149,6 +155,12 @@ function parseRelease(slug: string, value: unknown): ReleasePull | null {
   return { head, changelog };
 }
 
+function parseCheckMinutes(slug: string, value: unknown): number {
+  if (value === undefined) return CHECK_MINUTES_DEFAULT;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) throw new Error(`repos.json: ${slug} "checkMinutes" needs a positive whole number of minutes`);
+  return value;
+}
+
 function parseRegenerated(slug: string, value: unknown): readonly string[] {
   if (value === undefined) return [];
   if (!isNameList(value) || value.some(path => path.startsWith('/') || path.split('/').includes('..'))) {
@@ -189,7 +201,7 @@ export function repoSlugs(profiles: ReadonlyMap<string, RepoProfile>): string[] 
 
 export function parseProfiles(json: string): Map<string, RepoProfile> {
   const body: unknown = JSON.parse(json);
-  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky", "conditional", "aliases", "mergeChecks", "pullSections", "release", "queue" } }');
+  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky", "conditional", "aliases", "mergeChecks", "pullSections", "release", "queue", "checkMinutes" } }');
   const profiles = new Map<string, RepoProfile>();
   for (const [slug, entry] of Object.entries(body)) {
     if (!isRecord(entry) || typeof entry['main'] !== 'string' || !isNameList(entry['checks'])) throw new Error(`repos.json: ${slug} needs "main" and a "checks" list of names`);
@@ -213,6 +225,7 @@ export function parseProfiles(json: string): Map<string, RepoProfile> {
       pullSections: parsePullSections(slug, entry['pullSections']),
       release: parseRelease(slug, entry['release']),
       queue: parseQueue(slug, entry['queue'], gate),
+      checkMinutes: parseCheckMinutes(slug, entry['checkMinutes']),
     };
     for (const name of [slug, ...aliases]) {
       const key = name.toLowerCase();

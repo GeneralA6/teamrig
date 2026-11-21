@@ -78,7 +78,7 @@ const RERUN_PATH = `repos/${REPO}/actions/runs/1/rerun-failed-jobs`;
  * makes its next attempt, or throws `rerun` when given. Each merge call answers the next of `merges` (the last
  * repeats) when given, else `merge`.
  */
-function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPullSha?: string | null; openedSha?: string; merge?: string | Error; merges?: readonly (string | Error)[]; rerun?: Error; branch?: string; heads?: readonly PushedHead[] }): FakeGitHub {
+function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; startedAt?: string; runStatus?: string; openPullSha?: string | null; openedSha?: string; merge?: string | Error; merges?: readonly (string | Error)[]; rerun?: Error; branch?: string; heads?: readonly PushedHead[] }): FakeGitHub {
   const writes: string[][] = [];
   let round = 0;
   let attempt = 1;
@@ -104,12 +104,12 @@ function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPul
       return '';
     }
     if (path.includes('/actions/runs?head_sha=')) {
-      return JSON.stringify({ workflow_runs: [{ id: 1, workflow_id: 1, event: 'pull_request', run_number: 1, run_attempt: attempt, head_branch: branchOf(path) ?? options.branch ?? HEAD }] });
+      return JSON.stringify({ workflow_runs: [{ id: 1, workflow_id: 1, event: 'pull_request', run_number: 1, run_attempt: attempt, head_branch: branchOf(path) ?? options.branch ?? HEAD, ...(options.runStatus === undefined ? {} : { status: options.runStatus }) }] });
     }
     if (path.includes('/actions/runs/1/jobs')) {
       const jobs = options.rounds[Math.min(round, options.rounds.length - 1)] ?? [];
       round += 1;
-      return JSON.stringify({ jobs: jobs.map(([name, status, conclusion, unstarted]) => ({ name, status, conclusion, steps: unstarted === undefined ? [{ name: 'Set up job' }] : [] })) });
+      return JSON.stringify({ jobs: jobs.map(([name, status, conclusion, unstarted]) => ({ name, status, conclusion, steps: unstarted === undefined ? [{ name: 'Set up job' }] : [], ...(options.startedAt === undefined ? {} : { started_at: options.startedAt }) })) });
     }
     if (path.endsWith('/status')) return '{"statuses":[]}';
     throw new Error(`unexpected gh ${args.join(' ')}`);
@@ -163,6 +163,27 @@ test('a check still missing at the deadline times out, and the last sleep stops 
   assert.equal(result.verdict, 'timeout');
   assert.deepEqual(waiter.slept, [MINUTE, MINUTE, 30_000]);
   assert.deepEqual(result.outcomes.map(({ state }) => state), ['passed', 'missing']);
+});
+
+test('a job listed in progress after its run completed ends the wait at once: passed with a success, failed with none (#1341)', async () => {
+  const waiter = fakeWaiter();
+  const passed = await waitForChecks(fakeGitHub({ rounds: [[['gates', 'completed', 'success'], ['test', 'in_progress', 'success']]], runStatus: 'completed' }).gh, REPO, SHA, HEAD, CHECKS, waiter, POLLING);
+  assert.equal(passed.verdict, 'passed');
+  const failed = await waitForChecks(fakeGitHub({ rounds: [[['gates', 'completed', 'success'], ['test', 'in_progress', null]]], runStatus: 'completed' }).gh, REPO, SHA, HEAD, CHECKS, waiter, POLLING);
+  assert.equal(failed.verdict, 'failed');
+  assert.match(failed.outcomes[1]?.detail ?? '', /listed in_progress after its run completed, with no conclusion/);
+  assert.deepEqual(waiter.slept, []);
+});
+
+test('a check running past its time limit fails the wait, so a stuck job frees the ship slot (#1341)', async () => {
+  const stuck: readonly JobState[] = [['gates', 'completed', 'success'], ['test', 'in_progress', null]];
+  const limited = await waitForChecks(fakeGitHub({ rounds: [stuck], startedAt: new Date(0).toISOString() }).gh, REPO, SHA, HEAD, { ...CHECKS, checkMinutes: 2 }, fakeWaiter(), POLLING);
+  assert.equal(limited.verdict, 'failed');
+  assert.match(limited.outcomes[1]?.detail ?? '', /in_progress 2 min, past the 2 min limit/);
+  const waiter = fakeWaiter();
+  const longAgo = await waitForChecks(fakeGitHub({ rounds: [stuck], startedAt: new Date(-60 * MINUTE).toISOString() }).gh, REPO, SHA, HEAD, CHECKS, waiter, POLLING);
+  assert.equal(longAgo.verdict, 'failed', 'past the default 30 minutes at the first read');
+  assert.deepEqual(waiter.slept, []);
 });
 
 test('opens the pull request, waits for green and rebase-merges the checked sha', async () => {

@@ -47,6 +47,8 @@ export interface Run {
   runAttempt: number;
   /** The branch the run checked: a pull request's head branch, or the pushed branch; null when GitHub names none. */
   branch: string | null;
+  /** `queued`, `in_progress`, `completed`, ...; null when GitHub names none. */
+  status: string | null;
 }
 
 export interface Job {
@@ -58,6 +60,16 @@ export interface Job {
   runAttempt: number;
   /** Whether any step of the job began: a job GitHub cancelled while it waited for a runner has none. */
   started: boolean;
+  /** The attempt GitHub names on the job itself; absent when it names none. A re-run's jobs name the new attempt. */
+  jobAttempt?: number;
+  /** When the job was queued, began and completed, as GitHub gives them (ISO 8601); absent when it gives none. */
+  createdAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+  /** Set by `settleJobs` on a job it read as completed though GitHub lists it running: why, for the check's detail. */
+  note?: string;
+  /** Set by `settleJobs` on a job failed for running past the check time limit: no re-run proves it (#1341). */
+  limited?: true;
 }
 
 export interface CommitStatus {
@@ -89,6 +101,7 @@ export function parseRuns(json: string): Run[] {
       runNumber: numberAt(run, 'run_number', 'run'),
       runAttempt: numberAt(run, 'run_attempt', 'run'),
       branch: typeof branch === 'string' ? branch : null,
+      status: typeof run['status'] === 'string' ? run['status'] : null,
     };
   });
 }
@@ -105,7 +118,56 @@ export function parseJobs(json: string, run: Pick<Run, 'id' | 'runAttempt'>): Jo
       runId: run.id,
       runAttempt: run.runAttempt,
       started: Array.isArray(steps) && steps.length > 0,
+      ...timesOf(job),
     };
+  });
+}
+
+/** A job's queue, start and completion times, each only when GitHub gives one as text. */
+function timesOf(job: Record<string, unknown>): Pick<Job, 'jobAttempt' | 'createdAt' | 'startedAt' | 'completedAt'> {
+  const text = (key: string): string | undefined => {
+    const value = job[key];
+    return typeof value === 'string' ? value : undefined;
+  };
+  const created = text('created_at');
+  const started = text('started_at');
+  const completed = text('completed_at');
+  const attempt = job['run_attempt'];
+  return { ...(typeof attempt === 'number' ? { jobAttempt: attempt } : {}), ...(created === undefined ? {} : { createdAt: created }), ...(started === undefined ? {} : { startedAt: started }), ...(completed === undefined ? {} : { completedAt: completed }) };
+}
+
+/** The minutes a check may stay queued or running when repos.json gives no `checkMinutes` (#1341). */
+export const CHECK_MINUTES_DEFAULT = 30;
+
+/** A GitHub time in ms since the epoch; undefined for none or text that is no time. */
+function msOf(text: string | undefined): number | undefined {
+  if (text === undefined) return undefined;
+  const ms = Date.parse(text);
+  return Number.isNaN(ms) ? undefined : ms;
+}
+
+/**
+ * The jobs as the merge reads them, so no check holds the ship slot to the overall deadline (#1341). A job GitHub
+ * still lists queued or in progress after its run completed, or with its completion time set, is completed: its
+ * conclusion when GitHub gave one, else failed, its detail saying so. A job still queued (since its queue time) or
+ * running (since its start) for `checkMinutes` or more at `now` is failed, naming its minutes and the limit; no re-run
+ * proves it. With no `now`, or no time to count from, the job stays as listed.
+ */
+export function settleJobs(jobs: readonly Job[], runs: readonly Run[], now: number | undefined, checkMinutes: number): Job[] {
+  const doneRuns = new Map(runs.filter(run => run.status === 'completed').map(run => [run.id, run.runAttempt]));
+  // A run read as completed speaks only for its jobs of that attempt: a re-run's jobs, read after a stale run status,
+  // name a newer attempt and still wait.
+  const runDone = (job: Job): boolean => doneRuns.has(job.runId) && (job.jobAttempt === undefined || job.jobAttempt === doneRuns.get(job.runId));
+  return jobs.map((job): Job => {
+    if (job.status === 'completed') return job;
+    if (runDone(job) || job.completedAt !== undefined) {
+      const why = runDone(job) ? 'its run completed' : 'its completion time was set';
+      return { ...job, status: 'completed', conclusion: job.conclusion ?? 'failure', note: `listed ${job.status} after ${why}${job.conclusion === null ? ', with no conclusion' : ''}` };
+    }
+    const since = msOf(job.status === 'queued' ? job.createdAt : (job.startedAt ?? job.createdAt));
+    if (now === undefined || since === undefined || now - since < checkMinutes * 60_000) return job;
+    const minutes = Math.floor((now - since) / 60_000);
+    return { ...job, status: 'completed', conclusion: 'failure', note: `${job.status} ${minutes} min, past the ${checkMinutes} min limit (checkMinutes)`, limited: true };
   });
 }
 
@@ -139,6 +201,8 @@ export interface RequiredChecks {
   readonly summary: string | null;
   /** Checks a failure of which is re-run once before it fails the merge (repos.ts `flaky`). */
   readonly flaky: readonly string[];
+  /** The minutes a check may stay queued or running before it counts failed (repos.ts `checkMinutes`); unset, CHECK_MINUTES_DEFAULT. */
+  readonly checkMinutes?: number;
   /** Checks the summary's run makes only for some changes, not waited for once the summary passed without them (repos.ts `conditional`). */
   readonly conditional: readonly string[];
 }
@@ -164,7 +228,7 @@ const firstAttemptUnstarted = (job: Job): boolean => cancelledUnstarted(job) && 
  * alone (T2532) says nothing sure about the change until it fails again on a re-run of the same sha (T2988).
  */
 const firstAttemptFlaky = (flaky: readonly string[]) => (job: Job): boolean =>
-  flaky.includes(job.name) && job.status === 'completed' && job.conclusion === 'failure' && job.started && job.runAttempt === 1;
+  flaky.includes(job.name) && job.status === 'completed' && job.conclusion === 'failure' && job.started && job.runAttempt === 1 && job.limited !== true;
 
 /**
  * The runs whose summary job's failure only echoes legs a re-run may still prove: every other job of the run that
@@ -200,6 +264,7 @@ export function evaluate(required: readonly string[], jobs: readonly Job[], stat
   const isFlaky = (job: Job): boolean => flakyFailure(job) || (echoes(job) && flakyRuns.has(job.runId));
   const jobResult = (job: Job): string => {
     if (job.status !== 'completed') return job.status;
+    if (job.note !== undefined) return `${job.conclusion ?? 'none'}, ${job.note}`;
     if (echoes(job)) return `failure, ${flakyRuns.has(job.runId) ? FLAKY_ECHO : ECHO}`;
     if (!cancelledUnstarted(job)) return job.conclusion ?? 'none';
     return job.runAttempt === 1 ? UNSTARTED : `${UNSTARTED}, again on attempt ${job.runAttempt}`;
@@ -210,7 +275,8 @@ export function evaluate(required: readonly string[], jobs: readonly Job[], stat
     if (ownJobs.length === 0 && ownStatuses.length === 0) return { name, state: 'missing', detail: 'no job or status of that name', reruns: [] };
     const results = [...ownJobs.map(jobResult), ...ownStatuses.map(status => status.state)];
     const detail = results.join(', ');
-    if (results.every(result => result === 'success')) return { name, state: 'passed', detail, reruns: [] };
+    const passed = ownJobs.every(job => job.status === 'completed' && job.conclusion === 'success') && ownStatuses.every(status => status.state === 'success');
+    if (passed) return { name, state: 'passed', detail, reruns: [] };
     const running = ownJobs.some(job => job.status !== 'completed') || ownStatuses.some(status => status.state === 'pending');
     if (running) return { name, state: 'pending', detail, reruns: [] };
     const short = ownJobs.filter(job => job.conclusion !== 'success');
@@ -239,11 +305,13 @@ export function rerunFailedJobs(gh: Gh, repo: string, runId: number): void {
  * Every listed check of a commit on `branch`, read from the Actions jobs and the commit statuses. Only the runs of
  * that branch count: the same sha re-shipped under a new branch name (the route after a cancelled job) still carries
  * the old branch's runs, and before the new branch's run exists those were all there was, so its cancel failed the
- * merge (T2749). The new branch's checks are missing until its run starts, and missing waits.
+ * merge (T2749). The new branch's checks are missing until its run starts, and missing waits. With `now`, the jobs are
+ * settled first (`settleJobs`): one listed running after its run completed, or past the time limit, is read as done.
  */
-export function readChecks(gh: Gh, repo: string, sha: string, branch: string, required: RequiredChecks): CheckOutcome[] {
+export function readChecks(gh: Gh, repo: string, sha: string, branch: string, required: RequiredChecks, now?: number): CheckOutcome[] {
   const runs = newestRuns(parseRuns(gh(['api', `repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`])).filter(run => run.branch === branch));
-  const jobs = runs.flatMap(run => parseJobs(gh(['api', `repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`]), run));
+  const listed = runs.flatMap(run => parseJobs(gh(['api', `repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`]), run));
+  const jobs = settleJobs(listed, runs, now, required.checkMinutes ?? CHECK_MINUTES_DEFAULT);
   const statuses = parseStatuses(gh(['api', `repos/${repo}/commits/${sha}/status`]));
   return plannedOut(evaluate(required.names, jobs, statuses, required.summary, required.flaky), required.summary, required.conditional);
 }

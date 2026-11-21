@@ -10,7 +10,7 @@ const LOCAL = '"local":{"runner":"tools/ci/local.ts"}';
 
 test('reads each repo\'s main branch, gate and check lists, looked up without regard to case', () => {
   const profiles = parseProfiles(`{"Owner/Repo":{"main":"main","gate":"ci","checks":["a","b"]}}`);
-  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [], conditional: [], aliases: [], mergeChecks: 'full', pullSections: [], release: null, queue: false });
+  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [], conditional: [], aliases: [], mergeChecks: 'full', pullSections: [], release: null, queue: false, checkMinutes: 30 });
   const local = parseProfiles(`{"Owner/Local":{"main":"main","gate":"local","checks":[],${LOCAL}}}`);
   assert.deepEqual(profileFor(local, 'Owner/Local').local, { runner: 'tools/ci/local.ts' });
 });
@@ -252,4 +252,13 @@ test('the shipped repos.json finds each repo under the organization it moves to 
   assert.equal(profileFor(profiles, 'teamrig/teamrig'), profileFor(profiles, 'GeneralA6/teamrig'));
   assert.equal(profileFor(profiles, 'teamrig/teamrig-pane'), profileFor(profiles, 'GeneralA6/teamrig-pane'));
   assert.deepEqual(repoSlugs(profiles), ['GeneralA6/teamrig', 'GeneralA6/teamrig-pane']);
+});
+
+test('reads checkMinutes, 30 when not listed, and refuses one that is no positive whole number (#1341)', () => {
+  const entry = (minutes: string): string => `{"O/R":{"main":"main","gate":"ci","checks":["a"],"checkMinutes":${minutes}}}`;
+  assert.equal(profileFor(parseProfiles('{"O/R":{"main":"main","gate":"ci","checks":["a"]}}'), 'O/R').checkMinutes, 30);
+  assert.equal(profileFor(parseProfiles(entry('45')), 'O/R').checkMinutes, 45);
+  for (const minutes of ['0', '-1', '1.5', '"30"', 'null']) {
+    assert.throws(() => parseProfiles(entry(minutes)), /O\/R "checkMinutes" needs a positive whole number of minutes/, minutes);
+  }
 });
