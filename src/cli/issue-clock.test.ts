@@ -51,6 +51,44 @@ describe('the response clock in issue sync (T3028)', () => {
     assert.equal(parseClocks(kit.files.get(CLOCKS) ?? '').size, 0, 'answered: the clock stops');
   });
 
+  it("tells a session owner GH-LATE once at the target, unwoken, and the lead only a second window later (#1507)", async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 9, { labels: ['bug'], assignees: ['octocat'], authorAssociation: 'NONE', author: 'stranger', createdAt: new Date(kit.clock.now()).toISOString() })]);
+    const leadRows = async (): Promise<readonly string[]> => (await kit.run(['check', '--all'], { env: { TEAMRIG_SESSION: 'lead' } })).stdout.filter((line) => line.includes('GH-LATE'));
+    await sync(kit, gh);
+    kit.clock.advance(24 * HOUR - 1);
+    await sync(kit, gh);
+    assert.deepEqual(githubLines(kit, 'bravo').filter((text) => text.startsWith('GH-LATE')), [], 'not before the target');
+
+    kit.clock.advance(1);
+    const out = await sync(kit, gh);
+    assert.ok(out.includes('TOLD bravo: gh:acme/web#9 is past its answer target'), out.join('\n'));
+    const told = githubLines(kit, 'bravo').filter((text) => text.startsWith('GH-LATE'));
+    assert.equal(told.length, 1);
+    assert.match(told[0] ?? '', /^GH-LATE gh:acme\/web#9 \(bug\) has waited 24 h for an answer of ours since .+, past its 24 h target: answer it in words on GitHub by .+, or it goes to the lead$/);
+    assert.equal(kit.files.get(join(TEAM_HOME, 'state', 'inbox', 'bravo.md'))?.includes('GH-LATE'), true);
+    assert.deepEqual(await leadRows(), [], "the owner's window first");
+
+    kit.clock.advance(HOUR);
+    await sync(kit, gh);
+    assert.equal(githubLines(kit, 'bravo').filter((text) => text.startsWith('GH-LATE')).length, 1, 'told once a wait');
+    kit.clock.advance(23 * HOUR);
+    const rows = await leadRows();
+    assert.equal(rows.length, 1, rows.join('\n'));
+    assert.match(rows[0] ?? '', /GH-LATE gh:acme\/web#9 \(bug, bravo\) has waited 48 h .+; bravo was told at .+: have bravo answer it on GitHub/);
+  });
+
+  it('refuses a clocks file a newer teamrig wrote before it writes, and leaves it as it was (#1507)', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const newer = '{"v":3,"clocks":[]}\n';
+    await kit.files.write(CLOCKS, newer);
+    const issue = ghIssue('acme/web', 9, { authorAssociation: 'NONE', createdAt: new Date(kit.clock.now()).toISOString() });
+    const result = await kit.run(['issue', 'sync', '--yes'], { gh: new FakeGh().holds('acme/web', [issue]) });
+    assert.notEqual(result.code, EXIT.ok);
+    assert.match(result.stderr.join('\n'), /holds format v3 records; this version writes v2/);
+    assert.equal(kit.files.get(CLOCKS), newer);
+  });
+
   it('times an outside collaborator as an outsider: their issue starts a clock and their follow-up is no answer (T3380)', async () => {
     const kit = new CliHarness(GITHUB_TEAM);
     const opened = new Date(kit.clock.now()).toISOString();

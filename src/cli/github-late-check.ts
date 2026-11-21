@@ -1,6 +1,6 @@
 import type { Files } from '../core/files.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { dueAt, isLate, lateGroupText, newestLate, parseClocks } from '../github/clock.ts';
+import { lateGroupText, leadTurnAt, newestLate, parseClocks, type Clock, type OwnerFirst } from '../github/clock.ts';
 import { parseUnownedNotices, UNOWNED_SEEN_REFRESH_MS, type ToldWarnings } from './unowned-notices.ts';
 import type { UnownedWarning } from './unowned.ts';
 
@@ -13,19 +13,19 @@ const KEY_WORD = 'gh-late';
  */
 const STILL_STANDING_MS = 2 * UNOWNED_SEEN_REFRESH_MS;
 
-/** A grouped GH-LATE's key: when the newest late wait's target passed, then its ref. */
+/** A grouped GH-LATE's key: when the newest late wait came to the lead (its lead's turn), then its ref. */
 function lateKey(due: number, ref: string): string {
   return `${KEY_WORD} ${new Date(due).toISOString()} ${ref}`;
 }
 
-/** The target time a told GH-LATE key names; undefined for another warning's key or an older teamrig's form. */
+/** The lead's turn a told GH-LATE key names; undefined for another warning's key or an older teamrig's form. */
 function keyDue(key: string): number | undefined {
   const [word, due] = key.split(' ');
   const at = word === KEY_WORD && due !== undefined ? Date.parse(due) : Number.NaN;
   return Number.isNaN(at) ? undefined : at;
 }
 
-/** The told GH-LATE still standing at a recent start whose target passed last, if any. */
+/** The told GH-LATE still standing at a recent start whose turn came last, if any. */
 function toldHighWater(told: ToldWarnings, now: number): { key: string; due: number } | undefined {
   let best: { key: string; due: number } | undefined;
   for (const [key, seenAt] of told) {
@@ -39,20 +39,28 @@ function toldHighWater(told: ToldWarnings, now: number): { key: string; due: num
 
 /**
  * GH-LATE (T3028, design T3021 section 4), for `check`: the GitHub threads that waited past their answer target for
- * an answer of ours. Each owner was reminded at 75% (src/cli/commands/issue-clock.ts); past 100% they are the lead's
- * to chase. Reads the clocks the last writing sync kept, so it costs no GitHub call. One warning for them all, with
- * their count and the oldest few (#1475), so many late threads never flood the lead. Its key only moves forward: it
- * names the newest late wait, unless a GH-LATE told and still standing names a later target (its newest thread was
- * answered while others stay late), whose key it keeps. So the lead is told once, and again only when a newer wait
- * goes late (a fresh wait after our answer included), not when any one is answered.
+ * an answer of ours. Each owner was reminded at 75% and, when told first, told GH-LATE at 100%
+ * (src/cli/commands/issue-clock.ts); from the lead's turn (leadTurnAt, #1507) they are the lead's to chase. Reads the
+ * clocks the last writing sync kept, so it costs no GitHub call. One warning for them all, with their count and the
+ * oldest few (#1475), so many late threads never flood the lead. Its key only moves forward: it names the wait that
+ * came to the lead last, unless a GH-LATE told and still standing names a later turn (its newest thread was answered
+ * while others stay late), whose key it keeps. So the lead is told once, and again only when a newer wait comes to
+ * it (a fresh wait after our answer included), not when any one is answered.
  */
-export async function githubLateWarnings(files: Pick<Files, 'read'>, paths: { clocks: string; notices: string }, zone: TimeZone, now: number): Promise<UnownedWarning[]> {
-  const late = [...parseClocks((await files.read(paths.clocks)) ?? '').values()].filter((clock) => isLate(clock, now));
-  const newest = newestLate(late);
+export async function githubLateWarnings(
+  files: Pick<Files, 'read'>,
+  paths: { clocks: string; notices: string },
+  zone: TimeZone,
+  now: number,
+  ownerFirst: OwnerFirst,
+): Promise<UnownedWarning[]> {
+  const turnAt = (clock: Clock): number => leadTurnAt(clock, ownerFirst);
+  const late = [...parseClocks((await files.read(paths.clocks)) ?? '').values()].filter((clock) => now >= turnAt(clock));
+  const newest = newestLate(late, turnAt);
   if (newest === undefined) {
     return [];
   }
   const told = toldHighWater(parseUnownedNotices((await files.read(paths.notices)) ?? '') ?? new Map(), now);
-  const key = told !== undefined && told.due >= dueAt(newest) ? told.key : lateKey(dueAt(newest), newest.ref);
+  const key = told !== undefined && told.due >= turnAt(newest) ? told.key : lateKey(turnAt(newest), newest.ref);
   return [{ key, source: 'the response clock [github]', text: lateGroupText(late, now, zone) }];
 }

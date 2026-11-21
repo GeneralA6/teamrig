@@ -1,7 +1,8 @@
 /**
  * The response clock on GitHub threads (T3021 section 4, slice E): how long an outsider has waited for an answer of
  * ours in words, against a target per kind of thread. Code keeps it at 0 tokens: at REMIND_SHARE of the target the
- * owning session gets one unwoken inbox line, at the target `teamrig check` raises GH-LATE for the lead. Pure: the
+ * owning session gets one unwoken inbox line, at the target an unwoken GH-LATE line, and `teamrig check` raises
+ * GH-LATE for the lead a second window later (leadTurnAt), or at the target when the owner is told nothing. Pure: the
  * sync reads the threads and keeps the clocks in their own state file (src/cli/commands/issue-clock.ts).
  */
 
@@ -55,6 +56,32 @@ export interface Clock {
   readonly since: number;
   /** When its owner was reminded; undefined until then. */
   readonly remindedAt: number | undefined;
+  /** When its owner was told GH-LATE at the target; undefined until then, and always for an owner not told first. */
+  readonly toldAt: number | undefined;
+}
+
+/**
+ * Whether a thread's owner is told GH-LATE at the target before the lead is (#1507): a session of the team other
+ * than the lead. The lead's own threads, and those of an owner off the team, go to the lead at the target.
+ */
+export type OwnerFirst = (owner: string) => boolean;
+
+export function ownerFirstOf(sessions: readonly string[], lead: string): OwnerFirst {
+  const first = new Set(sessions.filter((id) => id !== lead));
+  return (owner) => first.has(owner);
+}
+
+/** The longest the lead waits after a thread's owner was told GH-LATE; shorter targets wait their own length. */
+export const LEAD_WINDOW_MAX_HOURS = 24;
+
+/**
+ * When `teamrig check` shows the lead GH-LATE: at the target for an owner not told first, else a second window
+ * after the owner was told (from the target while not told yet), as long as the target and at most
+ * LEAD_WINDOW_MAX_HOURS: a security report 8 h in all, a bug 48 h, a feature ask 96 h.
+ */
+export function leadTurnAt(clock: Pick<Clock, 'kind' | 'owner' | 'since' | 'toldAt'>, ownerFirst: OwnerFirst): number {
+  const target = clock.since + targetMs(clock.kind);
+  return ownerFirst(clock.owner) ? (clock.toldAt ?? target) + Math.min(targetMs(clock.kind), LEAD_WINDOW_MAX_HOURS * HOUR_MS) : target;
 }
 
 /**
@@ -77,38 +104,43 @@ export function isLate(clock: Pick<Clock, 'kind' | 'since'>, now: number): boole
   return now - clock.since >= targetMs(clock.kind);
 }
 
-/** What one sync's read does to the clocks: the clocks kept, and those whose owner is reminded now. */
+/** What one sync's read does to the clocks: the clocks kept, those whose owner is reminded now, and those whose owner is told GH-LATE now. */
 export interface ClockStep {
   readonly clocks: ReadonlyMap<string, Clock>;
   readonly remind: readonly Clock[];
+  readonly tell: readonly Clock[];
 }
 
 /**
  * The clocks after a read of the repositories in `read`: each open thread waiting on us keeps its clock (and whether
- * it was reminded) while the wait it times is the same one, else starts a fresh one; a thread answered, closed or
- * gone stops its clock. A repository not read this time (it failed) keeps its clocks as they were. A clock past
- * REMIND_SHARE of its target that was never reminded is reminded now, once.
+ * its owner was reminded and told) while the wait it times and its owner are the same, else starts a fresh one; a thread
+ * answered, closed or gone stops its clock. A repository not read this time (it failed) keeps its clocks as they
+ * were. A clock past its target whose owner is told first (`ownerFirst`) and was not told yet is told now, once,
+ * with no reminder; else a clock past REMIND_SHARE of its target that was never reminded is reminded now, once.
  */
-export function stepClocks(before: ReadonlyMap<string, Clock>, read: ReadonlySet<string>, threads: readonly Thread[], now: number): ClockStep {
+export function stepClocks(before: ReadonlyMap<string, Clock>, read: ReadonlySet<string>, threads: readonly Thread[], now: number, ownerFirst: OwnerFirst): ClockStep {
   const clocks = new Map([...before].filter(([, clock]) => !read.has(clock.repo)));
   const remind: Clock[] = [];
+  const tell: Clock[] = [];
   for (const thread of threads) {
     const since = waitingSince(thread.posts);
     if (since === undefined) {
       continue;
     }
-    const kept = before.get(thread.ref);
-    const remindedAt = kept?.since === since ? kept.remindedAt : undefined;
-    const clock: Clock = { repo: thread.repo, ref: thread.ref, kind: thread.kind, owner: thread.owner, since, remindedAt };
-    if (clock.remindedAt === undefined && now - since >= targetMs(clock.kind) * REMIND_SHARE) {
-      const reminded = { ...clock, remindedAt: now };
-      remind.push(reminded);
-      clocks.set(thread.ref, reminded);
-    } else {
-      clocks.set(thread.ref, clock);
+    // A reminder or GH-LATE went to the owner then: one who takes the thread over mid-wait was told nothing yet.
+    const last = before.get(thread.ref);
+    const kept = last?.since === since && last.owner === thread.owner ? last : undefined;
+    let clock: Clock = { repo: thread.repo, ref: thread.ref, kind: thread.kind, owner: thread.owner, since, remindedAt: kept?.remindedAt, toldAt: kept?.toldAt };
+    if (clock.toldAt === undefined && ownerFirst(clock.owner) && isLate(clock, now)) {
+      clock = { ...clock, remindedAt: clock.remindedAt ?? now, toldAt: now };
+      tell.push(clock);
+    } else if (clock.remindedAt === undefined && now - since >= targetMs(clock.kind) * REMIND_SHARE) {
+      clock = { ...clock, remindedAt: now };
+      remind.push(clock);
     }
+    clocks.set(thread.ref, clock);
   }
-  return { clocks, remind };
+  return { clocks, remind, tell };
 }
 
 /**
@@ -166,27 +198,31 @@ function issueKind(labels: readonly string[], held: boolean): ThreadKind {
   return held ? 'comment' : 'feature';
 }
 
-/** The format of the clocks file this code writes; a file in another format, or damaged, reads as no clock running. */
-export const CLOCK_STATE_FORMAT = 1;
+/**
+ * The format of the clocks file this code writes: 2 added `toldAt` (#1507); 1 is still read, as told nothing. A file
+ * in a newer format, or damaged, reads as no clock running; a write refuses a newer one (src/cli/commands/issue-clock.ts).
+ */
+export const CLOCK_STATE_FORMAT = 2;
 
 /** The clocks a file holds by ref; a damaged entry is left out, a damaged file reads as none. */
 export function parseClocks(text: string): Map<string, Clock> {
   const record = parseObject(text.trim());
-  const list = record?.[VERSION_FIELD] === CLOCK_STATE_FORMAT ? record['clocks'] : undefined;
-  const clocks = Array.isArray(list) ? list.flatMap(clockOf) : [];
+  const format = record?.[VERSION_FIELD];
+  const list = format === 1 || format === CLOCK_STATE_FORMAT ? record?.['clocks'] : undefined;
+  const clocks = Array.isArray(list) ? list.flatMap((value: unknown) => clockOf(value, format === CLOCK_STATE_FORMAT)) : [];
   return new Map(clocks.map((clock) => [clock.ref, clock]));
 }
 
-function clockOf(value: unknown): Clock[] {
+function clockOf(value: unknown, readsTold: boolean): Clock[] {
   if (!isRecord(value)) {
     return [];
   }
-  const { repo, ref, kind, owner, since, remindedAt } = value;
+  const { repo, ref, kind, owner, since, remindedAt, toldAt } = value;
   const time = (at: unknown): at is number => typeof at === 'number' && Number.isFinite(at);
   if (typeof repo !== 'string' || typeof ref !== 'string' || typeof owner !== 'string' || !isThreadKind(kind) || !time(since)) {
     return [];
   }
-  return [{ repo, ref, kind, owner, since, remindedAt: time(remindedAt) ? remindedAt : undefined }];
+  return [{ repo, ref, kind, owner, since, remindedAt: time(remindedAt) ? remindedAt : undefined, toldAt: readsTold && time(toldAt) ? toldAt : undefined }];
 }
 
 function isThreadKind(value: unknown): value is ThreadKind {
@@ -196,7 +232,15 @@ function isThreadKind(value: unknown): value is ThreadKind {
 export function formatClocks(clocks: ReadonlyMap<string, Clock>): string {
   return toJsonlLine({
     [VERSION_FIELD]: CLOCK_STATE_FORMAT,
-    clocks: [...clocks.values()].map(({ repo, ref, kind, owner, since, remindedAt }) => ({ repo, ref, kind, owner, since, ...(remindedAt === undefined ? {} : { remindedAt }) })),
+    clocks: [...clocks.values()].map(({ repo, ref, kind, owner, since, remindedAt, toldAt }) => ({
+      repo,
+      ref,
+      kind,
+      owner,
+      since,
+      ...(remindedAt === undefined ? {} : { remindedAt }),
+      ...(toldAt === undefined ? {} : { toldAt }),
+    })),
   });
 }
 
@@ -206,19 +250,29 @@ function waitedHours(clock: Pick<Clock, 'since'>, now: number): number {
 }
 
 /** The owner's unwoken reminder at REMIND_SHARE of the target. */
-export function reminderText(clock: Clock, now: number, zone: TimeZone): string {
+export function reminderText(clock: Clock, now: number, zone: TimeZone, ownerFirst: OwnerFirst): string {
   const due = new Date(clock.since + targetMs(clock.kind));
+  const after = ownerFirst(clock.owner) ? `GH-LATE goes to you, and to the lead from ${zone.shortMinute(new Date(leadTurnAt(clock, ownerFirst)))}` : 'GH-LATE goes to the lead';
   return (
     `GitHub ${clock.ref} (${clock.kind}) has waited ${waitedHours(clock, now)} h for an answer of ours, since ${zone.shortMinute(new Date(clock.since))}; ` +
-    `answer it in words on GitHub by ${zone.shortMinute(due)}, its ${ANSWER_TARGET_HOURS[clock.kind]} h target, or GH-LATE goes to the lead`
+    `answer it in words on GitHub by ${zone.shortMinute(due)}, its ${ANSWER_TARGET_HOURS[clock.kind]} h target, or ${after}`
   );
 }
 
-/** The lead's GH-LATE line for a clock past its target. */
+/** The owner's unwoken GH-LATE line at the target, saying by when the lead is told. */
+export function toldText(clock: Clock, now: number, zone: TimeZone, ownerFirst: OwnerFirst): string {
+  return (
+    `GH-LATE ${clock.ref} (${clock.kind}) has waited ${waitedHours(clock, now)} h for an answer of ours since ${zone.shortMinute(new Date(clock.since))}, ` +
+    `past its ${ANSWER_TARGET_HOURS[clock.kind]} h target: answer it in words on GitHub by ${zone.shortMinute(new Date(leadTurnAt(clock, ownerFirst)))}, or it goes to the lead`
+  );
+}
+
+/** The lead's GH-LATE line for a clock at the lead's turn, saying when its owner was told, if it was. */
 export function lateText(clock: Clock, now: number, zone: TimeZone): string {
+  const told = clock.toldAt === undefined ? '' : `; ${clock.owner} was told at ${zone.shortMinute(new Date(clock.toldAt))}`;
   return (
     `GH-LATE ${clock.ref} (${clock.kind}, ${clock.owner}) has waited ${waitedHours(clock, now)} h for an answer of ours since ` +
-    `${zone.shortMinute(new Date(clock.since))}, past its ${ANSWER_TARGET_HOURS[clock.kind]} h target: have ${clock.owner} answer it on GitHub`
+    `${zone.shortMinute(new Date(clock.since))}, past its ${ANSWER_TARGET_HOURS[clock.kind]} h target${told}: have ${clock.owner} answer it on GitHub`
   );
 }
 
@@ -240,15 +294,33 @@ function namedRefs(clocks: readonly Clock[], named: (clock: Clock) => string): s
  * One owner's reminders of one sync as one unwoken line (#1475): a thread alone as `reminderText` words it, several
  * as their count and the first few by when each falls due, so many open threads never flood the owner's inbox.
  */
-export function remindersText(clocks: readonly Clock[], now: number, zone: TimeZone): string {
+export function remindersText(clocks: readonly Clock[], now: number, zone: TimeZone, ownerFirst: OwnerFirst): string {
   const [only] = clocks;
   if (only !== undefined && clocks.length === 1) {
-    return reminderText(only, now, zone);
+    return reminderText(only, now, zone, ownerFirst);
   }
   const byDue = [...clocks].sort((a, b) => dueAt(a) - dueAt(b));
+  const after = only !== undefined && ownerFirst(only.owner) ? 'GH-LATE goes to you, and to the lead a second window later' : 'GH-LATE goes to the lead';
   return (
     `${clocks.length} GitHub threads wait for an answer of ours: ${namedRefs(byDue, (clock) => `${clock.ref} (${clock.kind}, by ${zone.shortMinute(new Date(dueAt(clock)))})`)}; ` +
-    'answer each in words on GitHub by its target, or GH-LATE goes to the lead'
+    `answer each in words on GitHub by its target, or ${after}`
+  );
+}
+
+/**
+ * One owner's GH-LATE lines of one sync as one unwoken line, as `remindersText` groups reminders (#1475): a thread
+ * alone as `toldText` words it, several as their count and the first few by when each goes to the lead.
+ */
+export function toldsText(clocks: readonly Clock[], now: number, zone: TimeZone, ownerFirst: OwnerFirst): string {
+  const [only] = clocks;
+  if (only !== undefined && clocks.length === 1) {
+    return toldText(only, now, zone, ownerFirst);
+  }
+  const turn = (clock: Clock): number => leadTurnAt(clock, ownerFirst);
+  const byTurn = [...clocks].sort((a, b) => turn(a) - turn(b));
+  return (
+    `GH-LATE ${clocks.length} GitHub threads waited past their answer target for an answer of ours: ` +
+    `${namedRefs(byTurn, (clock) => `${clock.ref} (${clock.kind}, by ${zone.shortMinute(new Date(turn(clock)))})`)}; answer each in words on GitHub by then, or it goes to the lead`
   );
 }
 
@@ -265,7 +337,10 @@ export function lateGroupText(clocks: readonly Clock[], now: number, zone: TimeZ
   );
 }
 
-/** The late clock whose target passed last: a grouped GH-LATE is told again only when a newer wait goes late (#1475). */
-export function newestLate(clocks: readonly Clock[]): Clock | undefined {
-  return clocks.reduce<Clock | undefined>((newest, clock) => (newest === undefined || dueAt(clock) > dueAt(newest) ? clock : newest), undefined);
+/**
+ * The late clock that came to the lead last, by `turnAt` (the lead's turn, leadTurnAt, #1507): a grouped GH-LATE is
+ * told again only when a newer wait goes late (#1475).
+ */
+export function newestLate(clocks: readonly Clock[], turnAt: (clock: Clock) => number): Clock | undefined {
+  return clocks.reduce<Clock | undefined>((newest, clock) => (newest === undefined || turnAt(clock) > turnAt(newest) ? clock : newest), undefined);
 }

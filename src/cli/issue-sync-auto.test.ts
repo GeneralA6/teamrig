@@ -138,8 +138,9 @@ describe('teamrig issue sync --auto', () => {
         'GitHub pull requests: gh:acme/web#20 "Change 20": conflicts with its base',
       ]);
       assert.deepEqual(githubLines(kit, 'alpha'), [
-        // The outsider's pull request waits on the watcher's answer from its opening (#1351): the response clock's unwoken reminder.
-        'GitHub gh:acme/web#22 (pull) has waited 130 h for an answer of ours, since 01-03 00:00 UTC; answer it in words on GitHub by 01-04 00:00 UTC, its 24 h target, or GH-LATE goes to the lead',
+        // The outsider's pull request waits on the watcher's answer from its opening (#1351); past its target, the
+        // watcher is told GH-LATE first, unwoken, and the lead a window later (#1507).
+        'GH-LATE gh:acme/web#22 (pull) has waited 130 h for an answer of ours since 01-03 00:00 UTC, past its 24 h target: answer it in words on GitHub by 01-09 10:30 UTC, or it goes to the lead',
         'GitHub pull requests: gh:acme/web#22 "Change 22": opened by stranger (outside, fork); gh:acme/web#21 "Change 21": merged',
       ]);
       assert.deepEqual(githubLines(kit, 'lead'), []);

@@ -760,9 +760,11 @@ lost; it is raised once a grant and again after each use, LOG-SIZE: a file of th
 has reached 3 MiB, near the 4 MiB the task pane reads of a file at once, past which the pane stops reading it, with
 that file's remedy (compact for the register and the hooks' aged logs, none yet for an inbox); it is raised once a
 file, GH-LATE: a GitHub issue or pull request has waited past its answer target
-(security 4 h, bug, pull request or a comment on an issue a task tracks 24 h, else 72 h) for an answer of ours, by the clocks the
-last writing `teamrig issue sync` kept; one GH-LATE names every late thread, with their count and the oldest three,
-and is raised once, and again only when a newer wait goes late, and from
+(security 4 h, bug, pull request or a comment on an issue a task tracks 24 h, else 72 h) for an answer of ours, and
+its session, told at the target, a second window as long as the target and at most 24 h (at once when the lead
+answers it or its session is not on the team), by the clocks the last writing `teamrig issue sync` kept; one GH-LATE
+names every late thread, with their count and the oldest three, and is raised once, and again only when a newer wait
+comes to the lead, and from
 the restore's record (`<kit home>/bin/launchers.json`, written by [restore install](#teamrig-restore-install),
 `uninstall` and a newer version's first session start) RESTORE-DEAD: a logon entry or shortcut teamrig set up that
 starts a Node or launcher that is gone, such as one left on a Node an upgrade removed, and RESTORE-STRAY: a `Restore
@@ -1337,8 +1339,10 @@ owner while sessions work; a run by hand still works at any time.
 
 A run that writes also times each open issue's and pull request's wait for an answer of ours (the targets are in
 [GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md#answer-times)): at 75% of its target
-the session that answers it gets one unwoken inbox line from `github` (a `REMINDED` line), and past it `teamrig check`
-shows the lead GH-LATE. A preview times nothing.
+the session that answers it gets one unwoken inbox line from `github` (a `REMINDED` line), at its target one unwoken
+GH-LATE line (a `TOLD` line), and a second window later (as long as the target, at most 24 h) `teamrig check` shows
+the lead GH-LATE; at the target already when the lead answers it or its session is not on the team. A preview times
+nothing.
 Pull requests: each run also reads every open pull request of each repository, and those changed since the last
 `--auto` read, and compares them with what that read kept. The news is a pull request opened, merged or closed
 unmerged, or one that starts to conflict with its base, to fail its checks, or gets approved or changes requested,
