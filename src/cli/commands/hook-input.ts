@@ -10,7 +10,7 @@ import { OwnPaths, tasksSearched, TeamFolders, type LeadPaths, type SubTeamPlace
 import { indexMarks } from '../../inbox/marks.ts';
 import type { HookEvent, HookEventName, HookReply } from '../../ports/host/index.ts';
 import { JsonlEventLog } from '../../register/store.ts';
-import { hooksOf, pathsIfKnown } from '../host.ts';
+import { hooksOf, identityOf, pathsIfKnown } from '../host.ts';
 import { openKit, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import type { KitTree } from '../tree.ts';
@@ -65,13 +65,13 @@ export type HookOrigin = Pick<HookEvent, 'cwd' | 'session'>;
 
 /**
  * The team a session's hooks run for: `$TEAMRIG_TEAM`, else the nearest pointer above the folder the
- * session started in (the project folder the host names in the environment), then above `folder`, the one the hook
+ * session started in (the project folder the host tells the run), then above `folder`, the one the hook
  * event names, undefined when the input named none. That folder follows
  * a `cd`, so walking it first would let a tab that moved into another team's project read, and bind
  * to, that team's sessions. The push guard keeps `hookTeam`: a push belongs to the folder it runs in.
  */
 export function sessionTeam(folder: string | undefined, runtime: CliRuntime): Promise<TeamResolution> {
-  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.env[ENV.claudeProjectDir], folder, runtime.cwd]));
+  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime, [identityOf(runtime).projectDir, folder, runtime.cwd]));
 }
 
 /** `$TEAMRIG_SESSION` as Claude Code passed it to the hook; undefined when unset or blank. */

@@ -14,7 +14,7 @@ import { configChangedMeanwhile, hired } from '../testing/config-race.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
 import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, reasonOf, SKILLS_DIR, TEAM, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
-import { HOOKS_ONLY_HOST, NO_PATHS_HOST, SHIPPED_HOST } from '../testing/host.ts';
+import { HOOKS_ONLY_HOST, hostTelling, NO_PATHS_HOST, NO_SESSION_HOST, SHIPPED_HOST } from '../testing/host.ts';
 import { cutLineMessage } from './cmd-shim.ts';
 import { FULL_HELP_POINTER } from './help.ts';
 import { SHORT_FORM_CHARS } from './reports.ts';
@@ -1109,6 +1109,15 @@ describe('runCli: which team', () => {
   it("falls back to the session's project folder", async () => {
     const result = await new CliHarness(CURRENT_TEAM).run(['config', 'validate'], { cwd: ELSEWHERE, env: { CLAUDE_PROJECT_DIR: APP } });
     assert.deepEqual(result, VALID);
+  });
+
+  it("asks the running host for the session's project folder, and reads no variable where the host tells none", async () => {
+    const kit = new CliHarness(CURRENT_TEAM);
+    const told = await kit.run(['config', 'validate'], { cwd: ELSEWHERE, env: { CLAUDE_PROJECT_DIR: ELSEWHERE }, host: hostTelling({ projectDir: APP }) });
+    assert.deepEqual(told, VALID);
+    const untold = await kit.run(['config', 'validate'], { cwd: ELSEWHERE, env: { CLAUDE_PROJECT_DIR: APP }, host: NO_SESSION_HOST });
+    assert.equal(untold.code, EXIT.refused);
+    assert.match(untold.stdout[0] ?? '', /^REFUSED no team here: /);
   });
 
   it('takes $TEAMRIG_TEAM over the pointer', async () => {

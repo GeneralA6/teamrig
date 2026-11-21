@@ -78,7 +78,7 @@ export async function scan(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const flag = args.flags.get('project');
   const asked = flag === undefined ? undefined : resolve(runtime.cwd, expandHome(flag, runtime.userHome));
   const team = await setupTeamOf(runtime, asked);
-  const project = asked ?? (team === undefined ? undefined : teamProjectOf(team.config, team.from)) ?? teamFolders(runtime.env, [])[0] ?? runtime.cwd;
+  const project = asked ?? (team === undefined ? undefined : teamProjectOf(team.config, team.from)) ?? teamFolders(runtime, [])[0] ?? runtime.cwd;
   // The scan's whole work is the host's own files, so a host whose folders teamrig does not know refuses here.
   const host = pathsOf(runtime);
   const claudeDir = host.home(runtime.userHome);
