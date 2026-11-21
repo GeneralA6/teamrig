@@ -23,7 +23,7 @@ import { servedPathOf, skippedOf, stampsOf, type DocumentSource, type ReadScope 
 const HOST: ServedHost = { id: 'claude-code', name: 'Claude Code' };
 
 /** The loaded teams of the tree `own` is in, the root first, then each team's children by id, depth first. */
-function treeTeamsOf(loaded: KitTree, own: string): TreeTeam[] {
+export function treeTeamsOf(loaded: KitTree, own: string): TreeTeam[] {
   const teams: TreeTeam[] = [];
   for (const { team } of loaded.tree.walk(loaded.tree.rootOf(own) ?? own)) {
     const found = loaded.teams.get(team);
