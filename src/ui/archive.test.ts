@@ -7,6 +7,7 @@ const encoder = new TextEncoder();
 interface Document {
   readonly format?: unknown;
   readonly version?: unknown;
+  readonly interface?: unknown;
   readonly entry?: unknown;
   readonly files?: unknown;
 }
@@ -14,6 +15,7 @@ interface Document {
 const GOOD: Document = {
   format: ARCHIVE_FORMAT,
   version: '0.77.0',
+  interface: '1.0',
   entry: 'ui/main.js',
   files: [
     { path: 'package.json', text: '{"type":"module"}\n' },
@@ -68,6 +70,7 @@ describe('readArchive', () => {
       ok: true,
       archive: {
         version: '0.77.0',
+        interface: { major: 1, minor: 0 },
         entry: 'ui/main.js',
         files: [
           { path: 'package.json', text: '{"type":"module"}\n' },
@@ -121,6 +124,21 @@ describe('readArchive', () => {
     for (const version of [undefined, 7, '', '..', '../0.1.0', '0.1.0/x', 'a\\b', 'nul', '1.0.']) {
       assert.equal(reasonOf(readOf({ ...GOOD, version })), 'its version is not a plain name', JSON.stringify(version));
     }
+  });
+
+  it('refuses an archive that names no interface version', () => {
+    assert.equal(reasonOf(readOf({ ...GOOD, interface: undefined })), 'it names no interface version');
+  });
+
+  it('refuses an interface that is no <major>.<minor> version, in its one spelling', () => {
+    for (const speaks of [1, 1.0, null, '', '1', '1.0.0', 'v1.0', '01.0', '1.00', ' 1.0', '-1.0', { major: 1, minor: 0 }]) {
+      assert.equal(reasonOf(readOf({ ...GOOD, interface: speaks })), `its interface ${JSON.stringify(speaks)} is no <major>.<minor> version`, JSON.stringify(speaks));
+    }
+  });
+
+  it('answers the interface version the archive states, whatever this teamrig serves', () => {
+    const read = readOf({ ...GOOD, interface: '2.7' });
+    assert.deepEqual(read.ok ? read.archive.interface : undefined, { major: 2, minor: 7 });
   });
 
   it('refuses a missing entry and a missing files list', () => {

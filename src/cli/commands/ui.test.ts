@@ -100,6 +100,7 @@ describe('teamrig ui', () => {
     const ARCHIVE = `${JSON.stringify({
       format: ARCHIVE_FORMAT,
       version: VERSION,
+      interface: '1.0',
       entry: 'ui/main.js',
       files: [
         { path: 'package.json', text: '{"type":"module"}\n' },

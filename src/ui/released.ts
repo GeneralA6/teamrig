@@ -5,6 +5,7 @@
  */
 import type { Files } from '../core/files.ts';
 import type { HttpClient } from '../core/http.ts';
+import { checkInterfaceRange } from '../interface/version.ts';
 import { readArchive } from './archive.ts';
 import { fetchArchive } from './fetch.ts';
 import { installArchive, installedEntry, stagingFolder, uiFolder } from './install.ts';
@@ -37,7 +38,8 @@ function changed(folder: string, pin: UiPin, reason: string): ReleasedUi {
  * The entry script of the UI `pin` names, under the kit home `home`. An installed one that still holds the pinned
  * files is answered with no request; one changed since is refused. Otherwise the archive is fetched, read against the
  * pin and installed. An archive of another version than the pin's is refused even when its hash is right: the folder
- * it is written into is named by the pin's version.
+ * it is written into is named by the pin's version. So is one written against an interface this teamrig does not
+ * serve: it would wait for documents or fields never sent, so it is refused before a file of it is written.
  */
 export async function releasedEntry(deps: ReleasedDeps, home: string, pin: UiPin): Promise<ReleasedUi> {
   const folder = uiFolder(home, pin.version, pin.sha256);
@@ -52,6 +54,8 @@ export async function releasedEntry(deps: ReleasedDeps, home: string, pin: UiPin
   if (read.archive.version !== pin.version) {
     return { ok: false, reason: `the fetched UI was refused: it is version ${read.archive.version}, not the pinned ${pin.version}` };
   }
+  const range = checkInterfaceRange(read.archive.interface);
+  if (!range.served) return { ok: false, reason: `the fetched UI ${pin.version} was refused: ${range.reason}` };
   // readArchive took these bytes as UTF-8, so this text writes back as the very bytes the pin names.
   const source = new TextDecoder().decode(fetched.bytes);
   try {
