@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { recordField, type JsonRecord } from '../../core/guards.ts';
 import { toJsonlLine } from '../../core/jsonl.ts';
 import { SecretScanner } from '../../core/secrets.ts';
@@ -12,6 +13,7 @@ import { normalisePath } from '../../testing/memory-files.ts';
 import { problemsOf, rowsOf, served } from '../../testing/read-answers.ts';
 import { rotateRegister } from '../../testing/rotation.ts';
 import { treeHarness } from '../../testing/team-tree.ts';
+import { WatchedFiles } from '../../testing/watched-files.ts';
 import { EXIT } from '../runtime.ts';
 
 const READ_HISTORY = ['read', 'history', '--json'] as const;
@@ -30,6 +32,15 @@ async function ok(kit: CliHarness, argv: readonly string[], options: RunOptions 
 /** Adds a task as the team's lead; the first of a register is T1. */
 async function add(kit: CliHarness, title: string, owner: string, options: RunOptions = {}): Promise<void> {
   await ok(kit, ['add', '--session', 'lead', '--title', title, '--description', 'what and why', '--priority', 'p2', '--owner', owner], options);
+}
+
+/** Every file with its bytes and its stamp, so a rewrite with the same bytes shows too. */
+async function storeOf(kit: CliHarness): Promise<(string | undefined)[][]> {
+  const rows: (string | undefined)[][] = [];
+  for (const path of kit.files.paths()) {
+    rows.push([path, kit.files.get(path), await kit.files.stamp(path)]);
+  }
+  return rows;
 }
 
 async function historyOf(kit: CliHarness, task: string, options: RunOptions = {}, more: readonly string[] = []): Promise<JsonRecord> {
@@ -155,6 +166,31 @@ describe('teamrig read history', () => {
     await rotateRegister(kit.files, EVENTS_PATH, { now: new Date(kit.clock.now()) });
     assert.deepEqual(rowsOf(served(await kit.run(['read', 'tasks', '--json'])), 'tasks'), [], 'the task retired from the working set');
     assert.deepEqual(stepsOf(await historyOf(kit, 'T1')), ['create', 'in-progress', 'update', 'dropped']);
+  });
+
+  it('writes no file and no folder reading a task from the archive, served in full or as unchanged', async () => {
+    const kit = await workedTask();
+    await ok(kit, ['set', 'T1', '--status', 'dropped', '--note', 'no longer wanted', '--session', 'alpha']);
+    kit.clock.advance(90 * DAY_MS);
+    await rotateRegister(kit.files, EVENTS_PATH, { now: new Date(kit.clock.now()) });
+    const before = await storeOf(kit);
+    const files = new WatchedFiles(kit.files);
+    const answer = served(await kit.run([...READ_HISTORY, '--task', 'T1'], { files }));
+    assert.equal(stepsOf(answer).length, 4, 'the events came from the archive');
+    assert.ok(files.touched().includes(normalisePath(layoutPaths(EVENTS_PATH).segment(1))), 'the archive segment was read');
+    const again = served(await kit.run([...READ_HISTORY, '--task', 'T1', '--unless', `history=${String(answer['revision'])}`], { files }));
+    assert.equal(again['unchanged'], true);
+    assert.deepEqual([files.written(), await storeOf(kit)], [[], before]);
+  });
+
+  it('writes no file and no folder in a team that has no state folder yet', async () => {
+    const kit = new CliHarness();
+    const state = `${normalisePath(join(TEAM_HOME, 'state'))}/`;
+    assert.deepEqual(kit.files.paths().filter((path) => path.startsWith(state)), []);
+    const before = await storeOf(kit);
+    const files = new WatchedFiles(kit.files);
+    assert.deepEqual(eventsOf(served(await kit.run([...READ_HISTORY, '--task', 'T1'], { files }))), []);
+    assert.deepEqual([files.written(), await storeOf(kit)], [[], before]);
   });
 
   it('serves no event and says why when an archive segment is gone, changing its revision when it is back', async () => {
