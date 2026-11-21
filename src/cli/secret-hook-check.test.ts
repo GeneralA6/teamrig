@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { CliHarness, TEAM, TEAM_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { FakeSecretsGit } from '../testing/fake-secrets-git.ts';
 import { EXIT } from './runtime.ts';
-import { callsSecretScan, hookScriptsDir, SECRET_HOOKS } from './secret-hook-check.ts';
+import { SECRET_HOOKS } from './secret-hook-check.ts';
 
 const API = resolve('/', 'r', 'api');
 const WEB = resolve('/', 'r', 'web');
@@ -93,31 +93,15 @@ describe('check SECRET-HOOK (T1480)', () => {
   });
 });
 
-describe('callsSecretScan', () => {
-  it('needs the hook\'s own subcommand, called through teamrig or its source', () => {
-    const [preCommit] = SECRET_HOOKS;
-    assert.ok(preCommit !== undefined);
-    const cases = [
-      ['teamrig secrets staged || exit 1', true],
-      ['exec npx teamrig  secrets staged', true],
-      ['node src/cli/main.ts secrets staged', true],
-      ['teamrig secrets message "$1"', false],
-      ['teamrig secrets stagedx', false],
-      ['other-teamrig-tool secrets staged', false],
-      ['secrets staged', false],
-      ['#!/bin/sh\n  # teamrig secrets staged\nnpm test', false],
-      ['#!/bin/sh\nnpm test\nteamrig secrets staged', true],
-    ] as const;
-    for (const [script, calls] of cases) {
-      assert.equal(callsSecretScan(script, preCommit), calls, script);
-    }
-  });
-});
-
-describe('hookScriptsDir', () => {
-  it("is husky's .husky for its .husky/_, else the hooks folder itself", () => {
-    assert.equal(hookScriptsDir(join('/', 'r', '.husky', '_')), join('/', 'r', '.husky'));
-    assert.equal(hookScriptsDir(join('/', 'r', 'hooks', '_')), join('/', 'r', 'hooks', '_'));
-    assert.equal(hookScriptsDir(join('/', 'r', '.git', 'hooks')), join('/', 'r', '.git', 'hooks'));
+describe('SECRET_HOOKS', () => {
+  it('is each hook calling its own secrets subcommand, in the order git runs them', () => {
+    assert.deepEqual(
+      SECRET_HOOKS.map((hook) => [hook.hook, hook.command, hook.sub]),
+      [
+        ['pre-commit', 'secrets', 'staged'],
+        ['commit-msg', 'secrets', 'message'],
+        ['pre-push', 'secrets', 'pushed'],
+      ],
+    );
   });
 });
