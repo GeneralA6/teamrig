@@ -337,7 +337,7 @@ The delivery flow: teamrig queue runs one queued step on the host at a time, und
 | `passEnv` | array (at most 32 items) of string (matching `^[A-Za-z_][A-Za-z0-9_]{0,63}$`) | `[]` | Credential variables the programs teamrig starts still get. teamrig leaves a fixed list (GH\_TOKEN, GITHUB\_TOKEN, NPM\_TOKEN, NODE\_AUTH\_TOKEN, cloud and AI provider keys) out of the environment of queued and tested commands, merge, deploy and worktree hooks, refresh.endCommand and the team's sessions; a name here passes that one on, as a private registry's npm ci needs NPM\_TOKEN. Only the owner sets it. |
 | `freezes` | [object](#deliveryfreezes) |  | Deploy freezes (teamrig freeze), which hold deploys of their targets while a session measures them. |
 | `stablePeriods` | [object](#deliverystableperiods) |  | teamrig stable-periods: when a measurement of a deploy target is clean, between the deploys and queued steps that disturb it. |
-| `branches` | [object](#deliverybranches) |  | How teamrig worktree add --task names a new branch, and so its worktree folder: a pattern of {type}, {id}, {issue}, {slug} and {session}, with {id} (t12) starting the pattern or following a /, so the branch tells whose it is. Branches made before, or named by hand, keep their names. |
+| `branches` | [object](#deliverybranches) |  | How teamrig worktree add --task names a new branch, and so its worktree folder: a pattern of {type}, {id}, {issue}, {slug} and {session}, with {id} (t12) starting the pattern or following a /, so the branch tells whose it is. A new branch named by hand must match a pattern too while enforce is on; branches already there keep their names. |
 | `wait` | [object](#deliverywait) |  | How a delivery step waits. |
 | `schedule` | [object](#deliveryschedule) |  | When queued steps and deploys may start on the host. |
 
@@ -436,7 +436,7 @@ teamrig stable-periods: when a measurement of a deploy target is clean, between 
 
 ## `delivery.branches`
 
-How teamrig worktree add --task names a new branch, and so its worktree folder: a pattern of {type}, {id}, {issue}, {slug} and {session}, with {id} (t12) starting the pattern or following a /, so the branch tells whose it is. Branches made before, or named by hand, keep their names.
+How teamrig worktree add --task names a new branch, and so its worktree folder: a pattern of {type}, {id}, {issue}, {slug} and {session}, with {id} (t12) starting the pattern or following a /, so the branch tells whose it is. A new branch named by hand must match a pattern too while enforce is on; branches already there keep their names.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -445,6 +445,7 @@ How teamrig worktree add --task names a new branch, and so its worktree folder: 
 | `itemTypes` | [object](#deliverybranchesitemtypes) |  | Per item type, the branch type its branch takes; an item type left out keeps its default (task: feat, bug: fix). |
 | `classes` | map from string to string |  | Per work class (focus.classes), the branch type its tasks' branches take, in place of their item type's, such as chore for Improvements. |
 | `slugMax` | integer (8 to 100) | `40` | The slug, made from the task's title (lowercase words joined by -, task ids left out), is cut at a word to at most this many characters. |
+| `enforce` | boolean | `true` | teamrig worktree add refuses a new branch whose name matches neither pattern nor a typePatterns entry, naming them, so a project never mixes branch styles; false lets any branch name through. |
 
 ## `delivery.branches.itemTypes`
 

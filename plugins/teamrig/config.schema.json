@@ -981,7 +981,7 @@
           }
         },
         "branches": {
-          "description": "How teamrig worktree add --task names a new branch, and so its worktree folder: a pattern of {type}, {id}, {issue}, {slug} and {session}, with {id} (t12) starting the pattern or following a /, so the branch tells whose it is. Branches made before, or named by hand, keep their names.",
+          "description": "How teamrig worktree add --task names a new branch, and so its worktree folder: a pattern of {type}, {id}, {issue}, {slug} and {session}, with {id} (t12) starting the pattern or following a /, so the branch tells whose it is. A new branch named by hand must match a pattern too while enforce is on; branches already there keep their names.",
           "type": "object",
           "properties": {
             "pattern": {
@@ -1026,6 +1026,11 @@
               "minimum": 8,
               "maximum": 100,
               "default": 40
+            },
+            "enforce": {
+              "description": "teamrig worktree add refuses a new branch whose name matches neither pattern nor a typePatterns entry, naming them, so a project never mixes branch styles; false lets any branch name through.",
+              "type": "boolean",
+              "default": true
             }
           }
         },

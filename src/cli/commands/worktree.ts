@@ -33,7 +33,7 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   const branch = await branchToAdd(args, runtime, team);
   const place = addPlace(args.flags.get('repo'), runtime, team);
   const { git, files } = runtime.worktrees;
-  const end = await createWorktree({ branch, ...place, env: runtime.env }, { git, files, hooks: credentialFreeHooks(runtime.hooks, team?.config.delivery.passEnv ?? []) }, (line) => runtime.out.stdout(line));
+  const end = await createWorktree({ branch, ...place, env: runtime.env, branches: team?.config.delivery.branches }, { git, files, hooks: credentialFreeHooks(runtime.hooks, team?.config.delivery.passEnv ?? []) }, (line) => runtime.out.stdout(line));
   switch (end.kind) {
     case 'refused':
       throw new RefusedError(end.reason);
