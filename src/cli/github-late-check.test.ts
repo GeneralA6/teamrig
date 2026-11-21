@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { formatClocks, type Clock } from '../github/clock.ts';
+import { formatClocks, type Clock } from '../sync/clock.ts';
 import { MS_PER_HOUR } from '../core/time.ts';
 import { CliHarness, TEAM, TEAM_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
