@@ -4,12 +4,13 @@ import { generateKeyPairSync } from 'node:crypto';
 import { DEFAULT_SECRET_GUARD } from '../config/defaults.ts';
 import { programsOf } from '../package-guard/programs.ts';
 import type { ShellDialect } from '../push-guard/tokenizer.ts';
+import { testPaths } from '../testing/host.ts';
 import { fileFindings, isPrinter } from './files.ts';
 import { describeFinding } from './findings.ts';
 import { DEFAULT_SECRET_PATHS, SecretPaths } from './paths.ts';
 import { secretRulesOf } from './rules.ts';
 
-const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
+const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32', testPaths());
 // Made at run time, so no key-shaped text sits in the source.
 const PUBLIC = generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString();
 

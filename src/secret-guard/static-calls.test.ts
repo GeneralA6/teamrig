@@ -2,12 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_SECRET_GUARD } from '../config/defaults.ts';
 import { runsOf } from '../package-guard/programs.ts';
+import { testPaths } from '../testing/host.ts';
 import { describeFinding } from './findings.ts';
 import type { WordPlace } from './paths.ts';
 import { secretRulesOf } from './rules.ts';
 import { consoleWriteFindings, fileReadFindings, groupFrom } from './static-calls.ts';
 
-const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
+const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32', testPaths());
 const PLACE: WordPlace = { dialect: 'powershell', dir: 'C:/w', home: 'C:/u' };
 
 function written(command: string): string[] {

@@ -4,10 +4,10 @@ import { DEFAULT_SECRET_GUARD } from '../config/defaults.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { secretRulesOf } from '../secret-guard/rules.ts';
 import { testConfig } from '../testing/config.ts';
-import { hookEventOf, replyText } from '../testing/host.ts';
+import { hookEventOf, replyText, testPaths } from '../testing/host.ts';
 import { secretFindingsOf, secretGuardOf, secretGuardReply, secretPatternsOf, secretReason, type SecretGuardEnv } from './secret-guard.ts';
 
-const RULES = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
+const RULES = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32', testPaths());
 const join = (...parts: string[]): string => parts.join('');
 const TOKEN = join('gh', 'p_', 'a1'.repeat(18));
 const PASSWORD = join('s3', 'cret', 'Value9');
@@ -70,7 +70,7 @@ describe('secretFindingsOf', () => {
   });
 
   it("finds a line's text by the team's own secret patterns", () => {
-    const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32', ['tok_[a-z0-9]{8}']);
+    const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32', testPaths(), ['tok_[a-z0-9]{8}']);
     assert.deepEqual(findings(call('Bash', { command: join('deploy --key tok_', 'q8r7s6t5') }), rules), ['config-1']);
     assert.deepEqual(findings(call('Bash', { command: join('deploy --key tok_', 'q8r7s6t5') })), []);
   });
@@ -168,7 +168,7 @@ describe('secretFindingsOf on the text a file-writing call writes (T1369 R3)', (
   });
 
   it("finds a written text by the team's own secret patterns", () => {
-    const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32', ['tok_[a-z0-9]{8}']);
+    const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32', testPaths(), ['tok_[a-z0-9]{8}']);
     assert.deepEqual(findings(call('Write', { file_path: 'C:/w/deploy.sh', content: join('deploy --key tok_', 'q8r7s6t5') }), rules), ['config-1']);
   });
 

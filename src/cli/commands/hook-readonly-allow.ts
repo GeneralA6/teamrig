@@ -6,7 +6,7 @@ import type { HookEvent, HookReply } from '../../ports/host/index.ts';
 import { newestSnapshotExports, UNREAD_SNAPSHOT } from '../../readonly-shell/snapshot.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { pathsIfKnown } from '../host.ts';
+import { pathsIfKnown, secretFilesOf } from '../host.ts';
 import { openKit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { readHookInput, sessionTeam, writeReply } from './hook-input.ts';
@@ -21,7 +21,7 @@ export interface ReadonlyCheck {
 export async function readonlyCheckOf(runtime: CliRuntime, config: KitConfig): Promise<ReadonlyCheck> {
   const snapshots = pathsIfKnown(runtime)?.shellSnapshots(runtime.userHome);
   const snapshot = snapshots === undefined ? UNREAD_SNAPSHOT : await newestSnapshotExports(runtime.files, snapshots);
-  const secrets = secretRulesOf(config.secretGuard, runtime.userHome, runtime.platform, config.register.secretPatterns);
+  const secrets = secretRulesOf(config.secretGuard, runtime.userHome, runtime.platform, secretFilesOf(runtime), config.register.secretPatterns);
   return {
     rules: readonlyRulesOf(config.readonlyShell, runtime.env, snapshot),
     printsSecret: (event) => secretFindingsOf(event, runtime.cwd, secrets).length > 0,

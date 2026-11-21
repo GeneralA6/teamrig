@@ -6,6 +6,7 @@ import { pushRanges, rangeArgs } from '../../secret-guard/push-range.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { MAX_TAG_DEPTH } from '../../secret-guard/secrets-git.ts';
 import { UsageError, noPositionals, onePositional, type ParsedArgs } from '../args.ts';
+import { secretFilesOf } from '../host.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { guardLoadOf } from './hook-guard-load.ts';
 
@@ -100,7 +101,7 @@ function repoRoot(runtime: CliRuntime): string {
  */
 async function scannerOf(runtime: CliRuntime, root: string): Promise<CommitScanner> {
   const load = (await guardLoadOf(undefined, runtime))?.load;
-  const rules = secretRulesOf(secretGuardOf(load), runtime.userHome, runtime.platform, secretPatternsOf(load));
+  const rules = secretRulesOf(secretGuardOf(load), runtime.userHome, runtime.platform, secretFilesOf(runtime), secretPatternsOf(load));
   const git = runtime.secretsGit;
   return new CommitScanner(rules.shapes, rules.paths, root, (revision, path) => git.blob(runtime.cwd, revision, path));
 }
