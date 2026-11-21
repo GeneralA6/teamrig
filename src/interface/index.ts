@@ -17,6 +17,18 @@ export {
 export { type Connector, type ConnectorItem, type ConnectorName } from './connector.ts';
 export { answerOf, DOCUMENTS, isDocumentName, unchangedAnswer, type Answer, type DocumentName, type EnvelopeHead, type UnchangedAnswer } from './envelope.ts';
 export { goalsBody, type GoalsBody, type GoalsInput, type HeldGoals, type ServedGoal, type ServedSlip } from './goals.ts';
+export {
+  eventKeyOf,
+  historyBody,
+  type HistoryBody,
+  type HistoryInput,
+  type ServedCreate,
+  type ServedEvent,
+  type ServedFields,
+  type ServedMoved,
+  type ServedStatusChange,
+  type ServedUpdate,
+} from './history.ts';
 export { inboxBody, type InboxBody, type InboxInput, type ServedLine } from './inbox.ts';
 export { meetingsBody, type MeetingInput, type MeetingsBody, type MeetingsInput, type ServedMeeting, type ServedMeetingStatus } from './meetings.ts';
 export {
