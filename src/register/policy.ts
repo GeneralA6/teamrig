@@ -77,7 +77,7 @@ export interface AddInput {
   readonly workClass?: string;
 }
 
-/** A task for a GitHub issue: its source is GITHUB_SOURCE and its ref the issue's (github/map.ts). */
+/** A task for a GitHub issue: its source is GITHUB_SOURCE and its ref the issue's (sync/map.ts). */
 export interface ImportInput {
   readonly title: string;
   /** The issue's body, cleaned and cut to MAX_DESCRIPTION; null for an empty body. */
