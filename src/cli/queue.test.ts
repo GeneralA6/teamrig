@@ -1343,18 +1343,22 @@ describe("teamrig queue runs a configured ship tool only from main's current cod
     }
   });
 
-  it('refuses at its start, recording its refusal, a ship step whose tool moved to another commit while it waited', async () => {
-    const { kit, steps } = harness(SHIPPING);
-    await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
-    const git = shipGit();
-    const sleep = async (ms: number): Promise<void> => {
-      git.heads.set('/repo/ship', 'old');
-      await kit.clock.sleep(ms);
-    };
-    const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
-    const moved = `the ship tool ${SHIP_TOOL} changed from base while the step waited and is not origin/main's current code in a checkout with no change: ${MOVE}`;
-    assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [EXIT.refused, `REFUSED ${moved}`, []]);
-    assert.deepEqual(ledgerOf(kit).map((record) => (typeof record === 'object' && record !== null && 'outcome' in record ? record.outcome : undefined)), ['refused']);
+  it("moves back to main's current code and runs a ship step whose tool moved to another commit while it waited, recording a refusal when git cannot move it (T4280)", async () => {
+    for (const stuck of [false, true]) {
+      const { kit, steps } = harness(SHIPPING);
+      await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
+      const git = shipGit();
+      git.detachAtFails = stuck ? 'your local changes would be overwritten' : undefined;
+      const sleep = async (ms: number): Promise<void> => {
+        git.heads.set('/repo/ship', 'old');
+        await kit.clock.sleep(ms);
+      };
+      const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
+      const outcomes = ledgerOf(kit).map((record) => (typeof record === 'object' && record !== null && 'outcome' in record ? record.outcome : undefined));
+      const failed = `the ship tool ${SHIP_TOOL} is behind origin's main at base, and moving its checkout /repo/ship there failed: your local changes would be overwritten: ${MOVE}`;
+      const want = stuck ? [EXIT.refused, `REFUSED ${failed}`, 0, 'old', ['refused']] : [EXIT.ok, result.stdout.at(-1), 1, 'base', outcomes];
+      assert.deepEqual([result.code, result.stdout.at(-1), steps.ran.length, git.heads.get('/repo/ship'), outcomes], want, `stuck ${String(stuck)}`);
+    }
   });
 
   const UNANSWERED = 'git rev-parse in /repo/ship did not answer: ended with 0xC0000142, as a process that died starting does';
@@ -1394,13 +1398,13 @@ describe("teamrig queue runs a configured ship tool only from main's current cod
     }
   });
 
-  it("refuses as stale a tool git did not answer for at its queueing that is not main's current code at its start (T3368)", async () => {
+  it("moves to main's current code, then runs, a tool git did not answer for at its queueing that is not main's current code at its start (T3368, T4280)", async () => {
     const { kit, steps } = harness(SHIPPING);
     const git = shipGit();
     git.unanswered.push(UNANSWERED);
     git.heads.set('/repo/ship', 'old');
     const result = await kit.run(SHIP_STEP, { steps, mergeGit: git });
-    assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [EXIT.refused, `REFUSED ${STALE}`, []]);
+    assert.deepEqual([result.code, steps.ran.length, git.log], [EXIT.ok, 1, ['fetch /repo/ship origin', 'detachAt /repo/ship origin/main']]);
   });
 
   it('runs a ship step whose tool moved on to the newest main while it waited', async () => {
@@ -1477,29 +1481,28 @@ describe("teamrig queue refuses a waiting ship only when the code its tool runs 
     return { git, sleep };
   }
 
-  /** The refusal of a tool that moved from `base` while the step waited, naming `files` when it can tell them. */
-  const movedFrom = (files: string): string => `the ship tool ${SHIP_TOOL} changed from base while the step waited${files} and is not origin/main's current code in a checkout with no change: ${MOVE}`;
+  /** The git steps that move the tool's checkout to main's current code (T4280). */
+  const CAUGHT_UP = ['fetch /repo/ship origin', 'detachAt /repo/ship origin/main'];
 
-  it("runs a ship whose checkout moved to a later main, main moving on again, when none of the tool's code changed", async () => {
+  it("runs a ship whose checkout moved to a later main, main moving on again, when none of the tool's code changed, moving nothing", async () => {
     const { kit, steps } = harness(SHIPPING);
     await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
     const { git, sleep } = movedTwice(kit, ['src/app.ts', 'docs/commands.md']);
     const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
-    assert.deepEqual([result.code, steps.ran.length], [EXIT.ok, 1]);
+    assert.deepEqual([result.code, steps.ran.length, git.log], [EXIT.ok, 1, []]);
   });
 
-  it('refuses it at its start, naming each file of the code the tool runs that changed: an import, a src file, a data file, a root', async () => {
+  it('moves it to main\'s current code and runs it when a file the tool runs changed: an import, a src file, a data file, a root (T4280)', async () => {
     for (const changed of [['tools/ship/repos.ts'], ['src/core/home.ts', 'src/app.ts'], ['tools/ship/repos.json'], ['src/cli/main.ts'], ['tools/ship/ship.roots.json']]) {
       const { kit, steps } = harness(SHIPPING);
       await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
       const { git, sleep } = movedTwice(kit, changed);
       const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
-      const named = changed.filter((file) => file !== 'src/app.ts').join(', ');
-      assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [EXIT.refused, `REFUSED ${movedFrom(` (${named})`)}`, []], named);
+      assert.deepEqual([result.code, steps.ran.length, git.log, git.heads.get('/repo/ship')], [EXIT.ok, 1, CAUGHT_UP, 'b2'], changed.join());
     }
   });
 
-  it("runs it when only a CLI command the ship never runs changed, and refuses it when a command it runs did (#1686)", async () => {
+  it("runs it where it is when only a CLI command the ship never runs changed, and moves it first when a command it runs did (#1686, T4280)", async () => {
     /** A CLI whose command table loads each command when it runs, the ship running only step-aside. */
     const withCommandTable = (git: FakeMergeGit): void => {
       for (const commit of ['base', 'b1']) {
@@ -1510,41 +1513,33 @@ describe("teamrig queue refuses a waiting ship only when the code its tool runs 
         git.files.set(`${commit}:src/cli/commands/queue.ts`, "export {};\n");
       }
     };
-    for (const [changed, refused] of [[['src/cli/commands/queue.ts'], false], [['src/cli/commands/step-aside.ts'], true]] as const) {
+    for (const [changed, moved] of [[['src/cli/commands/queue.ts'], false], [['src/cli/commands/step-aside.ts'], true]] as const) {
       const { kit, steps } = harness(SHIPPING);
       await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
       const { git, sleep } = movedTwice(kit, changed);
       withCommandTable(git);
       const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
-      const want = refused ? [EXIT.refused, `REFUSED ${movedFrom(` (${changed.join(', ')})`)}`, 0] : [EXIT.ok, result.stdout.at(-1), 1];
-      assert.deepEqual([result.code, result.stdout.at(-1), steps.ran.length], want, changed.join());
+      assert.deepEqual([result.code, steps.ran.length, git.log], [EXIT.ok, 1, moved ? CAUGHT_UP : []], changed.join());
     }
   });
 
-  it("refuses it when the commit it moved to is off main's history, or a file the tool runs is not there", async () => {
+  it("moves it to main's current code and runs it when the commit it moved to is off main's history, a file the tool runs is not there, or it is before its pin (T4280)", async () => {
     const off = (git: FakeMergeGit): void => void git.ancestry.delete('b1>b2');
     const missing = (git: FakeMergeGit): void => void git.files.delete('b1:src/core/home.ts');
-    for (const [name, spoil] of Object.entries({ off, missing })) {
+    for (const [name, spoil, to] of [['off', off, 'b1'], ['missing', missing, 'b1'], ['before its pin', (git: FakeMergeGit): void => {
+      git.ancestry.delete('base>b0');
+      git.ancestry.add('b0>base');
+    }, 'b0']] as const) {
       const { kit, steps } = harness(SHIPPING);
       await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
-      const { git, sleep } = movedTwice(kit, ['src/app.ts']);
+      const { git, sleep } = movedTwice(kit, ['src/app.ts'], to);
       spoil(git);
       const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
-      assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [EXIT.refused, `REFUSED ${movedFrom('')}`, []], name);
+      assert.deepEqual([result.code, steps.ran.length, git.log, git.heads.get('/repo/ship')], [EXIT.ok, 1, CAUGHT_UP, 'b2'], name);
     }
   });
 
-  it('refuses it when the checkout moved back to a main before its pin, on main\'s history though it is', async () => {
-    const { kit, steps } = harness(SHIPPING);
-    await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
-    const { git, sleep } = movedTwice(kit, ['src/app.ts'], 'b0');
-    git.ancestry.delete('base>b0');
-    git.ancestry.add('b0>base');
-    const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
-    assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [EXIT.refused, `REFUSED ${movedFrom('')}`, []]);
-  });
-
-  it('refuses it when the checkout it moved to has a change', async () => {
+  it('refuses it, moving nothing, when the checkout it moved to has a change', async () => {
     const { kit, steps } = harness(SHIPPING);
     await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
     const { git, sleep: moving } = movedTwice(kit, ['src/app.ts']);
@@ -1553,7 +1548,8 @@ describe("teamrig queue refuses a waiting ship only when the code its tool runs 
       await moving(ms);
     };
     const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep, sessionProcesses: otherRuns() });
-    assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [EXIT.refused, `REFUSED ${movedFrom('')}`, []]);
+    const moved = `the ship tool ${SHIP_TOOL} changed from base while the step waited and is not origin/main's current code in a checkout with no change: ${MOVE}`;
+    assert.deepEqual([result.code, result.stdout.at(-1), steps.ran, git.log], [EXIT.refused, `REFUSED ${moved}`, [], []]);
   });
 });
 
@@ -1589,27 +1585,34 @@ describe("teamrig queue checks a waiting ship's tool against the remote's own he
     assert.deepEqual([...(await started(git, sleep, kit, steps)).slice(0, 1), steps.ran.length], [EXIT.ok, 1]);
   });
 
-  it('refuses it when the local ref is behind the remote head and a file the tool runs changed between them', async () => {
-    const { kit, steps } = harness(SHIPPING);
-    const { git, sleep } = remoteAhead(kit, ['tools/ship/repos.ts', 'src/app.ts']);
-    const refusal = `the ship tool ${SHIP_TOOL} at base (tools/ship/repos.ts) is not origin/main's current code in a checkout with no change: ${MOVE}`;
-    assert.deepEqual([...(await started(git, sleep, kit, steps)), steps.ran], [EXIT.refused, `REFUSED ${refusal}`, []]);
+  it("moves a clean checkout to the remote's head and runs it when main moved the tool's code while it waited, when that head is not fetched yet, or when the local ref is off its history (T4280)", async () => {
+    const changed = (): void => undefined;
+    const unfetched = (git: FakeMergeGit): void => void git.absent.add('b2');
+    const off = (git: FakeMergeGit): void => void git.ancestry.delete('base>b2');
+    for (const [name, spoil, files] of [['changed', changed, ['tools/ship/repos.ts', 'src/app.ts']], ['unfetched', unfetched, ['src/app.ts']], ['off', off, ['src/app.ts']]] as const) {
+      const { kit, steps } = harness(SHIPPING);
+      const { git, sleep } = remoteAhead(kit, files);
+      spoil(git);
+      assert.deepEqual([...(await started(git, sleep, kit, steps)).slice(0, 1), steps.ran.length, git.heads.get('/repo/ship'), git.log], [EXIT.ok, 1, 'b2', ['fetch /repo/ship origin', 'detachAt /repo/ship origin/main']], name);
+    }
   });
 
-  it('refuses it when the remote head is not in the repository yet, naming the fetch', async () => {
-    const { kit, steps } = harness(SHIPPING);
-    const { git, sleep } = remoteAhead(kit, ['src/app.ts']);
-    git.absent.add('b2');
-    const refusal = `origin's main is at b2, which the checkout of the ship tool has not fetched: ${MOVE}`;
-    assert.deepEqual([...(await started(git, sleep, kit, steps)), steps.ran], [EXIT.refused, `REFUSED ${refusal}`, []]);
-  });
-
-  it('refuses it when the local ref is neither the remote head nor an ancestor of it', async () => {
-    const { kit, steps } = harness(SHIPPING);
-    const { git, sleep } = remoteAhead(kit, ['src/app.ts']);
-    git.ancestry.delete('base>b2');
-    const refusal = `origin's main is at b2, and origin/main in /repo/ship (base) is not on its history: ${MOVE}`;
-    assert.deepEqual([...(await started(git, sleep, kit, steps)), steps.ran], [EXIT.refused, `REFUSED ${refusal}`, []]);
+  it('refuses it, moving nothing, when the checkout has a change, and names the step that failed when the move does (T4280)', async () => {
+    const failed = (reason: string): string => `the ship tool ${SHIP_TOOL} is behind origin's main at b2, and moving its checkout /repo/ship there failed: ${reason}: ${MOVE}`;
+    const cases: readonly (readonly [string, (git: FakeMergeGit) => void, string, readonly string[]])[] = [
+      ['dirty', (git) => void git.status.set('/repo/ship', [' M tools/ship/repos.ts']), `the ship tool ${SHIP_TOOL} changed from base while the step waited and is not origin/main's current code in a checkout with no change: ${MOVE}`, []],
+      ['unfetched', (git) => void (git.fetchFails = 'could not read from the remote'), failed('could not read from the remote'), ['fetch /repo/ship origin']],
+      ['stuck', (git) => void (git.detachAtFails = 'your local changes would be overwritten'), failed('your local changes would be overwritten'), ['fetch /repo/ship origin', 'detachAt /repo/ship origin/main']],
+    ];
+    for (const [name, spoil, refusal, log] of cases) {
+      const { kit, steps } = harness(SHIPPING);
+      const { git, sleep } = remoteAhead(kit, ['tools/ship/repos.ts']);
+      const moving = async (ms: number): Promise<void> => {
+        spoil(git);
+        await sleep(ms);
+      };
+      assert.deepEqual([...(await started(git, moving, kit, steps)), steps.ran, git.log, git.heads.get('/repo/ship')], [EXIT.refused, `REFUSED ${refusal}`, [], log, 'base'], name);
+    }
   });
 
   it('refuses it, naming the read, when the remote keeps giving no head, and reads it again first', async () => {
