@@ -6,7 +6,7 @@ import { KeepList } from '../permissions/allow-rules.ts';
 import { ownUntracked, settingsScope, type SettingsFile, type SettingsInGit } from '../permissions/settings-scope.ts';
 import { planScope, wideAllowOf, type WideAllow } from '../permissions/trim.ts';
 import type { HostPaths } from '../ports/host/index.ts';
-import { pathsIfKnown } from './host.ts';
+import { pathsIfKnown, permissionsIfKept } from './host.ts';
 import type { CliRuntime } from './runtime.ts';
 
 /** Where a team's sessions run: its kit home, its config and the project folder (`projectFolder`). */
@@ -56,10 +56,14 @@ function settingsInGit(runtime: CliRuntime, path: string): SettingsInGit {
 
 /**
  * The rules off the team's keep-list that approve a whole tool or program or hold a credential, in every file of its
- * scope: none on a host whose folders teamrig does not know (`knownSettingsScope`).
+ * scope: none on a host whose folders teamrig does not know (`knownSettingsScope`) or that keeps no permission rule.
  */
 export async function readWideAllow(runtime: CliRuntime, input: AllowScopeInput): Promise<WideAllow> {
   const { config } = input;
-  const plans = await planScope(runtime.files, await knownSettingsScope(runtime, input), new KeepList(config.permissions.keepAllow), 'wide', new SecretScanner(config.register.secretPatterns));
+  const permissions = permissionsIfKept(runtime);
+  if (permissions === undefined) {
+    return wideAllowOf([]);
+  }
+  const plans = await planScope(permissions, runtime.files, await knownSettingsScope(runtime, input), new KeepList(config.permissions.keepAllow), 'wide', new SecretScanner(config.register.secretPatterns));
   return wideAllowOf(plans);
 }

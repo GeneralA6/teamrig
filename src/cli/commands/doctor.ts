@@ -5,7 +5,7 @@ import type { ContextFilesConfig, KitConfig } from '../../config/types.ts';
 import { claudeConfigDir, KIT_NAME } from '../../core/home.ts';
 import type { PathProbe } from '../../core/path-probe.ts';
 import { readContextFiles } from '../../doctor/context-files.ts';
-import { readSettingsDeny, secretDenyLines } from '../../doctor/deny-lines.ts';
+import { readSettingsDeny } from '../../doctor/deny-lines.ts';
 import { doctorFindings, formatFinding, type ConfiguredProject, type ContextInput, type PageProblem, type SecretDeny } from '../../doctor/doctor.ts';
 import { readSessionLists } from '../../doctor/session-lists.ts';
 import { readSettingsEnv, sessionSettingsFiles } from '../../doctor/settings-env.ts';
@@ -16,7 +16,7 @@ import { inboxStatus } from '../../inbox/inbox.ts';
 import { JsonlRenameLog } from '../../names/log.ts';
 import { readWideAllow } from '../allow-scope.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { pathsIfKnown } from '../host.ts';
+import { pathsIfKnown, permissionsIfKept } from '../host.ts';
 import { openTeamKit, projectFolder, requireConfig, teamZone } from '../kit.ts';
 import { readLeadStart } from '../lead-start.ts';
 import { pageCheckOf, type PageCheck } from '../login-page.ts';
@@ -64,11 +64,12 @@ function sessionSettingsOf(runtime: CliRuntime, project: string): string[] {
  */
 export async function readSecretDeny(runtime: CliRuntime, project: string): Promise<SecretDeny | undefined> {
   const host = pathsIfKnown(runtime);
-  if (host === undefined) {
+  const permissions = permissionsIfKept(runtime);
+  if (host === undefined || permissions === undefined) {
     return undefined;
   }
   const paths = sessionSettingsFiles({ paths: host, userHome: runtime.userHome }, project);
-  return { files: await readSettingsDeny(runtime.files, paths), lines: secretDenyLines(runtime.platform), pasteInto: host.userSettings(runtime.userHome) };
+  return { files: await readSettingsDeny(permissions, runtime.files, paths), lines: permissions.denyLines(runtime.platform), pasteInto: host.userSettings(runtime.userHome) };
 }
 
 /** The doctor's view of a page check: only a page webhook that gives no URL is a finding. */

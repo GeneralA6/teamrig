@@ -3,7 +3,7 @@ import type { RuleConflict } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import type { SecretScanner } from '../core/secrets.ts';
-import type { TranscriptReader } from '../ports/host/index.ts';
+import type { HostPermissions, TranscriptReader } from '../ports/host/index.ts';
 import { readSessionLists, type SessionListKind, type SessionLists, type SessionListSource } from '../doctor/session-lists.ts';
 import type { KeepList } from '../permissions/allow-rules.ts';
 import type { SettingsFile } from '../permissions/settings-scope.ts';
@@ -26,9 +26,11 @@ export interface Listing {
   readonly sources: readonly SessionListSource[] | undefined;
 }
 
-/** What the scan reads through: the setup's files, which paths exist, the machine's transcripts and Claude Code's `/skill-doctor`. */
+/** What the scan reads through: the setup's files, which paths exist, the machine's transcripts, the host's permission rules and its `/skill-doctor`. */
 export interface SetupScanPorts {
   readonly files: Files;
+  /** The host's reading of the permission rules in a settings file. */
+  readonly permissions: HostPermissions;
   readonly probe: PathProbe;
   readonly transcripts: TranscriptSource;
   /** The host's reader of a transcript's lines. */
@@ -115,7 +117,7 @@ export async function scanSetup(ports: SetupScanPorts, at: SetupScanInput): Prom
     duplicates: findDuplicates(context.files),
     overrides: rules.candidates.filter((candidate) => !at.cleared(candidate)),
     recorded: rules.recorded.length,
-    settings: [...(await scanSettings(ports.files, at.claudeDir, at.settings, at.keep, at.secrets, usage.hooks)), ...(await scanPluginHooks(ports.files, at, usage.hooks, at.secrets))],
+    settings: [...(await scanSettings(ports.permissions, ports.files, at.claudeDir, at.settings, at.keep, at.secrets, usage.hooks)), ...(await scanPluginHooks(ports.files, at, usage.hooks, at.secrets))],
     usage,
     recent: await changedSince(ports.files, [...context.skills, ...context.agents], usage.since),
     doctor,

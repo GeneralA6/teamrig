@@ -14,9 +14,9 @@ import { CONTEXT_MAX_CHARS, TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import { testConfig } from '../testing/config.ts';
 import { renameOf } from '../testing/rename.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { secretDenyLines } from './deny-lines.ts';
+import { shippedPermissions } from '../testing/shipped-permissions.ts';
 
-const SECRET_DENY_LINES = secretDenyLines('linux');
+const SECRET_DENY_LINES = shippedPermissions().denyLines('linux');
 import { doctorFindings, formatFinding, UNREAD_INBOX_DAYS, type DoctorInput } from './doctor.ts';
 import type { SessionListSource } from './session-lists.ts';
 import type { SettingsEnv } from './settings-env.ts';
