@@ -679,14 +679,19 @@ export const MERGE_ATTEMPTS = 3;
  * catch-up's push runs its gate, as another merge whose share was set aside for its CI wait lands (T3336): that head
  * is caught up again on the new tip, which raises the plugin version again (T4131). Each move counts, at most
  * MERGE_ATTEMPTS in all. Merges of one repo land oldest first (landing-turn.ts), so the merges started before this one
- * cost it one move, not one each (T4196). A ship's own merge (mergeBranch) gets the move back instead and goes again from its plan (T2696).
+ * cost it one move, not one each (T4196); and a move read right after a wait the older merges ended by landing costs
+ * nothing, since the turn made it wait for exactly that move (T4280). That never loops: only merges started before
+ * this one hold its turn, a set that only shrinks. A ship's own merge (mergeBranch) gets the move back instead and
+ * goes again from its plan (T2696).
  */
 export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number> {
   let stem: string | null = null;
   let current = args;
   const gate = args.release === null ? approvalGate(args, deps) : releaseGate(args.release, args, deps);
   let move: MainMove | null = null;
-  for (let attempt = 1; ; attempt++) {
+  let moves = 0;
+  let waits = deps.turn.waited();
+  for (;;) {
     if (move === null) {
       const exit = await mergeRun(current, deps, gate);
       if (exit.kind === 'done') return exit.code;
@@ -696,7 +701,10 @@ export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number
       }
       move = exit;
     }
-    if (attempt === MERGE_ATTEMPTS) {
+    const waitsNow = deps.turn.waited();
+    if (waitsNow === waits) moves += 1;
+    waits = waitsNow;
+    if (moves === MERGE_ATTEMPTS) {
       deps.err(`REFUSED ${move.reason} (main moved ${MERGE_ATTEMPTS} times during this merge)`);
       return 1;
     }
