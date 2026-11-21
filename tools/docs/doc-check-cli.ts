@@ -18,7 +18,7 @@ function readDocs(root: string): DocFile[] {
 }
 
 /**
- * Checks the links, anchors and Mermaid blocks of this repo's Markdown (or `--root <repo>`'s, doc-check.ts); exits 1
+ * Checks the links, anchors, Mermaid blocks and table rows of this repo's Markdown (or `--root <repo>`'s, doc-check.ts); exits 1
  * on a problem.
  */
 async function main(args: readonly string[]): Promise<number> {
@@ -27,7 +27,7 @@ async function main(args: readonly string[]): Promise<number> {
   const docs = readDocs(root);
   const report = checkDocs(docs, (path) => existsSync(join(root, path)));
   if (report.problems.length === 0) {
-    console.log(`docs: ${docs.length} file(s), ${report.links} link(s) and ${report.diagrams} diagram(s) check out`);
+    console.log(`docs: ${docs.length} file(s), ${report.links} link(s), ${report.diagrams} diagram(s) and ${report.tables} table(s) check out`);
     return EXIT_CLEAN;
   }
   console.log(`docs: ${report.problems.length} problem(s):`);
