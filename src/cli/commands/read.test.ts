@@ -32,7 +32,7 @@ const HOUR_MS = 3_600_000;
 const REVISION = /^[0-9a-f]{16}$/;
 /** A revision of the shape `read` serves, which no document of these specs has. */
 const HELD = '0123456789abcdef';
-/** Every document of interface 1 in one run, the inbox being alpha's. */
+/** The five documents of interface 1.0 in one run, the inbox being alpha's; a document a minor added has its own spec file. */
 const READ_ALL = ['read', 'tasks', 'inbox', 'sessions', 'meetings', 'config', '--json', '--session', 'alpha'] as const;
 /** A text one of teamrig's own secret shapes matches, built from parts so this file holds none. */
 const SECRET = ['pass', 'word', '=', 'hunter2'].join('');

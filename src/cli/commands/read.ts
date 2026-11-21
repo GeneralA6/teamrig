@@ -33,6 +33,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 import { loadTree } from '../tree.ts';
 import { configSource, teamlessConfigSource } from './read-config.ts';
 import { meetingsSource } from './read-meetings.ts';
+import { planSource } from './read-plan.ts';
 import { selfOf, sessionsSource } from './read-sessions.ts';
 import { configProblemsOf, once, skippedOf, stampsOf, workingSetOf, type DocumentSource, type ReadScope } from './read-source.ts';
 
@@ -72,6 +73,7 @@ const SOURCES: Record<DocumentName, (scope: ReadScope) => DocumentSource> = {
   sessions: sessionsSource,
   meetings: meetingsSource,
   config: configSource,
+  plan: planSource,
 };
 
 /** The documents a run with no team is still answered: what a setup screen reads before there is a team to read. */
