@@ -53,6 +53,13 @@ export interface RestoreEntry {
    * the entry drops it, which only loses the retry count.
    */
   readonly apiError?: ApiErrorState | undefined;
+  /**
+   * When the owner last prompted in this tab: a prompt teamrig did not submit (src/restore/prompt-marks.ts). `meeting
+   * end` reads it with `lastPromptByKit` (#921). Optional, as an entry written before it has none.
+   */
+  readonly ownerPromptAt?: number | undefined;
+  /** Whether teamrig submitted the tab's latest prompt, so its current turn is one teamrig started, not the owner. */
+  readonly lastPromptByKit?: boolean | undefined;
 }
 
 /** A turn that ended on an API error, and the retries the wake check sent since the session's last good turn. */
@@ -81,11 +88,14 @@ export const TOOL_END_WRITE_MS = 5 * MS_PER_MINUTE;
  */
 export type TrackEvent =
   | { readonly kind: 'start' }
-  | { readonly kind: 'working' }
+  | { readonly kind: 'working'; readonly by?: PromptBy }
   | { readonly kind: 'tool'; readonly mainThread: boolean }
   | { readonly kind: 'ready' }
   | { readonly kind: 'error'; readonly code: string | undefined }
   | { readonly kind: 'end'; readonly reason: string | undefined };
+
+/** Who submitted a prompt: teamrig, by the mark it set (src/restore/prompt-marks.ts), or the owner. */
+export type PromptBy = 'teamrig' | 'owner';
 
 /** What an event tells about its session; undefined where it does not say. */
 export interface TrackFacts {
@@ -107,6 +117,19 @@ function withApiError(entry: RestoreEntry, apiError: ApiErrorState | undefined):
   return apiError === undefined ? entry : { ...entry, apiError };
 }
 
+/** `entry` with who prompted in it last and when the owner did, each left out when it is not known. */
+function withPrompts(entry: RestoreEntry, ownerPromptAt: number | undefined, lastPromptByKit: boolean | undefined): RestoreEntry {
+  return { ...entry, ...(ownerPromptAt === undefined ? {} : { ownerPromptAt }), ...(lastPromptByKit === undefined ? {} : { lastPromptByKit }) };
+}
+
+/** Who prompted, as a prompt by `by` stamps it on the entry: the owner's moves `ownerPromptAt`; with no `by`, as it was. */
+function promptedBy(existing: RestoreEntry | undefined, by: PromptBy | undefined, at: number): { readonly ownerPromptAt: number | undefined; readonly lastPromptByKit: boolean | undefined } {
+  if (by === undefined) {
+    return { ownerPromptAt: existing?.ownerPromptAt, lastPromptByKit: existing?.lastPromptByKit };
+  }
+  return { ownerPromptAt: by === 'owner' ? at : existing?.ownerPromptAt, lastPromptByKit: by === 'teamrig' };
+}
+
 /**
  * How an event changes a session's entry. An end the person or Claude Code chose removes it: nothing is
  * left to restore. A start begins it afresh (ready, no restore pending). A first event that names no folder
@@ -116,6 +139,10 @@ function withApiError(entry: RestoreEntry, apiError: ApiErrorState | undefined):
  *
  * A failed turn records its error and keeps the retry count; a good turn end or a start clears both. A prompt keeps
  * them, since a retry's own prompt starts the turn that may fail again.
+ *
+ * A prompt whose submitter is known stamps who prompted (#921): the owner's moves `ownerPromptAt`, and
+ * `lastPromptByKit` says whether teamrig's started the turn. Every other event keeps both, a start too: a resumed
+ * tab is the same tab the owner prompted in.
  */
 export function applyEvent(existing: RestoreEntry | undefined, event: TrackEvent, facts: TrackFacts): TrackChange {
   if (event.kind === 'end' && event.reason !== undefined && INTENTIONAL_END_REASONS.has(event.reason)) {
@@ -128,7 +155,8 @@ export function applyEvent(existing: RestoreEntry | undefined, event: TrackEvent
   if (projectDir === undefined) {
     return { kind: 'none' };
   }
-  const base: RestoreEntry = {
+  const prompts = promptedBy(existing, event.kind === 'working' ? event.by : undefined, facts.at);
+  const base: RestoreEntry = withPrompts({
     claudeSession: facts.claudeSession,
     projectDir,
     transcriptPath: facts.transcriptPath ?? existing?.transcriptPath,
@@ -144,7 +172,7 @@ export function applyEvent(existing: RestoreEntry | undefined, event: TrackEvent
     restoredAt: existing?.restoredAt,
     endedAt: undefined,
     endReason: undefined,
-  };
+  }, prompts.ownerPromptAt, prompts.lastPromptByKit);
   const kept = existing?.apiError;
   switch (event.kind) {
     case 'end':
@@ -169,7 +197,7 @@ function isoOf(ms: number | undefined): string | undefined {
 }
 
 /** A JSON object of an entry's file: its values text, counts or, for the failed turn's state, a nested object. */
-type EntryFields = Readonly<Record<string, string | number | Readonly<Record<string, string | number | undefined>> | undefined>>;
+type EntryFields = Readonly<Record<string, string | number | boolean | Readonly<Record<string, string | number | undefined>> | undefined>>;
 
 /** The entry as its file's JSON object: times as ISO instants, fields that are not set undefined, which JSON leaves out. */
 export function entryRecord(entry: RestoreEntry): EntryFields {
@@ -191,6 +219,8 @@ export function entryRecord(entry: RestoreEntry): EntryFields {
     endedAt: isoOf(entry.endedAt),
     endReason: entry.endReason,
     apiError: apiError === undefined ? undefined : { code: apiError.code, failedAt: isoOf(apiError.failedAt), retries: apiError.retries, retriedAt: isoOf(apiError.retriedAt) },
+    ownerPromptAt: isoOf(entry.ownerPromptAt),
+    lastPromptByKit: entry.lastPromptByKit,
   };
 }
 
@@ -298,5 +328,8 @@ export function entryOfRecord(record: JsonRecord): RestoreEntry | undefined {
     endedAt,
     endReason: stringField(record, 'endReason'),
   };
-  return withApiError(entry, apiErrorOf(record['apiError']));
+  // A damaged prompt stamp never skips the entry, which the restore needs: it reads as no stamp.
+  const ownerPromptAt = instantField(record, 'ownerPromptAt') ?? undefined;
+  const byKit = record['lastPromptByKit'];
+  return withPrompts(withApiError(entry, apiErrorOf(record['apiError'])), ownerPromptAt, typeof byKit === 'boolean' ? byKit : undefined);
 }

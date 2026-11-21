@@ -120,9 +120,12 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       else --meets's; booked and started at once (M3), refused while that session is in one already.
       While a meeting is on, its tab is in meeting mode: messages to its session are held but CRITICAL
       ones, the question picker asks in plain text and its status line leads with Meeting: <its title>
-  meeting end <id> [--note "<what came of it>"] | meeting drop <id> --note "<why>"   the meeting was
-      held, or will not be; those it meets are told what came of it, or why; meeting end with no id
-      ends the meeting on in the caller's tab (the lead's daily one first)
+  meeting end <id> [--note "<what came of it>"] [--owner-left] | meeting drop <id> --note "<why>"
+      the meeting was held, or will not be; those it meets are told what came of it, or why; meeting
+      end with no id ends the meeting on in the caller's tab (the lead's daily one first); while the
+      owner prompted in the meeting's tab under meeting.ownerLeftMinutes ago, an end from a turn
+      teamrig started (a reopen note, a wake) is refused, the daily meeting's too; --owner-left ends
+      it anyway
   decisions | decisions asked [--session <id|name>]   the owner's decisions the lead asks in batches:
       decisions prints the waits on the owner not yet asked and the asked ones past due, as card facts,
       and whether a batch is due (a wait due before the next batch, decisions.batchAt not yet asked, or a

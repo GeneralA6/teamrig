@@ -346,6 +346,18 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(parseConfig({ ...ROSTER, meeting: { spotlight: 1 } }).issues), ['meeting.spotlight']);
   });
 
+  it('reads meeting.ownerLeftMinutes, 15 by default, 0 turning the check off, and refuses one outside 0 to 240 or not whole (#921)', () => {
+    assert.equal(parseConfig(ROSTER).config.meeting.ownerLeftMinutes, 15);
+    for (const minutes of [0, 30, 240]) {
+      const good = parseConfig({ ...ROSTER, meeting: { ownerLeftMinutes: minutes } });
+      assert.deepEqual([paths(good.issues), good.config.meeting.ownerLeftMinutes], [[], minutes]);
+    }
+    for (const minutes of [-1, 241, 2.5, '15']) {
+      const bad = parseConfig({ ...ROSTER, meeting: { ownerLeftMinutes: minutes } });
+      assert.deepEqual([paths(bad.issues), bad.config.meeting.ownerLeftMinutes], [['meeting.ownerLeftMinutes'], 15], String(minutes));
+    }
+  });
+
   it('reads meeting.spotlight.breakthroughSeconds, 120 by default, and refuses one outside 10 to 3600 or not whole (T2524)', () => {
     const set = parseConfig({ ...ROSTER, meeting: { spotlight: { breakthroughSeconds: 30 } } });
     assert.deepEqual([set.issues, set.config.meeting.spotlight.breakthroughSeconds], [[], 30]);

@@ -1,6 +1,22 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { readdir, readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import type { Rush } from '../budget/burst.ts';
+import { TimeZone } from '../core/zone.ts';
+import type { ScheduledMeeting } from '../meeting/schedule.ts';
+import { defaultPrompt, meetingOnNote, meetPrompt, recoverPrompt, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from '../open/prompt.ts';
+import { continuePrompt } from '../restore/plan.ts';
+import { PromptMarks, promptMarksDir } from '../restore/prompt-marks.ts';
+import { testTask } from '../testing/task.ts';
+import { apiRetryPrompt } from '../wake/api-retry.ts';
+import { handedPrompt, urgentFirstPrompt, type WakeAsk } from '../wake/asks.ts';
+import { dayStartPrompt } from '../wake/day-start.ts';
+import { wakePrompt } from '../wake/decide.ts';
+import { loginRetryPrompt } from '../wake/login-retry.ts';
+import { rushPokePrompt } from '../wake/rush-poke.ts';
+import { openingPrompt } from './commands/meetings.ts';
 import type { Env } from '../core/home.ts';
 import { MS_PER_HOUR } from '../core/time.ts';
 import { KIT_VERSION } from '../core/version.ts';
@@ -11,7 +27,7 @@ import { restoreLaunchers } from '../restore/install-plan.ts';
 import { RESTORE_CHECK_LAUNCHER_SCRIPT } from '../restore/launcher.ts';
 import { LAUNCHER_RECORD_FORMAT, launcherRecordPath } from '../restore/launcher-refresh.ts';
 import { AUTH_FAILED, loginMarkerPath, parseLoginMarker, type LoginMarker } from '../restore/login.ts';
-import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../restore/registry.ts';
+import { RestoreRegistry, restoreLogPath, restoreSessionsDir, sessionFileIn } from '../restore/registry.ts';
 import { APP, CLAUDE_SESSION, CLI_PID, CliHarness, KIT, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { FakeWebhook } from '../testing/fake-webhook.ts';
@@ -123,6 +139,139 @@ describe('hook restore-track', () => {
     const result = await kit.run(['hook', 'restore-track'], { stdin: payload('UserPromptSubmit'), env: LAUNCHED, files });
     assert.deepEqual([result.code, result.stdout, result.stderr], [0, [], []]);
     assert.equal(await entryOf(kit), undefined);
+  });
+});
+
+/** Where a prompt builder's output reaches a tab: as `launch`'s first prompt, or as the wake check's answer. */
+type Submitted = 'launch' | 'wake';
+
+const COLD = { w: 210_000, cold: true, weekPct: 0.021 };
+const ASK: WakeAsk = { from: 'teamrig', text: 'The idle pass closed bravo.', at: Date.parse('2030-01-08T09:00:00Z') };
+const TASK = testTask({ id: 'T2', priority: 2, goals: ['PROD'], status: 'in-progress' });
+const RUSH: Rush = {
+  kind: 'rush',
+  sessions: ['alpha'],
+  helpers: 0,
+  hires: 0,
+  dailyPct: 5,
+  stopPct: 98,
+  endsAt: Date.parse('2030-01-08T14:00:00Z'),
+  tasks: [],
+  goal: 'PROD',
+  reason: 'ship PROD',
+  by: 'lead',
+  at: Date.parse('2030-01-08T08:00:00Z'),
+};
+const MEETING: ScheduledMeeting = {
+  id: 'M1',
+  session: 'alpha',
+  at: Date.parse('2030-01-08T10:00:00Z'),
+  minutes: 30,
+  about: 'the cache design',
+  with: [],
+  tasks: [],
+  brief: null,
+  status: 'started',
+  notifiedAt: null,
+  by: 'lead',
+  changedAt: Date.parse('2030-01-08T10:00:00Z'),
+  note: null,
+};
+
+/**
+ * Every prompt builder whose output teamrig submits to a tab, with one output and where it is submitted (#921). The
+ * spec below holds this table to every `export function <name>Prompt` under src/, so a new builder fails it until it
+ * is listed here, and so goes through a place that marks it.
+ */
+const BUILT: Readonly<Record<string, { readonly text: string; readonly via: Submitted }>> = {
+  defaultPrompt: { text: defaultPrompt('app', 'alpha'), via: 'launch' },
+  refreshPrompt: { text: refreshPrompt('app', 'alpha', '/kit/teams/app/handover/alpha.md'), via: 'launch' },
+  rehirePrompt: { text: rehirePrompt('app', 'alpha', '/kit/teams/app/handover/alpha.md'), via: 'launch' },
+  reopenPrompt: { text: `${reopenPrompt('app', 'alpha')} ${meetingOnNote('M1', 'Tue 01-08 14:00 UTC')}`, via: 'launch' },
+  resumePrompt: { text: resumePrompt('app', 'alpha'), via: 'launch' },
+  recoverPrompt: { text: recoverPrompt('app', 'alpha'), via: 'launch' },
+  meetPrompt: { text: meetPrompt('app', 'alpha', 'the owner'), via: 'launch' },
+  urgentFirstPrompt: { text: urgentFirstPrompt([ASK], defaultPrompt('app', 'alpha'), TimeZone.UTC, 2000), via: 'launch' },
+  continuePrompt: { text: continuePrompt({ cause: 'killed', apiError: undefined }, { background: 0, crons: 0, wake: false }, undefined), via: 'launch' },
+  wakePrompt: { text: wakePrompt('alpha', [TASK], COLD), via: 'wake' },
+  handedPrompt: { text: handedPrompt('alpha', [TASK], [ASK], COLD, TimeZone.UTC), via: 'wake' },
+  openingPrompt: { text: handedPrompt('alpha', [], [{ ...ASK, from: 'lead', text: openingPrompt(MEETING) }], COLD, TimeZone.UTC), via: 'wake' },
+  rushPokePrompt: { text: rushPokePrompt('alpha', RUSH, TASK, 12 * 60_000, COLD), via: 'wake' },
+  dayStartPrompt: { text: dayStartPrompt('alpha', 'app-alpha', [{ kind: 'day-start', at: Date.parse('2030-01-08T06:00:00Z') }], [TASK], COLD, TimeZone.UTC), via: 'wake' },
+  loginRetryPrompt: { text: loginRetryPrompt('alpha', Date.parse('2030-01-08T09:00:00Z'), 'recovered', COLD, TimeZone.UTC), via: 'wake' },
+  apiRetryPrompt: { text: apiRetryPrompt('alpha', { code: 'server_error', failAt: Date.parse('2030-01-08T09:00:00Z'), n: 1 }, COLD, TimeZone.UTC), via: 'wake' },
+};
+
+/** Exported functions named `<name>Prompt` that build no prompt for a tab: codecs, readers, a log and a text test. */
+const NOT_BUILDERS: ReadonlySet<string> = new Set(['encodePrompt', 'decodePrompt', 'parseWakePrompt', 'formatWakePrompt', 'isPushedPrompt', 'logPrompt']);
+
+/** Every `export function <name>Prompt` in src/, tests aside. */
+async function exportedPromptFunctions(): Promise<Set<string>> {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const names = new Set<string>();
+  for (const file of await readdir(root, { recursive: true })) {
+    if (!file.endsWith('.ts') || file.endsWith('.test.ts')) {
+      continue;
+    }
+    for (const match of (await readFile(join(root, file), 'utf8')).matchAll(/export (?:async )?function (\w+Prompt)\b/g)) {
+      names.add(match[1] ?? '');
+    }
+  }
+  return names;
+}
+
+describe('hook restore-track: who prompted (#921)', () => {
+  it("stamps the owner's prompt and a prompt teamrig marked apart: the owner's moves ownerPromptAt, teamrig's keeps it", async () => {
+    const kit = new CliHarness();
+    await track(kit, payload('UserPromptSubmit', { prompt: 'walk me through the plan' }));
+    const ownerAt = kit.clock.now();
+    assert.deepEqual([(await entryOf(kit))?.ownerPromptAt, (await entryOf(kit))?.lastPromptByKit], [ownerAt, false]);
+    kit.clock.advance(60_000);
+    await new PromptMarks(kit.files, promptMarksDir(KIT)).mark({ tab: CLAUDE_SESSION }, 'New work was handed to you.', kit.clock.now());
+    await track(kit, payload('UserPromptSubmit', { prompt: 'New work was handed to you.' }));
+    assert.deepEqual([(await entryOf(kit))?.ownerPromptAt, (await entryOf(kit))?.lastPromptByKit], [ownerAt, true]);
+    await track(kit, payload('Stop', { stop_hook_active: false }));
+    await track(kit, payload('SessionStart', { source: 'resume' }));
+    assert.deepEqual([(await entryOf(kit))?.ownerPromptAt, (await entryOf(kit))?.lastPromptByKit], [ownerAt, true], 'a turn end and a resume keep both');
+    kit.clock.advance(60_000);
+    await track(kit, payload('UserPromptSubmit', { prompt: 'New work was handed to you.' }));
+    assert.deepEqual([(await entryOf(kit))?.ownerPromptAt, (await entryOf(kit))?.lastPromptByKit], [kit.clock.now(), false], 'the mark marks one prompt only');
+  });
+
+  it('recognises the output of every prompt builder teamrig submits, wherever it submits it, as teamrig\'s', async () => {
+    const listed = new Set([...Object.keys(BUILT), ...NOT_BUILDERS]);
+    const unlisted = [...(await exportedPromptFunctions())].filter((name) => !listed.has(name));
+    assert.deepEqual(unlisted, [], 'a new prompt builder: list it in BUILT with where it is submitted, or in NOT_BUILDERS');
+    for (const [name, { text, via }] of Object.entries(BUILT)) {
+      const kit = new CliHarness();
+      await track(kit, payload('UserPromptSubmit', { prompt: 'walk me through the plan' }));
+      const key = via === 'launch' ? { team: 'app', session: 'alpha' } : { tab: CLAUDE_SESSION };
+      await new PromptMarks(kit.files, promptMarksDir(KIT)).mark(key, text, kit.clock.now());
+      kit.clock.advance(60_000);
+      await track(kit, payload('UserPromptSubmit', { prompt: text }));
+      assert.equal((await entryOf(kit))?.lastPromptByKit, true, name);
+      assert.equal((await entryOf(kit))?.ownerPromptAt, kit.clock.now() - 60_000, name);
+    }
+  });
+
+  it("stamps a prompt of a tab teamrig did not launch as the owner's, and only a prompt event stamps", async () => {
+    const kit = new CliHarness();
+    await new PromptMarks(kit.files, promptMarksDir(KIT)).mark({ team: 'app', session: 'alpha' }, defaultPrompt('app', 'alpha'), kit.clock.now());
+    await track(kit, payload('UserPromptSubmit', { prompt: defaultPrompt('app', 'alpha') }), { CLAUDE_PROJECT_DIR: APP });
+    assert.equal((await entryOf(kit))?.lastPromptByKit, false, "no team session to find a fresh launch's mark by");
+    const other = new CliHarness();
+    await track(other, payload('SessionStart', { source: 'startup' }));
+    assert.deepEqual([(await entryOf(other))?.ownerPromptAt, (await entryOf(other))?.lastPromptByKit], [undefined, undefined]);
+  });
+
+  it("stamps a prompt whose mark cannot be read as the owner's: an unread mark proves nothing", async () => {
+    const kit = new CliHarness();
+    const text = 'New work was handed to you.';
+    await new PromptMarks(kit.files, promptMarksDir(KIT)).mark({ tab: CLAUDE_SESSION }, text, kit.clock.now());
+    const files = new FaultyFiles(kit.files).fail('read', sessionFileIn(promptMarksDir(KIT), CLAUDE_SESSION), systemError('EACCES'));
+    const result = await kit.run(['hook', 'restore-track'], { stdin: payload('UserPromptSubmit', { prompt: text }), env: LAUNCHED, files });
+    assert.deepEqual([result.code, result.stdout, result.stderr], [0, [], []]);
+    assert.deepEqual([(await entryOf(kit))?.ownerPromptAt, (await entryOf(kit))?.lastPromptByKit], [kit.clock.now(), false]);
   });
 });
 

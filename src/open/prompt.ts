@@ -56,6 +56,14 @@ export function meetPrompt(team: string, id: string, ownerMarker: string): strin
   return `You are the ${id} session of team ${team}. ${meetAsk(id, ownerMarker)}`;
 }
 
+/**
+ * The sentence a session's first prompt ends with while a meeting with the owner is on in its tab (#921), `meeting`
+ * naming it (`M3`, `the daily meeting`): a reopened session must not take the meeting for done and end it.
+ */
+export function meetingOnNote(meeting: string, until: string): string {
+  return `A meeting with the owner is on in this tab (${meeting}, until ${until}): it stays on; only the owner ends it.`;
+}
+
 /** Why a prompt cannot be passed to Claude Code as its first message, or undefined when it can. */
 export function promptProblem(prompt: string): string | undefined {
   if (prompt.trim() === '') {

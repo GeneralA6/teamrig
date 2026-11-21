@@ -7,10 +7,11 @@ import { sessionIdOf } from '../../inbox/inbox.ts';
 import { dayProbePath, dayProbeReleaseLine, type DayProbeReply } from '../../restore/day-probe.ts';
 import { DayProbeStore } from '../../restore/day-probe-store.ts';
 import { apiGaveUpLine, apiRetriesSpentOn } from '../../restore/api-error.ts';
-import { applyEvent, type TrackEvent, type TrackFacts } from '../../restore/entry.ts';
+import { applyEvent, type PromptBy, type TrackEvent, type TrackFacts } from '../../restore/entry.ts';
 import { LAUNCHER_REFRESH_LOCK, launcherRecordPath, refreshLaunchers } from '../../restore/launcher-refresh.ts';
 import { AUTH_FAILED, LOGIN_LOCK, loginLogLine, loginMarkerPath, type LoginEvent } from '../../restore/login.ts';
 import { LoginStore } from '../../restore/login-store.ts';
+import { PromptMarks, promptMarksDir, type PromptMarkKey } from '../../restore/prompt-marks.ts';
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../../restore/registry.ts';
 import { TURN_TAIL_BYTES, turnErrorOf } from '../../restore/turn-error.ts';
 import { LAUNCHER_SCRIPT, launcherPath } from '../../statusline/launcher.ts';
@@ -95,6 +96,23 @@ async function codedEvent(payload: JsonRecord, event: TrackEvent, facts: TrackFa
   }
   const tailOf = async (): Promise<string | undefined> => (transcriptPath === undefined ? undefined : runtime.files.readTail(transcriptPath, TURN_TAIL_BYTES));
   return { kind: 'error', code: await turnErrorOf(transcriptsIfKept(runtime), payload, tailOf).catch(() => undefined) };
+}
+
+/**
+ * Who submitted the prompt of a turn's start (#921): teamrig when it marked this text for the tab, or for the team
+ * session a fresh `launch` started (src/restore/prompt-marks.ts), else the owner. A mark that cannot be read proves
+ * nothing, so the prompt reads as the owner's; a payload with no prompt stamps nothing.
+ */
+async function promptEvent(payload: JsonRecord, event: TrackEvent, facts: TrackFacts, runtime: CliRuntime, kitHome: string): Promise<TrackEvent> {
+  const prompt = stringField(payload, 'prompt');
+  if (event.kind !== 'working' || prompt === undefined) {
+    return event;
+  }
+  const { claudeSession, team, session } = facts;
+  const keys: PromptMarkKey[] = [{ tab: claudeSession }, ...(team === undefined || session === undefined ? [] : [{ team, session }])];
+  const marked = await new PromptMarks(runtime.files, promptMarksDir(kitHome)).take(keys, prompt).catch(() => false);
+  const by: PromptBy = marked ? 'teamrig' : 'owner';
+  return { kind: 'working', by };
 }
 
 /** The login event a turn end reports: a good one answered, a failed one failed on the login; undefined for any other. */
@@ -224,7 +242,7 @@ export async function trackRestore(payload: unknown, runtime: CliRuntime): Promi
     session: envId(runtime, ENV.session),
   };
   const kitHome = resolveKitHome(runtime.env, runtime.userHome);
-  const event = await codedEvent(payload, reported, facts, runtime);
+  const event = await promptEvent(payload, await codedEvent(payload, reported, facts, runtime), facts, runtime, kitHome);
   const login = trackLogin(event, facts, runtime, kitHome).catch(() => undefined);
   const dayProbe = trackDayProbe(event, facts, runtime, kitHome).catch(() => undefined);
   const launchers = trackLaunchers(event, runtime, kitHome).catch(() => undefined);
@@ -238,7 +256,8 @@ export async function trackRestore(payload: unknown, runtime: CliRuntime): Promi
 /**
  * SessionStart, UserPromptSubmit, Stop, StopFailure and SessionEnd: records the session in the restore
  * registry (`<kit home>/restore/sessions`), in a team or not, so the restore after a reboot knows which tabs
- * it closed and what each was doing (a tool's end comes through `hook tool-end`). At a turn's end it also follows the
+ * it closed and what each was doing (a tool's end comes through `hook tool-end`). A prompt also stamps who submitted
+ * it, teamrig by the mark it set (`<kit home>/restore/prompts`, taken here) or the owner, for `meeting end` (#921). At a turn's end it also follows the
  * login (`<kit home>/restore/login.json`): which tabs a turn that ended on Login expired left stuck, and when a
  * good turn showed the login works again; the first failure of an expiry pages the owner through the webhook the
  * team's `alerts.pageWebhookFile` or `alerts.pageWebhookEnv` names. A good turn end also releases the day-start probe

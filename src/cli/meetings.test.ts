@@ -6,9 +6,10 @@ import { readMeetings, type ScheduledMeeting } from '../meeting/schedule.ts';
 import { SPOTLIGHT_VARS } from '../meeting/spotlight.ts';
 import { SpotlitStore, type SpotlitMeeting } from '../meeting/spotlit.ts';
 import { FOCUS_EXIT, FOCUS_TITLE_VAR } from '../open/focus.ts';
-import { decodePrompt } from '../open/prompt.ts';
+import { decodePrompt, reopenPrompt } from '../open/prompt.ts';
+import { PromptMarks, promptMarksDir } from '../restore/prompt-marks.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
-import { APP, CliHarness, KIT, TEAM, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
@@ -469,5 +470,109 @@ describe("runCli: today's meetings in start and the daily agenda", () => {
       '  M1 missed, Tue 01-08 14:00 UTC, 30 min, alpha with bravo, tasks T1 | the release plan',
       '  The owner starts one with teamrig meeting start <id>; a missed one is moved (teamrig meeting move <id> --at <time>) or dropped.',
     ]);
+  });
+});
+
+const ALPHA_TAB = CLAUDE_SESSION;
+const LEAD_TAB = '0123abcd-0000-4000-8000-0000000000ef';
+const TAB_ENV = { CLAUDE_PROJECT_DIR: APP, CLAUDE_CODE_ENTRYPOINT: 'cli', TEAMRIG_TEAM: 'app' };
+
+/** A prompt submitted in `session`'s tab, as Claude Code's prompt hook reports it to `hook restore-track`. */
+async function promptIn(kit: CliHarness, session: string, tab: string, text: string): Promise<void> {
+  const stdin = JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: tab, cwd: APP, prompt: text });
+  const result = await kit.run(['hook', 'restore-track'], { stdin, env: { ...TAB_ENV, TEAMRIG_SESSION: session }, sessionProcesses: new FakeSessionProcesses(7000) });
+  assert.equal(result.code, EXIT.ok);
+}
+
+/** A prompt teamrig submits in that tab: marked where it is submitted (src/restore/prompt-marks.ts), then prompted. */
+async function teamrigPromptIn(kit: CliHarness, session: string, tab: string, text: string): Promise<void> {
+  await new PromptMarks(kit.files, promptMarksDir(KIT)).mark({ tab }, text, kit.clock.now());
+  await promptIn(kit, session, tab, text);
+}
+
+/** A command run in the Claude Code session `tab`, as its Bash tool runs it. */
+function inTab(tab: string): RunOptions {
+  return { env: { CLAUDE_CODE_SESSION_ID: tab } };
+}
+
+describe('runCli: meeting end while the owner is still in the meeting (#921)', () => {
+  it('refuses a turn teamrig started while the owner prompted in the meeting tab under meeting.ownerLeftMinutes ago, and --owner-left ends it', async () => {
+    const kit = await team();
+    assert.equal((await kit.run(['meeting', 'start', '--about', 'the cache design', '--session', 'alpha'])).code, EXIT.ok);
+    await promptIn(kit, 'alpha', ALPHA_TAB, 'walk me through the cache design');
+    kit.clock.advance(5 * MS_PER_MINUTE);
+    // The idle pass closed and reopened alpha's tab: its reopen note starts the turn.
+    await teamrigPromptIn(kit, 'alpha', ALPHA_TAB, reopenPrompt('app', 'alpha'));
+    const refused = await kit.run(['meeting', 'end', '--note', 'done', '--session', 'alpha'], inTab(ALPHA_TAB));
+    assert.equal(refused.code, EXIT.refused);
+    assert.equal(
+      said(refused),
+      'REFUSED meeting M1 is still on: the owner prompted in this tab 5 min ago and this turn was started by teamrig; the owner ends it, or it ends itself Tue 01-08 14:00 UTC; teamrig meeting end M1 --owner-left ends it anyway',
+    );
+    assert.equal((await stored(kit, 'M1'))?.status, 'started');
+    const byId = await kit.run(['meeting', 'end', 'M1', '--session', 'alpha'], inTab(ALPHA_TAB));
+    assert.equal(byId.code, EXIT.refused, 'by its id too');
+
+    const forced = await kit.run(['meeting', 'end', '--owner-left', '--session', 'alpha'], inTab(ALPHA_TAB));
+    assert.equal(forced.code, EXIT.ok, said(forced));
+    assert.equal((await stored(kit, 'M1'))?.status, 'done');
+  });
+
+  it('ends it as before when the owner started the turn, when the owner was quiet meeting.ownerLeftMinutes, or outside a tab', async () => {
+    const kit = await team({ ...TEAM, meeting: { ownerLeftMinutes: 10 } });
+    assert.equal((await kit.run(['meeting', 'start', '--about', 'the cache design', '--session', 'alpha'])).code, EXIT.ok);
+    await promptIn(kit, 'alpha', ALPHA_TAB, 'thanks, end the meeting');
+    const asked = await kit.run(['meeting', 'end', '--session', 'alpha'], inTab(ALPHA_TAB));
+    assert.equal(asked.code, EXIT.ok, said(asked));
+
+    assert.equal((await kit.run(['meeting', 'start', '--about', 'the API', '--session', 'alpha'])).code, EXIT.ok);
+    await promptIn(kit, 'alpha', ALPHA_TAB, 'walk me through the API');
+    kit.clock.advance(10 * MS_PER_MINUTE);
+    await teamrigPromptIn(kit, 'alpha', ALPHA_TAB, reopenPrompt('app', 'alpha'));
+    const quiet = await kit.run(['meeting', 'end', '--session', 'alpha'], inTab(ALPHA_TAB));
+    assert.equal(quiet.code, EXIT.ok, said(quiet));
+
+    assert.equal((await kit.run(['meeting', 'start', '--about', 'the docs', '--session', 'alpha'])).code, EXIT.ok);
+    await promptIn(kit, 'alpha', ALPHA_TAB, 'walk me through the docs');
+    await teamrigPromptIn(kit, 'alpha', ALPHA_TAB, reopenPrompt('app', 'alpha'));
+    const shell = await kit.run(['meeting', 'end', '--session', 'alpha']);
+    assert.equal(shell.code, EXIT.ok, 'run from a terminal of its own, no turn of any tab started it');
+  });
+
+  it("refuses the lead a turn teamrig started while the owner is in the session met's tab", async () => {
+    const kit = await team();
+    assert.equal((await kit.run(['meeting', 'start', '--about', 'the cache design', '--session', 'alpha'])).code, EXIT.ok);
+    await promptIn(kit, 'alpha', ALPHA_TAB, 'walk me through the cache design');
+    kit.clock.advance(2 * MS_PER_MINUTE);
+    await teamrigPromptIn(kit, 'lead', LEAD_TAB, 'New work was handed to you while this tab was idle.');
+    const refused = await kit.run(['meeting', 'end', 'M1', '--session', 'lead'], inTab(LEAD_TAB));
+    assert.equal(refused.code, EXIT.refused);
+    assert.match(said(refused), /^REFUSED meeting M1 is still on: the owner prompted in app-alpha's tab 2 min ago and this turn was started by teamrig;/);
+  });
+
+  it("refuses the lead's daily meeting end the same way", async () => {
+    const kit = await team();
+    assert.equal((await kit.run(['meeting', 'start', '--session', 'lead'])).code, EXIT.ok);
+    await promptIn(kit, 'lead', LEAD_TAB, 'next card');
+    kit.clock.advance(3 * MS_PER_MINUTE);
+    await teamrigPromptIn(kit, 'lead', LEAD_TAB, 'New work was handed to you while this tab was idle.');
+    const refused = await kit.run(['meeting', 'end', '--session', 'lead'], inTab(LEAD_TAB));
+    assert.equal(refused.code, EXIT.refused);
+    assert.equal(
+      said(refused),
+      'REFUSED the daily meeting is still on: the owner prompted in this tab 3 min ago and this turn was started by teamrig; the owner ends it, or it ends itself Tue 01-08 14:00 UTC; teamrig meeting end --owner-left ends it anyway',
+    );
+    const forced = await kit.run(['meeting', 'end', '--owner-left', '--session', 'lead'], inTab(LEAD_TAB));
+    assert.equal(forced.code, EXIT.ok, said(forced));
+  });
+
+  it('says in the first prompt of a session reopened while its meeting is on that only the owner ends it', async () => {
+    const kit = await team();
+    assert.equal((await kit.run(['meeting', 'start', '--about', 'the cache design', '--session', 'alpha'])).code, EXIT.ok);
+    // No terminal opens here, so open prints the tab's command line, the first prompt in it.
+    const opened = await kit.run(['open', 'alpha', '--session', 'lead'], { probe: new FakePathProbe({ folders: [APP] }) });
+    const encoded = /'--encoded-prompt' '([A-Za-z0-9_-]+)'/.exec(said(opened))?.[1] ?? '';
+    const prompt = decodePrompt(encoded) ?? '';
+    assert.ok(prompt.endsWith(' A meeting with the owner is on in this tab (M1, until Tue 01-08 14:00 UTC): it stays on; only the owner ends it.'), said(opened));
   });
 });

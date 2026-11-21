@@ -292,12 +292,15 @@ export const DEFAULT_WAKE: WakeConfig = { enabled: true, priority: 1, batchSecon
  * readable behind it. A break-through lifts it for two minutes: long enough to read the message and answer it, short
  * enough that the meeting gets its focus back on its own (T2524). The status line marks are on: they only lead the
  * meeting tab's line with its title and add a few words to the others' while a meeting is open (T2513); the purple is
- * teamrig's theme colour, by the owner's call (T2985), and reads on dark and light terminal themes alike.
+ * teamrig's theme colour, by the owner's call (T2985), and reads on dark and light terminal themes alike. An owner
+ * quiet for 15 minutes counts as gone from the meeting (#921): a short pause to read or think is shorter, and a
+ * session teamrig woke ends a meeting the owner left without waiting long.
  */
 export const DEFAULT_MEETING: MeetingConfig = {
   panel: { enabled: true },
   spotlight: { enabled: true, dim: 0.6, breakthroughSeconds: 120 },
   statusLine: { enabled: true, colour: '#8b57e3', heldText: 'meeting on: held' },
+  ownerLeftMinutes: 15,
 };
 
 /** About a screenful: two or three failing tests with their errors and first stack frames. */

@@ -631,8 +631,8 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
 
 /**
  * `meeting`: the agenda panel's switch, the spotlight's with its dim, bounded so the screen stays readable, and how
- * long a break-through lifts it, and the status line's marks, with a colour the ANSI code can take and a held text
- * that keeps the line one row.
+ * long a break-through lifts it, the status line's marks, with a colour the ANSI code can take and a held text
+ * that keeps the line one row, and how long the owner counts as still in the meeting after a prompt.
  */
 function parseMeeting(read: ConfigReader, raw: JsonRecord): MeetingConfig {
   const spotlight = read.section(raw, 'spotlight', 'meeting');
@@ -656,6 +656,7 @@ function parseMeeting(read: ConfigReader, raw: JsonRecord): MeetingConfig {
         CONFIG_LIMITS.spotlightBreakthroughSeconds,
       ),
     },
+    ownerLeftMinutes: read.integer(raw, 'ownerLeftMinutes', 'meeting', DEFAULT_MEETING.ownerLeftMinutes, CONFIG_LIMITS.meetingOwnerLeftMinutes),
   };
 }
 

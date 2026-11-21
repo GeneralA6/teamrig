@@ -140,6 +140,8 @@ export const CONFIG_LIMITS = {
    * hour the meeting has lost its spotlight for good (T2524).
    */
   spotlightBreakthroughSeconds: { min: 10, max: 3600 },
+  /** 0 turns the check off; past 4 hours the meeting has lapsed by itself (MEETING_LAPSE_MS). */
+  meetingOwnerLeftMinutes: { min: 0, max: 240 },
 } as const;
 
 /**

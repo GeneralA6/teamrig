@@ -711,6 +711,7 @@ The owner's daily meeting with the lead, in the lead's tab.
 | `panel` | [object](#meetingpanel) |  | The agenda panel beside the chat of the session the owner meets while a meeting is open (the lead's daily one, or a started M\<n>). |
 | `spotlight` | [object](#meetingspotlight) |  | The spotlight while a meeting is open: every screen dimmed but the window holding the lead's tab. Windows Terminal on Windows only. |
 | `statusLine` | [object](#meetingstatusline) |  | The status line while a meeting is open: the lead's tab shows its line in the meeting colour, every other tab adds the held text, so a glance at any tab tells the meeting is on. |
+| `ownerLeftMinutes` | integer (0 to 240) | `15` | How long after the owner's last prompt in the meeting tab the owner counts as still in the meeting, in minutes. Until then meeting end, of a booked meeting or the daily one, refuses a turn teamrig started (a reopen note, a wake), so a session never ends a meeting under the owner; the owner's own turn ends it at once, and meeting end --owner-left ends it anyway. 0: never refused. |
 
 ## `meeting.panel`
 

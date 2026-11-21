@@ -195,4 +195,27 @@ describe('formatEntry and parseEntry', () => {
       assert.deepEqual(parseEntry(JSON.stringify({ ...record, apiError })), ENTRY, JSON.stringify(apiError));
     }
   });
+
+  it('round-trips who prompted, and keeps an entry whose stamp is damaged, losing only the stamp (#921)', () => {
+    const stamped: RestoreEntry = { ...ENTRY, ownerPromptAt: T0, lastPromptByKit: true };
+    const text = formatEntry(stamped);
+    assert.match(text, /"ownerPromptAt": "2030-01-08T09:00:00.000Z",\n {2}"lastPromptByKit": true/);
+    assert.deepEqual(parseEntry(text), stamped);
+    const record = JSON.parse(formatEntry(ENTRY));
+    assert.deepEqual(parseEntry(JSON.stringify({ ...record, ownerPromptAt: 'soon', lastPromptByKit: 'yes' })), ENTRY);
+  });
+});
+
+describe('applyEvent: who prompted (#921)', () => {
+  it("moves ownerPromptAt at the owner's prompt only, says whether teamrig's started the turn, and keeps both through other events", () => {
+    const owner = written(applyEvent(ENTRY, { kind: 'working', by: 'owner' }, facts({ at: T1 })));
+    assert.deepEqual([owner.ownerPromptAt, owner.lastPromptByKit], [T1, false]);
+    const kit = written(applyEvent(owner, { kind: 'working', by: 'teamrig' }, facts({ at: T1 + 1000 })));
+    assert.deepEqual([kit.ownerPromptAt, kit.lastPromptByKit], [T1, true]);
+    for (const event of [{ kind: 'ready' }, { kind: 'start' }, { kind: 'working' }, { kind: 'error', code: undefined }] as const) {
+      const after = written(applyEvent(kit, event, facts({ at: T1 + 2000 })));
+      assert.deepEqual([after.ownerPromptAt, after.lastPromptByKit], [T1, true], event.kind);
+    }
+    assert.equal('ownerPromptAt' in written(applyEvent(ENTRY, { kind: 'working' }, facts())), false, 'an unstamped prompt adds no field');
+  });
 });

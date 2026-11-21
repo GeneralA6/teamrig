@@ -4,7 +4,8 @@ import { join, resolve } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { RunOutcome, RunRequest } from '../open/processes.ts';
-import { decodePrompt, defaultPrompt, encodePrompt, refreshPrompt } from '../open/prompt.ts';
+import { decodePrompt, defaultPrompt, encodePrompt, refreshPrompt, reopenPrompt } from '../open/prompt.ts';
+import { PromptMarks, promptMarksDir } from '../restore/prompt-marks.ts';
 import { shellCommand } from '../open/quote.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
@@ -520,6 +521,24 @@ describe('teamrig launch', () => {
       ['Build it', refreshPrompt('app', 'alpha', processes.store.handoverPath('alpha'))],
     );
     assert.equal(await processes.store.restart('alpha'), undefined);
+  });
+
+  it("marks each first prompt as teamrig's before Claude Code starts on it, the restart's too, so its turn is teamrig's (#921)", async () => {
+    const kit = new CliHarness(TEAM);
+    const marks = new PromptMarks(kit.files, promptMarksDir(KIT));
+    const key = { team: 'app', session: 'alpha' };
+    const seen: (string | undefined)[] = [];
+    const processes = new RestartedOnce(kit, ENDING, async () => {
+      seen.push(await marks.read(key));
+    });
+    const result = await kit.run([...LAUNCH, '--encoded-prompt', encodePrompt(reopenPrompt('app', 'alpha'))], { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' } });
+    assert.equal(result.code, EXIT.ok);
+    assert.deepEqual(seen, [reopenPrompt('app', 'alpha')]);
+    assert.equal(await marks.read(key), refreshPrompt('app', 'alpha', processes.store.handoverPath('alpha')));
+
+    const bare = new CliHarness(TEAM);
+    await bare.run([...LAUNCH, '--no-prompt'], { probe: ON_PATH, processes: new FakeProcesses(), env: { PATH: '/usr/local/bin' } });
+    assert.equal(await new PromptMarks(bare.files, promptMarksDir(KIT)).read(key), undefined, 'no first prompt, no mark');
   });
 
   it("starts again at the config's effort level as it is at the restart, not at --effort's (T2444)", async () => {

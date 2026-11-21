@@ -3340,10 +3340,27 @@ runs it, and the session met and those joining, but the caller, are told by one 
 its daily meeting open ends that one first. The daily meeting takes no `--note`: its decisions are recorded on their
 tasks.
 
+Only the owner ends a meeting the owner is still in (#921). While a meeting is on, `meeting end`, of a booked meeting or
+the daily one, is refused from a turn teamrig started (a reopen note, a wake, any prompt teamrig submitted itself)
+when the owner prompted in the meeting's tab under `[meeting.ownerLeftMinutes]` ago (15 by default; 0 turns the check
+off). The owner's own turn ends it at once: the owner asked. So does a run from a terminal of its own, which no tab's
+turn started. Teamrig tells its own prompts apart by a mark it sets where it submits them (`launch`'s first prompt and
+the wake check's answer), not by their words. A session reopened while its meeting is on reads in its first prompt
+`A meeting with the owner is on in this tab (M3, until Thu 10-15 18:00 IDT): it stays on; only the owner ends it.`
+
+```text
+REFUSED meeting M3 is still on: the owner prompted in this tab 5 min ago and this turn was started by teamrig; the owner ends it, or it ends itself Thu 10-15 18:00 IDT; teamrig meeting end M3 --owner-left ends it anyway
+```
+
+The lead ending a session's meeting reads `in web-front's tab`; the daily meeting's refusal names `the daily meeting`
+and `teamrig meeting end --owner-left`.
+
 Flags:
 
 - `--session <area>`: who you are: the lead, or for a scheduled meeting the session met.
 - `--note "<what came of it>"`: with a meeting id only, one line kept on the meeting.
+- `--owner-left`: ends the meeting although the owner prompted in its tab under `[meeting.ownerLeftMinutes]` ago and
+  teamrig started this turn: use it only once you know the owner has left.
 
 Example:
 

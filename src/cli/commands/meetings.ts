@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
-import { KIT_NAME } from '../../core/home.ts';
+import { ENV, KIT_NAME } from '../../core/home.ts';
 import { sessionDisplay } from '../../core/ids.ts';
 import { hasUnprintable } from '../../core/printable.ts';
 import type { FileLock } from '../../core/lock.ts';
@@ -17,6 +17,7 @@ import {
   isMissed,
   isOpenMeeting,
   meetingInTabOf,
+  meetingsOnOf,
   MeetingSchedule,
   nextMeetingId,
   type MeetingsRead,
@@ -25,7 +26,8 @@ import {
 } from '../../meeting/schedule.ts';
 import { SPOTLIGHT_LOG, spotlightHolderPath, spotlightLine, startSpotlight, type SpotlightPlace } from '../../meeting/spotlight.ts';
 import { SpotlitStore, spotlitUntil } from '../../meeting/spotlit.ts';
-import { MeetingStore, phaseOf } from '../../meeting/state.ts';
+import { ownerInRefusal, ownerStillIn } from '../../meeting/owner-left.ts';
+import { MEETING_LAPSE_MS, MeetingStore, phaseOf } from '../../meeting/state.ts';
 import { WAKE_TICK_MS } from '../../mod/wake-hand.ts';
 import { focusTab } from '../../open/focus.ts';
 import { shellCommand } from '../../open/quote.ts';
@@ -527,11 +529,44 @@ async function liftSpotlight(runtime: CliRuntime, mk: MeetingsKit, id: string): 
 }
 
 /**
+ * Refuses to end meeting `id` while it is on and the owner is still in it (#921): the caller's turn was started by a
+ * prompt teamrig submitted and the owner prompted in the tab of the session met under `meeting.ownerLeftMinutes` ago
+ * (src/meeting/owner-left.ts). `--owner-left` ends it anyway.
+ */
+async function refuseWhileOwnerIn(args: ParsedArgs, runtime: CliRuntime, mk: MeetingsKit, id: string): Promise<void> {
+  if (args.switches.has('owner-left')) {
+    return;
+  }
+  const meeting = meetingsOnOf((await mk.schedule.read()).meetings, mk.now).find((on) => on.id === id);
+  if (meeting === undefined) {
+    return;
+  }
+  mayChange(mk, meeting.session, `end ${id}`);
+  const callerIsMet = meeting.session === mk.caller;
+  const tab = { team: mk.kit.paths.team, session: meeting.session, callerIsMet };
+  const minutes = await ownerStillIn(runtime.files, mk.kit.paths.kitHome, runtime.env[ENV.claudeSession], tab, mk.now, mk.config.meeting.ownerLeftMinutes);
+  if (minutes === undefined) {
+    return;
+  }
+  throw new RefusedError(
+    ownerInRefusal({
+      what: `meeting ${id}`,
+      where: callerIsMet ? 'this tab' : `${nameOf(mk, meeting.session)}'s tab`,
+      minutes,
+      endsAt: mk.zone.weekdayMinute(new Date(meeting.changedAt + MEETING_LAPSE_MS)),
+      anyway: `${KIT_NAME} meeting end ${id} --owner-left`,
+    }),
+  );
+}
+
+/**
  * `meeting end <id>`: the meeting was held; scheduled or started, it is done. Those it met are told, with what came of
- * it, as a move or a drop tells them (T2775).
+ * it, as a move or a drop tells them (T2775). While the owner is still in it, a turn teamrig started is refused
+ * (refuseWhileOwnerIn).
  */
 export async function meetingEndScheduled(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const mk = await meetingsKit(args, runtime, 'write');
+  await refuseWhileOwnerIn(args, runtime, mk, onePositional(args, 'meeting id'));
   const note = noteOf(args.flags.get('note'), new SecretScanner(mk.config.register.secretPatterns));
   const ended = await change(args, mk, 'end', ['scheduled', 'started'], (meeting) => ({ ...meeting, status: 'done', note: note ?? meeting.note }));
   await liftSpotlight(runtime, mk, ended.id);

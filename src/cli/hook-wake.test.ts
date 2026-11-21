@@ -26,7 +26,7 @@ import { RefreshStore } from '../refresh/store.ts';
 import { claudeCredentialsPath, formatLoginMarker, LOGIN_PROBE_STALE_MS, LOGIN_RETRY_GAP_MS, loginMarkerPath, parseLoginMarker, type LoginMarker } from '../restore/login.ts';
 import { dayProbePath, formatDayProbe, parseDayProbe, type DayProbe } from '../restore/day-probe.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
-import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../restore/registry.ts';
+import { RestoreRegistry, restoreLogPath, restoreSessionsDir, sessionFileIn } from '../restore/registry.ts';
 import { HOLDING_BUDGET, holdAlpha, meterDearDay, meterToday } from '../testing/budget-hold.ts';
 import { APP, AUTO_RESTART_TEAM, CliHarness, EVENTS_PATH, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { holdFileLock } from '../testing/held-file-lock.ts';
@@ -36,6 +36,7 @@ import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { teamConfigOf, teamHomeOf, teamInboxOf } from '../testing/team-tree.ts';
 import { WakeAsks } from '../wake/asks.ts';
 import { WakePrompts, type WakePrompt } from '../wake/prompts.ts';
+import { PromptMarks, promptMarksDir } from '../restore/prompt-marks.ts';
 
 const ALPHA_TAB = '0123abcd-0000-4000-8000-0000000000a1';
 const OTHER_TAB = '0123abcd-0000-4000-8000-0000000000b9';
@@ -154,7 +155,7 @@ describe('hook wake-check', () => {
     assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: null }, 'never twice for one task');
   });
 
-  it('keeps no wake prompt with turnLog off', async () => {
+  it("keeps no wake prompt with turnLog off, and marks it as teamrig's for its tab all the same (#921)", async () => {
     const kit = await teamWithAlphaTab({ ...TEAM, turnLog: { enabled: false } });
     await check(kit);
     await hand(kit, 'Fix the login', 'p1');
@@ -163,6 +164,7 @@ describe('hook wake-check', () => {
     const woke = answerOf(await check(kit));
     assert.ok(isRecord(woke) && woke['kind'] === 'wake', 'it woke');
     assert.equal(await keptPrompt(kit), undefined);
+    assert.equal(await new PromptMarks(kit.files, promptMarksDir(KIT)).read({ tab: ALPHA_TAB }), woke['text']);
   });
 
   it('never wakes for less urgent work by default, and wakes for p2 when wake.priority is 2, costed cold with no transcript', async () => {
@@ -515,6 +517,21 @@ describe('hook wake-check', () => {
     const kit = await teamWithAlphaTab();
     await holdFileLock(kit, ALPHA_LOCK);
     assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() });
+  });
+
+  it("still wakes when the mark cannot be written, saying so: the turn then reads as the owner's (#921)", async () => {
+    const kit = await teamWithAlphaTab();
+    await check(kit);
+    await hand(kit, 'Fix the login', 'p1');
+    await check(kit);
+    kit.clock.advance(120 * SECOND);
+    const files = new FaultyFiles(kit.files).fail('write', sessionFileIn(promptMarksDir(KIT), ALPHA_TAB), systemError('ENOSPC'));
+    const result = await kit.run(['hook', 'wake-check'], { stdin: payload(), files });
+    assert.equal(result.code, EXIT.ok);
+    const woke = answerOf(result);
+    assert.ok(isRecord(woke) && woke['kind'] === 'wake', 'the wake is not lost');
+    assert.match(result.stderr.join('\n'), /^WARN the wake was not marked as teamrig's, so its turn reads as the owner's: ENOSPC/);
+    assert.equal(await new PromptMarks(kit.files, promptMarksDir(KIT)).read({ tab: ALPHA_TAB }), undefined);
   });
 
   it('fails on any other error under the lock', async () => {
@@ -1114,8 +1131,11 @@ describe('hook wake-dropped', () => {
     const kit = await teamWithAlphaTab();
     const prompts = new WakePrompts(kit.files, join(TEAM_HOME, 'state', 'wake'));
     await prompts.remember('alpha', { tab: ALPHA_TAB, text: 'New work was handed to you.' });
+    const marks = new PromptMarks(kit.files, promptMarksDir(KIT));
+    await marks.mark({ tab: ALPHA_TAB }, 'New work was handed to you.', kit.clock.now());
     const dropped = await kit.run(['hook', 'wake-dropped'], { stdin: payload({ reason: 'blocked by a hook' }) });
     assert.equal(await keptPrompt(kit), undefined, 'a later typed prompt is never taken for it');
+    assert.equal(await marks.read({ tab: ALPHA_TAB }), undefined, 'nor recorded as teamrig\'s');
     assert.deepEqual(dropped, { code: 0, stdout: [], stderr: [] });
     await kit.run(['hook', 'wake-dropped'], { stdin: payload() });
     await kit.run(['hook', 'wake-dropped'], { stdin: payload({ reason: 'x' }, OTHER_TAB) });
@@ -1124,6 +1144,16 @@ describe('hook wake-dropped', () => {
       { v: 1, at, kind: 'dropped', session: 'alpha', tab: ALPHA_TAB, reason: 'blocked by a hook' },
       { v: 1, at, kind: 'dropped', session: 'alpha', tab: ALPHA_TAB, reason: 'no reason given' },
     ]);
+  });
+
+  it("ends cleanly when the dropped wake's mark cannot be removed, saying so (#921)", async () => {
+    const kit = await teamWithAlphaTab();
+    await new PromptMarks(kit.files, promptMarksDir(KIT)).mark({ tab: ALPHA_TAB }, 'New work was handed to you.', kit.clock.now());
+    const files = new FaultyFiles(kit.files).fail('remove', sessionFileIn(promptMarksDir(KIT), ALPHA_TAB), systemError('EACCES'));
+    const dropped = await kit.run(['hook', 'wake-dropped'], { stdin: payload({ reason: 'blocked by a hook' }), files });
+    assert.equal(dropped.code, EXIT.ok);
+    assert.deepEqual(dropped.stdout, []);
+    assert.match(dropped.stderr.join('\n'), /^WARN the dropped wake's mark was not removed: EACCES/);
   });
 });
 

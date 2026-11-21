@@ -1739,6 +1739,13 @@
               "pattern": "^[^\\r\\n]+$"
             }
           }
+        },
+        "ownerLeftMinutes": {
+          "description": "How long after the owner's last prompt in the meeting tab the owner counts as still in the meeting, in minutes. Until then meeting end, of a booked meeting or the daily one, refuses a turn teamrig started (a reopen note, a wake), so a session never ends a meeting under the owner; the owner's own turn ends it at once, and meeting end --owner-left ends it anyway. 0: never refused.",
+          "type": "integer",
+          "default": 15,
+          "minimum": 0,
+          "maximum": 240
         }
       }
     },
