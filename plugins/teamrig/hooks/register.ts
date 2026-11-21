@@ -2,7 +2,8 @@ import { atom, read, update } from 'claude-code';
 import type { Register, StateRef } from 'claude-code';
 import type { TeamrigBand, TeamrigMeetingPanel, TeamrigNeedsYou, TeamrigUpdate } from '../types';
 import { INSTALLED_PLUGINS_FILE, pluginsFolderOf } from '../dist/core/installed-plugins.js';
-import { bandLine, ClearHand, liveAgentsOf, sameBand, TICK_MS } from '../dist/mod/clear-hand.js';
+import { bandLine, CLEAR_TIMEOUT_MS, ClearHand, liveAgentsOf, sameBand, TICK_MS } from '../dist/mod/clear-hand.js';
+import { HandWatch, STALL_MS, type HandTrace } from '../dist/mod/hand-watch.js';
 import { REFRESH_TIMEOUT_MS, RefreshHand, refreshCliArgv } from '../dist/mod/refresh-hand.js';
 import { CHECK_MS, RELOAD_COMMAND, ReloadHand } from '../dist/mod/reload-hand.js';
 import {
@@ -119,6 +120,12 @@ import {
  * on its own, or computes that summary ahead, the hand asks `hook compact-check` and skips the compaction, with the
  * line that says why, while the handover is asked for or written, up to `refresh.compactCeilingTokens`; past it, or
  * when the CLI fails, the compaction goes. A subagent's tools and compactions are left alone.
+ *
+ * The watch over the hands (`hand-watch.ts`, #920): every hand's tick on Claude Code's clock runs through one
+ * `HandWatch`. A tick that throws, or one still unsettled at the hand's next tick past its limit (60 s; an update's
+ * past its install timeout), leaves a debug line and a line in the team's `state/hand-trace.jsonl` (`hook
+ * hand-trace`), each hand and kind at most once per 10 minutes, so a hand that stops answering is seen in teamrig's
+ * own logs.
  */
 
 /** The reload hand's last reload, kept in the session (types/index.d.ts). */
@@ -155,6 +162,11 @@ const UPDATE_KEY = 'update-plugin';
 const DISMISS_KEY = 'dismiss-update';
 const FOCUS_ASK_KEY = 'focus-asking-tab';
 const DISMISS_ASK_KEY = 'dismiss-ask';
+
+/** How long the CLI may take to log one hand trace. */
+const HAND_TRACE_TIMEOUT_MS = 10_000;
+/** An update tick may run an install for as long as its timeout, so it counts as stalled only past that. */
+const UPDATE_STALL_MS = UPDATE_APPLY_TIMEOUT_MS + STALL_MS;
 
 /** Whether two update bands draw the same. */
 function sameUpdate(a: TeamrigUpdate | null, b: TeamrigUpdate | null | undefined): boolean {
@@ -210,6 +222,8 @@ export const register: Register = (on) => {
   let needsYouHand: NeedsYouHand | undefined;
   /** Writes the needs-you band's value when the needs-you hand's shown ask changed; set with the hand. */
   let showNeedsYou: (() => Promise<void>) | undefined;
+  /** Traces a hand's tick that throws or stays unsettled (#920); set with the first hands. */
+  let watch: HandWatch | undefined;
 
   on('session.start', async ($, e, next) => {
     const started = await next(e);
@@ -222,14 +236,28 @@ export const register: Register = (on) => {
     if (!e.isInteractive) {
       return started;
     }
+    const cli = `${$.plugin.root}/dist/cli/main.js`;
+    // Each tick goes through the watch: a hand that throws or hangs leaves a debug line and a line in the team's
+    // state/hand-trace.jsonl (`hook hand-trace`), never a silent stop.
+    const hands = (watch ??= new HandWatch({
+      now: () => $.clock.now(),
+      trace: (trace: HandTrace) => {
+        $.ui.log(`teamrig hand: ${JSON.stringify(trace)}`, { to: 'debug' });
+        void (async () => {
+          const stdin = JSON.stringify({ session_id: await $.session.id(), cwd: await $.session.cwd(), ...trace });
+          await $.process.run(['node', cli, 'hook', 'hand-trace'], { stdin, timeoutMs: HAND_TRACE_TIMEOUT_MS });
+        })().catch((error: unknown) => {
+          $.ui.log(`teamrig hand trace not logged: ${String(error)}`, { to: 'debug' });
+        });
+      },
+    }));
     if (clearHand === undefined) {
-      const cli = `${$.plugin.root}/dist/cli/main.js`;
       const active = new ClearHand({
         sessionId: () => $.session.id(),
         exists: (path: string) => $.fs.exists(path),
         read: (path: string) => $.fs.read(path),
         cli: async (args: readonly string[], stdin: string) => {
-          const run = await $.process.run(['node', cli, ...args], { stdin });
+          const run = await $.process.run(['node', cli, ...args], { stdin, timeoutMs: CLEAR_TIMEOUT_MS });
           return { exitCode: run.exitCode, stdout: run.stdout };
         },
         liveAgents: async () => liveAgentsOf(await $.agent.list()),
@@ -257,18 +285,25 @@ export const register: Register = (on) => {
           $.ui.log(`teamrig refresh band: ${String(error)}`, { to: 'debug' });
         }
       };
-      // A band the module loaded before this one left: this hand counts nothing yet.
-      await update($, BAND, () => null);
+      // A band the module loaded before this one left: this hand counts nothing yet. A write that fails is logged, and
+      // the hands below still start (#920).
+      try {
+        await update($, BAND, () => null);
+      } catch (error) {
+        $.ui.log(`teamrig refresh band not cleared: ${String(error)}`, { to: 'debug' });
+      }
       showBand = show;
       // The person's holds the module before a /reload-plugins kept come back before the first ask is answered.
       void active.start().then(() => {
         $.clock.every(TICK_MS, () => {
-          void active.tick().then(async (result) => {
-            if (worthLogging(result)) {
-              $.ui.log(`teamrig refresh /clear: ${JSON.stringify(result)}`, { to: 'debug' });
-            }
-            await show();
-          });
+          void hands.run('clear', () =>
+            active.tick().then(async (result) => {
+              if (worthLogging(result)) {
+                $.ui.log(`teamrig refresh /clear: ${JSON.stringify(result)}`, { to: 'debug' });
+              }
+              await show();
+            }),
+          );
         });
       });
     }
@@ -299,11 +334,13 @@ export const register: Register = (on) => {
       reloadHand = active;
       void active.start().then(() => {
         $.clock.every(CHECK_MS, () => {
-          void active.check().then((result) => {
-            if (reloadWorthLogging(result)) {
-              $.ui.log(`teamrig reload: ${JSON.stringify(result)}`, { to: 'debug' });
-            }
-          });
+          void hands.run('reload', () =>
+            active.check().then((result) => {
+              if (reloadWorthLogging(result)) {
+                $.ui.log(`teamrig reload: ${JSON.stringify(result)}`, { to: 'debug' });
+              }
+            }),
+          );
         });
       });
     }
@@ -331,11 +368,13 @@ export const register: Register = (on) => {
       });
       wakeHand = active;
       $.clock.every(WAKE_TICK_MS, () => {
-        void active.tick().then((result) => {
-          if (wakeWorthLogging(result)) {
-            $.ui.log(`teamrig wake: ${JSON.stringify(result)}`, { to: 'debug' });
-          }
-        });
+        void hands.run('wake', () =>
+          active.tick().then((result) => {
+            if (wakeWorthLogging(result)) {
+              $.ui.log(`teamrig wake: ${JSON.stringify(result)}`, { to: 'debug' });
+            }
+          }),
+        );
       });
     }
     if (meetingHand === undefined) {
@@ -362,11 +401,13 @@ export const register: Register = (on) => {
       });
       meetingHand = active;
       $.clock.every(MEETING_TICK_MS, () => {
-        void active.tick().then((result) => {
-          if (meetingWorthLogging(result)) {
-            $.ui.log(`teamrig meeting: ${JSON.stringify(result)}`, { to: 'debug' });
-          }
-        });
+        void hands.run('meeting', () =>
+          active.tick().then((result) => {
+            if (meetingWorthLogging(result)) {
+              $.ui.log(`teamrig meeting: ${JSON.stringify(result)}`, { to: 'debug' });
+            }
+          }),
+        );
       });
     }
     if (meetingPanelHand === undefined) {
@@ -396,11 +437,13 @@ export const register: Register = (on) => {
       });
       meetingPanelHand = active;
       $.clock.every(MEETING_PANEL_TICK_MS, () => {
-        void active.tick().then((result) => {
-          if (meetingPanelWorthLogging(result)) {
-            $.ui.log(`teamrig meeting panel: ${JSON.stringify(result)}`, { to: 'debug' });
-          }
-        });
+        void hands.run('meeting-panel', () =>
+          active.tick().then((result) => {
+            if (meetingPanelWorthLogging(result)) {
+              $.ui.log(`teamrig meeting panel: ${JSON.stringify(result)}`, { to: 'debug' });
+            }
+          }),
+        );
       });
     }
     if (refreshHand === undefined) {
@@ -456,12 +499,17 @@ export const register: Register = (on) => {
       await show();
       showUpdate = show;
       const check = (): void => {
-        void active.tick().then(async (result) => {
-          if (result.kind === 'failed') {
-            $.ui.log(`teamrig update check: ${JSON.stringify(result)}`, { to: 'debug' });
-          }
-          await show();
-        });
+        void hands.run(
+          'update',
+          () =>
+            active.tick().then(async (result) => {
+              if (result.kind === 'failed') {
+                $.ui.log(`teamrig update check: ${JSON.stringify(result)}`, { to: 'debug' });
+              }
+              await show();
+            }),
+          UPDATE_STALL_MS,
+        );
       };
       // A minute in, so a tab's start is left alone; then every 10 minutes on Claude Code's clock.
       $.clock.after(UPDATE_FIRST_MS, () => {
@@ -470,12 +518,17 @@ export const register: Register = (on) => {
       });
       // An install made by any tab hides the band here within seconds; the redraw also ends "updated" after 30 s.
       $.clock.every(UPDATE_WATCH_MS, () => {
-        void active.watch().then(async (result) => {
-          if (result.kind === 'changed' && result.tick.kind === 'failed') {
-            $.ui.log(`teamrig update watch: ${JSON.stringify(result)}`, { to: 'debug' });
-          }
-          await show();
-        });
+        void hands.run(
+          'update-watch',
+          () =>
+            active.watch().then(async (result) => {
+              if (result.kind === 'changed' && result.tick.kind === 'failed') {
+                $.ui.log(`teamrig update watch: ${JSON.stringify(result)}`, { to: 'debug' });
+              }
+              await show();
+            }),
+          UPDATE_STALL_MS,
+        );
       });
     }
     if (needsYouHand === undefined) {
@@ -512,11 +565,13 @@ export const register: Register = (on) => {
       await show();
       showNeedsYou = show;
       $.clock.every(NEEDS_YOU_TICK_MS, () => {
-        void active.tick().then((result) => {
-          if (result.kind === 'failed') {
-            $.ui.log(`teamrig needs-you: ${JSON.stringify(result)}`, { to: 'debug' });
-          }
-        });
+        void hands.run('needs-you', () =>
+          active.tick().then((result) => {
+            if (result.kind === 'failed') {
+              $.ui.log(`teamrig needs-you: ${JSON.stringify(result)}`, { to: 'debug' });
+            }
+          }),
+        );
       });
     }
     return started;

@@ -704,3 +704,79 @@ describe("the band naming another tab's ask (T2511)", () => {
     expect(await band.find({ type: 'Text' })).not.toMatchObject({ text: '[app] bravo asks: Allow Bash: npm test?' });
   });
 });
+
+/** One run of the plugin's CLI as the watch's tests read it: the words after `main.js`, and how it was run. */
+interface WatchedRun {
+  readonly argv: readonly string[];
+  readonly stdin: string | undefined;
+  readonly timeoutMs: number | undefined;
+}
+
+/**
+ * An interactive tab whose CLI names the ask folder and answers nothing else, for the watch over the hands (#920):
+ * with `hang`, its `hook clear-dir` never ends; with `bandWrite`, the engine refuses the first write of the refresh
+ * band with that reason.
+ */
+async function watchedTab($: Engine, on: On, faults: { readonly hang?: boolean; readonly bandWrite?: string } = {}): Promise<{ readonly clock: MockClock; readonly runs: WatchedRun[] }> {
+  const clock = mock.clock(on, { now: 1_000_000 });
+  const runs: WatchedRun[] = [];
+  let bandFault = faults.bandWrite;
+  on('session.id', () => ({ value: TAB }));
+  on('session.cwd', () => ({ value: '/work/app' }));
+  on('session.root', () => ({ value: '/work/app' }));
+  on('ui.log', () => ({ value: undefined }));
+  on('fs.exists', () => ({ value: false }));
+  on('agent.list', () => ({ value: [] }));
+  on('prompt.read', () => ({ value: { text: '', cursor: 0 } }));
+  on('state.set', (_$, e, next) => {
+    if (e.key === 'band' && bandFault !== undefined) {
+      const fault = bandFault;
+      bandFault = undefined;
+      return { deny: fault };
+    }
+    return next(e);
+  });
+  on('process.run', (_$, e) => {
+    const argv = e.argv.slice(3);
+    runs.push({ argv, stdin: e.init?.stdin, timeoutMs: e.init?.timeoutMs });
+    if (faults.hang === true && argv[0] === 'clear-dir') {
+      return new Promise<never>(() => undefined);
+    }
+    const answer = argv[0] === 'clear-dir' ? ASK_DIR : undefined;
+    return {
+      value: { exitCode: answer === undefined ? 1 : 0, stdout: `${answer ?? ''}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+    };
+  });
+  on('session.start', (_$, e) => ({ cwd: e.cwd }));
+  await $.session.start({ cwd: '/work/app', surface: 'terminal', isInteractive: true });
+  return { clock, runs };
+}
+
+describe('the watch over the hands (#920)', () => {
+  test("gives the clear hand's CLI runs a timeout, as every other hand's", async ($, on) => {
+    const tab = await watchedTab($, on);
+    await tab.clock.advance(TICK);
+    const clearRuns = tab.runs.filter((run) => run.argv[0]?.startsWith('clear-'));
+    expect(clearRuns.length > 0).toBe(true);
+    expect(clearRuns.map((run) => run.timeoutMs)).toEqual(clearRuns.map(() => 30_000));
+  });
+
+  test("logs a clear hand's tick still unsettled a minute past its next tick through `hook hand-trace`, as the tab's session", async ($, on) => {
+    const tab = await watchedTab($, on, { hang: true });
+    // The tick at 1 s hangs; the one at 2 s finds it unsettled, so the one at 62 s traces it.
+    await tab.clock.advance(61_000);
+    expect(tab.runs.filter((run) => run.argv[0] === 'hand-trace')).toEqual([]);
+    await tab.clock.advance(TICK);
+    await tab.clock.settle();
+    const traces = tab.runs.filter((run) => run.argv[0] === 'hand-trace');
+    expect(traces.length).toBe(1);
+    expect(JSON.parse(traces[0]?.stdin ?? 'null')).toEqual({ session_id: TAB, cwd: '/work/app', kind: 'stalled', hand: 'clear', ms: 60_000 });
+    expect(traces[0]?.timeoutMs).toBe(10_000);
+  });
+
+  test('starts the hands after the refresh band could not be cleared', async ($, on) => {
+    const tab = await watchedTab($, on, { bandWrite: 'state store busy' });
+    await tab.clock.advance(10_000);
+    expect(tab.runs.some((run) => run.argv[0] === 'needs-you')).toBe(true);
+  });
+});

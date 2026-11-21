@@ -236,6 +236,8 @@ export interface TeamPaths {
   readonly wakeAsks: string;
   /** Every wake and every wake Claude Code dropped, with its cost, an append-only log. */
   readonly wakeLog: string;
+  /** Each mod hand's tick that threw or stayed unsettled past its limit (src/mod/hand-watch.ts), an append-only log. */
+  readonly handTraceLog: string;
   /** The settings `teamrig launch` passes each session's Claude Code (src/cli/skill-listing.ts), `<id>.settings.json` each. */
   readonly launchSettings: string;
   /** Each permission prompt the prompt refusal answered and how (hooks/prompt-refuse.ts); records over a week old move to the archive. */
@@ -384,6 +386,7 @@ export function teamPaths(kitHome: string, team: string, hostSkills: string | un
     wake: join(state, 'wake'),
     wakeAsks: join(state, 'wake-asks'),
     wakeLog: join(state, 'wakes.jsonl'),
+    handTraceLog: join(state, 'hand-trace.jsonl'),
     launchSettings: join(state, 'launch'),
     promptAnswers: join(state, 'prompt-answers.jsonl'),
     promptAnswersLock: join(state, 'prompt-answers.lock'),

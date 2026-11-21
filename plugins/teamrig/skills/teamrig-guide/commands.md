@@ -8038,6 +8038,25 @@ teamrig hook wake-dropped < dropped.json
 
 Output: nothing, exit 0.
 
+### teamrig hook hand-trace
+
+Run by the plugin's mod when one of its hands' ticks (the /clear, reload, wake, meeting, meeting panel, update and
+needs-you hands) threw, or was still unsettled at the hand's next tick past its limit (60 s; an update's past its
+install timeout). Appends one line to `<team>/state/hand-trace.jsonl`: `{"v", "at", "session", "tab", "hand", "kind"}`
+with `"error"` (its first 300 characters) for `threw` or `"ms"` for `stalled`. The mod traces each hand and kind at
+most once per 10 minutes. A tab that is no team session, or a payload naming no hand or kind, logs nothing. Stdin:
+`{"session_id", "cwd", "hand", "kind", "error" | "ms"}`.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook hand-trace < trace.json
+```
+
+Output: nothing, exit 0.
+
 ### teamrig hook meeting-due
 
 Run by the plugin's mod in every open tab of the team, when the meetings file (`<team>/state/meetings.jsonl`) changed

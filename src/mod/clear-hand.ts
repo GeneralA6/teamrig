@@ -30,6 +30,8 @@
 
 /** How often the mod's hand looks for an ask. */
 export const TICK_MS = 1_000;
+/** How long one CLI run (`hook clear-claim`, `hook clear-dir`) may take before it is stopped, as long as the other hands' (#920). */
+export const CLEAR_TIMEOUT_MS = 30_000;
 /** How long the hand waits before it asks the CLI for the ask folder again after that failed. */
 export const DIR_RETRY_MS = 60_000;
 /** What `hook clear-claim` prints when this tab took the ask; anything else is a reason it did not. */

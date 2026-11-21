@@ -768,6 +768,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       (run by the plugin's mod: the automatic restart's /clear in the tab)
   hook wake-check | hook wake-dropped
       (run by the plugin's mod: wakes an idle tab when unblocked urgent work is handed to its session)
+  hook hand-trace
+      (run by the plugin's mod: logs a hand whose tick threw or stayed unsettled, in state/hand-trace.jsonl)
   hook meeting-due
       (run by the plugin's mod: a scheduled meeting's notices, before, at and past its time)
   hook needs-you | hook needs-you-focus

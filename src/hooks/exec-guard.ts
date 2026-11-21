@@ -60,6 +60,7 @@ export const HOOK_COMMANDS: ReadonlySet<string> = new Set([
   'effort-writeback',
   'exec-guard',
   'failed-send',
+  'hand-trace',
   'helper-gate',
   'inbox-reminder',
   'loop-nudge',

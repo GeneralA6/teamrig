@@ -55,6 +55,7 @@ const missingCliCommand = () => import('./commands/hook-missing-cli.ts');
 const helperStartCommand = () => import('./commands/hook-helper-start.ts');
 const clearCommands = () => import('./commands/hook-clear.ts');
 const wakeCommands = () => import('./commands/hook-wake.ts');
+const handTraceCommand = () => import('./commands/hook-hand-trace.ts');
 const meetingDueCommand = () => import('./commands/hook-meeting-due.ts');
 const needsYouCommands = () => import('./commands/hook-needs-you.ts');
 const meetingPanelCommand = () => import('./commands/hook-meeting-panel.ts');
@@ -350,6 +351,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'hook clear-claim': { effect: 'internal', flags: ['why'], switches: ['hold', 'end'], load: async () => (await clearCommands()).clearClaim },
   'hook wake-check': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeCheck },
   'hook wake-dropped': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeDropped },
+  'hook hand-trace': { effect: 'internal', flags: [], load: async () => (await handTraceCommand()).handTrace },
   'hook meeting-due': { effect: 'internal', flags: [], load: async () => (await meetingDueCommand()).meetingDue },
   'hook needs-you': { effect: 'internal', flags: [], load: async () => (await needsYouCommands()).needsYou },
   'hook needs-you-focus': { effect: 'internal', flags: [], load: async () => (await needsYouCommands()).needsYouFocus },
@@ -1136,6 +1138,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (run by the plugin's mod: the automatic restart's /clear in the tab)
   hook wake-check | hook wake-dropped
       (run by the plugin's mod: wakes an idle tab when unblocked urgent work is handed to its session)
+  hook hand-trace
+      (run by the plugin's mod: logs a hand whose tick threw or stayed unsettled, in state/hand-trace.jsonl)
   hook meeting-due
       (run by the plugin's mod: a scheduled meeting's notices, before, at and past its time)
   hook needs-you | hook needs-you-focus

@@ -1127,6 +1127,24 @@ describe('hook wake-dropped', () => {
   });
 });
 
+describe('hook hand-trace', () => {
+  it("logs a mod hand's trace for a team session, its error cut short, and nothing for another tab or a payload naming no hand (#920)", async () => {
+    const kit = await teamWithAlphaTab();
+    const traced = await kit.run(['hook', 'hand-trace'], { stdin: payload({ hand: 'clear', kind: 'threw', error: 'x'.repeat(400) }) });
+    assert.deepEqual(traced, { code: 0, stdout: [], stderr: [] });
+    await kit.run(['hook', 'hand-trace'], { stdin: payload({ hand: 'wake', kind: 'stalled', ms: 61_000.4 }) });
+    await kit.run(['hook', 'hand-trace'], { stdin: payload({ hand: 'wake', kind: 'stalled', ms: 61_000 }, OTHER_TAB) });
+    await kit.run(['hook', 'hand-trace'], { stdin: payload({ kind: 'threw', error: 'no hand' }) });
+    await kit.run(['hook', 'hand-trace'], { stdin: payload({ hand: 'wake', kind: 'slow' }) });
+    await kit.run(['hook', 'hand-trace'], { stdin: 'not json' });
+    const at = new Date(kit.clock.now()).toISOString();
+    assert.deepEqual(await logLines(kit, join(TEAM_HOME, 'state', 'hand-trace.jsonl')), [
+      { v: 1, at, session: 'alpha', tab: ALPHA_TAB, hand: 'clear', kind: 'threw', error: 'x'.repeat(300) },
+      { v: 1, at, session: 'alpha', tab: ALPHA_TAB, hand: 'wake', kind: 'stalled', ms: 61_000 },
+    ]);
+  });
+});
+
 const MARKER = loginMarkerPath(KIT);
 const CREDENTIALS = claudeCredentialsPath({}, USER_HOME);
 const FAIL_AT = Date.parse('2030-01-08T09:30:00.000Z');

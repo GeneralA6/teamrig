@@ -106,6 +106,7 @@ describe('teamPaths', () => {
     assert.equal(paths.logs, join(TEAM_HOME, 'state', 'logs'));
     assert.equal(paths.wake, join(TEAM_HOME, 'state', 'wake'));
     assert.equal(paths.wakeLog, join(TEAM_HOME, 'state', 'wakes.jsonl'));
+    assert.equal(paths.handTraceLog, join(TEAM_HOME, 'state', 'hand-trace.jsonl'));
     assert.equal(paths.launchSettings, join(TEAM_HOME, 'state', 'launch'));
     assert.equal(paths.sessions, join(TEAM_HOME, 'state', 'sessions'));
     assert.equal(paths.sessionLog, join(TEAM_HOME, 'state', ...SESSION_LOG_IN_STATE), 'where the read side says the session log is');
