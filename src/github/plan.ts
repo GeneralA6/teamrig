@@ -3,6 +3,7 @@ import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES, GITHUB_SOURCE, isIssueRef } from '../register/model.ts';
 import type { ImportChanges, ImportInput, StatusInput } from '../register/policy.ts';
 import type { HostIssue } from '../issues/issue.ts';
+import { issuePage } from './connector.ts';
 import { issueTask, type ImportRules, type IssueTask } from './map.ts';
 import { issueTrust } from './trust.ts';
 
@@ -166,7 +167,7 @@ function statusChange(task: Task, wanted: IssueTask, issue: HostIssue): StatusIn
     case 'open':
       return ACTIVE_STATUSES.includes(task.status) || !changedSince(issue, task.statusAt) ? undefined : { status: 'open', note: 'open on GitHub, changed there since this task closed' };
     case 'done':
-      return task.status === 'done' ? undefined : { status: 'done', note: closedNote(issue.stateReason), evidence: wanted.url };
+      return task.status === 'done' ? undefined : { status: 'done', note: closedNote(issue.stateReason), evidence: issuePage(issue.repo, issue.number) };
     case 'dropped':
       return task.status === 'dropped' ? undefined : { status: 'dropped', note: closedNote(issue.stateReason) };
   }

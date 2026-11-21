@@ -68,7 +68,6 @@ describe('issueTask', () => {
       priority: 1,
       owner: 'bravo',
       outcome: 'open',
-      url: 'https://github.com/acme/web/issues/7',
     });
     assert.equal(issueTask(issue(), RULES).description, null);
     assert.equal(issueRef('acme/web', 12), 'gh:acme/web#12');

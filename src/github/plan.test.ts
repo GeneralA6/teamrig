@@ -187,6 +187,15 @@ describe('planSync', () => {
     ]);
   });
 
+  it("writes the issue's page as teamrig builds it for evidence, never the address the API sent", () => {
+    for (const url of ['https://github.com/acme/web/issues/1\u001b[2J‮', 'https://elsewhere.example/acme/web/issues/1', 'https://github.com/acme/web/issues/1?then=text']) {
+      const plan = planSync([issue(1, { state: 'closed', stateReason: 'COMPLETED', url })], importedTasks([imported('T1', 1)]), RULES);
+      assert.deepEqual(plan.steps, [
+        { kind: 'status', ref: 'gh:acme/web#1', id: 'T1', input: { status: 'done', note: 'closed on GitHub as completed', evidence: 'https://github.com/acme/web/issues/1' } },
+      ]);
+    }
+  });
+
   it('finishes, drops or reopens a task as its issue closes or reopens', () => {
     const tasks = importedTasks([imported('T1', 1, { status: 'waiting' }), imported('T2', 2), imported('T3', 3, { status: 'done' }), imported('T4', 4, { status: 'dropped' })]);
     const issues = [

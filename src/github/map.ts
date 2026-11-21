@@ -52,7 +52,6 @@ export interface IssueTask {
   /** Set on the import only: a reassignment in the register stays. */
   readonly owner: string;
   readonly outcome: IssueOutcome;
-  readonly url: string;
 }
 
 export function importRules(config: KitConfig): ImportRules {
@@ -81,7 +80,6 @@ export function issueTask(issue: HostIssue, rules: ImportRules): IssueTask {
     priority: issuePriority(issue.labels, rules.priorities),
     owner: issueOwner(issue, rules),
     outcome: issueOutcome(issue),
-    url: issue.url,
   };
 }
 

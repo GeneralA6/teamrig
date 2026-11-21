@@ -13,6 +13,15 @@ export const GITHUB_CONNECTOR: Connector = {
   name: 'GitHub',
   itemOf(ref) {
     const target = refTarget({ ref });
-    return target === undefined ? undefined : { id: targetText(target), url: `https://github.com/${target.repo}/issues/${target.number}` };
+    return target === undefined ? undefined : { id: targetText(target), url: issuePage(target.repo, target.number) };
   },
 };
+
+/**
+ * An issue's page on GitHub, built from its repository and number. Every address teamrig keeps or serves for an
+ * issue is this one, never the string GitHub's API sent: that string is outside text, and a kept field is served
+ * as the team's own.
+ */
+export function issuePage(repo: string, number: number): string {
+  return `https://github.com/${repo}/issues/${number}`;
+}
