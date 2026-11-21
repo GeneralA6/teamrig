@@ -94,8 +94,9 @@ A read returns a versioned JSON document built from parsed data, never a file's 
 ### What version 1 ships
 
 `teamrig read <document>... --json` serves the five documents of 1.0 and each one a minor version added since (1.1:
-`plan`, 1.2: `goals`, 1.3: `history`, 1.4: `stats`); [the commands page](../commands.md) has its usage and the
-plugin's guide describes every field. What the design above left open is settled this way:
+`plan`, 1.2: `goals`, 1.3: `history`, 1.4: `stats`; 1.5 added a field, `plan`'s `ownerCards`); [the commands
+page](../commands.md) has its usage and the plugin's guide describes every field. What the design above left open
+is settled this way:
 
 - **One line a document.** Each document asked is one JSON object on one line of stdout, in the order asked, and
   nothing else is written there: a refusal is one line on stderr. A run answers every document asked or none. With
@@ -133,7 +134,10 @@ plugin's guide describes every field. What the design above left open is settled
   owner and the status, and no text. Its revision covers every file the plan reads, so it moves at nearly every
   metered turn of a working team; what turns with the clock alone (a due coming near, a wait ending, the park rule)
   is told ahead in `validUntil`, after which a reader asks again without `--unless`. When a register of the tree
-  cannot be read, no task is served and a problem says why.
+  cannot be read, no task is served and a problem says why. Since 1.5 it also serves `ownerCards`, each session's
+  cards on the owner as `teamrig meet` asks them: which waits are the owner's to hear (the gate rule, a card put
+  off until a time) is a rule of the register, so the pane reads its Team tab's counts and cards from here and
+  keeps no copy of it.
 - **`goals` (1.2).** `plan` names a task's goal by tag and rank only, so a reader drawing a goal's title or window
   folded the goals files itself, and had to know which team's goal a tag means. `goals` serves the goals a task of
   the asked team may serve: its own and those of every team above it, a tag two of them hold served once as the

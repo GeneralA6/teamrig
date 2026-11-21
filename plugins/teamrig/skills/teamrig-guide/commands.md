@@ -2462,7 +2462,7 @@ answered.
 
 Every document carries:
 
-- `interface`: the interface version that wrote it (`1.4`). Ignore fields you do not know: a minor version adds some.
+- `interface`: the interface version that wrote it (`1.5`). Ignore fields you do not know: a minor version adds some.
 - `document`: its name.
 - `revision`: 16 characters that stay the same while the files the document is read from, what you asked and the
   teamrig version stay the same. Compare it with the one you hold to know whether to draw again; it has no other
@@ -2478,9 +2478,9 @@ Every document carries:
 `priority`, `status`, `due`, `note`, `proof`, `evidence`, `source`, `ref`, `waits`, `after`, its times and the
 rest), and `cuts`.
 
-`plan` (since interface 1.1) adds `at`, `validUntil`, `week`, `tasks` and `finished`: where each task stands in the
-team's plan, as `teamrig list` orders it, so a program ranks nothing itself. It holds ids, numbers, statuses and
-tags, and no words of a task: join `tasks[].id` to the `tasks` document for those.
+`plan` (since interface 1.1) adds `at`, `validUntil`, `week`, `tasks`, `finished` and `ownerCards`: where each task
+stands in the team's plan, as `teamrig list` orders it, so a program ranks nothing itself. It holds ids, numbers,
+statuses and tags, and no words of a task: join `tasks[].id` to the `tasks` document for those.
 
 - `at`: when the plan was judged, a UTC instant.
 - `validUntil`: the first moment after `at` an answer here may change with no file moving: a due passing or coming
@@ -2491,6 +2491,12 @@ tags, and no words of a task: join `tasks[].id` to the `tasks` document for thos
   still in the team's order.
 - `finished`: the finished tasks the register still holds, by number, each `{ "id", "workClass" }`, under `--owner`
   that session's only. A plan places none of them; the class is the one a list shows beside a finished task.
+- `ownerCards` (since interface 1.5): each session with a card on the owner, as `teamrig meet` asks them, `{
+  "session", "due", "later" }`, the sessions in the plan order of their first card; `--owner` keeps that session's.
+  `due` is the ids the lead asks the owner now, in plan order. `later` is the cards the owner put off, the soonest
+  back first, each `{ "id", "until", "at" }`: `until` as stored, `at` the same moment as a UTC instant, `null` for
+  a stored text that reads as no time. A card on the owner whose gate `register.requireDecisionCard` wants is left
+  out while it has none.
 
 Each of `tasks` holds:
 
@@ -2742,7 +2748,7 @@ teamrig read tasks --json --owner api
 Output:
 
 ```text
-{"interface":"1.4","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
+{"interface":"1.5","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
 ```
 
 ### teamrig sessions
