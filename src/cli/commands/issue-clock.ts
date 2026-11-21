@@ -1,8 +1,8 @@
 import type { KitConfig } from '../../config/types.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { formatClocks, issueThread, parseClocks, pullThread, remindersText, stepClocks, type Clock, type Thread } from '../../github/clock.ts';
-import { issueOwner, issueRef, type ImportRules } from '../../github/map.ts';
-import type { OurLogins } from '../../github/trust.ts';
+import { formatClocks, issueThread, parseClocks, pullThread, remindersText, stepClocks, type Clock, type Thread } from '../../sync/clock.ts';
+import { issueOwner, issueRef, type ImportRules } from '../../sync/map.ts';
+import type { OurLogins } from '../../sync/trust.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import type { HostIssue } from '../../issues/issue.ts';
 import type { HostPull } from '../../issues/pull.ts';
@@ -14,14 +14,14 @@ import type { CliRuntime } from '../runtime.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /**
- * The response clock's part of a sync that writes (T3028, github/clock.ts): from each repository it read, the open
+ * The response clock's part of a sync that writes (T3028, sync/clock.ts): from each repository it read, the open
  * threads (issues and pull requests) and who answers each, then the clocks kept in their own file under the sync's lock, and one unwoken inbox
  * line to each owner whose thread reached 75% of its answer target. GH-LATE at 100% is `check`'s (issue-clock-check.ts).
  */
 
 /**
  * The open issues of one repository read as threads: one a task tracks is held and answered by that task's owner, any
- * other by the import's owner rule. A post is ours by `ours`, the team's logins (github/clock.ts postIsOurs).
+ * other by the import's owner rule. A post is ours by `ours`, the team's logins (sync/clock.ts postIsOurs).
  */
 export function repoThreads(issues: readonly HostIssue[], tasks: readonly Task[], rules: ImportRules, ours: OurLogins): Thread[] {
   const holders = new Map<string, string>();
@@ -39,8 +39,8 @@ export function repoThreads(issues: readonly HostIssue[], tasks: readonly Task[]
 
 /**
  * The open pull requests of one repository read as `pull` threads, each once, answered by whom its news goes to: the
- * owner of the task one of our own branches names, else `watcher` (github/pull-news.ts pullRecipient). Give it the
- * open read's pull requests: only that read carries their posts (github/queries.ts).
+ * owner of the task one of our own branches names, else `watcher` (sync/pull-news.ts pullRecipient). Give it the
+ * open read's pull requests: only that read carries their posts (adapters/connectors/github/queries.ts).
  */
 export function pullThreads(pulls: readonly HostPull[], recipientOf: (pull: HostPull) => string, ours: OurLogins): Thread[] {
   const seen = new Set<string>();

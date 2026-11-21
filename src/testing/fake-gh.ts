@@ -27,7 +27,6 @@ import {
   isMentionRead,
   isReviewRead,
   isWatchProbe,
-  MENTION_PAGE_SIZE,
   LabelFileReads,
   labelFileRepoOf,
   WATCH_PATHS,
@@ -36,10 +35,11 @@ import {
   type GhRunner,
   type MentionList,
   type WatchPath,
-} from '../github/gh.ts';
-import { nodesOf } from '../github/issues.ts';
+} from '../adapters/connectors/github/gh.ts';
+import { MENTION_PAGE_SIZE } from '../issues/scan-caps.ts';
+import { nodesOf } from '../adapters/connectors/github/issues.ts';
 import { FAKE_VIEWER } from './fake-issue-host.ts';
-import { CLOSED_ISSUES_QUERY, ISSUE_FIELDS_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, OPEN_PULLS_QUERY, PULL_PAGE_SIZE, PULL_REQUESTS_QUERY, RAW_FIELD } from '../github/queries.ts';
+import { CLOSED_ISSUES_QUERY, ISSUE_FIELDS_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, OPEN_PULLS_QUERY, PULL_PAGE_SIZE, PULL_REQUESTS_QUERY, RAW_FIELD } from '../adapters/connectors/github/queries.ts';
 
 /** What a test sets on an issue; the rest takes a plain default. */
 export interface IssueSpec {
@@ -144,7 +144,7 @@ export function commentNode(at: string, association: string, kind = 'User', text
   return { createdAt: at, authorAssociation: association, author: { __typename: kind, ...(text.login === undefined ? {} : { login: text.login }) }, body: text.body ?? '' };
 }
 
-/** A pull request as the changed read gives it: that query asks for no comments or reviews (github/queries.ts). */
+/** A pull request as the changed read gives it: that query asks for no comments or reviews (the adapter's queries.ts). */
 function withoutPosts(pull: JsonRecord): JsonRecord {
   const { comments: _comments, reviews: _reviews, ...rest } = pull;
   return rest;
@@ -362,7 +362,7 @@ export class FakeGh implements GhRunner {
 
   /**
    * From now on, `repo` has these issue fields and types, and its open issues these values, as the fields query
-   * prints them (github/queries.ts ISSUE_FIELDS_QUERY); a repository a test gave none has no fields and no types.
+   * prints them (the adapter's queries.ts ISSUE_FIELDS_QUERY); a repository a test gave none has no fields and no types.
    */
   holdsFields(repo: string, fields: FakeFields): this {
     this.fielded.set(repo, fields);
