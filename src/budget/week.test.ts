@@ -30,7 +30,7 @@ const NOW = Date.parse('2026-10-15T12:00:00Z');
 const RESET = Date.parse('2026-10-21T01:00:00Z');
 const STATUS: WeekUse = { usedPct: 57, resetsAt: RESET, at: Date.parse('2026-10-15T11:00:00Z') };
 /** The period of that week. */
-const PERIOD: Pick<Period, 'start' | 'end' | 'kind'> = { start: Date.parse('2026-10-14T01:00:00Z'), end: RESET, kind: 'week' };
+const PERIOD: Pick<Period, 'start' | 'end' | 'kind' | 'startPct'> = { start: Date.parse('2026-10-14T01:00:00Z'), end: RESET, kind: 'week', startPct: 0 };
 /** An empty meter log: nothing learned. */
 const NONE: Calibration = calibrationOf([]);
 /** A meter log whose fit puts 1% of the week at 20 W. */
@@ -118,11 +118,25 @@ describe('readWeek', () => {
     assert.deepEqual([week.todayW, week.wPerPct], [1_000, 500]);
   });
 
+  it('starts the pace line of a reset inside the week at the use the reset left, so 45% is 3 points ahead, not 43 (T4864)', () => {
+    const reset = Date.parse('2026-10-15T10:00:00Z');
+    const status: WeekUse = { usedPct: 45, resetsAt: RESET, at: NOW };
+    const period = { start: reset, end: RESET, kind: 'reset', startPct: 41 } as const;
+    const week = readWeek({ readings: [], calibration: NONE, budget: DEFAULT_BUDGET, now: NOW, statusUse: status, period, states: COVERED });
+    // 2 of the 134 hours from the reset to the pace end: the line rises from 41% to the target.
+    const linePct = 41 + ((99.5 - 41) * 2) / 134;
+    assert.equal(round(week.pace?.linePct), round(linePct));
+    assert.equal(round(week.pace?.gapPts), round(45 - linePct));
+    assert.equal(week.pace?.state, 'ahead');
+    // The day plans its hours' share of what is left from 41%, not of the whole target.
+    assert.equal(round(week.plannedPct), round(((99.5 - 41) * 14) / 134));
+  });
+
   it("counts a new budget from a reset inside the week: its pace line and today's use start there", () => {
     const reset = Date.parse('2026-10-15T10:00:00Z');
     const status: WeekUse = { usedPct: 1, resetsAt: RESET, at: NOW };
     const hours = { ...state({ '2026-10-14': 1_000, '2026-10-15': 300 }), byHour: { '2026-10-15T09': 200, '2026-10-15T10': 100 } };
-    const week = readWeek({ readings: [], calibration: NONE, budget: DEFAULT_BUDGET, now: NOW, statusUse: status, period: { start: reset, end: RESET, kind: 'reset' }, states: [hours] });
+    const week = readWeek({ readings: [], calibration: NONE, budget: DEFAULT_BUDGET, now: NOW, statusUse: status, period: { start: reset, end: RESET, kind: 'reset', startPct: 0 }, states: [hours] });
     assert.deepEqual([week.window?.start, week.periodKind, week.todayFrom, week.todayW, week.wPerPct, week.covered], [reset, 'reset', reset, 100, 100, true]);
     // 2 of the 134 hours from the reset to the pace end, an hour before the week's.
     assert.equal(round(week.pace?.linePct), round((99.5 * 2) / 134));
