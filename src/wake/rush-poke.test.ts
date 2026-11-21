@@ -154,4 +154,11 @@ describe('poke text', () => {
     assert.match(prompt, /no poke comes again until something changes for you/);
     assert.match(rushPokeToast(RUSH, ON_GOAL, 12 * MINUTE, COST), /^teamrig poked this tab \(rush on PROD, idle 12 min\): T2 \(/);
   });
+
+  it('hands the exact wait on the task the named one is planned after, when that one is not finished (#1516)', () => {
+    const prompt = rushPokePrompt('alpha', RUSH, ON_GOAL, 12 * MINUTE, COST, 'T6');
+    assert.match(prompt, /It is planned after T6, not finished yet/);
+    assert.ok(prompt.includes('`teamrig set T2 --session alpha --status waiting --waits task:T6 --note "..."`'), prompt);
+    assert.doesNotMatch(prompt, /<reason>/);
+  });
 });

@@ -21,6 +21,7 @@ import { LoginStore } from '../../restore/login-store.ts';
 import { apiRetryLine, claimApiRetry } from '../../restore/api-error.ts';
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../../restore/registry.ts';
 import type { Task } from '../../register/fold.ts';
+import { unfinishedAfter, waitContext } from '../../register/waits.ts';
 import { parkRulesOf } from '../../register/park.ts';
 import type { TasksElsewhere } from '../../register/tree.ts';
 import { askVerdictOf, asksFolderOf, asksNowOf, handedPrompt, handedToast, WakeAsks, type WakeAsk } from '../../wake/asks.ts';
@@ -252,7 +253,8 @@ async function pokeOf(
   if (rush === undefined || !rush.sessions.includes(id)) {
     return { kind: 'none' };
   }
-  const startable = startableTasks(tasks, elsewhere, id, now, teamZone(config, runtime), parkRulesOf(config));
+  const zone = teamZone(config, runtime);
+  const startable = startableTasks(tasks, elsewhere, id, now, zone, parkRulesOf(config));
   const lastTurnAt = await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
   const idleMs = config.rush.pokeAfterMinutes * MINUTE_MS;
   const pokeInput: PokeInput = { rush, startable, lastTurnAt, now, idleMs, lastPokeAt: state.settled.poke, queued: new Set() };
@@ -282,7 +284,8 @@ async function pokeOf(
   if (stepRunningFor(ledger, id, now, config.delivery.queue.maxRunMinutes * MINUTE_MS)) {
     return { kind: 'later', at: now + idleMs };
   }
-  return { kind: 'poke', rush, task: verdict.task, idleMs: verdict.idleMs, lastTurnAt, mark: pokeMarkOf(seen) };
+  const plannedAfter = unfinishedAfter(verdict.task.after, waitContext(tasks, new Date(now), zone, elsewhere))[0];
+  return { kind: 'poke', rush, task: verdict.task, idleMs: verdict.idleMs, plannedAfter, lastTurnAt, mark: pokeMarkOf(seen) };
 }
 
 type CheckVerdict =
@@ -291,7 +294,7 @@ type CheckVerdict =
   | { readonly kind: 'login'; readonly why: LoginRetryWhy; readonly failAt: number }
   | { readonly kind: 'api'; readonly retry: ApiRetryFacts }
   | { readonly kind: 'fresh' }
-  | { readonly kind: 'poke'; readonly rush: Rush; readonly task: Task; readonly idleMs: number; readonly lastTurnAt: number }
+  | { readonly kind: 'poke'; readonly rush: Rush; readonly task: Task; readonly idleMs: number; readonly plannedAfter: string | undefined; readonly lastTurnAt: number }
   | { readonly kind: 'wait'; readonly recheckAt: number | null; readonly watch: readonly string[] };
 
 /**
@@ -543,9 +546,9 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
     return wake(runtime, scope, { kind: 'wake', ids: [], text, toast: apiRetryToast(retry, cost) });
   }
   if (verdict.kind === 'poke') {
-    const { rush, task, idleMs } = verdict;
+    const { rush, task, idleMs, plannedAfter } = verdict;
     await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids: [task.id], cost, poke: true });
-    return wake(runtime, scope, { kind: 'wake', ids: [task.id], text: rushPokePrompt(id, rush, task, idleMs, cost), toast: rushPokeToast(rush, task, idleMs, cost) });
+    return wake(runtime, scope, { kind: 'wake', ids: [task.id], text: rushPokePrompt(id, rush, task, idleMs, cost, plannedAfter), toast: rushPokeToast(rush, task, idleMs, cost) });
   }
   const ids = verdict.tasks.map((task) => task.id);
   if (verdict.kind === 'handed') {

@@ -155,12 +155,22 @@ function minutesText(ms: number): string {
   return `${Math.round(ms / 60_000)} min`;
 }
 
-/** The prompt a poke submits: why the tab was woken, and the task to go on with. */
-export function rushPokePrompt(session: string, rush: Rush, task: Task, idleMs: number, cost: WakeCost): string {
+/**
+ * The prompt a poke submits: why the tab was woken, and the task to go on with. `plannedAfter` is the first unfinished
+ * task the named one is planned after (#1516): a started task is past its plan by design (`canGoOn`), so the poke
+ * names it, and when it really cannot move until that task finishes the prompt hands the exact wait that clears by
+ * itself once that task is done, so the session acts on the first poke.
+ */
+export function rushPokePrompt(session: string, rush: Rush, task: Task, idleMs: number, cost: WakeCost, plannedAfter?: string): string {
+  const waits = plannedAfter === undefined ? '<reason>' : `task:${plannedAfter}`;
+  const why =
+    plannedAfter === undefined
+      ? 'If nothing can move, set it waiting with its reason'
+      : `It is planned after ${plannedAfter}, not finished yet: if it cannot move until then, set it waiting on that task`;
   return [
     `Rush on ${rush.goal}: this tab sat idle ${minutesText(idleMs)} with work left and no queued step of its own running.`,
     `Start or continue ${task.id} (${task.title}) now, or your top task if another comes first; a run still waiting in the queue is no reason to wait.`,
-    `If nothing can move, set it waiting with its reason (\`${KIT_NAME} set ${task.id} --session ${session} --status waiting --waits <reason> --note "..."\`): no poke comes again until something changes for you. This poke costs ${costText(cost)}.`,
+    `${why} (\`${KIT_NAME} set ${task.id} --session ${session} --status waiting --waits ${waits} --note "..."\`): no poke comes again until something changes for you. This poke costs ${costText(cost)}.`,
   ].join(' ');
 }
 
