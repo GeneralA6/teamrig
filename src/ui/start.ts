@@ -23,6 +23,25 @@ export interface UiStart {
   readonly env: Env;
 }
 
+/**
+ * The variables a released UI gets of the caller's (T4838 N1): where programs and the home folder are, the terminal's
+ * kind and colours, the locale, and teamrig's own. SYSTEMROOT is there as Node.js on Windows needs it for its crypto
+ * and network calls. A UI build of the person's own (`ui.path`) keeps the whole environment, as it is theirs.
+ */
+const RELEASED_NAMES: ReadonlySet<string> = new Set(['PATH', 'HOME', 'USERPROFILE', 'SYSTEMROOT', 'TERM', 'COLORTERM', 'LANG', 'LANGUAGE']);
+const RELEASED_PREFIXES: readonly string[] = ['LC_', 'TEAMRIG_'];
+
+/** Whether a released UI gets the variable `name`; Windows names are matched in any case, as Windows reads them. */
+function releasedName(name: string): boolean {
+  const upper = name.toUpperCase();
+  return RELEASED_NAMES.has(upper) || RELEASED_PREFIXES.some((prefix) => upper.startsWith(prefix));
+}
+
+/** Only the variables of `env` a released UI gets, each under the name it has there. */
+export function releasedEnv(env: Env): Env {
+  return Object.fromEntries(Object.entries(env).filter(([name, value]) => value !== undefined && releasedName(name)));
+}
+
 /** The UI as one program run in this terminal: `node <entry> --team <team> [--session <id>]`, in the caller's folder. */
 export function uiRequest(start: UiStart): RunRequest {
   return {
