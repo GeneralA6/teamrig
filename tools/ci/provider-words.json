@@ -8,13 +8,13 @@
     ".claude/skills/dev-ship-change": 17,
     ".claude/skills/dev-ship-release": 6,
     ".claude/skills/dev-update-docs": 3,
-    "plugins/teamrig/skills/approvals": 2,
+    "plugins/teamrig/skills/approvals": 0,
     "plugins/teamrig/skills/daily-meeting": 0,
     "plugins/teamrig/skills/hand-step": 1,
     "plugins/teamrig/skills/hire": 1,
     "plugins/teamrig/skills/security": 4,
     "plugins/teamrig/skills/team-setup": 18,
     "plugins/teamrig/skills/teamrig-guide": 867,
-    "plugins/teamrig/skills/write-issue": 18
+    "plugins/teamrig/skills/write-issue": 9
   }
 }
