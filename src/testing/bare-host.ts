@@ -13,5 +13,6 @@ export function bareHost(): HostPorts {
     statusLine: unsupported('no status line is drawn'),
     paths: unsupported('no folder of the host is known'),
     permissions: unsupported('no permission rule is kept'),
+    plugin: unsupported('no plugin is installed'),
   };
 }

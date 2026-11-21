@@ -6,6 +6,7 @@ import { hostDeps } from '../../../testing/adapter-deps.ts';
 import { declaration } from './declaration.ts';
 import adapter from './index.ts';
 import { hostPermissions } from './permissions.ts';
+import { hostPlugin } from './plugin.ts';
 import { statusLine } from './status-line.ts';
 import { transcriptReader } from './transcript.ts';
 import { usageMeter } from './usage.ts';
@@ -36,7 +37,7 @@ describe('the Claude Code adapter', () => {
     assert.equal(adapter.declaration, declaration);
     assert.deepEqual(hostAdapterProblems(adapter), []);
     const ports = adapter.create(hostDeps());
-    assert.deepEqual(Object.keys(ports), ['hooks', 'toolCall', 'transcripts', 'usage', 'statusLine', 'paths', 'permissions']);
+    assert.deepEqual(Object.keys(ports), ['hooks', 'toolCall', 'transcripts', 'usage', 'statusLine', 'paths', 'permissions', 'plugin']);
     assert.equal(isUnsupported(ports.hooks), false);
     assert.equal(isUnsupported(ports.toolCall), false);
     assert.equal(ports.transcripts, transcriptReader);
@@ -44,6 +45,7 @@ describe('the Claude Code adapter', () => {
     assert.equal(ports.statusLine, statusLine);
     assert.equal(isUnsupported(ports.paths), false);
     assert.equal(ports.permissions, hostPermissions);
+    assert.equal(ports.plugin, hostPlugin);
   });
 
   it('finds its own folder in the environment it was built with', () => {
