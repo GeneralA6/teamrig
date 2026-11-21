@@ -1,11 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
 import { STAGED } from './commit-scan.ts';
 import { PUBLIC_KEY_MAX_BYTES } from './public-key.ts';
-import { MAX_TAG_DEPTH, gitSecrets } from './secrets-git.ts';
+import { GUARD_TIMEOUTS, MAX_TAG_DEPTH, gitSecrets, type GitTimeouts } from './secrets-git.ts';
 
 /** Runs git in the repo under `env`, as a hook's git would, and fails the test when it fails. */
 function gitIn(repo: TempRepo, env: NodeJS.ProcessEnv, ...args: readonly string[]): void {
@@ -13,13 +13,19 @@ function gitIn(repo: TempRepo, env: NodeJS.ProcessEnv, ...args: readonly string[
   assert.equal(result.status, 0, `git ${args.join(' ')}: ${result.stderr}`);
 }
 
+/**
+ * Room for each real git read here, far past the guard's own timeouts: under the full gate on a loaded host a read
+ * took longer than those, and the spec read the guard's fail-closed undefined (#1261).
+ */
+const SPEC_TIMEOUTS: GitTimeouts = { queryMs: 120_000, patchMs: 120_000 };
+
 const slashed = (path: string | undefined): string | undefined => path?.replaceAll('\\', '/');
 
 describe('gitSecrets', () => {
   it('reads what the staged change adds from the top folder, before the first commit and with diff.relative set', () => {
     const repo = new TempRepo('secrets-staged').init();
     try {
-      const git = gitSecrets(repo.env);
+      const git = gitSecrets(repo.env, SPEC_TIMEOUTS);
       repo.write('top.txt', 'first\n');
       repo.git('add', 'top.txt');
       assert.deepEqual(git.staged(repo.dir), { paths: ['top.txt'], lines: [{ file: 'top.txt', line: 1, text: 'first' }] });
@@ -44,7 +50,7 @@ describe('gitSecrets', () => {
   it("reads a file as the index or a commit holds it, never the disk's copy, and nothing past the key cap (#875)", () => {
     const repo = new TempRepo('secrets-blob').init();
     try {
-      const git = gitSecrets(repo.env);
+      const git = gitSecrets(repo.env, SPEC_TIMEOUTS);
       repo.write('keys/a.pub.pem', 'committed\n');
       repo.git('add', 'keys/a.pub.pem');
       repo.git('commit', '-q', '-m', 'key');
@@ -76,8 +82,8 @@ describe('gitSecrets', () => {
       gitIn(repo, hookEnv, 'read-tree', 'HEAD');
       repo.write('kept.txt', 'kept\nadded\n');
       gitIn(repo, hookEnv, 'add', 'kept.txt');
-      assert.deepEqual(gitSecrets(hookEnv).staged(repo.dir), { paths: ['kept.txt'], lines: [{ file: 'kept.txt', line: 2, text: 'added' }] });
-      assert.deepEqual(gitSecrets(repo.env).staged(repo.dir), { paths: [], lines: [] });
+      assert.deepEqual(gitSecrets(hookEnv, SPEC_TIMEOUTS).staged(repo.dir), { paths: ['kept.txt'], lines: [{ file: 'kept.txt', line: 2, text: 'added' }] });
+      assert.deepEqual(gitSecrets(repo.env, SPEC_TIMEOUTS).staged(repo.dir), { paths: [], lines: [] });
     } finally {
       repo.remove();
     }
@@ -86,7 +92,7 @@ describe('gitSecrets', () => {
   it('lists the commits of a range with their messages and adds, the first commit too, and knows which commits it holds', () => {
     const repo = new TempRepo('secrets-log').init();
     try {
-      const git = gitSecrets(repo.env);
+      const git = gitSecrets(repo.env, SPEC_TIMEOUTS);
       repo.write('a.txt', 'one\n');
       repo.git('add', 'a.txt');
       repo.git('commit', '-q', '-m', 'first');
@@ -117,7 +123,7 @@ describe('gitSecrets', () => {
   it("lists what a merge's resolution added past git's own merge of its parents, and nothing for a clean merge", () => {
     const repo = new TempRepo('secrets-merge').init();
     try {
-      const git = gitSecrets(repo.env);
+      const git = gitSecrets(repo.env, SPEC_TIMEOUTS);
       repo.write('a.txt', 'base\n');
       repo.git('add', 'a.txt');
       repo.git('commit', '-q', '-m', 'base');
@@ -156,7 +162,7 @@ describe('gitSecrets', () => {
   it("reads a tag's message and each tag it points through, outermost first, none for a commit, and fails past the depth", () => {
     const repo = new TempRepo('secrets-tags').init();
     try {
-      const git = gitSecrets(repo.env);
+      const git = gitSecrets(repo.env, SPEC_TIMEOUTS);
       const tag = (name: string, target: string, message: string): string => {
         repo.git('-c', 'advice.nestedTag=false', 'tag', '-a', name, target, '-m', message);
         return repo.git('rev-parse', name).trim();
@@ -188,7 +194,7 @@ describe('gitSecrets', () => {
   it("finds the hooks folder from any folder of the repository: the git folder's, or core.hooksPath from the top folder", () => {
     const repo = new TempRepo('secrets-hooks').init();
     try {
-      const git = gitSecrets(repo.env);
+      const git = gitSecrets(repo.env, SPEC_TIMEOUTS);
       repo.write('src/app.txt', 'one\n');
       const sub = join(repo.dir, 'src');
       assert.equal(slashed(git.hooksDir(sub)), slashed(join(repo.dir, '.git', 'hooks')));
@@ -202,10 +208,45 @@ describe('gitSecrets', () => {
     }
   });
 
+  it('fails closed when git does not answer in time, each read within its own timeout', () => {
+    const repo = new TempRepo('secrets-slow').init();
+    try {
+      repo.write('a.txt', 'one\n');
+      repo.git('add', 'a.txt');
+      repo.git('commit', '-q', '-m', 'first');
+      const head = repo.git('rev-parse', 'HEAD').trim();
+      assert.ok(GUARD_TIMEOUTS.queryMs >= 5_000 && GUARD_TIMEOUTS.patchMs >= GUARD_TIMEOUTS.queryMs, 'the guard keeps its own timeouts');
+      // A global config that is a pipe with no writer: git blocks opening it, as a git that never answers. Windows has
+      // no such pipe to make here.
+      if (process.platform !== 'win32') {
+        const pipe = join(repo.outside, 'config-pipe');
+        execFileSync('mkfifo', [pipe]);
+        const stuck = gitSecrets({ ...repo.env, GIT_CONFIG_GLOBAL: pipe }, { queryMs: 200, patchMs: 200 });
+        const reads: readonly (() => unknown)[] = [
+          () => stuck.root(repo.dir),
+          () => stuck.staged(repo.dir),
+          () => stuck.commits(repo.dir, { kind: 'unpushed', tip: head, remote: 'origin' }),
+          () => stuck.tagMessages(repo.dir, head),
+          () => stuck.hooksDir(repo.dir),
+          () => stuck.blob(repo.dir, head, 'a.txt'),
+        ];
+        for (const read of reads) {
+          const started = Date.now();
+          assert.equal(read(), undefined);
+          const took = Date.now() - started;
+          assert.ok(took >= 150 && took < 5_000, `gave up after its own timeout, not the guard's: ${took} ms`);
+        }
+        assert.equal(stuck.isCommit(repo.dir, head), false);
+      }
+    } finally {
+      repo.remove();
+    }
+  });
+
   it('reads nothing outside a repository, so the scan fails closed', () => {
     const repo = new TempRepo('secrets-none');
     try {
-      const git = gitSecrets(repo.env);
+      const git = gitSecrets(repo.env, SPEC_TIMEOUTS);
       assert.equal(git.root(repo.outside), undefined);
       assert.equal(git.staged(repo.outside), undefined);
       assert.equal(git.hooksDir(repo.outside), undefined);
