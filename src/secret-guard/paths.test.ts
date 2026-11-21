@@ -71,11 +71,30 @@ describe('SecretPaths.listed', () => {
       `${REPO}/.claude/settings.json`,
       `${HOME}/.claude/settings.json`,
       `${HOME}/.claude/projects/app/history.jsonl`,
+      `${REPO}/data/history.jsonl`,
+      `${REPO}/docs/credentials.json`,
       `${REPO}/.bash_history`,
       `${REPO}/src/env.ts`,
       `${REPO}/keys.ts`,
     ];
     assert.deepEqual(readable.filter((path) => secrets.listed(path)), []);
+  });
+
+  it("lists the shipped host's secret files in the folder its variable moves its own to, read as that folder alone", () => {
+    const movedTo = (value: string, platform: NodeJS.Platform, home: string): SecretPaths =>
+      new SecretPaths([...DEFAULT_SECRET_PATHS, ...testPaths({ CLAUDE_CONFIG_DIR: value }, platform).secretFiles()], home, platform === 'win32');
+    const windows = movedTo('D:\\agents\\cfg [1]', 'win32', HOME);
+    assert.deepEqual(['D:/agents/cfg [1]/history.jsonl', 'd:/agents/CFG [1]/.credentials.json', `${HOME}/.claude/history.jsonl`].filter((path) => !windows.listed(path)), []);
+    assert.deepEqual(['D:/agents/cfg 1/history.jsonl', 'D:/agents/history.jsonl', 'E:/agents/cfg [1]/history.jsonl'].filter((path) => windows.listed(path)), []);
+    const noDrive = movedTo('\\agents\\cfg', 'win32', HOME);
+    assert.deepEqual(['C:/agents/cfg/history.jsonl', 'D:/agents/cfg/history.jsonl'].filter((path) => !noDrive.listed(path)), []);
+    assert.deepEqual(['C:/agents/history.jsonl', 'C:/work/agents/cfg/history.jsonl'].filter((path) => noDrive.listed(path)), []);
+    const share = movedTo('\\\\nas\\team\\cfg', 'win32', HOME);
+    assert.equal(share.listed(normalisePath('\\\\NAS\\team\\cfg\\.credentials.json')), true);
+    assert.equal(share.listed('C:/nas/team/cfg/.credentials.json'), false);
+    const linux = movedTo('/srv/cfg*', 'linux', '/u');
+    assert.deepEqual(['/srv/cfg*/history.jsonl', '/srv/cfg*/.credentials.json', '/u/.claude/history.jsonl'].filter((path) => !linux.listed(path)), []);
+    assert.deepEqual(['/srv/cfg2/history.jsonl', '/srv/CFG*/history.jsonl', '/work/srv/cfg*/history.jsonl'].filter((path) => linux.listed(path)), []);
   });
 
   it('lets a later !glob keep a default readable, and reads Windows paths in any case', () => {
