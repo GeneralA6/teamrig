@@ -6,6 +6,7 @@
 import type { HookBridge } from './hook-bridge.ts';
 import type { HostPaths } from './paths.ts';
 import type { HostPermissions } from './permissions.ts';
+import type { HostPlugin } from './plugin.ts';
 import type { StatusLine } from './status-line.ts';
 import type { ToolCallShape } from './tool-call.ts';
 import type { TranscriptReader } from './transcript-reader.ts';
@@ -36,6 +37,7 @@ export {
 } from './tool-call.ts';
 export { isUnsupported, unsupported, type Unsupported } from './unsupported.ts';
 export type { HostPermissions, PermissionsAnswer, PermissionsReading, TrustedRoutesPlan } from './permissions.ts';
+export type { HostPlugin, InstallReach, MarketplaceSource, PluginInstall } from './plugin.ts';
 export type { StatusLine, StatusLineAnswer, StatusLinePlan, StatusReading } from './status-line.ts';
 export type { RateLimits, RateWindow, TokenWeights, UsageMeter } from './usage-meter.ts';
 export type { FolderSettings, HostPaths } from './paths.ts';
@@ -49,10 +51,11 @@ export interface HostPorts {
   readonly statusLine: StatusLine | Unsupported;
   readonly paths: HostPaths | Unsupported;
   readonly permissions: HostPermissions | Unsupported;
+  readonly plugin: HostPlugin | Unsupported;
 }
 
 /** The name of every host port, held to {@link HostPorts} by its type: a port added there is a line missing here. */
-const NAMED = { hooks: true, toolCall: true, transcripts: true, usage: true, statusLine: true, paths: true, permissions: true } as const satisfies Readonly<Record<keyof HostPorts, true>>;
+const NAMED = { hooks: true, toolCall: true, transcripts: true, usage: true, statusLine: true, paths: true, permissions: true, plugin: true } as const satisfies Readonly<Record<keyof HostPorts, true>>;
 
 export const HOST_PORT_NAMES: readonly string[] = Object.keys(NAMED);
 
