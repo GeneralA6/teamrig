@@ -44,8 +44,8 @@ describe('the public interface data', () => {
   });
 
   it('names the documents, the five of 1.0 first, and wraps a body in the head a body cannot replace', () => {
-    assert.deepEqual(api.DOCUMENTS, ['tasks', 'inbox', 'sessions', 'meetings', 'config', 'plan', 'goals']);
-    assert.deepEqual(['tasks', 'goals', 'weather', ''].map(api.isDocumentName), [true, true, false, false]);
+    assert.deepEqual(api.DOCUMENTS, ['tasks', 'inbox', 'sessions', 'meetings', 'config', 'plan', 'goals', 'history']);
+    assert.deepEqual(['tasks', 'goals', 'history', 'weather', ''].map(api.isDocumentName), [true, true, true, false, false]);
     const answer = api.answerOf('tasks', 'abc', ['one line'], { tasks: [], revision: 'from the body' });
     assert.deepEqual(answer, { tasks: [], interface: api.INTERFACE_VERSION, document: 'tasks', revision: 'abc', problems: ['one line'] });
     assert.deepEqual(api.unchangedAnswer('inbox', 'abc'), { interface: api.INTERFACE_VERSION, document: 'inbox', revision: 'abc', unchanged: true });
