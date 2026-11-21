@@ -149,6 +149,22 @@ describe('teamrig withdraw', () => {
       [],
     ]);
   });
+  it('lists a --small step waiting in its line as small, the weight it was queued with (#1511)', async () => {
+    const kit = new CliHarness(TEAM);
+    const steps = new FakeSteps(kit.clock);
+    const held = JSON.stringify({ token: 'other', pid: OTHER, session: 'bravo', purpose: 'heavy: build web', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' });
+    await kit.files.write(LOCK, held);
+    let listed: readonly string[] = [];
+    const sleep = async (ms: number): Promise<void> => {
+      await kit.clock.sleep(ms);
+      if (listed.length === 0) {
+        listed = (await kit.run(['withdraw', '--session', 'alpha'], { sessionProcesses: running() })).stdout;
+        await kit.run(['withdraw', '--session', 'alpha', '--all'], { sessionProcesses: running() });
+      }
+    };
+    await kit.run(['queue', '--session', 'alpha', '--what', 'specs', '--small', '--', 'npm', 'test'], { steps, sessionProcesses: running(), sleep });
+    assert.deepEqual(listed, ['WAITING small: specs, waiting since 2030-01-08 10:00 UTC (pid 4242)', 'REFUSED name the steps to withdraw: --what <text in their purpose> or --all']);
+  });
 });
 
 describe('withdrawalText', () => {
