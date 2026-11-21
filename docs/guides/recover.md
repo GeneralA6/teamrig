@@ -161,7 +161,8 @@ sequenceDiagram
   scheduled jobs (CronCreate), a pending wake-up (ScheduleWakeup) to make again, its scratchpad and its plan
   file. A `/clear` keeps the process and so its jobs: the note says they are still scheduled, and lists them to
   make again only after a new process. A job made before the last compaction is missed, and a wake-up can fire
-  twice after a `/clear`.
+  twice after a `/clear`. It also lists again the inbox lines the old session read after its handover was written
+  (the newest 10), so a line the handover missed is still acted on.
 - `refresh.enabled: false` turns it off, `refresh.tabTitle: false` leaves the tab title alone and
   `refresh.handoverDir` moves the handovers. With `tabStatus.enabled`, the tab's state circle goes before that
   title ([tab status](../../plugins/teamrig/skills/teamrig-guide/hooks.md#every-event-tab-status)).

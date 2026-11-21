@@ -190,6 +190,21 @@ export async function seenLinesOf(deps: InboxDeps, area: string): Promise<Readon
   return new Set(lines.map(lineHash).filter((hash) => !unseen.has(hash)));
 }
 
+/**
+ * The area's lines its session marked read after `since`, oldest first. A handover written at `since` may not hold
+ * them, so the fresh start after a context refresh shows them again (#835); lines only shown at a prompt need not
+ * be: the prompt hook shows them again to the new Claude Code session, as it follows each one apart.
+ */
+export async function readSinceOf(deps: InboxDeps, area: string, since: Date): Promise<readonly string[]> {
+  const lines = (await deps.inboxes.lines(area)) ?? [];
+  const marks = (await deps.marks.read()).marks.filter((mark) => mark.area === area);
+  const readBy = (at: number): number => {
+    const mark = marks.findLast((each) => Date.parse(each.at) <= at) ?? null;
+    return lines.length - unreadOf(area, lines, mark, lineHash).lines.length;
+  };
+  return lines.slice(readBy(since.getTime()), readBy(Number.POSITIVE_INFINITY));
+}
+
 export interface PostInput {
   readonly to: string;
   readonly from: string;

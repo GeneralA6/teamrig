@@ -13,6 +13,7 @@ import {
   lineOnClock,
   postLine,
   readInbox,
+  readSinceOf,
   sessionIdOf,
   unseenLinesOf,
   type InboxDeps,
@@ -147,6 +148,32 @@ describe('unseenLinesOf', () => {
 
     const shown = setup({ [`${DIR}/alpha.md`]: LINES.join('\n'), [SHOWN]: shownLine('alpha', LINES[1] ?? '', 2, OTHER_SESSION) });
     assert.deepEqual(await unseenLinesOf(shown.deps, 'alpha'), hashes([LINES[2]]), 'shown up to line 2, never marked read');
+  });
+});
+
+describe('readSinceOf', () => {
+  const MINUTE = 60_000;
+  const at = (minutes: number): Date => new Date(NOW.getTime() + minutes * MINUTE);
+
+  it('gives the lines marked read after the time, not those read before it or only shown at a prompt (#835)', async () => {
+    const { deps } = setup({ [`${DIR}/alpha.md`]: LINES[0] ?? '' });
+    await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: at(0) });
+    await deps.inboxes.append('alpha', LINES[1] ?? '');
+    await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: at(10) });
+    await deps.inboxes.append('alpha', LINES[2] ?? '');
+    await deps.shown.append({ v: 1, area: 'alpha', line: 3, at: at(15).toISOString(), claudeSession: SESSION, lastLineHash: lineHash(LINES[2] ?? '') });
+    assert.deepEqual(await readSinceOf(deps, 'alpha', at(5)), [LINES[1]]);
+    assert.deepEqual(await readSinceOf(deps, 'alpha', at(0)), [LINES[1]], 'a read at the time itself is before it');
+    assert.deepEqual(await readSinceOf(deps, 'alpha', at(-1)), LINES.slice(0, 2));
+    assert.deepEqual(await readSinceOf(deps, 'alpha', at(10)), []);
+  });
+
+  it("counts only the area's own marks, and gives none for an area without an inbox", async () => {
+    const { deps } = setup({ [`${DIR}/alpha.md`]: LINES.join('\n'), [`${DIR}/bravo.md`]: LINES.join('\n') });
+    await readInbox(deps, { area: 'bravo', claudeSession: OTHER_SESSION, now: at(10) });
+    assert.deepEqual(await readSinceOf(deps, 'alpha', at(5)), []);
+    assert.deepEqual(await readSinceOf(deps, 'bravo', at(5)), LINES);
+    assert.deepEqual(await readSinceOf(deps, 'charlie', at(5)), []);
   });
 });
 

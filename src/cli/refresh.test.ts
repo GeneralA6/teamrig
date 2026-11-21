@@ -514,6 +514,24 @@ describe('runCli: context refresh', () => {
     assert.equal(await kit.files.read(join(TEAM_HOME, 'handover', 'alpha.owner.md')), undefined);
   });
 
+  it('shows the fresh start the inbox lines read after the handover was written, not those read before it (#835)', async () => {
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
+    const post = async (text: string): Promise<void> => {
+      assert.equal((await kit.run(['inbox', 'add', '--to', 'alpha', '--text', text, '--session', 'lead'])).code, EXIT.ok);
+      assert.equal((await kit.run(['inbox', 'read', '--session', 'alpha'])).code, EXIT.ok);
+    };
+    await post('T7 is yours');
+    kit.clock.advance(60_000);
+    await handoverWritten(kit);
+    kit.clock.advance(60_000);
+    await post('stop at the next step: the team is past its budget');
+    stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }));
+    const fresh = contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear') }));
+    assert.ok(fresh.includes('Your old session read 1 inbox line(s) after your handover was written, so it may not hold them; act on them as on new ones:\n- 2030-01-08 10:02 UTC'), fresh);
+    assert.ok(fresh.includes('lead: stop at the next step: the team is past its budget'), fresh);
+    assert.ok(!fresh.includes('T7 is yours'), 'read before the handover was written');
+  });
+
   it('removes the owner file of an earlier refresh when the old session had nothing from the owner', async () => {
     const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
     await handoverWritten(kit);
