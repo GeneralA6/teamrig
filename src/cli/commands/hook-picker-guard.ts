@@ -84,9 +84,17 @@ async function cdCompoundRefusal(runtime: CliRuntime, kit: Kit, config: KitConfi
   return session === undefined ? undefined : cdCompoundReason(compound);
 }
 
+/** Claude Code's permission mode that asks nothing, so it holds no tab on a cd-compound prompt (#1578). */
+const BYPASS_MODE = 'bypassPermissions';
+
 /** What the hook prints for this payload: the refusal with its reason, or '' when the call goes on. */
 async function pickerGuardOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<string> {
   // Every Bash line reaches this hook, so a line with no cd compound to refuse returns before any file is read.
+  // Under bypassPermissions Claude Code shows no cd-compound prompt, the one this refusal exists to spare the tab, so
+  // a Bash line goes on unread there (#1578); the question picker below is refused in every mode.
+  if (stringField(payload, 'tool_name') === 'Bash' && stringField(payload, 'permission_mode') === BYPASS_MODE) {
+    return '';
+  }
   const bash = guardsCdCompound(true, payload);
   const compound = bash ? cdCompoundOfPayload(payload, { cwd: stringField(payload, 'cwd') ?? runtime.cwd, home: runtime.userHome }) : undefined;
   if (bash && compound === undefined) {
@@ -109,7 +117,8 @@ async function pickerGuardOutputOf(runtime: CliRuntime, payload: JsonRecord): Pr
  * parent lead) and go on with the next task; the lead in the owner's daily meeting is told to ask the card in plain
  * text. On Bash it refuses a team session's line with a `cd` that runs git or leaves the session's folder, which Claude
  * Code would hold on a permission prompt, quoting its git -C / env -C rerun form (T2730), or with none, saying to drop
- * the `cd` (T2802). Outside a team,
+ * the `cd` (T2802), except under `permission_mode` bypassPermissions, which shows no such prompt (#1578).
+ * Outside a team,
  * with the guard off, for a tab that is no team session, input that is not a hook payload or on any error, it prints
  * nothing, so the call goes on.
  */

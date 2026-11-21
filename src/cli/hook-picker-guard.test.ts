@@ -164,6 +164,40 @@ describe('hook picker-guard', () => {
     assert.deepEqual(await kit.run(HOOK, { stdin: call('PowerShell', { tool_input: { command: 'cd .. && git status' } }), env: ALPHA }), NOTHING);
   });
 
+  // #1578: under bypassPermissions Claude Code shows no cd-compound prompt, so no Bash line is refused for one;
+  // every other mode refuses as before, and the question picker is refused in every mode.
+  describe('under permission_mode bypassPermissions (#1578)', () => {
+    /** Bash lines the guard refuses in every other mode: a leading cd to a folder only known at run time, and a cd mid-line. */
+    const CD_LINES = ['cd ~/x && git status', 'npm ci; cd sub; git status', 'cd sub && git status', 'cd .. && npm test'] as const;
+    const inMode = (command: string, mode: string | undefined): string => call('Bash', { tool_input: { command }, ...(mode === undefined ? {} : { permission_mode: mode }) });
+
+    it('lets every cd compound go, the drop-cd and rerun-form lines alike', async () => {
+      const kit = new CliHarness(ON_TEAM);
+      for (const line of CD_LINES) {
+        assert.deepEqual(await kit.run(HOOK, { stdin: inMode(line, 'bypassPermissions'), env: ALPHA }), NOTHING, line);
+      }
+    });
+
+    it('refuses the same lines with the same text in the default, plan, acceptEdits and auto modes, and with no mode named', async () => {
+      const kit = new CliHarness(ON_TEAM);
+      for (const mode of [undefined, 'default', 'plan', 'acceptEdits', 'auto']) {
+        const tilde = await kit.run(HOOK, { stdin: inMode('cd ~/x && git status', mode), env: ALPHA });
+        assert.equal(decisionOf(tilde), 'deny', String(mode));
+        assert.match(reasonOf(tilde) ?? '', /^teamrig picker guard: Claude Code asks a person before a `cd` compound/);
+        assert.match(reasonOf(await kit.run(HOOK, { stdin: inMode('npm ci; cd sub; git status', mode), env: ALPHA })) ?? '', /Drop the `cd`/, String(mode));
+        assert.match(reasonOf(await kit.run(HOOK, { stdin: inMode('cd sub && git status', mode), env: ALPHA })) ?? '', /rerun it as: git -C sub status$/, String(mode));
+      }
+    });
+
+    it('still refuses the question picker, with the same reason as in any other mode', async () => {
+      const kit = new CliHarness(ON_TEAM);
+      const plain = await kit.run(HOOK, { stdin: call('AskUserQuestion'), env: ALPHA });
+      const bypass = await kit.run(HOOK, { stdin: call('AskUserQuestion', { permission_mode: 'bypassPermissions' }), env: ALPHA });
+      assert.equal(decisionOf(bypass), 'deny');
+      assert.equal(reasonOf(bypass), reasonOf(plain));
+    });
+  });
+
   it('lets a cd compound go with the guard off or in a tab that is no team session', async () => {
     const line = bash('cd sub && git status');
     assert.deepEqual(await new CliHarness({ ...TEAM, pickerGuard: { enabled: false } }).run(HOOK, { stdin: line, env: ALPHA }), NOTHING);
