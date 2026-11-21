@@ -844,6 +844,17 @@ describe('runCli: hook secret-guard', () => {
     assert.deepEqual((await kit.run(['hook', 'secret-guard'], { ...run, stdin: read(join(moved, 'settings.json')) })).stdout, []);
   });
 
+  it("refuses a read of Claude Code's login in a folder named like its own that no variable names, and lets one in another folder run", async () => {
+    const kit = new CliHarness();
+    const userHome = resolve(USER_HOME);
+    for (const folder of ['.claude-work', '.claude2']) {
+      assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { userHome, stdin: read(join(userHome, folder, '.credentials.json')) })), 'deny', folder);
+      assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { userHome, stdin: bash(`cat ~/${folder}/.credentials.json`) })), 'deny', `cat in ${folder}`);
+    }
+    assert.deepEqual((await kit.run(['hook', 'secret-guard'], { userHome, stdin: read(join(APP, 'vendor', 'agent', '.credentials.json')) })).stdout, []);
+    assert.deepEqual((await kit.run(['hook', 'secret-guard'], { userHome, stdin: bash('cat vendor/agent/.credentials.json') })).stdout, []);
+  });
+
   it('keeps to the default place when CLAUDE_CONFIG_DIR is blank', async () => {
     const kit = new CliHarness();
     const userHome = resolve(USER_HOME);
