@@ -26,6 +26,7 @@ import {
 } from '../../interface/index.ts';
 import type { Roster } from '../../config/roster.ts';
 import { layoutPaths } from '../../register/layout.ts';
+import { TASK_ID } from '../../register/model.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
 import { sessionRef } from '../inputs.ts';
 import { foundTeamOf, loadedConfig, lookForTeam, openKit, pastOrPresentIdOf, rosterOf } from '../kit.ts';
@@ -33,6 +34,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 import { loadTree } from '../tree.ts';
 import { configSource, teamlessConfigSource } from './read-config.ts';
 import { goalsSource } from './read-goals.ts';
+import { historySource } from './read-history.ts';
 import { meetingsSource } from './read-meetings.ts';
 import { planSource } from './read-plan.ts';
 import { selfOf, sessionsSource } from './read-sessions.ts';
@@ -55,6 +57,8 @@ interface ReadRequest {
   /** The host's own id of the conversation asking, which `sessions` answers `self` by; a label too. */
   readonly conversation: string | undefined;
   readonly sinceHours: number;
+  /** The one task `history` is asked of. */
+  readonly task: string | undefined;
   /** The revision the reader already holds of a document, for each it named with `--unless`. */
   readonly unless: ReadonlyMap<DocumentName, string>;
   readonly speaks: InterfaceVersion | undefined;
@@ -76,6 +80,7 @@ const SOURCES: Record<DocumentName, (scope: ReadScope) => DocumentSource> = {
   config: configSource,
   plan: planSource,
   goals: goalsSource,
+  history: historySource(CONNECTORS),
 };
 
 /** The documents a run with no team is still answered: what a setup screen reads before there is a team to read. */
@@ -122,6 +127,7 @@ function requestOf(args: ParsedArgs, env: Env): ReadRequest {
     session: askerOf(args.flags.get('session'), env),
     conversation: conversationOf(args.flags.get('conversation')),
     sinceHours: sinceHoursOf(args.flags.get('since')),
+    task: taskOf(args.flags.get('task'), documents),
     unless: unlessOf(args.flags.get('unless'), documents),
     speaks,
   };
@@ -168,6 +174,23 @@ function teamOf(typed: string | undefined): string | undefined {
 /** `--owner` only filters the tasks served, and is held to a session's shape all the same, as `--session` is. */
 function ownerOf(typed: string | undefined): string | undefined {
   return typed === undefined ? undefined : sessionRef('--owner', typed);
+}
+
+/**
+ * `--task`: the one task `history` serves. It is held to a task id's shape, and refused on a run that does not ask
+ * for `history`: no other document reads it, so there it could only be a mistake left unsaid.
+ */
+function taskOf(typed: string | undefined, documents: readonly DocumentName[]): string | undefined {
+  if (typed === undefined) {
+    return undefined;
+  }
+  if (!TASK_ID.test(typed)) {
+    throw new UsageError(`--task takes a task id, such as T12; got "${typed}"`);
+  }
+  if (!documents.includes('history')) {
+    throw new UsageError('--task names the task history is asked of, and this run does not ask for history');
+  }
+  return typed;
 }
 
 function conversationOf(typed: string | undefined): string | undefined {
@@ -289,6 +312,7 @@ async function scopeOf(request: ReadRequest, runtime: CliRuntime, own: string): 
     self,
     tree,
     sinceHours: request.sinceHours,
+    task: request.task ?? null,
     warnings: configProblemsOf(kit.paths, load),
   };
 }
