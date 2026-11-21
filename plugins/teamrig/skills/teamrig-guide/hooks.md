@@ -524,7 +524,7 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
   `~/.claude/.credentials.json`, `~/.claude/history.jsonl` (the prompt history), both also in the folder
   `CLAUDE_CONFIG_DIR` names by an absolute path, `**/.claude/settings.local.json`
   (its allow rules can hold a credential), `**/.claude*/.credentials.json` (the login in a folder named like
-  Claude Code's own, a second account's `.claude-work`), `~/.bash_history`, `~/.zsh_history`, `**/PSReadLine/*_history.txt`, the
+  the host's own, a second account's `.claude-work`), `~/.bash_history`, `~/.zsh_history`, `**/PSReadLine/*_history.txt`, the
   key stores `**/*.pem`, `**/*.key`, `**/*.p12`, `**/*.pfx`, `**/*.jks` and `**/*.keystore`, the private keys
   `**/id_rsa`, `**/id_ecdsa` and `**/id_ed25519` (their `.pub` halves are not listed), and Terraform's state
   `**/*.tfstate` and `**/*.tfstate.backup` (it holds secrets in plain text); `.env.example`, `.env.sample` and
