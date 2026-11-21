@@ -204,6 +204,14 @@ describe('secretFilesOf', () => {
     assert.deepEqual(secretFilesOf({ host: bare, shippedHosts: [bare, NO_PATHS_HOST], env: {}, platform }).secretFiles(), []);
   });
 
+  it("gives the files a shipped host keeps in a folder the run's environment moves, under a host telling none of its folders too", () => {
+    const { shippedHosts } = quietWorld();
+    const env = { CLAUDE_CONFIG_DIR: '/cfg' };
+    for (const [name, host] of RUNNING_HOSTS.slice(0, 4)) {
+      assert.deepEqual(secretFilesOf({ host, shippedHosts, env, platform: 'linux' }).secretFiles(), [...SHIPPED_SECRET_FILES, '/cfg/.credentials.json', '/cfg/history.jsonl'], name);
+    }
+  });
+
   it('builds each host from the environment and platform of the run', () => {
     const seen: Parameters<HostSource>[0][] = [];
     const watching: HostSource = (given) => {
