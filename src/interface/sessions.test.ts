@@ -46,13 +46,15 @@ function tab(state: TabState, input: Partial<TabNeed> = {}): TabNeed {
   return { session: 'alpha', state, kind: null, text: null, task: null, pid: 77, since: '2030-01-08T09:58:00.000Z', ...input };
 }
 
+const WEEK = { usedPct: 4.5, plannedPct: 10, accountUsedPct: 48, resetsAt: '2030-01-09T01:00:00.000Z', start: null, at: '2030-01-08T09:00:00.000Z' };
+
 function bodyOf(teams: readonly TeamInput[], input: Partial<SessionsInput> = {}): SessionsBody {
   return sessionsBody({ self: null, teams, failures: [], shapes: new SecretScanner(), ...input });
 }
 
 /** The one session of a team `app` that holds only it, read from a team that stands `reach` to it. */
 function servedOf(input: Partial<MemberInput>, reach: TeamReach = 'own'): ServedSession {
-  const [served] = bodyOf([{ id: 'app', parent: null, reach, members: [member('alpha', input)], retired: [] }]).sessions;
+  const [served] = bodyOf([{ id: 'app', parent: null, reach, members: [member('alpha', input)], retired: [], week: null }]).sessions;
   assert.ok(served !== undefined);
   return served;
 }
@@ -65,12 +67,13 @@ function wordyTeam(reach: TeamReach, text: string): TeamInput {
     reach,
     members: [member('alpha', { hire: hire({ scope: text, reason: `use ${text}` }), rehiredFrom: retire({ reason: text }), conversation: 'c-1' })],
     retired: [{ id: 'old', name: 'web-old', formerNames: [], retire: retire({ reason: text }) }],
+    week: null,
   };
 }
 
 describe('sessionsBody', () => {
   it('serves a session as its place, names, leaders and launch, in this order', () => {
-    const body = bodyOf([{ id: 'app', parent: null, reach: 'own', members: [member('alpha', { formerNames: ['app-a'], unread: 2, conversation: 'c-1' })], retired: [] }]);
+    const body = bodyOf([{ id: 'app', parent: null, reach: 'own', members: [member('alpha', { formerNames: ['app-a'], unread: 2, conversation: 'c-1' })], retired: [], week: null }]);
     assert.deepEqual(body.sessions, [
       {
         team: 'app',
@@ -168,6 +171,7 @@ describe('sessionsBody', () => {
         reach: 'own',
         members: [member('alpha', { name: SECRET, formerNames: ['app-a', SECRET], launch: { model: null, effort: null, text: SECRET } })],
         retired: [{ id: 'old', name: SECRET, formerNames: [SECRET], retire: retire() }],
+        week: null,
       },
     ]);
     assert.deepEqual(body.cuts, [
@@ -203,7 +207,7 @@ describe('sessionsBody', () => {
   });
 
   it('serves a retired session as a row on no team, with only its names and its retirement', () => {
-    const body = bodyOf([{ id: 'app', parent: null, reach: 'own', members: [], retired: [{ id: 'old', name: 'app-old', formerNames: ['app-first'], retire: retire({ heir: 'alpha' }) }] }]);
+    const body = bodyOf([{ id: 'app', parent: null, reach: 'own', members: [], retired: [{ id: 'old', name: 'app-old', formerNames: ['app-first'], retire: retire({ heir: 'alpha' }) }], week: null }]);
     assert.deepEqual(body.sessions, [
       {
         team: 'app',
@@ -232,14 +236,14 @@ describe('sessionsBody', () => {
   it('serves the teams in the order handed in, each with its counts, its sessions before its retired ones', () => {
     const body = bodyOf(
       [
-        { id: 'app', parent: null, reach: 'above', members: [member('lead', { leader: null, ledBy: [], leads: 1, roles: ['lead'] }), member('alpha')], retired: [{ id: 'old', name: 'app-old', formerNames: [], retire: retire() }] },
-        { id: 'web', parent: 'app', reach: 'own', members: [member('lead')], retired: [] },
+        { id: 'app', parent: null, reach: 'above', members: [member('lead', { leader: null, ledBy: [], leads: 1, roles: ['lead'] }), member('alpha')], retired: [{ id: 'old', name: 'app-old', formerNames: [], retire: retire() }], week: null },
+        { id: 'web', parent: 'app', reach: 'own', members: [member('lead')], retired: [], week: WEEK },
       ],
       { self: { team: 'web', session: 'lead' }, failures: [{ team: 'torn', reason: 'the team config cannot be read' }] },
     );
     assert.deepEqual(body.teams, [
-      { id: 'app', parent: null, active: 2, retired: 1 },
-      { id: 'web', parent: 'app', active: 1, retired: 0 },
+      { id: 'app', parent: null, active: 2, retired: 1, week: null },
+      { id: 'web', parent: 'app', active: 1, retired: 0, week: WEEK },
     ]);
     assert.deepEqual(body.sessions.map((session) => `${session.team}/${session.id}`), ['app/lead', 'app/alpha', 'app/old', 'web/lead']);
     assert.deepEqual(body.sessions[0]?.roles, ['lead']);

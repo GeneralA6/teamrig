@@ -114,6 +114,23 @@ export interface ServedSession {
   readonly conversation: string | null;
 }
 
+/**
+ * A team's own part of the account's week, as its budget hooks last wrote it, in percent of the account's week; a
+ * child team's part is its own row's, so a team's week with its children's is the sum over the rows of one week.
+ */
+export interface ServedWeek {
+  readonly usedPct: number;
+  readonly plannedPct: number;
+  /** The whole account's use of its week, every team's. */
+  readonly accountUsedPct: number;
+  /** When the week it speaks of resets: a week already reset is no longer running, whatever the numbers say. */
+  readonly resetsAt: string;
+  /** Where the week's use counts from, when that is after the account's last reset; null when the hooks named none. */
+  readonly start: string | null;
+  /** When the hooks wrote it. */
+  readonly at: string;
+}
+
 /** One team of the tree, and how many sessions it holds and has retired. */
 export interface ServedTeam {
   readonly id: string;
@@ -121,6 +138,8 @@ export interface ServedTeam {
   readonly parent: string | null;
   readonly active: number;
   readonly retired: number;
+  /** Since 1.8: its own part of the account's week; null when its hooks wrote none this teamrig can read. */
+  readonly week: ServedWeek | null;
 }
 
 /** A session by its team and id. */
@@ -199,6 +218,7 @@ export interface TeamInput {
   readonly reach: TeamReach;
   readonly members: readonly MemberInput[];
   readonly retired: readonly RetiredInput[];
+  readonly week: ServedWeek | null;
 }
 
 /** What the `sessions` document is built from. */
@@ -332,6 +352,6 @@ export function sessionsBody(input: SessionsInput): SessionsBody {
     const text = new TeamText(served, team);
     return [...team.members.map((member) => memberOf(text, team, member)), ...team.retired.map((retired) => retiredOf(text, team, retired))];
   });
-  const teams = input.teams.map((team) => ({ id: team.id, parent: team.parent, active: team.members.length, retired: team.retired.length }));
+  const teams = input.teams.map((team) => ({ id: team.id, parent: team.parent, active: team.members.length, retired: team.retired.length, week: team.week }));
   return { self: input.self, teams, sessions, failures: input.failures, cuts: served.cuts };
 }

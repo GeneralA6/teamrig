@@ -63,6 +63,7 @@ export {
   type ServedRetire,
   type ServedSession,
   type ServedTeam,
+  type ServedWeek,
   type SessionPlace,
   type SessionsBody,
   type SessionsInput,

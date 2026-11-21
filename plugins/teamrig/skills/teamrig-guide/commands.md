@@ -2662,7 +2662,12 @@ and takes no `--team`; a session your team does not have now is refused.
 is your own.
 
 - `teams`: every team of the tree, the root first, each `{ "id", "parent", "active", "retired" }` (`parent` is `null`
-  for the root; the two counts are its sessions and its retired ones).
+  for the root; the two counts are its sessions and its retired ones). Since interface 1.8 each also has `week`: the
+  team's own part of the account's week as its budget hooks last wrote it, `{ "usedPct", "plannedPct",
+  "accountUsedPct", "resetsAt", "start", "at" }` (percents of the account's week; `start` `null` when none was
+  named), or `null` when no readable file holds one. A child team's part is in its own row: add the rows of one week
+  for a team with its children, and drop a week whose `resetsAt` has passed. Its file moves as the team works, and
+  each write is a new revision.
 - `sessions`: each team's sessions in its config's order, then its retired ones. A row holds `team`, `id`, `name`,
   `formerNames`, `roles`, `leader` (its direct leader's id; `null` for the team's lead and for a retired session),
   `ledBy` (the leaders above it, nearest first), `leads` (how many it leads directly), `active` (`false` once it is

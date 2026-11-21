@@ -6,12 +6,13 @@ import type { TeamTree } from '../../config/tree.ts';
 import { PlainLogFile } from '../../core/log-file.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { HiringLog } from '../../hiring/log.ts';
+import { parseTeamWeek } from '../../budget/team-week-summary.ts';
 import { activeHires, rehiredFrom, retiredSessions } from '../../hiring/record.ts';
 import { lineHash } from '../../inbox/line-hash.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import { InboxDir, JsonlMarkLog } from '../../inbox/store.ts';
 import { unreadOf } from '../../inbox/unread.ts';
-import { sessionsBody, type MemberInput, type ServedHost, type SessionPlace, type TeamFailure, type TeamInput, type TeamReach } from '../../interface/index.ts';
+import { sessionsBody, type MemberInput, type ServedHost, type SessionPlace, type ServedWeek, type TeamFailure, type TeamInput, type TeamReach } from '../../interface/index.ts';
 import { JsonlRenameLog } from '../../names/log.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';
 import { TabNeedStore } from '../../tabs/need.ts';
@@ -62,8 +63,26 @@ function teamFilesOf(runtime: CliRuntime, { kit, config }: TreeTeam): string[] {
     kit.paths.renames,
     kit.paths.hires,
     kit.paths.inboxMarks,
+    kit.paths.teamWeek,
     ...config.sessions.flatMap((id) => [inboxes.pathOf(id), tabs.pathOf(id), records.pathOf(id)]),
   ];
+}
+
+/** A team's week file as the document serves it: null when it is missing, damaged or in a format this teamrig cannot read. */
+function servedWeekOf(text: string | undefined): ServedWeek | null {
+  const week = text === undefined ? undefined : parseTeamWeek(text);
+  if (week === undefined) {
+    return null;
+  }
+  const iso = (at: number): string => new Date(at).toISOString();
+  return {
+    usedPct: week.usedPct,
+    plannedPct: week.plannedPct,
+    accountUsedPct: week.accountUsedPct,
+    resetsAt: iso(week.resetsAt),
+    start: week.start === undefined ? null : iso(week.start),
+    at: iso(week.at),
+  };
 }
 
 interface TeamRead {
@@ -135,6 +154,7 @@ async function teamInputOf(runtime: CliRuntime, tree: TeamTree, own: string, { k
       formerNames: roster.formerNamesOf(retire.session),
       retire,
     })),
+    week: servedWeekOf(await files.read(kit.paths.teamWeek)),
   };
   const skipped = hiring.skipped > 0 ? [`${servedPathOf(kit.paths, kit.paths.hires)}: ${hiring.skipped} damaged or newer line(s) left out`] : [];
   return { input, problems: [...skippedOf(kit.paths, kit.paths.inboxMarks, markLog), ...skipped] };
