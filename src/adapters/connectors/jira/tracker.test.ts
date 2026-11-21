@@ -6,7 +6,7 @@ import { FakeCredentials } from '../../../testing/fake-credentials.ts';
 import { FakeHttp } from '../../../testing/fake-http.ts';
 import { JiraClient } from './client.ts';
 import { NOT_BUILT } from './declaration.ts';
-import { COMMENT_PAGE, JiraTracker, MAX_PAGES, PAGE_SIZE } from './tracker.ts';
+import { COMMENT_PAGE, JiraTracker, LISTED_TYPES, MAX_PAGES, PAGE_SIZE } from './tracker.ts';
 
 const API = 'https://acme.atlassian.net/rest/api/3';
 const SEARCH = `${API}/search/jql`;
@@ -817,6 +817,17 @@ describe('opening a Jira issue (T4754)', () => {
       failed('ENG has no issue type "Bug" the sign-in may open an issue as (it has none): name one of them in connectors.jira.issueType'),
     );
     assert.equal(lacking.http.requests.length, 2);
+  });
+
+  it("makes Jira's type names plain lines and lists at most LISTED_TYPES of them when the named type is missing", async () => {
+    const lacking = kit(false, true, 'Bug');
+    const many = Array.from({ length: LISTED_TYPES + 3 }, (_, at) => ({ id: `${20000 + at}`, name: at === 0 ? 'Ta\nsk\u0007' : `T${at}` }));
+    lacking.http.answers('GET', TYPES, 200, JSON.stringify({ issueTypes: many }));
+    const listed = ['Ta sk', ...Array.from({ length: LISTED_TYPES - 1 }, (_, at) => `T${at + 1}`)].join(', ');
+    assert.deepEqual(
+      await lacking.tracker.open(BARE),
+      failed(`ENG has no issue type "Bug" the sign-in may open an issue as (it has ${listed} and 3 more): name one of them in connectors.jira.issueType`),
+    );
   });
 
   it('passes on why Jira opened none, and fails on an answer that names no issue of the project', async () => {

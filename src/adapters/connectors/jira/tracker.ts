@@ -240,9 +240,17 @@ function labelProblem(label: string): string | undefined {
   return label === '' || /\s/.test(label) ? `${JSON.stringify(label)} cannot be a Jira label: one holds no space` : undefined;
 }
 
-/** What an open answers when the project has no type of the name the team's config asks for: the ones it has, to pick from. */
+/** The issue types a no-such-type line names; the rest are counted, so a project with many cannot flood the line. */
+export const LISTED_TYPES = 10;
+
+/**
+ * What an open answers when the project has no type of the name the team's config asks for: the ones it has, to pick
+ * from. The names are Jira's words, so `has` comes already made plain lines (JiraClient.plainLine).
+ */
 function noSuchType(project: JiraProject, wanted: string, has: readonly string[]): string {
-  const names = has.length === 0 ? 'none' : has.join(', ');
+  const more = has.length - LISTED_TYPES;
+  const listed = has.slice(0, LISTED_TYPES).join(', ');
+  const names = has.length === 0 ? 'none' : more > 0 ? `${listed} and ${more} more` : listed;
   return `${project.key} has no issue type ${JSON.stringify(wanted)} the sign-in may open an issue as (it has ${names}): name one of them in connectors.jira.issueType`;
 }
 
@@ -661,7 +669,7 @@ export class JiraTracker implements Tracker {
     }
     const id = openingType(answer.body, this.issueType);
     if (id === undefined) {
-      return failed(this.issueType === undefined ? `Jira names no issue type the sign-in may open an issue of ${project.key} as` : noSuchType(project, this.issueType, openableNames(answer.body)));
+      return failed(this.issueType === undefined ? `Jira names no issue type the sign-in may open an issue of ${project.key} as` : noSuchType(project, this.issueType, openableNames(answer.body).map((name) => this.client.plainLine(name))));
     }
     this.openingTypes.set(name, id);
     return { kind: 'type', id };
