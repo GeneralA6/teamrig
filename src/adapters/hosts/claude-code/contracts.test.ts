@@ -1,19 +1,23 @@
 import {
   bind,
   PERMISSIONS_CONTRACT,
+  PLUGIN_CONTRACT,
   STATUS_LINE_CONTRACT,
   TRANSCRIPT_CONTRACT,
   USAGE_CONTRACT,
   type PermissionsWorld,
+  type PluginWorld,
   type StatusLineWorld,
   type TranscriptWorld,
   type UsageWorld,
+  type WorldInstall,
 } from '../../../conformance/index.ts';
 import { isStringArray, recordField, stringField, type JsonRecord, type RateWindow } from '../../../plugin-api/index.ts';
 import { describeContracts } from '../../../testing/contracts.ts';
 import { promptLine, resultsLine } from '../../../testing/transcript-lines.ts';
 import { declaration } from './declaration.ts';
 import { hostPermissions } from './permissions.ts';
+import { hostPlugin } from './plugin.ts';
 import { statusLine } from './status-line.ts';
 import { transcriptReader } from './transcript.ts';
 import { usageMeter } from './usage.ts';
@@ -87,6 +91,45 @@ const permissionsWorld: PermissionsWorld = {
   routesOf: (settings) => listIn(recordField(settings, 'autoMode'), 'environment'),
 };
 
+const PLUGINS_FOLDER = '/home/me/.claude/plugins';
+
+/** An install's scope and project in `installed_plugins.json`: `user` for every project, `managed` for one teamrig does not know. */
+function scopeOf(reach: WorldInstall['reach']): { scope: string; projectPath?: string } {
+  return reach.kind === 'every project' ? { scope: 'user' } : reach.kind === 'project' ? { scope: 'project', projectPath: reach.path } : { scope: 'managed' };
+}
+
+/** `installed_plugins.json` (version 2): installs grouped under `<plugin>@<marketplace>`; `known_marketplaces.json` by name. */
+const pluginWorld: PluginWorld = {
+  list: (installs) => {
+    const plugins: Record<string, JsonRecord[]> = {};
+    for (const { plugin, marketplace, reach, installPath, version, revision } of installs) {
+      const entry = {
+        ...scopeOf(reach),
+        installPath,
+        ...(version === '' ? {} : { version }),
+        installedAt: AT,
+        lastUpdated: AT,
+        ...(revision === '' ? {} : { gitCommitSha: revision }),
+      };
+      (plugins[`${plugin}@${marketplace}`] ??= []).push(entry);
+    }
+    return JSON.stringify({ version: 2, plugins });
+  },
+  marketplaces: (entries) =>
+    JSON.stringify(
+      Object.fromEntries(
+        entries.map(({ name, source }) => [
+          name,
+          source.kind === 'directory'
+            ? { source: { source: 'directory', path: source.path }, installLocation: source.path, lastUpdated: AT }
+            : { source: { source: 'github', repo: `acme/${name}` }, installLocation: source.installLocation, lastUpdated: AT },
+        ]),
+      ),
+    ),
+  cacheRoot: (marketplace, plugin, version) => `${PLUGINS_FOLDER}/cache/${marketplace}/${plugin}/${version}`,
+  pluginsFolder: PLUGINS_FOLDER,
+};
+
 describeContracts({
   side: 'host',
   declaration,
@@ -95,5 +138,6 @@ describeContracts({
     bind({ contract: USAGE_CONTRACT, make: () => ({ port: usageMeter, world: usageWorld }) }),
     bind({ contract: STATUS_LINE_CONTRACT, make: () => ({ port: statusLine, world: statusLineWorld }) }),
     bind({ contract: PERMISSIONS_CONTRACT, make: () => ({ port: hostPermissions, world: permissionsWorld }) }),
+    bind({ contract: PLUGIN_CONTRACT, make: () => ({ port: hostPlugin, world: pluginWorld }) }),
   ],
 });
