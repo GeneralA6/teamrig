@@ -10,7 +10,7 @@ type Holder = Pick<TeamPaths, 'team' | 'home' | 'goals'>;
 
 /**
  * `goals`: the goals a task of the team may serve, which are its own and those of every team above it, the nearer
- * team's where two hold a tag, as `teamrig add --goal` and the plan's ranking read them. A team beside or below
+ * team's where two hold a tag, as `teamrig add --goals` and the plan's ranking read them. A team beside or below
  * the asked one is never read. It reads the tree's configs (who is above whom, the secret shapes) and those goals
  * files, and its revision covers each of them; `--owner` does not narrow it, as a goal is no session's.
  */
