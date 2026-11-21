@@ -283,6 +283,20 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(parseConfig({ ...ROSTER, turnLog: { keepHours: 169 } }).issues), ['turnLog.keepHours']);
   });
 
+  it('reads ui.path as an absolute file, absent by default, and drops one that is not (T4761)', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.ui, {});
+    for (const path of ['D:\\pane\\out\\ui\\main.js', '/srv/pane/out/ui/main.js']) {
+      const { config, issues } = parseConfig({ ...ROSTER, ui: { path } });
+      assert.deepEqual(config.ui, { path });
+      assert.deepEqual(issues, []);
+    }
+    for (const path of ['out/ui/main.js', 'C:out', '/a\n/b', 'https://example.com/main.js', 7]) {
+      const { config, issues } = parseConfig({ ...ROSTER, ui: { path } });
+      assert.deepEqual(paths(issues), ['ui.path'], String(path));
+      assert.deepEqual(config.ui, {}, String(path));
+    }
+  });
+
   it('reads needsYou, leaves out an unknown kind, and refuses a list that is no list or names more kinds than there are', () => {
     const own = { enabled: false, kinds: ['error'], osToast: true };
     assert.deepEqual(parseConfig({ ...ROSTER, needsYou: own }).config.needsYou, own);
