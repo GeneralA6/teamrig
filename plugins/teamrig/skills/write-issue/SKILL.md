@@ -1,32 +1,32 @@
 ---
 name: write-issue
-description: Use before opening or rewriting a GitHub issue someone else will take, so its body holds the whole spec, or a design issue for talk before anything is agreed.
+description: Use before opening or rewriting an issue someone else will take, so its body holds the whole spec, or a design issue for talk before anything is agreed.
 ---
 
 # Write an issue someone can take alone
 
 An issue is the whole brief for whoever takes it, often someone outside the team, or their agent, who sees only the
 issue and the repository. Each question it leaves open costs a round trip, and each rule it leaves out is broken in
-the first draft. Write it so the taker can finish without asking. The steps hold for any repository and any host
-with issues; the commands are GitHub's.
+the first draft. Write it so the taker can finish without asking. The steps hold for any repository and any tracker;
+a tracker's own commands for them are in its section at the end.
 
 ## 1. Read what binds the work
 
 Before writing a line, read what the repository already has that the work must follow, and name each in the issue
 with its path:
 
-- **Where a change lives.** The repository's own rule on it (`CONTRIBUTING.md`, `CLAUDE.md`, a docs page on its
-  layout): which folder or package the change goes in, what counts as one change, what a pull request holds.
+- **Where a change lives.** The repository's own rule on it (`CONTRIBUTING.md`, the instruction files its AI
+  CLI reads, a docs page on its layout): which folder or package the change goes in, what counts as one change, what
+  a change request holds.
 - **What it must match.** The modules it extends or reuses, and the style it follows: a palette, a logo or
   wordmark, a naming rule, a docs voice. Name the file that holds each; a taker who does not know the palette picks
   their own.
 - **The design it fits.** The repository's principles and architecture, the decisions already taken (agreed design
   issues, design docs), and its rule on code quality, such as SOLID: the work fits them or the issue says which it
   changes and why.
-- **What a pull request is held to.** Tests, sign-off, commit size, the checks CI runs.
-- **What is there already.** Search the open and closed issues and pull requests (`gh issue list --state all
-  --search "<words>"`, `gh pr list --state all --search "<words>"`), so the issue is no duplicate, and link the
-  related ones by `#number`.
+- **What a change request is held to.** Tests, sign-off, commit size, the checks CI runs.
+- **What is there already.** Search the open and closed issues and change requests, so the issue is no
+  duplicate, and link the related ones by their number.
 
 A rule the issue does not state is one the taker will not know.
 
@@ -35,9 +35,9 @@ A rule the issue does not state is one the taker will not know.
 - The body is the spec. A comment is for talk: a spec in comments is missed, as a taker reads the body first and an
   agent often reads only the body.
 - Write the body in a file first, so it is read in full, checked and posted whole.
-- A changed spec replaces the body (`teamrig issue edit <owner/name#n> --body-file <file>` on a repository in
-  `github.repos`, else `gh issue edit <n> --body-file <file>`), and one short comment says what changed. GitHub keeps
-  the old body in the edit history.
+- A changed spec replaces the body (`teamrig issue edit <owner/name#n> --body-file <file>` on a repository teamrig
+  syncs, else the tracker's own edit), and one short comment says what changed. The tracker's edit history keeps the
+  old body.
 - No private data: no home folder paths, e-mail addresses, host names, internal task ids, private logs or secrets.
   An issue may be public, and a copy outlives a later edit.
 - No security hole: one goes only to the repository's private vulnerability reporting or its `SECURITY.md` route,
@@ -67,12 +67,12 @@ These headings, in this order. Leave one out only when it has nothing to say, ne
 
 Work that splits into parts different people can take is a parent issue, the goal (its Why, the parts, their order,
 done when every part is), with one sub-issue per part, each a full issue by these steps that names its parent in its
-Why. Link them as GitHub sub-issues (the parent's **Create sub-issue**, or `teamrig issue links` from the task tree),
-and mark a part that must wait for another as blocked by it.
+Why. Link each to the parent as its sub-issue (`teamrig issue links` from the task tree, or the tracker's own link), and
+mark a part that must wait for another as blocked by it.
 
 ## 5. Labels and the taker
 
-- Only labels the repository has (`gh label list`): a label added by name that does not exist is made new, typo
+- Only labels the repository has (list them first): a label added by name that does not exist is made new, typo
   and all.
 - One label per meaning: one type, one priority, and one status when the repository uses status labels; never a
   second label that says the same as another (a "help wanted" beside a status that already says the issue is open
@@ -83,7 +83,7 @@ and mark a part that must wait for another as blocked by it.
   on a few such issues, so the label keeps meaning something.
 - Assign the issue to its taker once they say they take it; until then it stays unassigned, open to anyone. On a
   repository whose teamrig sync sends the status push, a taker's `/take` comment assigns them for seven days, until
-  a pull request links the issue.
+  a change request links the issue.
 
 ## 6. A design issue is talk, not a spec
 
@@ -100,20 +100,32 @@ maintainers mark it agreed. It replaces a discussion forum, so the talk stays be
   branch in code; no hook for a need no one has named), **Risks** (as in section 3, for each option where they
   differ) and **How it is agreed** (who decides, by when). A repository's own design form, when it has one, sets
   these.
-- **Say at the top** that it is talk: comments with reasons, and no claim, branch, code or pull request until it is
-  agreed; and that nothing sensitive is posted in it (section 2's list).
+- **Say at the top** that it is talk: comments with reasons, and no claim, branch, code or change request until it
+  is agreed; and that nothing sensitive is posted in it (section 2's list).
 - **Agreed** is the maintainer's mark, never a count of comments: a comment starting `Agreed:` that sums up the
   decision. Then the body is rewritten as a spec by sections 2 and 3, or the work opens as new issues linked to it,
   and the `design` label comes off; from then on it is work like any other.
 
 ## 7. Read it back
 
-After posting, read the issue on GitHub (`gh issue view <n>`, or its page) and check it against this list: the body
+After posting, read the issue back from the tracker (its page, or its own command) and check it against this list: the body
 renders (headings, lists, code, links), every path exists, every `#number` is the one meant, the labels and the
 parent are set, and nothing private is in it. Fix it by editing the body, then call it done.
 
 ## Posting
 
-- A task of a teamrig team going to GitHub: `teamrig issue migrate`, its row's body written by these steps
+- A task of a teamrig team going to its tracker: `teamrig issue migrate`, its row's body written by these steps
   ([the command](../teamrig-guide/commands.md#teamrig-issue-migrate)).
-- Any other new issue: `gh issue create --title "<title>" --body-file <file> --label "<label>"`, or the web form.
+- Any other new issue: the tracker's own create, with the body file, or its web form.
+
+## On GitHub
+
+GitHub's own commands for the steps above, until a teamrig command serves each step on every tracker:
+
+- Search (step 1): `gh issue list --state all --search "<words>"` and `gh pr list --state all --search "<words>"`.
+- Replace a body (step 2) on a repository teamrig does not sync (outside `github.repos`):
+  `gh issue edit <n> --body-file <file>`.
+- Link a sub-issue (step 4): the parent's **Create sub-issue**.
+- List the labels (step 5): `gh label list`.
+- Read it back (step 7): `gh issue view <n>`.
+- Open a new issue: `gh issue create --title "<title>" --body-file <file> --label "<label>"`.

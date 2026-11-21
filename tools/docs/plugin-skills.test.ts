@@ -99,6 +99,7 @@ describe('the write-issue skill', () => {
       '6. A design issue is talk, not a spec',
       '7. Read it back',
       'Posting',
+      'On GitHub',
     ]);
   });
 
@@ -107,7 +108,7 @@ describe('the write-issue skill', () => {
     for (const section of ['Question', 'Context', 'Options', 'Proposal', 'How it is agreed']) {
       assert.ok(skill.includes(`**${section}**`), section);
     }
-    assert.ok(skill.includes('no claim, branch, code or pull request until it is\n  agreed'));
+    assert.ok(skill.includes('no claim, branch, code or change request until it\n  is agreed'));
     assert.ok(skill.includes('a comment starting `Agreed:`'));
     assert.ok(skill.includes('private vulnerability report'));
   });
@@ -122,6 +123,12 @@ describe('the write-issue skill', () => {
   it('replaces the body with a file, never a spec in comments, and reads the labels the repository has', () => {
     assert.ok(skill.includes('`teamrig issue edit <owner/name#n> --body-file <file>`'));
     assert.ok(skill.includes('`gh label list`'));
+  });
+
+  it("names GitHub's own commands only in its On GitHub section, so the steps fit every tracker", () => {
+    const [steps = '', github = ''] = skill.split('\n## On GitHub\n');
+    assert.doesNotMatch(steps, /`gh |\bGitHub\b|pull request/u);
+    assert.match(github, /`gh issue list --state all/u);
   });
 
   it("stays generic: no repository, palette or task id of teamrig's own", () => {
