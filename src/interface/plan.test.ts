@@ -9,6 +9,8 @@ import { planBody, type PlanBody, type PlannedTask } from './plan.ts';
 
 const NOW = new Date('2030-01-08T10:00:00.000Z');
 const STARTED = '2030-01-07T09:00:00.000Z';
+/** A text one of teamrig's own secret shapes matches, built from parts so this file holds none. */
+const TOKEN = ['pass', 'word', '=', 'hunter2'].join('');
 const TURNS = { dueSoonDays: TEST_FOCUS.score.dueSoonDays, parkAfterDays: TEST_FOCUS.parkAfterDays };
 
 function treeOf(tasks: readonly Task[], elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): TaskTree {
@@ -179,6 +181,14 @@ describe('planBody', () => {
     assert.deepEqual(planned(body, 'T4').next, { kind: 'decision', who: 'owner', task: 'T4', behind: null });
     assert.deepEqual(planned(body, 'T5').next, { kind: 'time', who: 'alpha', task: 'T5', behind: null, at: '2030-01-09T12:00:00.000Z' });
     assert.deepEqual(planned(body, 'T6').next, { kind: 'time', who: 'alpha', task: 'T6', behind: null, at: '2030-01-11T23:59:59.999Z' }, 'a day ends in the team\'s zone');
+  });
+
+  it('serves a stored time that reads as none as null, never as the text it holds', () => {
+    const stored = `soon ${TOKEN}`;
+    const body = planOf([testTask({ id: 'T1', status: 'waiting', startedAt: STARTED, waits: [{ kind: 'time', at: stored }] })]);
+    assert.deepEqual(planned(body, 'T1').next, { kind: 'time', who: 'alpha', task: 'T1', behind: null, at: null });
+    assert.ok(!JSON.stringify(body).includes(TOKEN));
+    assert.equal(body.validUntil, null);
   });
 
   it('serves no move for a task whose every need runs into a loop', () => {
