@@ -1,4 +1,4 @@
-import type { Env } from '../core/home.ts';
+import { ENV, type Env } from '../core/home.ts';
 import type { RunRequest } from '../open/processes.ts';
 
 /**
@@ -25,11 +25,25 @@ export interface UiStart {
 
 /**
  * The variables a released UI gets of the caller's (T4838 N1): where programs and the home folder are, the terminal's
- * kind and colours, the locale, and teamrig's own. SYSTEMROOT is there as Node.js on Windows needs it for its crypto
- * and network calls. A UI build of the person's own (`ui.path`) keeps the whole environment, as it is theirs.
+ * kind and colours, the locale, and the teamrig ones the CLI it calls back reads to find the kit, team and session.
+ * Those are named one by one, not by their prefix, so a TEAMRIG_-named secret a person or another tool sets stays
+ * behind (T4850 N1). SYSTEMROOT is there as Node.js on Windows needs it for its crypto and network calls. A UI build
+ * of the person's own (`ui.path`) keeps the whole environment, as it is theirs.
  */
-const RELEASED_NAMES: ReadonlySet<string> = new Set(['PATH', 'HOME', 'USERPROFILE', 'SYSTEMROOT', 'TERM', 'COLORTERM', 'LANG', 'LANGUAGE']);
-const RELEASED_PREFIXES: readonly string[] = ['LC_', 'TEAMRIG_'];
+const RELEASED_NAMES: ReadonlySet<string> = new Set([
+  'PATH',
+  'HOME',
+  'USERPROFILE',
+  'SYSTEMROOT',
+  'TERM',
+  'COLORTERM',
+  'LANG',
+  'LANGUAGE',
+  ENV.home,
+  ENV.team,
+  ENV.session,
+]);
+const RELEASED_PREFIXES: readonly string[] = ['LC_'];
 
 /** Whether a released UI gets the variable `name`; Windows names are matched in any case, as Windows reads them. */
 function releasedName(name: string): boolean {
