@@ -151,6 +151,25 @@ export async function taskEventsOf(runtime: CliRuntime, folder: ServedFolder, la
   }
 }
 
+/**
+ * Every event the register ever held, in write order: the archive's segments, then the live log, as `teamrig stats`
+ * reads them, since a count over a range reaches past what a compaction left in the working set. Its cost grows with
+ * the archive. An archive with a segment gone serves no event and says why, as {@link workingSetOf} does: numbers
+ * counted from half a history would read as the whole one's.
+ */
+export async function wholeHistoryOf(runtime: CliRuntime, folder: ServedFolder, layout: LayoutPaths): Promise<TaskEvents> {
+  try {
+    const snapshot = await readHistory(runtime.files, layout);
+    return { events: snapshot.read.events, problems: damageOf(snapshot, folder, layout.tail) };
+  } catch (error) {
+    if (error instanceof MissingSegmentError) {
+      const segment = servedPathOf(folder, error.path);
+      return { events: [], problems: [`${segment}: missing, so the register's archive is incomplete and its numbers cannot be counted`] };
+    }
+    throw error;
+  }
+}
+
 /** Damaged or newer lines never stop a read; each kind left out is one line, so a reader shows which it is. */
 function damageOf(snapshot: RegisterSnapshot, folder: ServedFolder, path: string): string[] {
   const { orphans } = snapshot.state;
