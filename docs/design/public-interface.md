@@ -94,7 +94,7 @@ A read returns a versioned JSON document built from parsed data, never a file's 
 ### What version 1 ships
 
 `teamrig read <document>... --json` serves the five documents of 1.0 and each one a minor version added since (1.1:
-`plan`); [the commands page](../commands.md) has its usage and the plugin's guide describes every field. What the
+`plan`, 1.2: `goals`); [the commands page](../commands.md) has its usage and the plugin's guide describes every field. What the
 design above left open is settled this way:
 
 - **One line a document.** Each document asked is one JSON object on one line of stdout, in the order asked, and
@@ -134,6 +134,14 @@ design above left open is settled this way:
   metered turn of a working team; what turns with the clock alone (a due coming near, a wait ending, the park rule)
   is told ahead in `validUntil`, after which a reader asks again without `--unless`. When a register of the tree
   cannot be read, no task is served and a problem says why.
+- **`goals` (1.2).** `plan` names a task's goal by tag and rank only, so a reader drawing a goal's title or window
+  folded the goals files itself, and had to know which team's goal a tag means. `goals` serves the goals a task of
+  the asked team may serve: its own and those of every team above it, a tag two of them hold served once as the
+  nearer team's, which is the goal teamrig ranks by. A team beside or below is never read. It serves the stored
+  facts (title, parent, rank, the open slice's number, the window, every move of the target day with who moved it
+  and why) and judges nothing: done counts, pace and forecast are computed from tasks and time, so they belong to a
+  document that says when it was judged, and would move this one's revision with every task. Its revision moves
+  only with the goals files and the tree's configs.
 
 ## Act
 
