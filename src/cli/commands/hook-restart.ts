@@ -143,7 +143,7 @@ async function armFromTab(runtime: CliRuntime, store: RefreshStore, scope: Rearm
 /**
  * The restart parked for this tab that a wake bringing work may arm (`armParkedRestart`); undefined when none is, the
  * automatic restart being off or the record another tab's. One left after the session was refreshed some other way
- * (by hand, or a compaction that started its count over) is cleared.
+ * (by hand, or a compaction that moved its state on) is cleared.
  */
 export async function parkedHere(store: RefreshStore, scope: RearmScope): Promise<ParkedRestart | undefined> {
   const { id, tab, refresh } = scope;

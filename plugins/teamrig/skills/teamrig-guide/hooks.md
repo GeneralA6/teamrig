@@ -1271,7 +1271,7 @@ daily meeting is open (`teamrig meeting start` to `meeting end`, or its lapse 4 
 nor told its handover is written, so no restart cuts the meeting off; a booked meeting holds the session met and
 those joining the same way, from its `meeting start M<n>` to its `meeting end M<n>`, its drop or its lapse 4 hours
 after the start. The end of the turn that ends the meeting asks at once. Past `refresh.compactCeilingTokens` the
-refresh goes on even then, so no session runs out of room in a meeting. A `/clear`, a new process or a compaction starts the task count over. Each finished task is judged once, so
+refresh goes on even then, so no session runs out of room in a meeting. A `/clear` or a new process starts the task count over. A compaction with no handover asked for asks for one at its next turn end, whatever the size: the context reached Claude Code's own limit first, as on a large window whose threshold sits past it. Each finished task is judged once, so
 it never loops. Steps: [workflows.md](workflows.md#handover-at-high-context). `refresh.enabled: false` turns it
 off. A turn that runs past `refresh.contextTokens` is asked within the turn by the plugin's mod
 ([below](#the-mod-the-refresh-within-a-turn)), since Claude Code would compact it before this hook ever asks.

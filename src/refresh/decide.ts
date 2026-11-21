@@ -756,38 +756,41 @@ export function decideReady(
 
 /** Starts that drop the old context; a `compact`, `resume` or `fork` start keeps it, so the handover waits. */
 const FRESH_SOURCES: ReadonlySet<string> = new Set(['clear', 'startup']);
-/** Starts after which the context is small again, so the task count starts over: a compaction too. */
-const SMALL_SOURCES: ReadonlySet<string> = new Set([...FRESH_SOURCES, 'compact']);
+/** The start after Claude Code compacted the conversation. */
+const COMPACT_START = 'compact';
+/** Starts after which the context is small again: a compaction too. */
+const SMALL_SOURCES: ReadonlySet<string> = new Set([...FRESH_SOURCES, COMPACT_START]);
 
 export type StartDecision =
   | { readonly kind: 'none' }
   | { readonly kind: 'inject'; readonly note: string; readonly state: RefreshState }
   /** The context is small again: record the task count back at 0, or forget the size a refresh was asked at; say nothing. */
-  | { readonly kind: 'reset'; readonly state: RefreshState };
+  | { readonly kind: 'reset'; readonly state: RefreshState }
+  /** A compaction with no handover asked for: record the ask the next turn end makes, and say so. */
+  | { readonly kind: 'ask'; readonly note: string; readonly state: RefreshState };
 
 /**
- * A start that leaves the context small: the task count starts over, a fresh start (a /clear, a new process) waits for
- * its baseline to be measured again and a compaction drops it. The same state when nothing changes.
+ * A fresh start (a /clear, a new process): the task count starts over and the start waits for its baseline to be
+ * measured again. The same state when nothing changes.
  */
-function smallAgain(state: Extract<RefreshState, { readonly phase: 'boundary' | 'idle' | 'refreshed' }>, source: string): RefreshState {
-  const fresh = FRESH_SOURCES.has(source);
-  const baselineSame = fresh ? state.baseline === null : state.baseline === undefined;
-  const countSame = state.phase === 'refreshed' || state.finished === 0;
-  if (baselineSame && countSame) {
+function freshAgain(state: Extract<RefreshState, { readonly phase: 'boundary' | 'idle' | 'refreshed' }>): RefreshState {
+  if (state.baseline === null && (state.phase === 'refreshed' || state.finished === 0)) {
     return state;
   }
-  const { baseline: _dropped, ...rest } = state;
-  const counted = rest.phase === 'refreshed' ? rest : { ...rest, finished: 0 };
-  return fresh ? { ...counted, baseline: null } : counted;
+  return state.phase === 'refreshed' ? { ...state, baseline: null } : { ...state, finished: 0, baseline: null };
 }
 
 /**
  * SessionStart: the first fresh start after the handover was written points the session at it, once, and says
  * that Claude Code keeps no read from before it: an Edit or Write of a file the new session has not read with the
  * Read tool fails, and that was the most common failed call in one team's week (T1380).
- * Any start that leaves the context small (a compaction too) starts the task count over, and forgets the
- * size a refresh the session went on from was asked at, so its next ask comes at the threshold again. A fresh start
- * (the refresh's own, or a /clear by hand) has its first turn end measure its baseline (`smallAgain`).
+ * A fresh start (the refresh's own, or a /clear by hand) starts the task count over and has its first turn end
+ * measure its baseline (`freshAgain`). A compaction with no handover asked for counts as reaching the threshold: the
+ * context hit Claude Code's own limit first, as on a large window whose threshold sits past it, and a count started
+ * over there would never ask (#1520). It records the ask as one made within the turn, with the handover as it is now
+ * (`handoverHash`), so the next turn end asks for the handover and takes a new one as ready. Any start that leaves
+ * the context small forgets the size an ask the session went on from was made at, so its next ask comes at the
+ * threshold again.
  */
 export function decideStart(
   state: RefreshState | undefined,
@@ -795,12 +798,22 @@ export function decideStart(
   settings: Pick<RefreshSettings, 'enabled'>,
   handoverPath: string,
   now: string,
+  handoverHash: string | null,
 ): StartDecision {
   if (!settings.enabled || state === undefined || source === undefined) {
     return { kind: 'none' };
   }
-  if ((state.phase === 'boundary' || state.phase === 'idle' || state.phase === 'refreshed') && SMALL_SOURCES.has(source)) {
-    const reset = smallAgain(state, source);
+  if ((state.phase === 'boundary' || state.phase === 'idle' || state.phase === 'refreshed') && source === COMPACT_START) {
+    return {
+      kind: 'ask',
+      note:
+        'Claude Code compacted your conversation before your context refresh asked for a handover; that counts as reaching ' +
+        `the refresh threshold, so this turn's end asks you for your handover (${handoverPath}) and your fresh start follows it.`,
+      state: { phase: 'asked', task: null, at: now, tokens: null, handoverHash, midTurn: true, ...keepWindow(state) },
+    };
+  }
+  if ((state.phase === 'boundary' || state.phase === 'idle' || state.phase === 'refreshed') && FRESH_SOURCES.has(source)) {
+    const reset = freshAgain(state);
     return reset === state ? { kind: 'none' } : { kind: 'reset', state: reset };
   }
   if (state.phase === 'ready' && FRESH_SOURCES.has(source)) {

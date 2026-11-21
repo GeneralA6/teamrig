@@ -303,7 +303,7 @@ so it never loses work to a compaction.
    `teamrig start` at your next work block, not now (a note with no room for the task block names it to run first).
 
 The hook judges each finished task once and never loops. A team turns this off with `refresh.enabled: false`, and the task
-count with `refresh.everyTasks: 0`. A `/clear`, a new process or a compaction starts the count over.
+count with `refresh.everyTasks: 0`. A `/clear` or a new process starts the count over; a compaction with no handover asked for asks for one at the next turn end.
 
 ## Use a helper
 

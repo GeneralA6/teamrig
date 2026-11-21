@@ -654,7 +654,7 @@ describe('runCli: context refresh', () => {
     assert.match(ready.stdout[0] ?? '', /^REFUSED no refresh was asked of you/);
   });
 
-  it('asks after the third task at a context worth refreshing, and counts again after a compaction', async () => {
+  it('asks after the third task at a context worth refreshing', async () => {
     const kit = new CliHarness();
     await kit.files.write(TRANSCRIPT, transcript(90_000));
     const finishAndStop = async (): Promise<CliResult> => {
@@ -664,12 +664,27 @@ describe('runCli: context refresh', () => {
     assert.deepEqual(await finishAndStop(), SILENT);
     assert.deepEqual(await finishAndStop(), SILENT);
     assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"idle","task":"T2",.*"finished":2/);
-    assert.equal((await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('compact') })).code, EXIT.ok);
-    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"idle","task":"T2",.*"finished":0/);
-    assert.deepEqual(await finishAndStop(), SILENT);
-    assert.deepEqual(await finishAndStop(), SILENT);
     const asked = stopJson(await finishAndStop());
-    assert.match(JSON.stringify(asked), /"decision":"block","reason":"teamrig: your context is 90k after 3 tasks \(refresh every 3 tasks\) and you just finished T5\./);
+    assert.match(JSON.stringify(asked), /"decision":"block","reason":"teamrig: your context is 90k after 3 tasks \(refresh every 3 tasks\) and you just finished T3\./);
+  });
+
+  it('asks for the handover after a compaction no ask came before, and takes only one written since (#1520)', async () => {
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
+    await kit.files.write(TRANSCRIPT, transcript(90_000));
+    await kit.files.write(HANDOVER('alpha'), '## State\n- the last refresh.\n\n## Next steps\n1. Old.\n');
+    await finishTask(kit, 'alpha');
+    assert.deepEqual(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }), SILENT, 'under the threshold and the task count');
+    const compacted = contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('compact') }));
+    assert.ok(compacted.includes(`Claude Code compacted your conversation before your context refresh asked for a handover; that counts as reaching the refresh threshold, so this turn's end asks you for your handover (${HANDOVER('alpha')})`), compacted);
+    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"asked","task":null,.*"tokens":null,.*"midTurn":true/);
+    // Claude Code's summary is small: the next turn end asks well under the threshold.
+    await kit.files.write(TRANSCRIPT, transcript(40_000));
+    assert.match(JSON.stringify(stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }))), /"decision":"block","reason":"teamrig: the refresh asked within this turn is still due/);
+    assert.deepEqual(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }), SILENT, 'the handover from before is not taken');
+    await kit.files.write(HANDOVER('alpha'), '## State\n- T1 done.\n\n## Next steps\n1. T2.\n');
+    assert.deepEqual(stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) })), {
+      systemMessage: 'teamrig: app-alpha wrote its handover; type /clear for a fresh start',
+    });
   });
 
   it('refuses a handover that was already there when the Stop hook asked', async () => {

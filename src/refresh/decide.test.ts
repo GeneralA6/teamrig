@@ -706,7 +706,7 @@ describe('decideReady', () => {
 describe('decideStart', () => {
   it('points a cleared or new session at its handover, once', () => {
     for (const source of ['clear', 'startup']) {
-      assert.deepEqual(decideStart(READY, source, DEFAULT_REFRESH, HANDOVER, NOW), {
+      assert.deepEqual(decideStart(READY, source, DEFAULT_REFRESH, HANDOVER, NOW, null), {
         kind: 'inject',
         note:
           `You were refreshed after T12; read your handover first: ${HANDOVER}. Then carry on with its next steps. ` +
@@ -714,8 +714,8 @@ describe('decideStart', () => {
         state: { phase: 'refreshed', task: 'T12', at: NOW, baseline: null },
       });
     }
-    assert.deepEqual(decideStart({ phase: 'refreshed', task: 'T12', at: NOW, baseline: null }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' });
-    const midTask = decideStart({ ...READY, task: null, tokens: 262_144 }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW);
+    assert.deepEqual(decideStart({ phase: 'refreshed', task: 'T12', at: NOW, baseline: null }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW, null), { kind: 'none' });
+    const midTask = decideStart({ ...READY, task: null, tokens: 262_144 }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW, null);
     assert.deepEqual(midTask, {
       kind: 'inject',
       note:
@@ -729,42 +729,82 @@ describe('decideStart', () => {
     const asked: RefreshState = ASKED;
     const ready: RefreshState = { ...READY, tokens: 262_144, noticed: true };
     for (const source of ['clear', 'startup', 'compact']) {
-      assert.deepEqual(decideStart(asked, source, DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...asked, tokens: null } }, source);
+      assert.deepEqual(decideStart(asked, source, DEFAULT_REFRESH, HANDOVER, NOW, null), { kind: 'reset', state: { ...asked, tokens: null } }, source);
     }
-    assert.deepEqual(decideStart(ready, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...ready, tokens: null } });
-    assert.equal(decideStart(ready, 'clear', DEFAULT_REFRESH, HANDOVER, NOW).kind, 'inject', 'a fresh start takes the handover');
+    assert.deepEqual(decideStart(ready, 'compact', DEFAULT_REFRESH, HANDOVER, NOW, null), { kind: 'reset', state: { ...ready, tokens: null } });
+    assert.equal(decideStart(ready, 'clear', DEFAULT_REFRESH, HANDOVER, NOW, null).kind, 'inject', 'a fresh start takes the handover');
     for (const source of ['resume', 'fork', undefined]) {
-      assert.deepEqual(decideStart(asked, source, DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' }, source);
+      assert.deepEqual(decideStart(asked, source, DEFAULT_REFRESH, HANDOVER, NOW, null), { kind: 'none' }, source);
     }
-    assert.deepEqual(decideStart({ ...ASKED, tokens: null }, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' }, 'already forgotten');
+    assert.deepEqual(decideStart({ ...ASKED, tokens: null }, 'compact', DEFAULT_REFRESH, HANDOVER, NOW, null), { kind: 'none' }, 'already forgotten');
   });
 
   it('leaves the handover waiting on a start that keeps the old context', () => {
     for (const source of ['compact', 'resume', 'fork', undefined]) {
-      assert.deepEqual(decideStart(READY, source, DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' }, source);
+      assert.deepEqual(decideStart(READY, source, DEFAULT_REFRESH, HANDOVER, NOW, null), { kind: 'none' }, source);
     }
   });
 
-  it('starts the task count over when the context is small again, a compaction too', () => {
+  it('starts the task count over at a fresh start', () => {
     const idle: RefreshState = { phase: 'idle', task: 'T12', at: BEFORE, tokens: 150_000, finished: 2 };
     for (const source of ['clear', 'startup']) {
       // A fresh start also waits for its baseline .
-      assert.deepEqual(decideStart(idle, source, DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...idle, finished: 0, baseline: null } }, source);
+      assert.deepEqual(decideStart(idle, source, DEFAULT_REFRESH, HANDOVER, NOW, null), { kind: 'reset', state: { ...idle, finished: 0, baseline: null } }, source);
     }
-    assert.deepEqual(decideStart(idle, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...idle, finished: 0 } });
-    const boundary: RefreshState = { ...BOUNDARY, finished: 3 };
-    assert.deepEqual(decideStart(boundary, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...boundary, finished: 0 } });
     for (const source of ['resume', 'fork', undefined]) {
-      assert.deepEqual(decideStart(idle, source, DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' }, source);
+      assert.deepEqual(decideStart(idle, source, DEFAULT_REFRESH, HANDOVER, NOW, null), { kind: 'none' }, source);
     }
-    assert.deepEqual(decideStart({ ...idle, finished: 0 }, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' }, 'already 0: nothing to write');
-    assert.deepEqual(decideStart(idle, 'compact', { enabled: false }, HANDOVER, NOW), { kind: 'none' });
+    assert.deepEqual(decideStart({ ...idle, finished: 0, baseline: null }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW, null), { kind: 'none' }, 'already 0: nothing to write');
+  });
+
+  describe('a compaction with no handover asked for asks for one (#1520)', () => {
+    const NOTE =
+      'Claude Code compacted your conversation before your context refresh asked for a handover; that counts as reaching ' +
+      `the refresh threshold, so this turn's end asks you for your handover (${HANDOVER}) and your fresh start follows it.`;
+    const askedAt = (hash: string | null): RefreshState => ({ phase: 'asked', task: null, at: NOW, tokens: null, handoverHash: hash, midTurn: true });
+
+    it('records the ask within the turn from idle, a task end and a fresh start alike, with the handover as it is', () => {
+      const idle: RefreshState = { phase: 'idle', task: 'T12', at: BEFORE, tokens: 150_000, finished: 2, baseline: 130_000 };
+      for (const state of [idle, { ...idle, finished: 0 }, { ...BOUNDARY, finished: 3 }, { phase: 'refreshed', task: 'T12', at: BEFORE, baseline: 40_000 }] satisfies RefreshState[]) {
+        assert.deepEqual(decideStart(state, 'compact', DEFAULT_REFRESH, HANDOVER, NOW, 'h'), { kind: 'ask', note: NOTE, state: askedAt('h') }, state.phase);
+      }
+      assert.deepEqual(decideStart(idle, 'compact', DEFAULT_REFRESH, HANDOVER, NOW, null), { kind: 'ask', note: NOTE, state: askedAt(null) }, 'no handover yet');
+    });
+
+    it('keeps the large window the state showed, so the next ask after it comes at the larger threshold', () => {
+      const large: RefreshState = { phase: 'idle', task: 'T12', at: BEFORE, tokens: 300_000, finished: 0, largeWindow: true };
+      assert.deepEqual(decideStart(large, 'compact', DEFAULT_REFRESH, HANDOVER, NOW, 'h'), { kind: 'ask', note: NOTE, state: { ...askedAt('h'), largeWindow: true } });
+    });
+
+    it('asks nothing with the feature off, or once an ask already stands', () => {
+      const idle: RefreshState = { phase: 'idle', task: 'T12', at: BEFORE, tokens: 150_000, finished: 2 };
+      assert.deepEqual(decideStart(idle, 'compact', { enabled: false }, HANDOVER, NOW, 'h'), { kind: 'none' });
+      assert.deepEqual(decideStart({ ...ASKED, tokens: null }, 'compact', DEFAULT_REFRESH, HANDOVER, NOW, 'h'), { kind: 'none' });
+      assert.deepEqual(decideStart(READY, 'compact', DEFAULT_REFRESH, HANDOVER, NOW, 'h'), { kind: 'none' });
+    });
+
+    it('has the next turn end ask for the handover, and the one after a new handover take it as ready', () => {
+      const old = '## State\n- before.\n\n## Next steps\n1. Old.\n';
+      const written = '## State\n- T12 half done.\n\n## Next steps\n1. Finish T12.\n';
+      const start = decideStart({ phase: 'idle', task: 'T12', at: BEFORE, tokens: 150_000, finished: 0 }, 'compact', DEFAULT_REFRESH, HANDOVER, NOW, handoverHashOf(old));
+      const asked = start.kind === 'ask' ? start.state : undefined;
+      // Well under the threshold: the size alone would never ask here.
+      const end = decideStop(asked, stopContext(), facts({ tokens: 40_000, handover: old, handoverHash: handoverHashOf(old) }));
+      assert.equal(end.kind, 'block');
+      const reason = end.kind === 'block' ? end.reason : '';
+      assert.match(reason, /^teamrig: the refresh asked within this turn is still due, so refresh now rather than at a task end\. Write your handover to /);
+      assert.ok(reason.endsWith(TURN_END_TAIL), reason);
+      const unwritten = decideStop(end.kind === 'block' ? end.state : undefined, stopContext({ stopHookActive: true }), facts({ tokens: 40_000, handover: old }));
+      assert.notEqual(unwritten.kind, 'notice', 'the handover from before is not taken');
+      const taken = decideStop(end.kind === 'block' ? end.state : undefined, stopContext({ stopHookActive: true }), facts({ tokens: 41_000, handover: written }));
+      assert.equal(taken.kind === 'notice' ? taken.message : '', 'teamrig: api wrote its handover; type /clear for a fresh start');
+    });
   });
 
   it('does nothing before the handover is ready, or with the feature off', () => {
-    assert.deepEqual(decideStart({ ...ASKED, tokens: null }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' });
-    assert.deepEqual(decideStart(undefined, 'clear', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' });
-    assert.deepEqual(decideStart(READY, 'clear', { enabled: false }, HANDOVER, NOW), { kind: 'none' });
+    assert.deepEqual(decideStart({ ...ASKED, tokens: null }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW, null), { kind: 'none' });
+    assert.deepEqual(decideStart(undefined, 'clear', DEFAULT_REFRESH, HANDOVER, NOW, null), { kind: 'none' });
+    assert.deepEqual(decideStart(READY, 'clear', { enabled: false }, HANDOVER, NOW, null), { kind: 'none' });
   });
 });
 
@@ -856,14 +896,10 @@ describe('the loop guard after a fresh start', () => {
     assert.equal(decideStop(small, stopContext({ settings: DEFAULTS }), facts({ tokens: 120_000 })).kind, 'block');
   });
 
-  it('waits for a new baseline after a /clear by hand, and drops it at a compaction', () => {
+  it('waits for a new baseline after a /clear by hand', () => {
     const idle: RefreshState = { phase: 'idle', task: 'T12', at: BEFORE, tokens: 150_000, finished: 0, baseline: 130_000 };
-    assert.deepEqual(decideStart(idle, 'clear', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...idle, baseline: null } });
-    assert.deepEqual(decideStart(idle, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), {
-      kind: 'reset',
-      state: { phase: 'idle', task: 'T12', at: BEFORE, tokens: 150_000, finished: 0 },
-    });
-    assert.deepEqual(decideStart({ ...FRESH, baseline: 130_000 }, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { phase: 'refreshed', task: 'T12', at: NOW } });
+    assert.deepEqual(decideStart(idle, 'clear', DEFAULT_REFRESH, HANDOVER, NOW, null), { kind: 'reset', state: { ...idle, baseline: null } });
+    assert.deepEqual(decideStart({ ...FRESH, baseline: 130_000 }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW, null), { kind: 'reset', state: { ...FRESH, baseline: null } });
   });
 });
 
@@ -916,7 +952,7 @@ describe('the threshold on a window the state shows large', () => {
     const ready = decideReady(askedState, '# In progress\n', HANDOVER, NOW, CAP);
     const readyState = ready.kind === 'ready' ? ready.state : askedState;
     assert.equal(readyState.phase === 'ready' && readyState.largeWindow, true, 'the handover keeps it');
-    const start = decideStart(readyState, 'clear', DEFAULTS, HANDOVER, NOW);
+    const start = decideStart(readyState, 'clear', DEFAULTS, HANDOVER, NOW, null);
     const fresh = start.kind === 'inject' ? start.state : readyState;
     assert.deepEqual(fresh, { phase: 'refreshed', task: null, at: NOW, baseline: null, largeWindow: true }, 'the /clear keeps it');
     assert.equal(thresholdOf(fresh, DEFAULTS), 250_000);
@@ -924,13 +960,14 @@ describe('the threshold on a window the state shows large', () => {
     assert.deepEqual(decideStop(fresh, context, cheap({ tokens: 122_000 })), { kind: 'write', state: { ...fresh, baseline: 122_000 } });
   });
 
-  it('keeps the window through a compaction, which drops the baseline', () => {
+  it('keeps the window through a compaction, which asks for the handover and drops the baseline (#1520)', () => {
     const idle: RefreshState = { phase: 'idle', task: 'T13', at: BEFORE, tokens: 230_000, finished: 1, baseline: 122_000, largeWindow: true };
-    const compacted = decideStart(idle, 'compact', DEFAULTS, HANDOVER, NOW);
-    assert.deepEqual(compacted, { kind: 'reset', state: { phase: 'idle', task: 'T13', at: BEFORE, tokens: 230_000, finished: 0, largeWindow: true } });
-    const state = compacted.kind === 'reset' ? compacted.state : idle;
-    assert.deepEqual(decideStop(state, context, cheap({ tokens: 146_000 })), { kind: 'none' });
-    assert.equal(decideStop(state, context, facts({ tokens: 250_000 })).kind, 'block');
+    const compacted = decideStart(idle, 'compact', DEFAULTS, HANDOVER, NOW, null);
+    assert.equal(compacted.kind, 'ask');
+    const state = compacted.kind === 'ask' ? compacted.state : idle;
+    assert.deepEqual(state, { phase: 'asked', task: null, at: NOW, tokens: null, handoverHash: null, midTurn: true, largeWindow: true });
+    assert.equal(thresholdOf(state, DEFAULTS), 250_000);
+    assert.equal(decideStop(state, context, facts({ tokens: 146_000 })).kind, 'block', 'the turn end asks under the threshold');
   });
 
   it("takes the window the mod reports as it is: large past 200k, small at 200k, even over the size it started at", () => {

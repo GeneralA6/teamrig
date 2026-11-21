@@ -32,6 +32,7 @@ import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import {
   decideStart,
   decideStop,
+  handoverHashOf,
   reaskGrowth,
   thousands,
   thresholdOf,
@@ -631,7 +632,8 @@ const NO_REFRESH: RefreshStart = { note: undefined, refreshed: false };
 /**
  * A fresh start (`/clear`, a new process) after the session's handover was marked ready: the note
  * that points it at the handover, given once. A start that keeps the old context (compact, resume)
- * leaves the handover waiting; a small context again (a compaction too) starts the task count over.
+ * leaves the handover waiting; a fresh start starts the task count over, and a compaction with no handover asked
+ * for records the ask its next turn end makes (#1520).
  * It never throws, so the session always gets its rules.
  */
 async function refreshStartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, start: StartEvent): Promise<RefreshStart> {
@@ -644,7 +646,14 @@ async function refreshStartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, 
     const { source } = start;
     const now = new Date(runtime.clock.now()).toISOString();
     const state = await store.state(id);
-    const decision = decideStart(state, source, config.refresh, store.handoverPath(id), now);
+    // The handover as it is now, so the ask a compaction records takes only a handover written after it.
+    const handoverHash = source === 'compact' ? handoverHashOf(await store.handover(id)) : null;
+    const decision = decideStart(state, source, config.refresh, store.handoverPath(id), now, handoverHash);
+    if (decision.kind === 'ask') {
+      await store.setState(id, decision.state);
+      const recordNote = await carryRecordAt(runtime, store, id, payload);
+      return { note: [decision.note, recordNote].filter((line) => line !== undefined).join('\n'), refreshed: false };
+    }
     if (decision.kind !== 'inject') {
       if (decision.kind === 'reset') {
         await store.setState(id, decision.state);

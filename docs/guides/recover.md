@@ -115,7 +115,7 @@ sequenceDiagram
 - Two rules in the team config ask for it. `refresh.contextTokens` (120,000 by default; `refresh.largeWindowContextTokens`, 250,000, for a session on a 1M window: a `[1m]` model, or one whose window teamrig infers) refreshes at that size,
   well before Claude Code compacts a 200k window at about 167k. `refresh.everyTasks` (3 by default) refreshes at
   every third finished task once the context is at `refresh.everyTasksMinTokens` (80,000) or more, so a session
-  that grows slowly still gets a fresh start; a `/clear`, a new process or a compaction starts the count over.
+  that grows slowly still gets a fresh start; a `/clear` or a new process starts the count over. A compaction with no handover asked for asks for one at the next turn end, whatever the size, since the context reached Claude Code's own limit first.
 - The lead can ask for a refresh at any size: `teamrig refresh web` applies at web's next turn end.
 - It waits while work the session started in the background still runs (subagents, background commands,
   monitors, workflows): a fresh start would cut it off, so the hook asks for the handover at once, naming that work
