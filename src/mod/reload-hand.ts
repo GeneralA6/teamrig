@@ -8,12 +8,13 @@
  * either (an install still being copied), it runs /reload-plugins the way the person would. It runs at most one
  * reload per RELOAD_GAP_MS, waits as long after a refused one, and never runs two for the same installs.
  *
- * The mod runs inside Claude Code without Node, so this file imports nothing from Node, only the plugin list's and
- * the store's readers (`core/installed-plugins.ts`, `core/plugin-store.ts`), which import none either: they compile to
- * modules the mod imports as they are.
+ * The mod runs inside Claude Code without Node, so this file imports nothing from Node, only the store's readers
+ * (`core/installed-plugins.ts`, `core/plugin-store.ts`), which import none either: they compile to modules the mod
+ * imports as they are. The host's plugin port, which reads the plugin list, comes in with the host.
  */
-import { appliesTo, installsOf, type ListedInstall } from '../core/installed-plugins.ts';
+import { appliesTo } from '../core/installed-plugins.ts';
 import { newestNear, storeTimesOf, type StoreFolders } from '../core/plugin-store.ts';
+import type { HostPlugin, PluginInstall } from '../ports/host/plugin.ts';
 
 /** How often the hand reads installed_plugins.json. */
 export const CHECK_MS = 15_000;
@@ -39,6 +40,8 @@ export interface ReloadRecord {
 export interface ReloadHandHost extends StoreFolders {
   /** Claude Code's `plugins` folder, which holds installed_plugins.json, known_marketplaces.json and the cache. */
   readonly pluginsFolder: string;
+  /** The host's plugin store, which reads installed_plugins.json and names the store's list files. */
+  readonly plugin: Pick<HostPlugin, 'installs' | 'listFile' | 'marketplacesFile'>;
   /** The text of installed_plugins.json; rejects when it is missing or unreadable. */
   readInstalled(): Promise<string>;
   /** The session's project root now, which project- and local-scope installs are for. */
@@ -87,34 +90,35 @@ export function isReloadRecord(value: unknown): value is ReloadRecord {
 }
 
 /**
- * The installs that apply to a tab whose project root is `projectRoot`: every user-scope install and the project- and
- * local-scope ones for that project. Undefined for a text that is not installed_plugins.json's shape.
+ * The installs that apply to a tab whose project root is `projectRoot`: every install for every project and the ones
+ * for that project. Undefined for a text that is not the plugin list's shape.
  */
-function applyingInstalls(text: string, projectRoot: string): readonly ListedInstall[] | undefined {
-  return installsOf(text)?.filter(({ install }) => appliesTo(install, projectRoot));
+function applyingInstalls(plugin: Pick<HostPlugin, 'installs'>, text: string, projectRoot: string): readonly PluginInstall[] | undefined {
+  return plugin.installs(text)?.filter((install) => appliesTo(install, projectRoot));
 }
 
-function fingerprintOf(installs: readonly ListedInstall[]): string {
+/** The installs as one text: the record a reload keeps in the session reads alike across a mod's reload. */
+function fingerprintOf(installs: readonly PluginInstall[]): string {
   return installs
-    .map(({ key, install }) => JSON.stringify([key, install.installPath, install.version, install.gitCommitSha]))
+    .map(({ key, installPath, version, revision }) => JSON.stringify([key, installPath, version, revision]))
     .sort()
     .join('\n');
 }
 
 /**
  * The installs that apply to a tab whose project root is `projectRoot`, each as its plugin, folder, version and
- * commit, sorted. Undefined for a text that is not installed_plugins.json's shape, so a file mid-write or of another
+ * revision, sorted. Undefined for a text that is not the plugin list's shape, so a file mid-write or of another
  * version reads as no change.
  */
-export function installedFingerprint(text: string, projectRoot: string): string | undefined {
-  const installs = applyingInstalls(text, projectRoot);
+export function installedFingerprint(plugin: Pick<HostPlugin, 'installs'>, text: string, projectRoot: string): string | undefined {
+  const installs = applyingInstalls(plugin, text, projectRoot);
   return installs === undefined ? undefined : fingerprintOf(installs);
 }
 
 /** What one read of installed_plugins.json found: the installs that apply to the tab and their fingerprint. */
 interface Look {
   readonly fingerprint: string;
-  readonly installs: readonly ListedInstall[];
+  readonly installs: readonly PluginInstall[];
 }
 
 function messageOf(error: unknown): string {
@@ -199,7 +203,9 @@ export class ReloadHand {
       return { kind: 'held', until: this.heldFrom + RELOAD_GAP_MS };
     }
     // The store is read only when a reload is otherwise due.
-    const changedAt = newestNear(await storeTimesOf(this.host, this.host.pluginsFolder, look.installs), now, SETTLE_MS);
+    const { pluginsFolder, plugin } = this.host;
+    const lists = [`${pluginsFolder}/${plugin.listFile}`, `${pluginsFolder}/${plugin.marketplacesFile}`];
+    const changedAt = newestNear(await storeTimesOf(this.host, lists, look.installs), now, SETTLE_MS);
     if (changedAt !== undefined) {
       return { kind: 'installing', changedAt };
     }
@@ -242,7 +248,7 @@ export class ReloadHand {
       this.lastText = text;
       this.sameSince = now;
     }
-    const installs = applyingInstalls(text, await this.host.projectRoot());
+    const installs = applyingInstalls(this.host.plugin, text, await this.host.projectRoot());
     return installs === undefined ? undefined : { fingerprint: fingerprintOf(installs), installs };
   }
 }

@@ -1,13 +1,12 @@
 /**
- * Where a newer teamrig or teamrig-pane is published, read from Claude Code's own plugin files (T2466): the plugin list
- * (`installed_plugins.json`) names each install's version and marketplace, the marketplace list
- * (`known_marketplaces.json`) where that marketplace lives, and the marketplace's `marketplace.json` the folder of each
- * plugin in it, whose `.claude-plugin/plugin.json` holds the version published. Plain parsers: a file of another shape
- * reads as nothing, so the update notice stays quiet rather than wrong.
+ * Where a newer teamrig or teamrig-pane is published (T2466): the host's plugin list, read through its plugin port,
+ * names each install's version and marketplace, the port's marketplace list where that marketplace lives, and the
+ * marketplace's `marketplace.json` the folder of each plugin in it, whose `.claude-plugin/plugin.json` holds the version
+ * published. Plain parsers: a file of another shape reads as nothing, so the update notice stays quiet rather than wrong.
  */
 import { isRecord } from '../core/guards.ts';
-import { installsOf } from '../core/installed-plugins.ts';
 import { parseVersion } from '../core/release-version.ts';
+import type { PluginInstall } from '../ports/host/index.ts';
 
 /** The plugins the update notice tells of: teamrig's own, each from its own marketplace. */
 export const TRACKED_PLUGINS: readonly string[] = ['teamrig', 'teamrig-pane'];
@@ -24,14 +23,6 @@ export interface TrackedInstall {
   readonly version: string;
 }
 
-/**
- * Where a marketplace lives: a folder on this machine (`directory`), read in place, or a git repository Claude Code
- * cloned to `installLocation` (`github`, `git`, `url`), whose `origin` is asked for its newest commit.
- */
-export type MarketplaceSource =
-  | { readonly kind: 'directory'; readonly path: string }
-  | { readonly kind: 'clone'; readonly installLocation: string };
-
 function parsed(text: string): unknown {
   try {
     const value: unknown = JSON.parse(text);
@@ -42,42 +33,23 @@ function parsed(text: string): unknown {
 }
 
 /**
- * The tracked plugins' installs, one per plugin and marketplace: the user-scope one where there is one (what a tab
- * outside a project-scoped install runs), else the first listed. None for a list of another shape.
+ * The tracked plugins' installs among `installs` (the host's plugin list), one per plugin and marketplace: the one
+ * that serves every project where there is one (what a tab outside a project's install runs), else the first listed.
+ * An install with no marketplace or no release version is left out.
  */
-export function trackedInstallsOf(installedText: string): readonly TrackedInstall[] {
-  const listed = installsOf(installedText) ?? [];
-  const chosen = new Map<string, TrackedInstall & { readonly user: boolean }>();
-  for (const { key, install } of listed) {
-    const at = key.lastIndexOf('@');
-    const plugin = key.slice(0, at);
-    const marketplace = key.slice(at + 1);
-    if (at <= 0 || !TRACKED_PLUGINS.includes(plugin) || parseVersion(install.version) === undefined) {
+export function trackedInstallsOf(installs: readonly PluginInstall[]): readonly TrackedInstall[] {
+  const chosen = new Map<string, TrackedInstall & { readonly everywhere: boolean }>();
+  for (const { key, plugin, marketplace, reach, version } of installs) {
+    if (marketplace === '' || !TRACKED_PLUGINS.includes(plugin) || parseVersion(version) === undefined) {
       continue;
     }
-    const user = install.scope === 'user';
+    const everywhere = reach.kind === 'every project';
     const held = chosen.get(key);
-    if (held === undefined || (user && !held.user)) {
-      chosen.set(key, { plugin, marketplace, version: install.version, user });
+    if (held === undefined || (everywhere && !held.everywhere)) {
+      chosen.set(key, { plugin, marketplace, version, everywhere });
     }
   }
   return [...chosen.values()].map(({ plugin, marketplace, version }) => ({ plugin, marketplace, version }));
-}
-
-/** Where the marketplace `name` lives, from the marketplace list; undefined when it is not listed or of another shape. */
-export function marketplaceSourceOf(knownText: string, name: string): MarketplaceSource | undefined {
-  const known = parsed(knownText);
-  const entry = isRecord(known) ? known[name] : undefined;
-  if (!isRecord(entry)) {
-    return undefined;
-  }
-  const source = entry['source'];
-  const installLocation = entry['installLocation'];
-  if (isRecord(source) && source['source'] === 'directory') {
-    const path = source['path'];
-    return typeof path === 'string' && path !== '' ? { kind: 'directory', path } : undefined;
-  }
-  return typeof installLocation === 'string' && installLocation !== '' ? { kind: 'clone', installLocation } : undefined;
 }
 
 /**

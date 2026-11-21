@@ -15,19 +15,9 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { isRecord } from '../core/guards.ts';
-import { INSTALLED_PLUGINS_FILE } from '../core/installed-plugins.ts';
-import { KNOWN_MARKETPLACES_FILE } from '../core/plugin-store.ts';
 import { compareVersions, parseVersion } from '../core/release-version.ts';
-import {
-  MARKETPLACE_FILE,
-  marketplaceSourceOf,
-  pluginFilePath,
-  pluginFolderOf,
-  pluginVersionOf,
-  trackedInstallsOf,
-  type MarketplaceSource,
-  type TrackedInstall,
-} from './sources.ts';
+import type { HostPlugin, MarketplaceSource } from '../ports/host/index.ts';
+import { MARKETPLACE_FILE, pluginFilePath, pluginFolderOf, pluginVersionOf, trackedInstallsOf, type TrackedInstall } from './sources.ts';
 
 /** How often the network is asked at most, across every tab of the machine. */
 export const CHECK_EVERY_MS = 6 * 60 * 60_000;
@@ -60,7 +50,7 @@ export interface UpdateGit {
 
 /** Where the check reads and keeps its files. */
 export interface UpdatePaths {
-  /** Claude Code's `plugins` folder, which holds installed_plugins.json and known_marketplaces.json. */
+  /** The host's plugins folder, which holds its plugin list and its marketplace list. */
   readonly pluginsFolder: string;
   /** The kit home's `updates` folder: check.json and a bare repository per cloned marketplace. */
   readonly updatesFolder: string;
@@ -70,6 +60,8 @@ export interface UpdateCheckDeps {
   readonly files: Files;
   readonly git: UpdateGit;
   readonly paths: UpdatePaths;
+  /** The host's plugin port: the names of its two lists, and what they hold. */
+  readonly plugin: Pick<HostPlugin, 'listFile' | 'marketplacesFile' | 'installs' | 'marketplaceSource'>;
   now(): number;
 }
 
@@ -175,8 +167,9 @@ export class UpdateCheck {
   }
 
   private async installs(): Promise<readonly TrackedInstall[]> {
-    const text = await this.deps.files.read(join(this.deps.paths.pluginsFolder, INSTALLED_PLUGINS_FILE));
-    return text === undefined ? [] : trackedInstallsOf(text);
+    const { plugin } = this.deps;
+    const text = await this.deps.files.read(join(this.deps.paths.pluginsFolder, plugin.listFile));
+    return trackedInstallsOf((text === undefined ? undefined : plugin.installs(text)) ?? []);
   }
 
   private async state(): Promise<CheckState> {
@@ -190,10 +183,10 @@ export class UpdateCheck {
   private async refresh(installs: readonly TrackedInstall[], before: CheckState, now: number): Promise<CheckState> {
     // The claim: a tab that looks while this one asks reads a fresh check and asks nothing.
     await this.save({ ...before, checkedAt: now });
-    const known = (await this.deps.files.read(join(this.deps.paths.pluginsFolder, KNOWN_MARKETPLACES_FILE))) ?? '';
+    const known = (await this.deps.files.read(join(this.deps.paths.pluginsFolder, this.deps.plugin.marketplacesFile))) ?? '';
     const published: Record<string, Published> = { ...before.published };
     for (const marketplace of [...new Set(installs.map((install) => install.marketplace))]) {
-      const source = marketplaceSourceOf(known, marketplace);
+      const source = this.deps.plugin.marketplaceSource(known, marketplace);
       const plugins = installs.filter((install) => install.marketplace === marketplace).map((install) => install.plugin);
       const found = source === undefined ? undefined : await this.publishedBy(marketplace, source, plugins, before.published[marketplace]);
       if (found !== undefined) {

@@ -19,7 +19,7 @@ import { scanSetup } from '../../setup/scan.ts';
 import { claudeSkillDoctor } from '../../setup/skill-doctor.ts';
 import { projectsSettingsScope, teamSettingsScope } from '../allow-scope.ts';
 import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
-import { pathsOf, permissionsOf, transcriptsOf } from '../host.ts';
+import { pathsOf, permissionsOf, pluginIfKept, transcriptsOf } from '../host.ts';
 import { teamFolders, teamProjectOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRulesPathsOf } from '../team-rules.ts';
@@ -84,7 +84,7 @@ export async function scan(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const claudeDir = host.home(runtime.userHome);
   const secrets = new SecretScanner(team?.config.register.secretPatterns);
   const doctor = claudeSkillDoctor({ env: runtime.env, platform: runtime.platform, probe: runtime.probe, files: runtime.files, node: runtime.self.node, hooks: runtime.hooks });
-  const found = await scanSetup({ files: runtime.files, permissions: permissionsOf(runtime), probe: runtime.probe, transcripts: runtime.transcripts, reader: transcriptsOf(runtime), paths: host, doctor }, {
+  const found = await scanSetup({ files: runtime.files, permissions: permissionsOf(runtime), plugin: pluginIfKept(runtime), probe: runtime.probe, transcripts: runtime.transcripts, reader: transcriptsOf(runtime), paths: host, doctor }, {
     paths: host,
     claudeDir,
     userHome: runtime.userHome,

@@ -1,9 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { marketplaceSourceOf, pluginFilePath, pluginFolderOf, pluginVersionOf, trackedInstallsOf } from './sources.ts';
+import type { PluginInstall } from '../ports/host/index.ts';
+import { shippedPlugin } from '../testing/shipped-plugin.ts';
+import { pluginFilePath, pluginFolderOf, pluginVersionOf, trackedInstallsOf } from './sources.ts';
 
-function pluginList(plugins: Readonly<Record<string, readonly Readonly<Record<string, string>>[]>>): string {
-  return JSON.stringify({ version: 2, plugins });
+const PLUGIN = shippedPlugin();
+
+/** The installs the shipped host reads from a plugin list holding `plugins`; none for a list of another shape. */
+function pluginList(plugins: Readonly<Record<string, readonly Readonly<Record<string, string>>[]>> | string): readonly PluginInstall[] {
+  return PLUGIN.installs(typeof plugins === 'string' ? plugins : JSON.stringify({ version: 2, plugins })) ?? [];
 }
 
 const user = (version: string): Readonly<Record<string, string>> => ({ scope: 'user', installPath: `/cache/${version}`, version });
@@ -28,30 +33,10 @@ describe('trackedInstallsOf', () => {
     assert.deepEqual(trackedInstallsOf(text), [{ plugin: 'teamrig', marketplace: 'kit', version: '0.2.0' }]);
   });
 
-  it('leaves out an install with no release version, and reads a list of another shape as none', () => {
-    assert.deepEqual(trackedInstallsOf(pluginList({ 'teamrig@kit': [user('main')] })), []);
-    assert.deepEqual(trackedInstallsOf('{"plugins": []}'), []);
-    assert.deepEqual(trackedInstallsOf('not json'), []);
-  });
-});
-
-describe('marketplaceSourceOf', () => {
-  const known = JSON.stringify({
-    kit: { source: { source: 'github', repo: 'owner/kit' }, installLocation: '/claude/plugins/marketplaces/kit' },
-    local: { source: { source: 'directory', path: '/work/kit' }, installLocation: '/work/kit' },
-    broken: { source: { source: 'github', repo: 'owner/broken' } },
-  });
-
-  it('reads a cloned marketplace as its clone, and a directory one as its folder', () => {
-    assert.deepEqual(marketplaceSourceOf(known, 'kit'), { kind: 'clone', installLocation: '/claude/plugins/marketplaces/kit' });
-    assert.deepEqual(marketplaceSourceOf(known, 'local'), { kind: 'directory', path: '/work/kit' });
-  });
-
-  it('reads an unlisted marketplace, one with no location and a list of another shape as none', () => {
-    assert.equal(marketplaceSourceOf(known, 'missing'), undefined);
-    assert.equal(marketplaceSourceOf(known, 'broken'), undefined);
-    assert.equal(marketplaceSourceOf('[]', 'kit'), undefined);
-    assert.equal(marketplaceSourceOf('', 'kit'), undefined);
+  it('leaves out an install with no release version or no marketplace, and reads a list of another shape as none', () => {
+    assert.deepEqual(trackedInstallsOf(pluginList({ 'teamrig@kit': [user('main')], teamrig: [user('0.3.0')] })), []);
+    assert.deepEqual(trackedInstallsOf(pluginList('{"plugins": []}')), []);
+    assert.deepEqual(trackedInstallsOf(pluginList('not json')), []);
   });
 });
 

@@ -2,9 +2,11 @@ import { join } from 'node:path';
 import { isRecord, stringField } from '../../core/guards.ts';
 import { claudeConfigDir, resolveKitHome } from '../../core/home.ts';
 import { findClaude } from '../../open/claude.ts';
+import { isUnsupported, type HostPlugin } from '../../ports/host/index.ts';
 import { UpdateCheck, type UpdateNotice, type UpdatePaths } from '../../update/check.ts';
 import { applyUpdate, hookGit } from '../../update/runner.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
+import { hostOf } from '../host.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { parseJson } from './hook-input.ts';
 
@@ -31,8 +33,8 @@ export function updatePathsOf(runtime: CliRuntime): UpdatePaths {
   };
 }
 
-function checkOf(runtime: CliRuntime): UpdateCheck {
-  return new UpdateCheck({ files: runtime.files, git: hookGit(runtime.hooks, runtime.env), paths: updatePathsOf(runtime), now: () => runtime.clock.now() });
+function checkOf(runtime: CliRuntime, plugin: HostPlugin): UpdateCheck {
+  return new UpdateCheck({ files: runtime.files, git: hookGit(runtime.hooks, runtime.env), paths: updatePathsOf(runtime), plugin, now: () => runtime.clock.now() });
 }
 
 /** The `plugin` a request on stdin names; undefined when stdin is not JSON or names none. */
@@ -48,7 +50,9 @@ function pluginRequested(stdin: string): string | undefined {
  */
 export async function updateCheck(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  return answer(runtime, { kind: 'notices', notices: await checkOf(runtime).notices() });
+  // A host that keeps no plugin store installs nothing teamrig can update: no band to show, and no error in a tab.
+  const { plugin } = hostOf(runtime);
+  return answer(runtime, { kind: 'notices', notices: isUnsupported(plugin) ? [] : await checkOf(runtime, plugin).notices() });
 }
 
 /** `hook update-dismiss`, stdin `{"plugin", "version"}`: hides that plugin's update band until a newer version is out. */
@@ -60,7 +64,11 @@ export async function updateDismiss(args: ParsedArgs, runtime: CliRuntime): Prom
   if (plugin === undefined || version === undefined) {
     return answer(runtime, { kind: 'failed', why: 'stdin names no plugin and version' });
   }
-  await checkOf(runtime).dismiss(plugin, version);
+  const store = hostOf(runtime).plugin;
+  if (isUnsupported(store)) {
+    return answer(runtime, { kind: 'failed', why: store.notice });
+  }
+  await checkOf(runtime, store).dismiss(plugin, version);
   return answer(runtime, { kind: 'dismissed' });
 }
 
@@ -72,7 +80,11 @@ export async function updateDismiss(args: ParsedArgs, runtime: CliRuntime): Prom
 export async function updateApply(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const plugin = pluginRequested(await runtime.readStdin());
-  const notice = (await checkOf(runtime).notices()).find((each) => each.plugin === plugin);
+  const store = hostOf(runtime).plugin;
+  if (isUnsupported(store)) {
+    return answer(runtime, { kind: 'failed', why: store.notice });
+  }
+  const notice = (await checkOf(runtime, store).notices()).find((each) => each.plugin === plugin);
   if (notice === undefined) {
     return answer(runtime, { kind: 'failed', why: `no newer ${plugin ?? 'plugin'} is published` });
   }
@@ -80,7 +92,7 @@ export async function updateApply(args: ParsedArgs, runtime: CliRuntime): Promis
   if (claude.kind === 'missing') {
     return answer(runtime, { kind: 'failed', why: 'Claude Code is not on PATH' });
   }
-  const outcome = await applyUpdate({ hooks: runtime.hooks, env: runtime.env, claude: claude.program, cwd: runtime.userHome }, notice.plugin, notice.marketplace);
+  const outcome = await applyUpdate({ hooks: runtime.hooks, env: runtime.env, claude: claude.program, cwd: runtime.userHome, plugin: store }, notice.plugin, notice.marketplace);
   if (!outcome.ok) {
     const said = outcome.said === '' ? '' : `: ${outcome.said.slice(0, 300)}`;
     return answer(runtime, { kind: 'failed', why: `${outcome.step} failed${said}` });
