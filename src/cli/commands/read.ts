@@ -27,6 +27,7 @@ import {
 import type { Roster } from '../../config/roster.ts';
 import { layoutPaths } from '../../register/layout.ts';
 import { TASK_ID } from '../../register/model.ts';
+import type { StatsRange } from '../../register/stats.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
 import { sessionRef } from '../inputs.ts';
 import { foundTeamOf, loadedConfig, lookForTeam, openKit, pastOrPresentIdOf, rosterOf } from '../kit.ts';
@@ -35,6 +36,8 @@ import { loadTree } from '../tree.ts';
 import { configSource, teamlessConfigSource } from './read-config.ts';
 import { goalsSource } from './read-goals.ts';
 import { historySource } from './read-history.ts';
+import { statsSource } from './read-stats.ts';
+import { rangeOf } from './stats.ts';
 import { meetingsSource } from './read-meetings.ts';
 import { planSource } from './read-plan.ts';
 import { selfOf, sessionsSource } from './read-sessions.ts';
@@ -59,6 +62,8 @@ interface ReadRequest {
   readonly sinceHours: number;
   /** The one task `history` is asked of. */
   readonly task: string | undefined;
+  /** The range of calendar days `stats` counts over. */
+  readonly range: StatsRange;
   /** The revision the reader already holds of a document, for each it named with `--unless`. */
   readonly unless: ReadonlyMap<DocumentName, string>;
   readonly speaks: InterfaceVersion | undefined;
@@ -81,6 +86,7 @@ const SOURCES: Record<DocumentName, (scope: ReadScope) => DocumentSource> = {
   plan: planSource,
   goals: goalsSource,
   history: historySource(CONNECTORS),
+  stats: statsSource(CONNECTORS),
 };
 
 /** The documents a run with no team is still answered: what a setup screen reads before there is a team to read. */
@@ -128,6 +134,7 @@ function requestOf(args: ParsedArgs, env: Env): ReadRequest {
     conversation: conversationOf(args.flags.get('conversation')),
     sinceHours: sinceHoursOf(args.flags.get('since')),
     task: taskOf(args.flags.get('task'), documents),
+    range: statsRangeOf(args.flags.get('range'), documents),
     unless: unlessOf(args.flags.get('unless'), documents),
     speaks,
   };
@@ -191,6 +198,17 @@ function taskOf(typed: string | undefined, documents: readonly DocumentName[]): 
     throw new UsageError('--task names the task history is asked of, and this run does not ask for history');
   }
   return typed;
+}
+
+/**
+ * `--range`: the calendar days `stats` counts over, `7d` when the run gives none, as `teamrig stats` reads it. It is
+ * refused on a run that does not ask for `stats`, as `--task` is without `history`.
+ */
+function statsRangeOf(typed: string | undefined, documents: readonly DocumentName[]): StatsRange {
+  if (typed !== undefined && !documents.includes('stats')) {
+    throw new UsageError('--range names the days stats is counted over, and this run does not ask for stats');
+  }
+  return rangeOf(typed);
 }
 
 function conversationOf(typed: string | undefined): string | undefined {
@@ -313,6 +331,7 @@ async function scopeOf(request: ReadRequest, runtime: CliRuntime, own: string): 
     tree,
     sinceHours: request.sinceHours,
     task: request.task ?? null,
+    range: request.range,
     warnings: configProblemsOf(kit.paths, load),
   };
 }
