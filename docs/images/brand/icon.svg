@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="teamrig">
 <title>teamrig</title>
 <style>.g{fill:#6e7781}.p{fill:#8957e5}.ps{fill:none;stroke:#8957e5}@media (prefers-color-scheme:dark){.g{fill:#8b949e}.p{fill:#a371f7}.ps{stroke:#a371f7}}</style>
-<rect class="ps" x="6" y="6" width="52" height="52" rx="9" stroke-width="4"/><rect class="g" x="12" y="12" width="16" height="40" rx="3"/><rect class="g" x="36" y="12" width="16" height="16" rx="3"/><rect class="g" x="36" y="36" width="16" height="16" rx="3"/>
+<rect class="ps" x="6" y="6" width="52" height="52" rx="9" stroke-width="4"/><rect class="p" x="12" y="12" width="16" height="40" rx="3"/><rect class="g" x="36" y="12" width="16" height="16" rx="3"/><rect class="g" x="36" y="36" width="16" height="16" rx="3"/><rect class="p" x="28" y="18" width="8" height="4"/><rect class="p" x="28" y="42" width="8" height="4"/>
 </svg>
