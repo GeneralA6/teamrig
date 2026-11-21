@@ -15,6 +15,7 @@ import { RegisterPolicy } from '../../register/policy.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { withDescriptions } from '../card-texts.ts';
+import { secretFilesOf } from '../host.ts';
 import { callerOf } from '../inputs.ts';
 import { hostsOf, type Hosts } from '../issue-hosts.ts';
 import { sessionIdOf } from '../kit.ts';
@@ -171,7 +172,7 @@ export async function issueEdit(args: ParsedArgs, runtime: CliRuntime): Promise<
  */
 async function bodyFileOf(given: string, runtime: CliRuntime, config: KitConfig): Promise<string> {
   const path = resolve(runtime.cwd, given);
-  if (secretRulesOf(config.secretGuard, runtime.userHome, runtime.platform).paths.listed(path)) {
+  if (secretRulesOf(config.secretGuard, runtime.userHome, runtime.platform, secretFilesOf(runtime)).paths.listed(path)) {
     throw new RefusedError(`--body-file names a file the secret guard keeps (secretGuard.paths): ${given} is never read or posted`);
   }
   const text = await runtime.files.read(path);

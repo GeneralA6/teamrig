@@ -122,6 +122,12 @@ export interface RunOptions {
   /** Where git puts the team pointer `team create` writes; default outside any repository. */
   readonly pointerGit?: PointerGit;
   readonly cwd?: string;
+  /**
+   * The person's home folder; default `USER_HOME`. A spec of a file a guard finds by the home folder gives
+   * `resolve(USER_HOME)`: on a Windows machine `USER_HOME` names no drive, and the guards place a path with none on
+   * the current folder's drive, as Windows does, so they would look for the file elsewhere than the home they are told.
+   */
+  readonly userHome?: string;
   /** The files the CLI sees for this run, such as a `FaultyFiles` over `files`; default `files`. */
   readonly files?: Files;
   /** The byte-exact files the CLI sees, such as one that fails on a path; default the run's files as UTF-8 text. */
@@ -234,7 +240,7 @@ export class CliHarness {
   runtime(options: RunOptions = {}, out: Output = { stdout: () => undefined, stderr: () => undefined }): CliRuntime {
     return {
       env: { TEAMRIG_HOME: KIT, ...options.env },
-      userHome: USER_HOME,
+      userHome: options.userHome ?? USER_HOME,
       cwd: options.cwd ?? APP,
       pid: CLI_PID,
       files: options.files ?? this.files,

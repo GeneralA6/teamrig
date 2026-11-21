@@ -1,12 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { isRecord, recordField, type JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
 import { toJsonlLine } from '../core/jsonl.ts';
 import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
 import { rerunReason } from '../hooks/prompt-refuse.ts';
-import { APP, CLAUDE_SESSION, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { EXIT } from './runtime.ts';
 
@@ -111,6 +111,11 @@ describe('hook prompt-refuse', () => {
 
   it('refuses a line that only reads but would print a secret', async () => {
     assert.deepEqual(permissionOf(await new CliHarness(ASKS_OFF).run(HOOK, { stdin: bashRequest('cat .env') })), REFUSED('Bash'));
+  });
+
+  it("refuses a line that only reads one of the host's own secret files, which the run's host names", async () => {
+    const run: RunOptions = { stdin: bashRequest('cat ~/.claude/history.jsonl'), userHome: resolve(USER_HOME) };
+    assert.deepEqual(permissionOf(await new CliHarness(ASKS_OFF).run(HOOK, run)), REFUSED('Bash'));
   });
 
   it("logs each answer with its sessions and the command's start", async () => {

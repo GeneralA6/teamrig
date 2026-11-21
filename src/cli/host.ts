@@ -1,5 +1,6 @@
 import { isUnsupported, type HookBridge, type HostPaths, type HostPermissions, type HostPlugin, type HostPorts, type StatusLine, type TranscriptReader, type UsageMeter } from '../ports/host/index.ts';
 import type { ContextSource } from '../refresh/usage.ts';
+import type { HostSecretFiles } from '../secret-guard/rules.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
 /**
@@ -98,6 +99,23 @@ export function pathsOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>):
     throw new RefusedError(paths.notice);
   }
   return paths;
+}
+
+/**
+ * Who tells the secret guard the hosts' own secret files in this run: every host adapter teamrig ships with, then
+ * the host the run works in, each glob once. A file is a secret for what it holds, whatever host runs the session,
+ * and a machine may hold the files of a host other than the running one: so the running host adds to the shipped
+ * hosts' files and takes none away. It never refuses, as the guard answers on every host: one that tells none of
+ * its folders adds none.
+ */
+export function secretFilesOf(runtime: Pick<CliRuntime, 'host' | 'shippedHosts' | 'env' | 'platform'>): HostSecretFiles {
+  const seen = { env: runtime.env, platform: runtime.platform };
+  const named = [...runtime.shippedHosts, runtime.host].flatMap((source) => {
+    const { paths } = source(seen);
+    return isUnsupported(paths) ? [] : paths.secretFiles();
+  });
+  const once: readonly string[] = [...new Set(named)];
+  return { secretFiles: () => once };
 }
 
 /** The host's own folder for the person of this run. A host whose folders teamrig does not know refuses, as `pathsOf` does. */

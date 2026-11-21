@@ -4,6 +4,7 @@ import { EnvAssignments } from '../../secret-guard/env-assignments.ts';
 import { ToolOutputRedactor } from '../../secret-guard/redactor.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
+import { secretFilesOf } from '../host.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { guardLoadOf } from './hook-guard-load.ts';
 import { readHookInput, writeReply } from './hook-input.ts';
@@ -28,7 +29,7 @@ export async function secretRedact(args: ParsedArgs, runtime: CliRuntime): Promi
   if (!config.redact || result === undefined || event === undefined) {
     return EXIT.ok;
   }
-  const rules = secretRulesOf(config, runtime.userHome, runtime.platform, secretPatternsOf(guard.load));
+  const rules = secretRulesOf(config, runtime.userHome, runtime.platform, secretFilesOf(runtime), secretPatternsOf(guard.load));
   const redaction = new ToolOutputRedactor([rules.shapes, new EnvAssignments(rules.names)]).redact(result.response);
   if (redaction.classes.length === 0) {
     return EXIT.ok;
