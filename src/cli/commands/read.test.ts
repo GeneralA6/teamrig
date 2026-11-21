@@ -8,6 +8,7 @@ import { SecretScanner } from '../../core/secrets.ts';
 import { HiringLog } from '../../hiring/log.ts';
 import { inboxLineOf } from '../../inbox/inbox.ts';
 import { lineHash } from '../../inbox/line-hash.ts';
+import { EVENT_VERSION } from '../../register/events.ts';
 import { layoutPaths } from '../../register/layout.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
 import { formatSessionRecord } from '../../sessions/record.ts';
@@ -774,6 +775,23 @@ describe('teamrig read: what could not be read', () => {
     const result = await kit.run(READ_TASKS);
     assert.deepEqual(problemsOf(served(result)), ['app/state/events.jsonl: 1 unreadable line(s) left out']);
     assert.equal(result.stdout.join('\n').includes(SECRET), false);
+  });
+
+  it('leaves out, as a damaged line, an event whose time is not the stamp the register writes, and serves none of its text', async () => {
+    const kit = new CliHarness();
+    await add(kit, 'Ship the gate', 'alpha');
+    const started = { v: EVENT_VERSION, id: 'T1', by: 'alpha', type: 'status', status: 'in-progress', note: null };
+    const worded = `Jan 8 2030 10:00 UTC (${SECRET})`;
+    assert.equal(Number.isNaN(Date.parse(worded)), false, 'the engine reads it as a time');
+    await kit.files.append(EVENTS_PATH, toJsonlLine({ ...started, at: worded }));
+    const result = await kit.run(READ_TASKS);
+    const answer = served(result);
+    assert.deepEqual(problemsOf(answer), ['app/state/events.jsonl: 1 unreadable line(s) left out']);
+    assert.deepEqual(rowsOf(answer, 'tasks').map((task) => task['status']), ['open'], 'the line set no status');
+    assert.equal(result.stdout.join('\n').includes(SECRET), false);
+    const at = new Date(kit.clock.now()).toISOString();
+    await kit.files.append(EVENTS_PATH, toJsonlLine({ ...started, at }));
+    assert.deepEqual(rowsOf(served(await kit.run(READ_TASKS)), 'tasks').map((task) => [task['status'], task['statusAt']]), [['in-progress', at]], 'the same line with the stamp is read');
   });
 
   it('serves no task and says why when an archive segment is gone, changing its revision when it is back', async () => {

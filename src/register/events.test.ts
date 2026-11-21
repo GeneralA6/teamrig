@@ -330,6 +330,16 @@ describe('parseEvent', () => {
     }
   });
 
+  it('takes as an event\'s time only the stamp the register writes, so no other text rides in as a time', () => {
+    const status = { ...BASE, type: 'status', status: 'in-progress' };
+    assert.equal(parse(status).kind, 'event');
+    const worded = 'Jan 7 2030 09:00 UTC (any words at all)';
+    assert.equal(Number.isNaN(Date.parse(worded)), false, 'the engine reads it as a time');
+    for (const at of [worded, '2030-01-07T09:00:00Z', '2030-01-07T09:00:00.000+00:00', '2030-01-07 09:00', '2030-01-07', '2030-02-30T09:00:00.000Z', ' 2030-01-07T09:00:00.000Z', '', 1893920400000]) {
+      assert.match(reason(parse({ ...status, at })), /^bad time /, JSON.stringify(at));
+    }
+  });
+
   it('rejects malformed lines with a reason', () => {
     const cases: [JsonRecord, RegExp][] = [
       [{ ...BASE, id: 'T0', type: 'create', task: TASK }, /bad task id/],
