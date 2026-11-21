@@ -307,8 +307,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       that costs; a group only from a leader, another team only from a team lead: a team below its
       own, any team's lead, or a session its config names in roles; a receiver teamrig closed has
       its reopen started at once when the host has room (REOPENS), else CLOSED says why; a line
-      with neither flag that names unfinished p0 (or more urgent) work by id wakes as --wake now,
-      or posts with no wake where that gate refuses it, and a NOTE says which
+      with neither flag that names an unfinished blocker by id wakes as --wake now, or posts with
+      no wake where that gate refuses it, and a NOTE says which; one naming p0 work does not
       --wake-by <time>: wakes each receiver at that time instead, only if it has not seen the line by
       then and its tab is idle; the same gate
       --from host:<job>: a line from a host scheduled job, which runs as no session: no --session,
