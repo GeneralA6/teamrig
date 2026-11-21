@@ -47,8 +47,8 @@ async function sourceOf(id: string, run: ProgramRunner, importer: ModuleImporter
  * adapter throws every reason: no command can do its work without the host, so this is a start failure, not a
  * port the core could word a refusal for.
  */
-export function loadHostPorts(run: ProgramRunner, importer: ModuleImporter = importModule): Promise<HostSource> {
-  return sourceOf(DEFAULT_HOST, run, importer);
+export function loadHostPorts(run: ProgramRunner, importer: ModuleImporter = importModule, hostId: string = DEFAULT_HOST): Promise<HostSource> {
+  return sourceOf(hostId, run, importer);
 }
 
 /**
