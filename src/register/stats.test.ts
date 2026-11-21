@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { JERUSALEM } from '../testing/zone.ts';
 import { EVENT_VERSION, type RegisterEvent, type TaskFields } from './events.ts';
 import { ACTIVE_STATUSES, type TaskStatus } from './model.ts';
-import { isStatsRange, registerStats, STATS_ACTIVE_STATUSES, type RegisterStats, type StatsDay, type StatsInput, type StatsRange, type StatsTeam } from './stats.ts';
+import { dayEndOf, isStatsRange, registerStats, STATS_ACTIVE_STATUSES, type RegisterStats, type StatsDay, type StatsInput, type StatsRange, type StatsTeam } from './stats.ts';
 import type { WaitReason } from './waits.ts';
 
 const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null };
@@ -408,5 +408,12 @@ describe('stats ranges and statuses', () => {
 
   it('holds the active statuses equal to the model', () => {
     assert.deepEqual([...STATS_ACTIVE_STATUSES], [...ACTIVE_STATUSES]);
+  });
+});
+
+describe('dayEndOf', () => {
+  it('ends the day at the next midnight of the zone, and a day that has just begun at the one after', () => {
+    const ends = [NOW, new Date('2030-01-10T21:59:59.999Z'), new Date('2030-01-10T22:00:00.000Z')].map((at) => new Date(dayEndOf(at, JERUSALEM)).toISOString());
+    assert.deepEqual(ends, ['2030-01-10T22:00:00.000Z', '2030-01-10T22:00:00.000Z', '2030-01-11T22:00:00.000Z']);
   });
 });
