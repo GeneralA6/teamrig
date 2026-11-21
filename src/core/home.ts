@@ -24,8 +24,6 @@ export const ENV = {
    * a `teamrig queue` among them, such as a git hook's checks, runs at once under that lock instead of waiting on its parent.
    */
   hostLock: 'TEAMRIG_HOST_LOCK',
-  /** The folder Claude Code started the session in; hooks and tool commands inherit it. */
-  claudeProjectDir: 'CLAUDE_PROJECT_DIR',
   /** Moves Claude Code's own folder (settings, plugins, transcripts) away from `~/.claude`. */
   claudeConfigDir: 'CLAUDE_CONFIG_DIR',
   /** The session `teamrig launch` runs Claude Code for: it starts Claude Code again after an automatic restart. */
@@ -36,10 +34,6 @@ export const ENV = {
   effortLevel: 'CLAUDE_CODE_EFFORT_LEVEL',
   /** At 1, Claude Code picks a helper's model over every per-call Agent `model`; `doctor` warns when set. */
   subagentModelForce: 'CLAUDE_CODE_SUBAGENT_MODEL_FORCE',
-  /** How Claude Code was started: `cli` for a terminal tab, the only kind the restore after a reboot reopens. */
-  claudeEntrypoint: 'CLAUDE_CODE_ENTRYPOINT',
-  /** `bg` for a background session, which the restore after a reboot never reopens. */
-  claudeSessionKind: 'CLAUDE_CODE_SESSION_KIND',
   /** Set (`1`), Claude Code stops writing the terminal tab's title and leaves it to hooks: tab status needs it. */
   claudeTitleOff: 'CLAUDE_CODE_DISABLE_TERMINAL_TITLE',
   /**
