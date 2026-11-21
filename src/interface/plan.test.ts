@@ -86,6 +86,7 @@ describe('planBody', () => {
       goal: { tag: 'G2', rank: 2 },
       prep: false,
       needs: [],
+      neededBy: [],
       next: { kind: 'work', who: 'alpha', task: 'T1', behind: null },
     });
     assert.ok(ranked.score > 0 && Number.isInteger(planned(body, 'T1').band));
@@ -98,6 +99,47 @@ describe('planBody', () => {
     assert.deepEqual(planned(body, 'T1').due, { due: '2030-01-30', at: '2030-01-30T23:59:59.999Z', from: null });
     assert.deepEqual(planned(body, 'T2').due, { due: '2030-01-12', at: '2030-01-12T23:59:59.999Z', from: 'T3' });
     assert.deepEqual(planned(body, 'T4').due, { due: '2030-01-15 09:00', at: '2030-01-15T09:00:00.000Z', from: null });
+  });
+
+  it('names the active tasks of other sessions that need a task, the earliest date first, each with the date it works to', () => {
+    const body = planOf([
+      testTask({ id: 'T1' }),
+      testTask({ id: 'T2', after: ['T1'] }),
+      testTask({ id: 'T3', owner: 'bravo', after: ['T1'] }),
+      testTask({ id: 'T4', owner: 'charlie', after: ['T1'], due: '2030-01-20' }),
+      testTask({ id: 'T5', owner: 'bravo', after: ['T1'], status: 'done' }),
+      testTask({ id: 'T6', owner: 'delta', after: ['T3'], due: '2030-01-25' }),
+    ]);
+    assert.deepEqual(planned(body, 'T1').neededBy, [
+      { id: 'T4', owner: 'charlie', due: { due: '2030-01-20', at: '2030-01-20T23:59:59.999Z', from: null } },
+      { id: 'T3', owner: 'bravo', due: { due: '2030-01-25', at: '2030-01-25T23:59:59.999Z', from: 'T6' } },
+    ]);
+    assert.deepEqual(planned(body, 'T2').neededBy, []);
+  });
+
+  it('names a needer of another session under an owner filter too, by its id, owner and date alone', () => {
+    const body = planOf([testTask({ id: 'T1' }), testTask({ id: 'T2', owner: 'bravo', after: ['T1'], title: 'A title of the needing task' })], 'alpha');
+    assert.deepEqual(body.tasks.map((task) => task.id), ['T1']);
+    assert.deepEqual(planned(body, 'T1').neededBy, [{ id: 'T2', owner: 'bravo', due: null }]);
+    assert.ok(!JSON.stringify(body).includes('A title of the needing task'));
+  });
+
+  it('serves each finished task by its work class alone, by number, under the owner filter', () => {
+    const tasks = [
+      testTask({ id: 'T10', status: 'done', title: 'A finished title' }),
+      testTask({ id: 'T2', status: 'dropped', owner: 'bravo' }),
+      testTask({ id: 'T3' }),
+      testTask({ id: 'T4', status: 'done' }),
+    ];
+    const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC, null, NO_TASKS_ELSEWHERE, testRanking({ classes: { T10: 'Roadmap' } }));
+    const input = { tree, tasks, now: NOW.getTime(), turns: TURNS };
+    assert.deepEqual(planBody({ ...input, owner: null }).finished, [
+      { id: 'T2', workClass: 'Improvements' },
+      { id: 'T4', workClass: 'Improvements' },
+      { id: 'T10', workClass: 'Roadmap' },
+    ]);
+    assert.deepEqual(planBody({ ...input, owner: 'bravo' }).finished, [{ id: 'T2', workClass: 'Improvements' }]);
+    assert.deepEqual(planOf([testTask({ id: 'T1' })]).finished, []);
   });
 
   it('marks a quiet task the park rule takes, and not one an active task needs', () => {
