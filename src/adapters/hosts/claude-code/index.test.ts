@@ -36,7 +36,7 @@ describe('the Claude Code adapter', () => {
     assert.equal(adapter.declaration, declaration);
     assert.deepEqual(hostAdapterProblems(adapter), []);
     const ports = adapter.create(hostDeps());
-    assert.deepEqual(Object.keys(ports), ['hooks', 'toolCall', 'transcripts', 'usage', 'statusLine', 'paths', 'permissions']);
+    assert.deepEqual(Object.keys(ports), ['hooks', 'toolCall', 'transcripts', 'usage', 'statusLine', 'paths', 'permissions', 'launcher']);
     assert.equal(isUnsupported(ports.hooks), false);
     assert.equal(isUnsupported(ports.toolCall), false);
     assert.equal(ports.transcripts, transcriptReader);
@@ -44,6 +44,12 @@ describe('the Claude Code adapter', () => {
     assert.equal(ports.statusLine, statusLine);
     assert.equal(isUnsupported(ports.paths), false);
     assert.equal(ports.permissions, hostPermissions);
+    assert.equal(isUnsupported(ports.launcher), false);
+  });
+
+  it('tells who a run is from the environment it was built with', () => {
+    const { launcher } = adapter.create(hostDeps({ env: { CLAUDE_PROJECT_DIR: join('/', 'work', 'app') } }));
+    assert.equal(!isUnsupported(launcher) && launcher.identity().projectDir, join('/', 'work', 'app'));
   });
 
   it('finds its own folder in the environment it was built with', () => {

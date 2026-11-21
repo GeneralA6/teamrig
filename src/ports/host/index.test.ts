@@ -20,7 +20,7 @@ describe('the host ports', () => {
   });
 
   it('list every port an adapter must name', () => {
-    assert.deepEqual(HOST_PORT_NAMES, ['hooks', 'toolCall', 'transcripts', 'usage', 'statusLine', 'paths', 'permissions']);
+    assert.deepEqual(HOST_PORT_NAMES, ['hooks', 'toolCall', 'transcripts', 'usage', 'statusLine', 'paths', 'permissions', 'launcher']);
   });
 });
 
@@ -36,6 +36,7 @@ describe('an unsupported port', () => {
       statusLine: missing,
       paths: missing,
       permissions: missing,
+      launcher: missing,
     };
     assert.equal(isUnsupported(ports.hooks), true);
     assert.equal(isUnsupported(ports.toolCall), false);
