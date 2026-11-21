@@ -35,8 +35,8 @@ describe('refusal and heldBack', () => {
 describe('hookAsksOf', () => {
   it("takes a loaded config's choice and keeps the default for a missing or broken one", () => {
     const config = testConfig({ prompts: { hookAsks: 'refuse' } });
-    assert.equal(hookAsksOf({ status: 'loaded', path: 'c.json', config, issues: [] }), 'refuse');
-    assert.equal(hookAsksOf({ status: 'loaded', path: 'c.json', config: testConfig({ prompts: { hookAsks: 'ask' } }), issues: [] }), 'ask');
+    assert.equal(hookAsksOf({ status: 'loaded', path: 'c.json', config, issues: [], warnings: [] }), 'refuse');
+    assert.equal(hookAsksOf({ status: 'loaded', path: 'c.json', config: testConfig({ prompts: { hookAsks: 'ask' } }), issues: [], warnings: [] }), 'ask');
     for (const load of [undefined, { status: 'missing', path: 'c.json' } as const, { status: 'unreadable', path: 'c.json', issue: { path: '', message: 'bad' } } as const]) {
       assert.equal(hookAsksOf(load), DEFAULT_PROMPTS.hookAsks);
     }

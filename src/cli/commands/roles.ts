@@ -4,7 +4,7 @@ import { isServiceCommand, SERVICE_COMMAND_REACH, SERVICE_COMMANDS, type Service
 import type { Checked } from '../../setup/team-create.ts';
 import { noPositionals, onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { listOf } from '../inputs.ts';
-import { checkedNextConfig, configFileJson, configLockOf, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
+import { checkedNextConfig, checkedWholeConfig, configFileJson, configLockOf, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /**
@@ -50,7 +50,7 @@ async function changeRoles(args: ParsedArgs, runtime: CliRuntime, name: string, 
   const config = requireConfig(kit, runtime, 'write');
   return configLockOf(runtime, kit, config).run(async (writer) => {
     const file = await configFileJson(runtime, kit.load.path);
-    const current = checkedNextConfig(file);
+    const current = checkedWholeConfig(file);
     const planned = change.plan(current.serviceRoles);
     if (!planned.ok) {
       throw new RefusedError(planned.problem);

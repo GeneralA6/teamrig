@@ -83,6 +83,20 @@ describe('roles grant, revoke and list', () => {
     assert.match(refusal(await kit.run(['roles', 'grant', 'Git Hub', '--holder', 'alpha', '--commands', 'issue close'])), /new config cannot be read|serviceRoles/);
   });
 
+  // #1478: this tab reads a command only a newer teamrig knows as left out, so a write of its narrowed roles would delete it.
+  it('refuses a grant or revoke while the config has a warning, writing nothing', async () => {
+    const kit = new CliHarness({ ...TEAM, serviceRoles: { github: { holders: ['alpha'], commands: ['issue close', 'issue delete'] } } });
+    const before = kit.files.get(CONFIG_PATH);
+    for (const call of [
+      ['roles', 'grant', 'github', '--holder', 'bravo', '--commands', 'issue close', '--yes'],
+      ['roles', 'revoke', 'github', '--holder', 'alpha', '--yes'],
+      ['roles', 'grant', 'docs', '--holder', 'bravo', '--commands', 'issue close'],
+    ]) {
+      assert.match(refusal(await kit.run(call)), /nothing written: serviceRoles\.github\.commands\[1\]: "issue delete" is no command this teamrig knows.*this tab would drop it/, call.join(' '));
+    }
+    assert.equal(kit.files.get(CONFIG_PATH), before);
+  });
+
   it('refuses a command outside the table and a grant without --holder as usage errors', async () => {
     const kit = new CliHarness(TEAM);
     const unknown = await kit.run(['roles', 'grant', 'github', '--holder', 'alpha', '--commands', 'pr merge']);

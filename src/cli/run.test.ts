@@ -446,6 +446,19 @@ describe('runCli: config', () => {
     assert.match(result.stdout[1] ?? '', /^ {2}pushGuard.protectedBranches: /);
   });
 
+  it('warns of a service role command only a newer teamrig knows and still lets writes run (#1478)', async () => {
+    const kit = new CliHarness({ ...CURRENT_TEAM, serviceRoles: { github: { holders: ['alpha'], commands: ['issue close', 'issue delete'] } } });
+    const result = await kit.run(['config', 'validate']);
+    assert.equal(result.code, EXIT.ok);
+    assert.deepEqual(result.stdout, [
+      `VALID ${CONFIG_PATH}, with 1 warning(s)`,
+      '  serviceRoles.github.commands[1]: "issue delete" is no command this teamrig knows: a newer teamrig wrote it or it is misspelt, so this tab does not grant it; reload, or fix the name',
+    ]);
+    const added = await kit.run(['add', '--title', 'Still writes', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
+    assert.equal(added.code, EXIT.ok);
+    assert.match(added.stderr.join('\n'), /^WARN config: 1 warning\(s\) \(first: serviceRoles\.github\.commands\[1\]: /m);
+  });
+
   it('reports a config it cannot read at all', async () => {
     const result = await new CliHarness('{ not json').run(['config', 'validate']);
     assert.equal(result.code, EXIT.failed);

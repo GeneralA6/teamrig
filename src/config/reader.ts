@@ -21,6 +21,7 @@ export interface NumberBounds {
  */
 export class ConfigReader {
   readonly issues: ConfigIssue[] = [];
+  readonly warnings: ConfigIssue[] = [];
 
   /** A nested object; a missing one reads as empty so its fields take their defaults. */
   section(parent: JsonRecord, key: string, path: string): JsonRecord {
@@ -177,6 +178,14 @@ export class ConfigReader {
   /** Records a rule that spans several fields, such as "the lead must be one of the sessions". */
   report(path: string, message: string): void {
     this.issues.push({ path, message });
+  }
+
+  /**
+   * Records a value this release leaves out but a newer one may read (#1478): unlike an issue, a warning keeps writes
+   * running, so it is only for a value whose leaving out grants nothing.
+   */
+  warn(path: string, message: string): void {
+    this.warnings.push({ path, message });
   }
 
   /** A key this config format no longer reads: flagged, so a hand-written one is not silently ignored. */

@@ -441,7 +441,7 @@ describe('secretReason', () => {
 describe('secretPatternsOf', () => {
   it("reads the team's own secret patterns, and none when the config is missing or unreadable", () => {
     const config = testConfig({ register: { secretPatterns: ['tok_[a-z0-9]{8}'] } });
-    assert.deepEqual(secretPatternsOf({ status: 'loaded', path: 'c.json', config, issues: [] }), ['tok_[a-z0-9]{8}']);
+    assert.deepEqual(secretPatternsOf({ status: 'loaded', path: 'c.json', config, issues: [], warnings: [] }), ['tok_[a-z0-9]{8}']);
     for (const load of [undefined, { status: 'missing', path: 'c.json' } as const]) {
       assert.deepEqual(secretPatternsOf(load), []);
     }
@@ -451,7 +451,7 @@ describe('secretPatternsOf', () => {
 describe('secretGuardOf', () => {
   it("reads the team's config, and keeps the default when it is missing or unreadable", () => {
     const config = testConfig({ secretGuard: { secretReads: 'ask', paths: ['secrets/**'], envNames: [] } });
-    assert.equal(secretGuardOf({ status: 'loaded', path: 'c.json', config, issues: [] }).secretReads, 'ask');
+    assert.equal(secretGuardOf({ status: 'loaded', path: 'c.json', config, issues: [], warnings: [] }).secretReads, 'ask');
     for (const load of [undefined, { status: 'missing', path: 'c.json' } as const, { status: 'unreadable', path: 'c.json', issue: { path: '', message: 'bad' } } as const]) {
       assert.deepEqual(secretGuardOf(load), DEFAULT_SECRET_GUARD);
     }

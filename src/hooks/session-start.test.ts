@@ -13,7 +13,7 @@ const COMMAND = 'teamrig';
 const NAMES = '`teamrig who` prints the name to message any session by; message only those names.';
 
 function loaded(overrides: Partial<Extract<ConfigLoad, { status: 'loaded' }>> = {}): ConfigLoad {
-  return { status: 'loaded', path: PATH, config: testConfig({ names: { lead: 'captain' } }), issues: [], ...overrides };
+  return { status: 'loaded', path: PATH, config: testConfig({ names: { lead: 'captain' } }), issues: [], warnings: [], ...overrides };
 }
 
 function context(overrides: Partial<SessionStartInput> = {}): string {

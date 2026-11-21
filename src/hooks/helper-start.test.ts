@@ -15,7 +15,7 @@ const DUTY =
   ' Save your full findings in the folder of the task you work on (`teamrig files T<id>`; with no task, `teamrig files --notes`) and return their path and what it needs.';
 
 function loaded(): ConfigLoad {
-  return { status: 'loaded', path: PATH, config: testConfig({ names: { lead: 'captain' } }), issues: [] };
+  return { status: 'loaded', path: PATH, config: testConfig({ names: { lead: 'captain' } }), issues: [], warnings: [] };
 }
 
 function context(overrides: Partial<HelperStartInput> = {}): string {

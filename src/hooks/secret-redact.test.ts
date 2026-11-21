@@ -10,7 +10,7 @@ const TOKEN = join('gh', 'p_', 'a1'.repeat(18));
 
 const bashResult = (stdout: string): { stdout: string; stderr: string; interrupted: boolean; isImage: boolean } => ({ stdout, stderr: '', interrupted: false, isImage: false });
 
-const loaded = (roles: { lead: string; securityReviewer?: string }): ConfigLoad => ({ status: 'loaded', path: 'c.json', config: testConfig({ roles }), issues: [] });
+const loaded = (roles: { lead: string; securityReviewer?: string }): ConfigLoad => ({ status: 'loaded', path: 'c.json', config: testConfig({ roles }), issues: [], warnings: [] });
 
 describe('redactableResultOf', () => {
   it('gives the result of a Bash, PowerShell or Grep call, and of a Read of a text file, with its tool', () => {

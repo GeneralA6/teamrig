@@ -1556,7 +1556,7 @@
       }
     },
     "serviceRoles": {
-      "description": "Service roles, by name: each lets the sessions that hold it run a few teamrig commands for an outside service past every permission check, Claude Code's auto mode included, from their own tab only. Commands are names from teamrig's fixed table, never free text; an unknown name, a holder not on the team or a misspelt key fails the load. Written by teamrig roles grant and teamrig roles revoke, which the owner runs; a session's own edit of it is refused.",
+      "description": "Service roles, by name: each lets the sessions that hold it run a few teamrig commands for an outside service past every permission check, Claude Code's auto mode included, from their own tab only. Commands are names from teamrig's fixed table, never free text; a holder not on the team, a misspelt key or a command that is not a name fails the load. A command name this teamrig's table lacks, which a newer teamrig may have written, is a config warning instead: it is not granted in that tab (a role left with no known command is left out), and writes keep running until the tab reloads. Written by teamrig roles grant and teamrig roles revoke, which the owner runs; a session's own edit of it is refused.",
       "type": "object",
       "maxProperties": 16,
       "propertyNames": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },

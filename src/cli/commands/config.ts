@@ -222,7 +222,8 @@ export async function validate(args: ParsedArgs, runtime: CliRuntime): Promise<E
     load.issues.forEach((issue) => runtime.out.stdout(`  ${issueText(issue)}`));
     return EXIT.failed;
   }
-  runtime.out.stdout(`VALID ${load.path}`);
+  runtime.out.stdout(load.warnings.length === 0 ? `VALID ${load.path}` : `VALID ${load.path}, with ${load.warnings.length} warning(s)`);
+  load.warnings.forEach((warning) => runtime.out.stdout(`  ${issueText(warning)}`));
   return EXIT.ok;
 }
 

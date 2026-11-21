@@ -131,8 +131,8 @@ describe('ghWriteRefusals: the team config (T4819)', () => {
   it('reads the team repositories from the config load, failing closed when it did not load', () => {
     assert.deepEqual(githubReposOf(undefined), { kind: 'unknown', why: 'the team config did not load' });
     assert.deepEqual(githubReposOf({ status: 'missing', path: 'c.json' }), { kind: 'unknown', why: 'the team config is missing' });
-    assert.deepEqual(githubReposOf({ status: 'loaded', path: 'c.json', config: testConfig(), issues: [] }), { kind: 'none' });
-    const loaded = githubReposOf({ status: 'loaded', path: 'c.json', config: testConfig({ github: { repos: ['Acme/Web'] } }), issues: [] });
+    assert.deepEqual(githubReposOf({ status: 'loaded', path: 'c.json', config: testConfig(), issues: [], warnings: [] }), { kind: 'none' });
+    const loaded = githubReposOf({ status: 'loaded', path: 'c.json', config: testConfig({ github: { repos: ['Acme/Web'] } }), issues: [], warnings: [] });
     assert.deepEqual(loaded, { kind: 'repos', repos: new Set(['acme/web']) });
   });
 

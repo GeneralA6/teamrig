@@ -241,7 +241,7 @@ describe('lostFlagReason', () => {
 describe('packageGuardOf', () => {
   it("takes a loaded config's choices and keeps the defaults for a missing or broken one", () => {
     const config = testConfig({ packageGuard: { adHocRunners: 'ask', installs: 'allow', cooldownDays: 3 } });
-    assert.deepEqual(packageGuardOf({ status: 'loaded', path: 'c.json', config, issues: [] }), { adHocRunners: 'ask', installs: 'allow', cooldownDays: 3 });
+    assert.deepEqual(packageGuardOf({ status: 'loaded', path: 'c.json', config, issues: [], warnings: [] }), { adHocRunners: 'ask', installs: 'allow', cooldownDays: 3 });
     for (const load of [undefined, { status: 'missing', path: 'c.json' } as const, { status: 'unreadable', path: 'c.json', issue: { path: '', message: 'bad' } } as const]) {
       assert.deepEqual(packageGuardOf(load), DEFAULT_PACKAGE_GUARD);
     }

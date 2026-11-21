@@ -158,7 +158,7 @@ describe('dbWriteGuardOf', () => {
     const entrypoints = [{ path: 'scripts/backfill.ts', applyFlags: ['--apply'] }];
     const programs = [{ name: 'docsh', reads: 'document-shell' }];
     const config = testConfig({ dbWriteGuard: { writes: 'deny', entrypoints, programs } });
-    assert.deepEqual(dbWriteGuardOf({ status: 'loaded', path: 'c.json', config, issues: [] }), {
+    assert.deepEqual(dbWriteGuardOf({ status: 'loaded', path: 'c.json', config, issues: [], warnings: [] }), {
       ...DEFAULT_DB_WRITE_GUARD,
       writes: 'deny',
       entrypoints,

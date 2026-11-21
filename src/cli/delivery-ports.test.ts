@@ -190,7 +190,7 @@ describe('teamAdmissionOf (T2942)', () => {
 
   it('gives the rules of the config as each look reads it, so a raised cap reaches a step already waiting', async () => {
     let current = launched;
-    const source = teamAdmissionOf(launched, () => Promise.resolve({ status: 'loaded', config: current, issues: [], path: '/kit/config.json' }));
+    const source = teamAdmissionOf(launched, () => Promise.resolve({ status: 'loaded', config: current, issues: [], warnings: [], path: '/kit/config.json' }));
     assert.deepEqual(await source.rules(), admissionRulesOf(launched.delivery.queue, launched.focus));
     current = testConfig({ delivery: { queue: { maxHeavyParallel: 3, admission: 'serial' } }, focus: { defaultClass: 'Improvements' } });
     assert.deepEqual(await source.rules(), { ...admissionRulesOf(launched.delivery.queue, launched.focus), mode: 'serial', maxHeavyParallel: 3, defaultClass: 'Improvements' });
@@ -200,7 +200,7 @@ describe('teamAdmissionOf (T2942)', () => {
     const reads = [testConfig({ delivery: { queue: { maxHeavyParallel: 3 } } }), undefined];
     const source = teamAdmissionOf(launched, () => {
       const config = reads.shift();
-      return Promise.resolve(config === undefined ? { status: 'missing', path: '/kit/config.json' } : { status: 'loaded', config, issues: [], path: '/kit/config.json' });
+      return Promise.resolve(config === undefined ? { status: 'missing', path: '/kit/config.json' } : { status: 'loaded', config, issues: [], warnings: [], path: '/kit/config.json' });
     });
     assert.equal((await source.rules()).maxHeavyParallel, 3);
     assert.equal((await source.rules()).maxHeavyParallel, 3);

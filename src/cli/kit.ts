@@ -239,6 +239,23 @@ export function issueText(issue: ConfigIssue): string {
  * is written, when it would not load or would load with a problem.
  */
 export function checkedNextConfig(json: JsonRecord): KitConfig {
+  return checkedRead(json).config;
+}
+
+/**
+ * The config a command rewrites from what this tab reads of it, refused when that read has a warning (#1478): the
+ * tab reads a value only a newer teamrig knows as left out, so a write built from that read would delete it.
+ */
+export function checkedWholeConfig(json: JsonRecord): KitConfig {
+  const { config, warnings } = checkedRead(json);
+  const [warning] = warnings;
+  if (warning !== undefined) {
+    throw new RefusedError(`nothing written: ${issueText(warning)}; a write from this tab would drop it`);
+  }
+  return config;
+}
+
+function checkedRead(json: JsonRecord): { readonly config: KitConfig; readonly warnings: readonly ConfigIssue[] } {
   const next = parseConfigText(formatConfig(json));
   if (next.status !== 'loaded') {
     throw new RefusedError(`the new config cannot be read: ${issueText(next.issue)}`);
@@ -247,7 +264,7 @@ export function checkedNextConfig(json: JsonRecord): KitConfig {
   if (problem !== undefined) {
     throw new RefusedError(`nothing written: ${issueText(problem)}`);
   }
-  return next.config;
+  return next;
 }
 
 /** The zone the team's people read and type times in: the config's `timeZone`, else the machine's. */
@@ -279,6 +296,10 @@ export function requireConfig(kit: Kit, runtime: CliRuntime, access: Access): Ki
   }
   for (const warning of configWarnings(load)) {
     runtime.out.stderr(`WARN ${warning}`);
+  }
+  const [warning] = load.warnings;
+  if (warning !== undefined) {
+    runtime.out.stderr(`WARN config: ${load.warnings.length} warning(s) (first: ${issueText(warning)}); run: teamrig config validate`);
   }
   return load.config;
 }

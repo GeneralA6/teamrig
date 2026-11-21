@@ -23,6 +23,8 @@ export type ConfigRead =
       readonly config: KitConfig;
       /** Problems that block gated commands; read-only commands still run on the defaults. */
       readonly issues: readonly ConfigIssue[];
+      /** Values left out that a newer teamrig may read; unlike issues, they keep writes running (#1478). */
+      readonly warnings: readonly ConfigIssue[];
       /** Set when a newer release wrote the file: read it best-effort and refuse every write. */
       readonly newerVersion?: number;
       /** Set when the file is older than this code; it has been migrated in memory only. */
@@ -53,15 +55,15 @@ export function parseConfigText(
     case 'invalid':
       return { status: 'unreadable', issue: { path: 'configVersion', message: migration.message } };
     case 'newer': {
-      const { config, issues } = parseConfig(raw, above);
-      return { status: 'loaded', config, issues, newerVersion: migration.version };
+      const { config, issues, warnings } = parseConfig(raw, above);
+      return { status: 'loaded', config, issues, warnings, newerVersion: migration.version };
     }
     case 'current': {
-      const { config, issues } = parseConfig(migration.config, above);
-      return { status: 'loaded', config, issues };
+      const { config, issues, warnings } = parseConfig(migration.config, above);
+      return { status: 'loaded', config, issues, warnings };
     }
     case 'migrated': {
-      const { config, issues } = parseConfig(migration.config, above);
+      const { config, issues, warnings } = parseConfig(migration.config, above);
       const pending = {
         fromVersion: migration.fromVersion,
         toVersion: migration.version,
@@ -69,7 +71,7 @@ export function parseConfigText(
         firstRelease: migration.firstRelease,
         migrated: migration.config,
       };
-      return { status: 'loaded', config, issues, pending };
+      return { status: 'loaded', config, issues, warnings, pending };
     }
   }
 }

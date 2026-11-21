@@ -267,8 +267,8 @@ describe('pushGuardOutput: pushToProtected gated (T858)', () => {
 describe('pushToProtectedOf', () => {
   it("uses the team's choice when the config loads, else asks", async () => {
     const config = testConfig({ pushGuard: { pushToProtected: 'allow' } });
-    assert.equal(pushToProtectedOf({ status: 'loaded', path: 'c.json', config, issues: [] }), 'allow');
-    assert.equal(pushToProtectedOf({ status: 'loaded', path: 'c.json', config: testConfig(), issues: [] }), 'ask');
+    assert.equal(pushToProtectedOf({ status: 'loaded', path: 'c.json', config, issues: [], warnings: [] }), 'allow');
+    assert.equal(pushToProtectedOf({ status: 'loaded', path: 'c.json', config: testConfig(), issues: [], warnings: [] }), 'ask');
     assert.equal(pushToProtectedOf({ status: 'missing', path: 'c.json' }), 'ask');
     assert.equal(pushToProtectedOf({ status: 'unreadable', path: 'c.json', issue: { path: '', message: 'bad' } }), 'ask');
     assert.equal(pushToProtectedOf(undefined), 'ask');
@@ -278,7 +278,7 @@ describe('pushToProtectedOf', () => {
 describe('protectedBranchesOf', () => {
   it("uses the team's branches when the config loads, else the defaults", async () => {
     const config = testConfig({ pushGuard: { protectedBranches: ['trunk'] } });
-    assert.deepEqual(protectedBranchesOf({ status: 'loaded', path: 'c.json', config, issues: [] }), ['trunk']);
+    assert.deepEqual(protectedBranchesOf({ status: 'loaded', path: 'c.json', config, issues: [], warnings: [] }), ['trunk']);
     assert.deepEqual(protectedBranchesOf({ status: 'missing', path: 'c.json' }), ['main', 'master']);
     assert.deepEqual(protectedBranchesOf({ status: 'unreadable', path: 'c.json', issue: { path: '', message: 'bad' } }), ['main', 'master']);
   });
@@ -355,7 +355,7 @@ describe('pushGuardOutput: the commits gate', () => {
 describe('commitsOf', () => {
   it("uses the team's rule when the config loads, else the defaults", async () => {
     const config = testConfig({ commits: { gate: 'refuse' } });
-    assert.equal(commitsOf({ status: 'loaded', path: 'c.json', config, issues: [] }).gate, 'refuse');
+    assert.equal(commitsOf({ status: 'loaded', path: 'c.json', config, issues: [], warnings: [] }).gate, 'refuse');
     assert.deepEqual(commitsOf({ status: 'missing', path: 'c.json' }), DEFAULT_COMMITS);
   });
 });
@@ -462,8 +462,8 @@ describe('pushGuardOutput: never asks (T3356)', () => {
 describe('skipHooksOf', () => {
   it("uses the team's choice when the config loads, else refuses", async () => {
     const config = testConfig({ commitGuard: { skipHooks: 'ask' } });
-    assert.equal(skipHooksOf({ status: 'loaded', path: 'c.json', config, issues: [] }), 'ask');
-    assert.equal(skipHooksOf({ status: 'loaded', path: 'c.json', config: testConfig(), issues: [] }), 'deny');
+    assert.equal(skipHooksOf({ status: 'loaded', path: 'c.json', config, issues: [], warnings: [] }), 'ask');
+    assert.equal(skipHooksOf({ status: 'loaded', path: 'c.json', config: testConfig(), issues: [], warnings: [] }), 'deny');
     assert.equal(skipHooksOf({ status: 'missing', path: 'c.json' }), 'deny');
     assert.equal(skipHooksOf({ status: 'unreadable', path: 'c.json', issue: { path: '', message: 'bad' } }), 'deny');
     assert.equal(skipHooksOf(undefined), 'deny');
