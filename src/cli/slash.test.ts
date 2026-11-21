@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { ASK_EXIT } from '../mod/slash-hand.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { slashRule } from './commands/slash.ts';
 import { COMMAND_HELP, COMMAND_TABLE } from './run.ts';
 import { EXIT } from './runtime.ts';
@@ -28,7 +29,7 @@ describe('/teamrig with nothing after it', () => {
     assert.equal(result.code, EXIT.ok);
     const rule = slashRule(COMMAND_TABLE);
     assert.deepEqual(result.stdout, [`${COMMAND_HELP.forCommand(undefined)}\n${rule}`]);
-    assert.match(rule, /Without --session, list, show, check, plan, verify, stats, report done, goal list, goal show, inbox status, rules, meeting list, decisions, read, ui, schedule\nrun as this tab's session; a command that changes the team's files/);
+    assert.match(rule, /Without --session, list, show, check, plan, verify, stats, report done, goal list, goal show, inbox status, rules, meeting list, decisions, read, schedule\nrun as this tab's session; a command that changes the team's files/);
   });
 
   it('prints the same help when stdin holds no JSON', async () => {
@@ -168,7 +169,7 @@ describe('/teamrig with a command that changes the team files', () => {
       assert.equal(result.code, EXIT.refused, origin);
       assert.match(
         result.stdout.join('\n'),
-        new RegExp(`^REFUSED teamrig inbox add --session alpha --to bravo --text "x y" changes the team's files, and /teamrig runs that only when you type it in the tab; this line came from ${origin}\\.`),
+        new RegExp(`^REFUSED teamrig inbox add --session alpha --to bravo --text "x y" changes the team's files or acts on the machine, and /teamrig runs that only when you type it in the tab; this line came from ${origin}\\.`),
       );
     }
     const unnamed = await slash(kit, 'set T1 --status done', ALPHA_TAB, {});
@@ -196,6 +197,19 @@ describe('/teamrig with a command that changes the team files', () => {
     assert.deepEqual((await kit.run(['inbox', 'status', '--session', 'bravo'])).stdout, before);
     const mod = await slash(kit, 'list', { env: { TEAMRIG_SESSION: 'alpha', CLAUDECODE: '' } });
     assert.notEqual(mod.code, EXIT.refused);
+  });
+
+  it('refuses a ui line no person typed and starts nothing, as ui runs the program ui.path names', async () => {
+    const entry = resolve('/', 'pane', 'out', 'ui', 'main.js');
+    const kit = new CliHarness({ ...TEAM, ui: { path: entry } });
+    const processes = new FakeProcesses();
+    const probe = new FakePathProbe({ files: [entry] });
+    for (const origin of ['peer', 'sdk', 'unclassified']) {
+      const result = await slash(kit, 'ui', { ...ALPHA_TAB, processes, probe }, { origin });
+      assert.equal(result.code, EXIT.refused, origin);
+      assert.match(result.stdout.join('\n'), new RegExp(`^REFUSED teamrig ui changes the team's files or acts on the machine, .*this line came from ${origin}\\.`));
+    }
+    assert.deepEqual(processes.ran, []);
   });
 
   it('refuses a sweep no person typed, as its --out writes the path the line names', async () => {

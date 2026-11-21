@@ -85,7 +85,7 @@ export function slashRule(table: CommandTable): string {
 
 /** Why a write that did not come from the person is not run. */
 function notThePerson(argv: readonly string[], origin: string | undefined): string {
-  return `${KIT_NAME} ${joinWords(argv)} changes the team's files, and /${KIT_NAME} runs that only when you type it in the tab; this line came from ${origin ?? 'an unnamed source'}. Run it in a terminal instead.`;
+  return `${KIT_NAME} ${joinWords(argv)} changes the team's files or acts on the machine, and /${KIT_NAME} runs that only when you type it in the tab; this line came from ${origin ?? 'an unnamed source'}. Run it in a terminal instead.`;
 }
 
 /**

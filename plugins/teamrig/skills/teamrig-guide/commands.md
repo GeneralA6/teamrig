@@ -4523,7 +4523,10 @@ WARN page-webhook team shop's alerts.pageWebhookFile gives no page URL (the webh
 Starts the dedicated UI in the terminal it is run in, with its input and output on that terminal, and ends when the
 UI does. Run it yourself in a terminal tab: it draws the whole screen, so it shows nothing through `/teamrig` or a
 session's shell. It runs the entry script [ui.path] names (a UI build of your own) and writes nothing. No released
-UI is pinned yet, so it is refused while [ui.path] is unset, and when the key names no file.
+UI is pinned yet, so it is refused while [ui.path] is unset, and when the key names no file. As it starts a program,
+`/teamrig ui` runs only when you type it in the tab, never from a session's line; and [ui.path] is the owner's key,
+which the config guard refuses a session changing. The script runs outside every Claude Code guard, so never point
+[ui.path] at a working tree a session edits: its edits would run in your terminal unchecked.
 
 Flags:
 
