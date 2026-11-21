@@ -207,6 +207,10 @@ jobs:
       # A docs or design change touches no file under src, so only a code change runs it.
       - run: node tools/ci/boundaries-cli.ts
         if: ${{ needs.changes.outputs.kind == 'code' }}
+      # The host and tool words in each skill (plugins/teamrig/skills, .claude/skills): a count may fall, never rise
+      # over tools/ci/provider-words.json. Skills are code to the change kind, so only a code change runs it.
+      - run: node tools/ci/provider-words-cli.ts
+        if: ${{ needs.changes.outputs.kind == 'code' }}
       # Every link, anchor and Mermaid block in the Markdown must resolve on every OS; a design change's too, as
       # docs/design/ is Markdown a reader follows.
       - run: node tools/docs/doc-check-cli.ts
