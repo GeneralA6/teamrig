@@ -582,6 +582,15 @@ export interface TurnLogConfig {
   readonly keepHours: number;
 }
 
+/** The dedicated UI `teamrig ui` starts (T4761). */
+export interface UiConfig {
+  /**
+   * The absolute path of a UI entry script to start in place of the released UI: a build of one's own, for work on
+   * the UI itself. Absent: the released UI.
+   */
+  readonly path?: string;
+}
+
 /**
  * The needs-you band (T2511): every tab of the team shows which other tab asks the user something (a permission
  * prompt, a question, a decision line), read from the tab files (src/tabs/need.ts), with a button that focuses it.
@@ -1833,6 +1842,7 @@ export interface KitConfig {
   readonly pickerGuard: { readonly enabled: boolean };
   readonly meeting: MeetingConfig;
   readonly turnLog: TurnLogConfig;
+  readonly ui: UiConfig;
   readonly meetingNotices: MeetingNoticesConfig;
   /** Lets a shell line that only reads run without a permission prompt; off by default. */
   readonly readonlyShell: ReadonlyShellConfig;
