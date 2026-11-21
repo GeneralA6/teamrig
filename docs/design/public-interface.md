@@ -94,9 +94,10 @@ A read returns a versioned JSON document built from parsed data, never a file's 
 ### What version 1 ships
 
 `teamrig read <document>... --json` serves the five documents of 1.0 and each one a minor version added since (1.1:
-`plan`, 1.2: `goals`, 1.3: `history`, 1.4: `stats`; 1.5 added a field, `plan`'s `ownerCards`); [the commands
-page](../commands.md) has its usage and the plugin's guide describes every field. What the design above left open
-is settled this way:
+`plan`, 1.2: `goals`, 1.3: `history`, 1.4: `stats`; 1.5 added a field, `plan`'s `ownerCards`; 1.6 added the
+task fields the pane folded itself, `tasks`' `card`, `descriptionCut`, `sizeBase`, `prepares`, `noGoal`, `startedAt`
+and `waitsAt`); [the commands page](../commands.md) has its usage and the plugin's guide describes every field. What
+the design above left open is settled this way:
 
 - **One line a document.** Each document asked is one JSON object on one line of stdout, in the order asked, and
   nothing else is written there: a refusal is one line on stderr. A run answers every document asked or none. With

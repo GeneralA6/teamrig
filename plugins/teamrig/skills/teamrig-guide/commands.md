@@ -2462,7 +2462,7 @@ answered.
 
 Every document carries:
 
-- `interface`: the interface version that wrote it (`1.5`). Ignore fields you do not know: a minor version adds some.
+- `interface`: the interface version that wrote it (`1.6`). Ignore fields you do not know: a minor version adds some.
 - `document`: its name.
 - `revision`: 16 characters that stay the same while the files the document is read from, what you asked and the
   teamrig version stay the same. Compare it with the one you hold to know whether to draw again; it has no other
@@ -2476,7 +2476,20 @@ Every document carries:
 
 `tasks` adds `tasks`, each with the task's fields as the register holds them (`id`, `title`, `description`, `owner`,
 `priority`, `status`, `due`, `note`, `proof`, `evidence`, `source`, `ref`, `waits`, `after`, its times and the
-rest), and `cuts`.
+rest), and `cuts`. Since interface 1.6 each task also has:
+
+- `card`: what its wait on a decision or an approval asks, `{ "question", "options", "recommend", "byDefault",
+  "whyAsk", "gate", "run", "affects", "security" }`, a part the card leaves out as `null` and `security` `true` when
+  the question reaches the owner only with the security reviewer's verdict; `null` on any other task. Its texts are
+  cut as the other texts are, a cut named `card.<part>`.
+- `descriptionCut`: `{ "chars", "hash" }` when the register's snapshot left out a description it has, so
+  `description` is `null`.
+- `sizeBase`: `{ "day", "w" }`, what the task had cost that UTC day when it got its current size; its spend over size
+  counts from there. `null` when it got its size at creation.
+- `prepares`: `{ "goal", "slice" }`, the goal slice the task prepares, or `null`; `noGoal`: `true` when a leader
+  marked it as serving no goal.
+- `startedAt`: when it first went in progress or verifying, `null` until then; `waitsAt`: when it last asked for
+  something new (its creation at the latest), what "waiting since" reads.
 
 `plan` (since interface 1.1) adds `at`, `validUntil`, `week`, `tasks`, `finished` and `ownerCards`: where each task
 stands in the team's plan, as `teamrig list` orders it, so a program ranks nothing itself. It holds ids, numbers,
@@ -2748,7 +2761,7 @@ teamrig read tasks --json --owner api
 Output:
 
 ```text
-{"interface":"1.5","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
+{"interface":"1.6","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
 ```
 
 ### teamrig sessions
