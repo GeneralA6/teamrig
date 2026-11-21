@@ -11,5 +11,6 @@ export function bareHost(): HostPorts {
     transcripts: unsupported('no transcript is kept'),
     usage: unsupported('no call is priced'),
     statusLine: unsupported('no status line is drawn'),
+    permissions: unsupported('no permission rule is kept'),
   };
 }

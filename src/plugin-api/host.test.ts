@@ -32,6 +32,7 @@ describe('defineHost', () => {
         transcripts: unsupported('no session log'),
         usage: unsupported('no call is priced'),
         statusLine: unsupported('no status line is drawn'),
+        permissions: unsupported('no permission rule is kept'),
       }),
     });
     assert.equal(adapter.declaration, data);
@@ -41,6 +42,7 @@ describe('defineHost', () => {
       transcripts: { kind: 'unsupported', notice: 'no session log' },
       usage: { kind: 'unsupported', notice: 'no call is priced' },
       statusLine: { kind: 'unsupported', notice: 'no status line is drawn' },
+      permissions: { kind: 'unsupported', notice: 'no permission rule is kept' },
     });
     assert.equal(isHostAdapter(adapter), true);
   });
