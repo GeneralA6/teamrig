@@ -17,11 +17,43 @@ const FOLDER_SETTINGS = [
 const FOLDER_INSTRUCTIONS: readonly (readonly string[])[] = [['CLAUDE.md'], ['CLAUDE.local.md'], [PROJECT_DIR, 'CLAUDE.md']];
 /** The index of a project's memory, the one memory file Claude Code loads at a session's start. */
 const MEMORY_INDEX = 'MEMORY.md';
+/** The files in Claude Code's own folder whose content is a secret: its login, and every prompt a person typed. */
+const OWN_FOLDER_SECRETS = ['.credentials.json', 'history.jsonl'] as const;
 /**
- * Claude Code's files whose content is a secret, as the secret guard's globs: its login, every prompt a person typed,
- * and a folder's local settings, whose allow rules keep a command allowed once, a credential in it too.
+ * Claude Code's files whose content is a secret, as the secret guard's globs: those of its own folder where it is
+ * by default, and a folder's local settings, whose allow rules keep a command allowed once, a credential in it too.
  */
-const SECRET_FILES: readonly string[] = ['~/.claude/.credentials.json', '~/.claude/history.jsonl', `**/${PROJECT_DIR}/settings.local.json`];
+const SECRET_FILES: readonly string[] = [...OWN_FOLDER_SECRETS.map((name) => `~/.claude/${name}`), `**/${PROJECT_DIR}/settings.local.json`];
+
+/**
+ * `folder`, an absolute path on `platform`, as a glob of the secret guard that fits that folder: forward slashes, `.`
+ * and `..` resolved, no slash at its end, and each wildcard character of its name made a one-character set, which
+ * fits that character alone. A Windows path rooted with no drive is on the drive the session works on, which is not
+ * known here, so its glob fits the folder on any drive; one on a network share names its place whole.
+ */
+function folderGlob(folder: string, platform: HostDeps['platform']): string {
+  const slashed = folder.replaceAll('\\', '/');
+  const literal = posix
+    .normalize(slashed)
+    .replace(/\/+$/, '')
+    .replace(/[*?[]/g, (char) => `[${char}]`);
+  const onSomeDrive = platform === 'win32' && !/^[A-Za-z]:/.test(literal) && !slashed.startsWith('//');
+  return onSomeDrive ? `?:${literal}` : literal;
+}
+
+/**
+ * The secret files of Claude Code's own folder where `CLAUDE_CONFIG_DIR` moved it: the guard keeps them there as it
+ * does at the default place. None for a value that is no absolute path on `platform`: the folder it names hangs on
+ * where the session started, which is not known here.
+ */
+function movedSecretFiles(env: HostDeps['env'], platform: HostDeps['platform']): readonly string[] {
+  const moved = setIn(env, CONFIG_DIR);
+  if (moved === undefined || !(platform === 'win32' ? win32 : posix).isAbsolute(moved)) {
+    return [];
+  }
+  const folder = folderGlob(moved, platform);
+  return OWN_FOLDER_SECRETS.map((name) => `${folder}/${name}`);
+}
 
 /** Claude Code's folder name for a project: its path with every character but a letter or digit made `-`. */
 function projectSlug(project: string): string {
@@ -85,6 +117,7 @@ export function hostPaths(env: HostDeps['env'], platform: HostDeps['platform']):
     scratchpadOf: (transcript, systemTemp) => join(temp(systemTemp), basename(dirname(transcript)), basename(transcript, '.jsonl'), 'scratchpad'),
     planFile: (userHome, slug) => join(home(userHome), 'plans', `${slug}.md`),
     shellSnapshots: (userHome) => join(home(userHome), 'shell-snapshots'),
-    secretFiles: () => SECRET_FILES,
+    // The default place stays named when the folder is moved: the files of an earlier run may still be there.
+    secretFiles: () => [...SECRET_FILES, ...movedSecretFiles(env, platform)],
   };
 }
