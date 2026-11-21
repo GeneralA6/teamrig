@@ -106,6 +106,7 @@ const EXPECTED = {
   'roles list': 'read',
   refresh: 'write',
   doctor: 'read',
+  ui: 'read',
   compact: 'write',
   'issue sync': 'write',
   'issue watch': 'internal',
