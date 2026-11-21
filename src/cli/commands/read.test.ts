@@ -132,7 +132,24 @@ describe('teamrig read tasks', () => {
   });
 
   it('serves an empty register as no task', async () => {
-    assert.deepEqual(tasksOf(served(await new CliHarness().run(READ_TASKS))), []);
+    const answer = served(await new CliHarness().run(READ_TASKS));
+    assert.deepEqual([tasksOf(answer), answer['retired']], [[], 0]);
+  });
+
+  it("counts the finished tasks a compaction left to the archive, every owner's even with --owner", async () => {
+    const kit = new CliHarness();
+    await add(kit, 'Old gate', 'alpha');
+    await add(kit, 'Live gate', 'bravo');
+    const dropped = await kit.run(['set', 'T1', '--status', 'dropped', '--note', 'no longer wanted', '--session', 'alpha']);
+    assert.equal(dropped.code, EXIT.ok, dropped.stderr.join('\n'));
+    const before = served(await kit.run(READ_TASKS));
+    assert.deepEqual([titlesOf(before), before['retired']], [['Old gate', 'Live gate'], 0]);
+    kit.clock.advance(9 * 24 * 60 * 60 * 1000);
+    await rotateRegister(kit.files, EVENTS_PATH, { now: new Date(kit.clock.now()) });
+    const after = served(await kit.run(READ_TASKS));
+    assert.deepEqual([titlesOf(after), after['retired']], [['Live gate'], 1]);
+    assert.notEqual(after['revision'], before['revision']);
+    assert.equal(served(await kit.run([...READ_TASKS, '--owner', 'bravo']))['retired'], 1);
   });
 
   it('marks text from outside the team and escapes what a terminal would act on', async () => {

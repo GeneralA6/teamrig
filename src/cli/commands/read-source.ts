@@ -108,6 +108,8 @@ export function skippedOf(folder: ServedFolder, path: string, read: { readonly u
 /** A register's working set as a document reads it: the tasks by id, and what could not be read of them. */
 export interface WorkingSet {
   readonly tasks: ReadonlyMap<string, Task>;
+  /** How many finished tasks a compaction left to the archive, every owner's: 0 for a register never compacted. */
+  readonly retired: number;
   readonly problems: readonly string[];
 }
 
@@ -118,11 +120,11 @@ export interface WorkingSet {
 export async function workingSetOf(runtime: CliRuntime, folder: ServedFolder, layout: LayoutPaths): Promise<WorkingSet> {
   try {
     const snapshot = await readWorkingSet(runtime.files, layout);
-    return { tasks: snapshot.state.tasks, problems: damageOf(snapshot, folder, layout.tail) };
+    return { tasks: snapshot.state.tasks, retired: snapshot.retired?.count ?? 0, problems: damageOf(snapshot, folder, layout.tail) };
   } catch (error) {
     if (error instanceof MissingSegmentError) {
       const segment = servedPathOf(folder, error.path);
-      return { tasks: new Map(), problems: [`${segment}: missing, so the register's archive is incomplete and its tasks cannot be read`] };
+      return { tasks: new Map(), retired: 0, problems: [`${segment}: missing, so the register's archive is incomplete and its tasks cannot be read`] };
     }
     throw error;
   }

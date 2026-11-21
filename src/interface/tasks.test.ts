@@ -66,7 +66,7 @@ const SERVED_FIELDS = [
 ];
 
 function bodyOf(tasks: readonly Task[], owner: string | null = null): TasksBody {
-  return tasksBody({ tasks, owner, shapes: new SecretScanner(), connectors: [TRACKER], names: NAMES });
+  return tasksBody({ tasks, retired: 0, owner, shapes: new SecretScanner(), connectors: [TRACKER], names: NAMES });
 }
 
 function only(body: TasksBody): ServedTask {
@@ -319,6 +319,12 @@ describe('the tasks document', () => {
         'card.affects',
       ].map((field) => ({ id: 'T3', field, shape })),
     );
+  });
+
+  it('serves the count of retired tasks it was given, whatever the owner asked', () => {
+    const body = tasksBody({ tasks: [testTask({ id: 'T1', owner: 'alpha' })], retired: 3, owner: 'bravo', shapes: new SecretScanner(), connectors: [TRACKER], names: NAMES });
+
+    assert.deepEqual([body.tasks, body.retired], [[], 3]);
   });
 
   it('keeps the order it was given and has no cuts for clean tasks', () => {

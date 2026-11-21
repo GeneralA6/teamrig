@@ -116,6 +116,11 @@ export interface ServedPrep {
 /** The `tasks` document's own fields. */
 export interface TasksBody {
   readonly tasks: readonly ServedTask[];
+  /**
+   * Since 1.8: how many finished tasks the register's compaction left to the archive, every owner's even with an
+   * owner asked: they are in no `tasks` row, so a count of done tasks from the rows leaves them out. 0 when none is.
+   */
+  readonly retired: number;
   readonly cuts: readonly Cut[];
 }
 
@@ -123,6 +128,8 @@ export interface TasksBody {
 export interface TasksInput {
   /** The register's tasks, in the order to serve them. */
   readonly tasks: Iterable<Task>;
+  /** How many finished tasks the register's compaction left to the archive. */
+  readonly retired: number;
   /** Serve only this session's tasks; null serves every task. */
   readonly owner: string | null;
   readonly shapes: SecretShapes;
@@ -142,7 +149,7 @@ export function tasksBody(input: TasksInput): TasksBody {
       tasks.push(servedTask(task, served, input));
     }
   }
-  return { tasks, cuts: served.cuts };
+  return { tasks, retired: input.retired, cuts: served.cuts };
 }
 
 function servedTask(task: Task, served: ServedText, input: Pick<TasksInput, 'connectors' | 'names'>): ServedTask {

@@ -2462,7 +2462,7 @@ answered.
 
 Every document carries:
 
-- `interface`: the interface version that wrote it (`1.6`). Ignore fields you do not know: a minor version adds some.
+- `interface`: the interface version that wrote it (`1.8`). Ignore fields you do not know: a minor version adds some.
 - `document`: its name.
 - `revision`: 16 characters that stay the same while the files the document is read from, what you asked and the
   teamrig version stay the same. Compare it with the one you hold to know whether to draw again; it has no other
@@ -2490,6 +2490,10 @@ rest), and `cuts`. Since interface 1.6 each task also has:
   marked it as serving no goal.
 - `startedAt`: when it first went in progress or verifying, `null` until then; `waitsAt`: when it last asked for
   something new (its creation at the latest), what "waiting since" reads.
+
+Since interface 1.8 `tasks` also has `retired`: how many finished tasks the register's compaction left to the
+archive, which are in no row. It counts every owner's, `--owner` or not, and is `0` when none is; above 0, a count of
+done tasks made from the rows is of the working set only.
 
 `plan` (since interface 1.1) adds `at`, `validUntil`, `week`, `tasks`, `finished` and `ownerCards`: where each task
 stands in the team's plan, as `teamrig list` orders it, so a program ranks nothing itself. It holds ids, numbers,
@@ -2761,7 +2765,7 @@ teamrig read tasks --json --owner api
 Output:
 
 ```text
-{"interface":"1.7","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"cuts":[]}
+{"interface":"1.8","document":"tasks","revision":"5f0c2a9be41d7c36","problems":[],"tasks":[{"id":"T12","title":{"text":"Cache the price list","source":"team"},"owner":"api","status":"in-progress", ...}],"retired":0,"cuts":[]}
 ```
 
 ### teamrig events
@@ -2814,8 +2818,8 @@ teamrig events --json --documents tasks,inbox --session api
 Output:
 
 ```text
-{"interface":"1.7","event":"hello","documents":[{"document":"tasks","revision":"5f0c2a9be41d7c36"},{"document":"inbox","revision":"9a41c07d2be3f518"}]}
-{"interface":"1.7","event":"changed","documents":[{"document":"inbox","revision":"c2d81374e0aa51b9"}]}
+{"interface":"1.8","event":"hello","documents":[{"document":"tasks","revision":"5f0c2a9be41d7c36"},{"document":"inbox","revision":"9a41c07d2be3f518"}]}
+{"interface":"1.8","event":"changed","documents":[{"document":"inbox","revision":"c2d81374e0aa51b9"}]}
 ```
 
 ### teamrig sessions
