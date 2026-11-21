@@ -4,6 +4,7 @@
  * its own folder, nothing else, so it ships as it is to whoever builds a host or a connector.
  */
 import { PERMISSIONS_CONTRACT } from './host/permissions.ts';
+import { PLUGIN_CONTRACT } from './host/plugin.ts';
 import { STATUS_LINE_CONTRACT } from './host/status-line.ts';
 import { TRANSCRIPT_CONTRACT } from './host/transcript.ts';
 import { USAGE_CONTRACT } from './host/usage.ts';
@@ -19,6 +20,7 @@ export { nothingTranscripts, TRANSCRIPT_CONTRACT, yesTranscripts, type Transcrip
 export { nothingUsage, USAGE_CONTRACT, yesUsage, type UsageCase, type UsageSubject, type UsageWorld, type WorldLimits } from './host/usage.ts';
 export { nothingStatusLine, STATUS_LINE_CONTRACT, yesStatusLine, type StatusLineCase, type StatusLineSubject, type StatusLineWorld, type WorldStatus } from './host/status-line.ts';
 export { nothingPermissions, PERMISSIONS_CONTRACT, yesPermissions, type PermissionsCase, type PermissionsSubject, type PermissionsWorld, type WorldRules } from './host/permissions.ts';
+export { nothingPlugin, PLUGIN_CONTRACT, yesPlugin, type PluginCase, type PluginSubject, type PluginWorld, type WorldInstall, type WorldMarketplace } from './host/plugin.ts';
 
 /**
  * Every contract of the kit. A port's contract lives in its own file, under `host/`, `connector/` or `terminal/`,
@@ -31,4 +33,5 @@ export const CONTRACTS: readonly KitEntry[] = [
   entryOf(USAGE_CONTRACT),
   entryOf(STATUS_LINE_CONTRACT),
   entryOf(PERMISSIONS_CONTRACT),
+  entryOf(PLUGIN_CONTRACT),
 ];
