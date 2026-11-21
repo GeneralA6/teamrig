@@ -308,6 +308,16 @@ describe('evaluatePushes: where a push hides', () => {
     ]);
   });
 
+  it('resolves variables past arithmetic that only reads counters the line keeps whole numbers', () => {
+    expectRows([
+      ['B=feature; n=0; n=$((n + 1)); git push origin "$B"', 'allow'],
+      ['B=feature; echo "$((2 * 3))"; git push origin "$B"', 'allow'],
+      ['B=feature; echo $((n + 1)); git push origin "$B"', 'ask', 'doubt'],
+      ['B=main; n=0; echo $((n)); git push -f origin "$B"', 'deny'],
+      ['n=0; echo $((n)); git push -f origin main', 'deny'],
+    ]);
+  });
+
   it('reads the substitutions inside ${...} and arithmetic', () => {
     expectRows([
       ['echo $(( $(git push origin main) ))', 'ask'],

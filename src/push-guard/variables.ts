@@ -1,19 +1,18 @@
+import { ASSIGNMENT_LIKE, NAME, SETS_NAME, setsNamesUnseen, unquotedBindingName } from './setters.ts';
 import type { Redirection, ShellCommand, ShellParse, ShellWord, WordPart } from './tokenizer.ts';
 
 /** A heredoc's operator, `<<` or `<<-` with any descriptor; its target is the delimiter, never expanded. */
 const HEREDOC_OPERATOR = /^\d*<<-?$/;
 
 /**
- * bash keywords and builtins that can set a variable in a way this module does not follow (`case`, a
- * function, `read`, `declare`, arithmetic) or run code that can (`eval`, `source`, `trap`, `jobs -x`). One anywhere
- * in a line keeps every variable of that line unresolved, except the keywords of a `for`, `while` or `until`
- * loop, an `if`, a `{ }` group and a `!` where they start a command (see {@link Compounds}).
+ * bash keywords that can set a variable in a way this module does not follow (`case`, a function, a `[[ =~ ]]`
+ * match). One anywhere in a line keeps every variable of that line unresolved, except the keywords of a `for`,
+ * `while` or `until` loop, an `if`, a `{ }` group and a `!` where they start a command (see {@link Compounds}).
+ * Builtins that can (`read`, `declare`, `eval`) are the shared rule's, {@link setsNamesUnseen}.
  */
-const UNSAFE_PROGRAMS: ReadonlySet<string> = new Set([
+const UNSAFE_KEYWORDS: ReadonlySet<string> = new Set([
   ...['if', 'then', 'elif', 'else', 'fi', 'for', 'while', 'until', 'do', 'done', 'case', 'esac', 'select', 'function'],
   ...['{', '}', '[[', ']]', '!', 'time', 'coproc'],
-  ...['read', 'readarray', 'mapfile', 'getopts', 'let', 'declare', 'typeset', 'local', 'readonly', 'unset', 'wait'],
-  ...['eval', 'source', '.', 'trap', 'command', 'builtin', 'jobs', 'enable', 'alias', 'unalias', 'shopt', 'compgen', 'complete', 'fc'],
 ]);
 /** Variables bash itself sets or reads in a special way; a line never resolves them. */
 const SHELL_NAMES: ReadonlySet<string> = new Set([
@@ -22,17 +21,12 @@ const SHELL_NAMES: ReadonlySet<string> = new Set([
   ...['HOSTNAME', 'HOSTTYPE', 'MACHTYPE', 'OSTYPE', 'SHELLOPTS', 'MAPFILE', 'COPROC', 'COLUMNS', 'LINES'],
 ]);
 const SHELL_PREFIXES = /^(?:BASH|COMP_|READLINE_)/;
-const NAME = /^[A-Za-z_]\w*$/;
 /** Unquoted value text bash assigns as written: no blank, glob, tilde, quote, `$`, `=` or shell operator. */
 const UNQUOTED_VALUE = /^[A-Za-z0-9._/:+@-]*$/;
 /** Text that makes an unquoted expansion a file name pattern: a glob, an extglob group or a backslash. */
 const PATTERN_TEXT = /[*?[(\\]/;
 /** The blanks bash splits an unquoted expansion at; a line that sets IFS resolves nothing. */
 const FIELD_BREAKS = /[ \t\n]+/;
-/** A word that looks like an assignment, quoted or not: `NAME=`, `NAME+=` or `NAME[`. */
-const ASSIGNMENT_LIKE = /^([A-Za-z_]\w*)(\[|\+?=)/;
-/** `NAME=` at the start of a word: an `export` argument that sets that one name. */
-const SETS_NAME = /^([A-Za-z_]\w*)=/;
 /** A `{NAME}` word, as in `exec {NAME}>file`, which stores a file descriptor number in NAME. */
 const NAMED_FD = /^\{([A-Za-z_]\w*)\}$/;
 
@@ -115,7 +109,7 @@ export function resolveLiteralVariables(parsed: ShellParse, home?: string): read
  * variables (in quotes, for `export`), and only for a name the line sets nowhere else, or always to the same
  * text. A name also assigned in any other form (`NAME=x cmd`, `NAME+=`, `{NAME}>`, a value with a substitution
  * or any other tilde, a `for` loop's variable, a binding inside a compound command or after `!`) is not
- * resolved. A program that can set variables unseen (see {@link UNSAFE_PROGRAMS}, or a program a variable names
+ * resolved. A program that can set variables unseen (see {@link UNSAFE_KEYWORDS} and {@link setsNamesUnseen}, or a program a variable names
  * that is not known or is one of those) leaves every command from it on unresolved, or from the start of the
  * outermost compound command holding it, which may run it again before an earlier command of its body; the
  * commands before it ran first, so it cannot change what they read. Array elements, IFS, and what
@@ -600,32 +594,8 @@ function expandedSetsVariablesUnseen(words: readonly ShellWord[]): boolean {
 
 /** True for a command that can set a variable in a way the guard does not follow, or run code that can. */
 function setsVariablesUnseen(words: readonly ShellWord[]): boolean {
-  const start = words.findIndex((word) => !ASSIGNMENT_LIKE.test(word.text));
-  const program = words[start];
-  if (program === undefined) {
-    return false;
-  }
-  if (program.dynamic || UNSAFE_PROGRAMS.has(program.text)) {
-    return true;
-  }
-  const args = words.slice(start + 1);
-  switch (program.text) {
-    case 'printf':
-      // `printf -v NAME` assigns; so may a format only known when it runs.
-      return args[0] !== undefined && (args[0].dynamic || args[0].text.startsWith('-'));
-    case 'export':
-      return args.some((word) => word.text.startsWith('-') || !exportsOwnName(word));
-    default:
-      return false;
-  }
-}
-
-/**
- * True for an `export` argument that can set only the name it shows: a static word, or `NAME=` with any
- * variables in quotes, which bash never splits into further arguments.
- */
-function exportsOwnName(word: ShellWord): boolean {
-  return !word.dynamic || (SETS_NAME.test(word.text) && word.parts !== undefined && word.parts.every((part) => part.kind === 'text' || part.quoted));
+  const program = programOf(words);
+  return (program !== undefined && !program.dynamic && UNSAFE_KEYWORDS.has(program.text)) || setsNamesUnseen(words);
 }
 
 /**
@@ -653,8 +623,7 @@ function bindingStatement(words: readonly ShellWord[], redirected: boolean): rea
 
 /** `NAME=value` as a shell assignment: the name and `=` unquoted at the word's start. */
 function plainBinding(word: ShellWord): Binding | undefined {
-  const head = word.parts?.[0];
-  const unquotedName = head?.kind === 'text' && !head.quoted ? SETS_NAME.exec(head.text)?.[1] : undefined;
+  const unquotedName = unquotedBindingName(word);
   return unquotedName === undefined ? undefined : valueBinding(word, unquotedName, false);
 }
 

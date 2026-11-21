@@ -101,7 +101,8 @@ PowerShell or cmd, each measured on the real shell), so it finds a push wherever
   (a `${...}` that assigns or runs arithmetic, such as `${B:=x}` or `${B:1}`, or reads a name indirectly,
   `${!R}`; `case`, `select`, `[[ ]]`, functions, `read`, `source`, `eval`, `declare`, arithmetic, arrays, a
   heredoc that never closes) leaves it unknown. A `${...}` that only reads, such as `${B:-x}` or `${x%%|*}`, is
-  fine.
+  fine, and so is a `$((...))` that only reads numbers and counters: names the line first sets to digits at its
+  start and only ever sets again to digits or such arithmetic, as in `n=0; for f in *; do n=$((n + 1)); done`.
 
 When it cannot read part of a line with confidence, it refuses it and says why, so the push is written out plainly: a quote that never closes, a git
 command, alias, folder, remote or refspec only known when the line runs, an alias git cannot read, scripts nested

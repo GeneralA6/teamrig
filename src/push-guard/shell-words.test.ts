@@ -1728,7 +1728,7 @@ describe('parseShell: a CR in bash', () => {
   it('carries what any reading leaves unread', () => {
     const parsed = parseShell('cat <<A <<B\na\nA\nb\r\nB\n', 'bash');
     assert.deepEqual(parsed.unreadBodies.map((body) => body.text), ['a', 'a']);
-    assert.equal(parseShell('echo $((1))\r', 'bash').bindingsUnclear, true);
+    assert.equal(parseShell('echo $((B = 1))\r', 'bash').bindingsUnclear, true);
   });
 
   it('binds a variable within its own reading, so two values for a name are not a clash', () => {

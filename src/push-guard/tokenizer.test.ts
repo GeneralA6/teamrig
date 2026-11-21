@@ -573,7 +573,6 @@ describe('parseShell: bindings the commands may not show', () => {
       '((B = 1))',
       'for ((i = 0; i < 2; i++)); do :; done',
       ': $((B = 1))',
-      'echo "$((1 + 2))"',
       ': $[B = 1]',
       ': ${B:=main}',
       'echo "${B=main}"',
@@ -610,6 +609,67 @@ describe('parseShell: bindings the commands may not show', () => {
       assert.equal(unclear(line), false, line);
     }
     assert.equal(unclear('${x:=1}; $((1))', 'powershell'), false);
+  });
+
+  it('passes over arithmetic that only reads numbers and counters the line keeps whole numbers', () => {
+    for (const line of [
+      'echo "$((1 + 2))" $[3 * (4 - 1)] $((0x1f >> 2 == 7 ? 1 : 0)) $((2 <= 3 && 4 >= 3 && 5 != 6))',
+      'n=0; for f in a b; do n=$((n + 1)); done; echo "$n"',
+      'i=0 j=2; echo $((i < j ? i : j)) $[i+1]',
+      'n=0 && echo $(( (n + 1) * 2 ))',
+      'n=0 m=1\nm=$((n + m)) && echo "$(( m ))"; m=7',
+      'n=0; echo "$(echo $((n + 1)))"',
+      'n=0; printf "%d\\n" $((n))',
+      'n=0; cat <<EOF\n$((n))\nEOF',
+      'n=0; export n; echo $((n))',
+    ]) {
+      assert.equal(unclear(line), false, line);
+    }
+  });
+
+  it('flags arithmetic that may assign, run text again or read a name the line does not keep a whole number', () => {
+    for (const line of [
+      "x='a[$(git push -f origin main)]'; echo $((x))",
+      'echo $((n + 1))',
+      ': $((n++)) $((--n))',
+      'n=0; echo $((n <<= 1))',
+      'n=0; echo $((n == 1)) $((n = 1))',
+      'echo $((16#ff)) $((a[1])) $(("1")) $((1.5))',
+      'n=0; read n; echo $((n))',
+      'n=0; n=x; echo $((n))',
+      'n=0; n+=1; echo $((n))',
+      "n=0; n='0'x; echo $((n))",
+      'n=0; n=$((m)); echo $((n))',
+      'n=0; f() { n=$((n + y)); }; echo $((n))',
+      'n=0 | echo $((n))',
+      'n=0 & echo $((n))',
+      'n=0 || echo $((n))',
+      '(n=0); echo $((n))',
+      '{ n=0; }; echo $((n))',
+      'n=0 >x; echo $((n))',
+      "'n'=0; echo $((n))",
+      'n=$((1)); echo $((n))',
+      "n=0; n='$((1))'; echo $((n))",
+      'n=0; { n=x; }; echo $((n))',
+      'n=0; while :; do read n; done; echo $((n))',
+      '{ n=0; } | cat; echo $((n))',
+      'echo $((n)); n=0',
+      'n=0; for n in a; do :; done; echo $((n))',
+      'n=0; printf -v n x; echo $((n))',
+      'n=0; eval n=x; echo $((n))',
+      'n=0; export n=x; echo $((n))',
+      'n=0; declare n=x; echo $((n))',
+      'n=0; $c n; echo $((n))',
+      'n=0; echo $((n) )',
+      "_=0; echo 'a[$(touch F)]' >/dev/null; echo $((_))",
+      "BASH_REMATCH=0; [[ 'a[$(touch F)]' =~ .* ]]; echo $((BASH_REMATCH))",
+      'N=0; echo $((N))',
+      'cat <<EOF\n$((n))\nEOF',
+      'n=0; export -n m; echo $((n))',
+      'n=0; shopt -s expand_aliases; echo $((n))',
+    ]) {
+      assert.equal(unclear(line), true, line);
+    }
   });
 
   it('reads $[...] as one dynamic word', () => {
