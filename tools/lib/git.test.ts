@@ -52,7 +52,7 @@ describe('gitSyncIn', () => {
   repo.write('a.txt', 'a\n');
   repo.git('add', 'a.txt');
   repo.git('commit', '-q', '-m', 'a');
-  // Git sends a hook's stdout to its own stderr: 2 MiB of it stands for the local gate the pre-push hook runs.
+  // Git passes a pre-push hook's stdout through as its own stdout: 2 MiB of it stands for the local gate the hook runs.
   const node = process.execPath.replaceAll('\\', '/');
   const hook = repo.write('.git/hooks/pre-push', `#!/bin/sh\n"${node}" -e "process.stdout.write('x'.repeat(2 * 1024 * 1024))"\n`);
   // Git on Linux and macOS skips a hook without the execute bit, and its push would then print nothing.
@@ -70,6 +70,43 @@ describe('gitSyncIn', () => {
   it('returns stdout as text and throws when git fails', () => {
     const git = gitSyncIn(repo.dir, repo.env);
     assert.equal(git(['rev-parse', 'HEAD']).trim(), repo.git('rev-parse', 'HEAD').trim());
-    assert.throws(() => git(['rev-parse', '--verify', '-q', 'teamrig-no-such-ref']));
+    const args = ['rev-parse', '--verify', '-q', 'teamrig-no-such-ref'];
+    assert.throws(
+      () => git(args),
+      (error: unknown) => {
+        assert.ok(error instanceof GitError);
+        assert.deepEqual([error.stdout, error.message], ['', `git ${args.join(' ')} failed: ${String(error.cause)}`], 'nothing on stdout adds no tail');
+        return true;
+      },
+    );
+  });
+});
+
+describe('gitSyncIn: a push its pre-push hook refuses (#1563)', () => {
+  const repo = new TempRepo('git-refused').init();
+  after(() => repo.remove());
+  const origin = join(repo.outside, 'origin.git');
+  repo.git('init', '-q', '--bare', origin);
+  repo.git('remote', 'add', 'origin', origin);
+  repo.write('a.txt', 'a\n');
+  repo.git('add', 'a.txt');
+  repo.git('commit', '-q', '-m', 'a');
+  // The local gate prints its checks and, last, its REFUSED line on stdout, which git passes through as its own.
+  const node = process.execPath.replaceAll('\\', '/');
+  const gate = "for (let at = 1; at < 100; at++) console.log('check ' + at); console.log('local checks: REFUSED check 99 failed'); process.exit(1)";
+  chmodSync(repo.write('.git/hooks/pre-push', `#!/bin/sh\n"${node}" -e "${gate}"\n`), 0o755);
+
+  it("ends the error with the last 40 lines git printed on stdout, the gate's REFUSED line last", () => {
+    const tail = [...Array.from({ length: 39 }, (_, at) => `check ${at + 61}`), 'local checks: REFUSED check 99 failed'].join('\n');
+    assert.throws(
+      () => gitSyncIn(repo.dir, repo.env)(['push', '-q', 'origin', 'HEAD:refs/heads/t-refused']),
+      (error: unknown) => {
+        assert.ok(error instanceof GitError);
+        assert.ok(error.message.endsWith(`\n${tail}`), error.message.slice(-200));
+        assert.ok(!error.message.includes('check 60\n'), 'only the last 40 lines');
+        assert.match(error.message, /^git push -q origin HEAD:refs\/heads\/t-refused failed: [\s\S]*failed to push some refs/);
+        return true;
+      },
+    );
   });
 });
