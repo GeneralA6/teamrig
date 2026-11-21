@@ -3,19 +3,23 @@ import type { Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
 import { writableObject } from '../core/jsonl.ts';
 import { formatCarriedJobs, parseCarriedJobs, type CarriedJobs } from './carry.ts';
+import { RestartLog } from './restart-log.ts';
 import {
   formatParkedRestart,
   formatRefreshRequest,
   formatRefreshState,
+  formatRestartCancel,
   formatRestartRequest,
   parseParkedRestart,
   parseRefreshRequest,
   parseRefreshState,
+  parseRestartCancel,
   parseRestartRequest,
   REFRESH_STATE_FORMAT,
   type ParkedRestart,
   type RefreshRequest,
   type RefreshState,
+  type RestartCancel,
   type RestartRequest,
 } from './state.ts';
 
@@ -24,7 +28,8 @@ import {
  * its commands and hooks; the lead's request (`<id>.request.json`) is a file of its own, so neither
  * write ever overwrites the other's; so is the automatic restart (`<id>.restart.json`), which the
  * session's hooks, its restart and `teamrig launch` share, and the restart held back until work comes
- * (`<id>.parked.json`), which its Stop hook writes and its wake check arms. The jobs a /clear left live in the session's process
+ * (`<id>.parked.json`), which its Stop hook writes and its wake check arms; what cancelled a pending restart
+ * (`<id>.cancel.json`) is written by its prompt hook for the restart's runner to log. The jobs a /clear left live in the session's process
  * (`<id>.carried.json`) are written by its SessionStart hook. Ids are session ids, checked by the roster, so they
  * are safe in a path.
  */
@@ -87,6 +92,11 @@ export class RefreshStore {
     await this.files.remove(this.requestPath(id));
   }
 
+  /** The team's restart log, beside the restart requests. */
+  restartLog(): RestartLog {
+    return new RestartLog(this.files, this.paths);
+  }
+
   async restart(id: string): Promise<RestartRequest | undefined> {
     const text = await this.files.read(this.restartPath(id));
     return text === undefined ? undefined : parseRestartRequest(text);
@@ -98,6 +108,29 @@ export class RefreshStore {
 
   async clearRestart(id: string): Promise<void> {
     await this.files.remove(this.restartPath(id));
+  }
+
+  /** Records what cancelled the pending restart, for its runner to log (#706). */
+  async setCancel(id: string, cancel: RestartCancel): Promise<void> {
+    await this.files.write(this.cancelPath(id), formatRestartCancel(cancel));
+  }
+
+  /**
+   * What cancelled the session's restart request of `at`, removed as it is read; undefined when nothing was recorded for
+   * it. A record of another request stays for that request's runner (an old runner still waiting must not spend the
+   * record of the request that replaced its own); a damaged one is removed.
+   */
+  async takeCancel(id: string, at: string): Promise<RestartCancel | undefined> {
+    const text = await this.files.read(this.cancelPath(id));
+    if (text === undefined) {
+      return undefined;
+    }
+    const cancel = parseRestartCancel(text);
+    if (cancel !== undefined && cancel.at !== at) {
+      return undefined;
+    }
+    await this.files.remove(this.cancelPath(id));
+    return cancel;
   }
 
   /** The restart held back until work comes; undefined when none, or the file is damaged. */
@@ -138,6 +171,10 @@ export class RefreshStore {
 
   private restartPath(id: string): string {
     return join(this.paths.refresh, `${id}.restart.json`);
+  }
+
+  private cancelPath(id: string): string {
+    return join(this.paths.refresh, `${id}.cancel.json`);
   }
 
   private parkedPath(id: string): string {

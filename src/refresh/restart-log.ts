@@ -13,6 +13,11 @@ export interface RestartRecord {
   /** When the restart ended, with `result`. */
   readonly endedAt: string;
   readonly result: RestartResult;
+  /**
+   * Why the lookup of the session's Claude Code failed, on the row of the restart it stopped (#706): the listing's
+   * time limit, its exit code and stderr's first line, or its start error. Absent from the rows an older teamrig wrote.
+   */
+  readonly lookupFailure?: string;
 }
 
 /**

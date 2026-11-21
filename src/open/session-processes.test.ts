@@ -5,12 +5,13 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { StartedProcess, SweepHost } from '../delivery/tree-kill.ts';
-import type { ProgramRequest, ProgramResult } from '../core/program-runner.ts';
+import type { ProgramRequest, ProgramResult, ProgramRunner } from '../core/program-runner.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { FakeSweepHost } from '../testing/fake-sweep-host.ts';
 import { FakeWindowsPowerShell } from '../testing/fake-windows-powershell.ts';
 import {
   EXEC_STUB_MS,
+  LOOKUP_TIMEOUT_MS,
   isClaudeProcess,
   lineageOf,
   nodeSessionProcesses,
@@ -21,6 +22,7 @@ import {
   parseWindowsProcess,
   parseWindowsProcesses,
   runsClaude,
+  type LineageLookup,
   type ListedProcess,
 } from './session-processes.ts';
 
@@ -277,6 +279,30 @@ describe('nodeSessionProcesses with a scripted system', () => {
       { info: { pid: 51, parentPid: 41, name: 'bash', commandLine: 'bash' } },
     ]);
     assert.equal(posix.asked.length, 1);
+  });
+
+  // #706: a failed lookup used to read as no process, its reason lost; the restart log now records it.
+  it('says why a listing failed: its time limit, its exit code with stderr, output it cannot read, or a start error', async () => {
+    const why = async (platform: NodeJS.Platform, run: ProgramRunner): Promise<LineageLookup> => nodeSessionProcesses({ platform, run }).lineageLookup(53);
+    const timedOut: ProgramResult = { end: { kind: 'signal', signal: 'SIGTERM' }, stdout: '', stderr: '' };
+    assert.deepEqual(await why('linux', scripted(timedOut).run), { kind: 'failed', why: `ps timed out after ${LOOKUP_TIMEOUT_MS} ms` });
+    assert.deepEqual(await why('linux', scripted({ ...timedOut, end: { kind: 'signal', signal: 'SIGKILL' } }).run), { kind: 'failed', why: 'ps was ended by SIGKILL' });
+    assert.deepEqual(await why('linux', scripted(exited(1, '', 'ps: bad option\nusage: ps')).run), { kind: 'failed', why: 'ps exited with code 1: ps: bad option' });
+    assert.deepEqual(await why('win32', scripted(exited(2)).run), { kind: 'failed', why: 'powershell.exe exited with code 2' });
+    assert.deepEqual(await why('win32', scripted(exited(0, '', '\nGet-CimInstance : Access denied\n')).run), {
+      kind: 'failed',
+      why: 'powershell.exe gave no listing it could read: Get-CimInstance : Access denied',
+    });
+    assert.deepEqual(await why('win32', scripted(exited(0, 'not json')).run), { kind: 'failed', why: 'powershell.exe gave no listing it could read: it wrote no error' });
+    assert.deepEqual(await why('linux', async () => Promise.reject(new Error('spawn ps ENOENT'))), { kind: 'failed', why: 'ps could not start: spawn ps ENOENT' });
+  });
+
+  it('gives a lineage that lists as listed, with no failure', async () => {
+    const posix = scripted(exited(0, '   41     7 claude\n   53    41 node cli.js\n', 'ps: a warning on stderr\n'));
+    const looked = await nodeSessionProcesses({ platform: 'linux', run: posix.run }).lineageLookup(53);
+    assert.equal(looked.kind, 'listed');
+    assert.deepEqual(looked.kind === 'listed' ? looked.lineage.map((info) => info.pid) : [], [53, 41]);
+    assert.deepEqual(await nodeSessionProcesses({ platform: 'linux', run: posix.run }).lineageLookup(0), { kind: 'failed', why: '0 is not a process id' });
   });
 
   it('asks PowerShell on Windows and ps elsewhere, and reads a failed lookup as nothing', async () => {

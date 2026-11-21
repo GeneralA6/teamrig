@@ -4,7 +4,7 @@ import { ENV, type TeamPaths } from '../../core/home.ts';
 import { payloadEffortOf } from '../../hooks/model-check.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { noticeOf, type NoticeDecision, type StopContext } from '../../refresh/decide.ts';
-import { claudeProcessOf, restartMayAct } from '../../refresh/restart.ts';
+import { lookUpClaude, restartMayAct, type ClaudeLookup, type RestartResult } from '../../refresh/restart.ts';
 import type { ParkedRestart, RestartRequest, RestartTab } from '../../refresh/state.ts';
 import type { RefreshStore } from '../../refresh/store.ts';
 import { parkRulesOf } from '../../register/park.ts';
@@ -43,8 +43,8 @@ export interface RestartScope {
   readonly id: string;
   readonly context: StopContext;
   readonly target: RestartTarget;
-  /** The Claude Code process the hook runs under (`claudeProcessOf`); undefined when it was not found. */
-  readonly claude: number | undefined;
+  /** The Claude Code process the hook runs under (`lookUpClaude`). */
+  readonly claude: ClaudeLookup;
 }
 
 /** Starts `restart` hidden for the request recorded at `at`, to wait until the session is idle; whether it started. */
@@ -79,14 +79,30 @@ export async function workFollows(runtime: CliRuntime, paths: TeamPaths, config:
  */
 export async function armRestart(runtime: CliRuntime, store: RefreshStore, scope: RestartScope, notice: NoticeDecision): Promise<NoticeDecision> {
   const { team, id, context, target, claude } = scope;
-  if (claude !== undefined) {
-    await store.setRestart(id, { ...restartTabOf(runtime, id, target), phase: 'pending', at: context.now, pid: claude });
+  if (claude.kind === 'found') {
+    await store.setRestart(id, { ...restartTabOf(runtime, id, target), phase: 'pending', at: context.now, pid: claude.pid });
     if (await startRunner(runtime, team, id, context.now, target.project)) {
       return notice;
     }
     await store.clearRestart(id);
   }
+  await logLookupFailure(runtime, store, id, context.now, claude);
   return noticeOf(notice.state, context, 'clear');
+}
+
+/**
+ * A restart a failed lookup of its Claude Code stopped before it was armed leaves a row saying why (#706): no runner
+ * starts, so nothing else would log it. A log it cannot write is no reason to fail the hook.
+ */
+async function logLookupFailure(runtime: CliRuntime, store: RefreshStore, id: string, at: string, claude: ClaudeLookup): Promise<void> {
+  if (claude.kind !== 'failed') {
+    return;
+  }
+  const result: RestartResult = { kind: 'failed', why: 'its Claude Code could not be looked up, so no restart was armed' };
+  await store
+    .restartLog()
+    .record({ session: id, at, endedAt: new Date(runtime.clock.now()).toISOString(), result, lookupFailure: claude.why })
+    .catch(() => undefined);
 }
 
 /**
@@ -132,16 +148,17 @@ export interface RearmScope {
 async function armFromTab(runtime: CliRuntime, store: RefreshStore, scope: RearmScope, tab: RestartTab): Promise<boolean> {
   const { team, id, cwd } = scope;
   // Looked up on this rare path only: each look at a process starts a PowerShell on Windows.
-  const claude = await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid);
+  const claude = await lookUpClaude(runtime.sessionProcesses, runtime.sessionProcesses.parentPid);
   const project = runtime.env[ENV.claudeProjectDir] ?? tab.cwd ?? cwd;
-  if (claude !== undefined && project !== undefined) {
-    const at = new Date(runtime.clock.now()).toISOString();
-    await store.setRestart(id, { ...tab, phase: 'pending', at, pid: claude });
+  const at = new Date(runtime.clock.now()).toISOString();
+  if (claude.kind === 'found' && project !== undefined) {
+    await store.setRestart(id, { ...tab, phase: 'pending', at, pid: claude.pid });
     if (await startRunner(runtime, team, id, at, project)) {
       return true;
     }
   }
   await store.clearRestart(id);
+  await logLookupFailure(runtime, store, id, at, claude);
   return false;
 }
 

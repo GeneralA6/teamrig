@@ -9,7 +9,7 @@ import type { TranscriptReader } from '../ports/host/index.ts';
 import type { RestoreRegistry } from '../restore/registry.ts';
 import type { ClearAsks } from './clear-asks.ts';
 import { readRunningWork } from './running.ts';
-import type { RestartRequest } from './state.ts';
+import type { PromptOrigin, RestartRequest } from './state.ts';
 import type { RefreshStore } from './store.ts';
 import { TURN_TAIL_BYTES, turnRunning } from './turn.ts';
 
@@ -58,7 +58,12 @@ export function personHoldOf(refresh: Pick<RefreshConfig, 'countdownSeconds' | '
 
 export type RestartResult =
   /** Nothing to do any more: the user typed, the session was refreshed by hand, its process ended, or a later request replaced this one. */
-  | { readonly kind: 'cancelled'; readonly why: string }
+  | {
+      readonly kind: 'cancelled';
+      readonly why: string;
+      /** Where the prompt that cancelled it came from, when the prompt hook recorded it (#706); absent from older rows. */
+      readonly by?: PromptOrigin;
+    }
   /** The tab's mod ran /clear, which runs Claude Code's own SessionEnd and SessionStart `clear` hooks. */
   | { readonly kind: 'cleared' }
   | { readonly kind: 'restarted'; readonly where: 'same tab' | 'new tab'; readonly endCommand: FeedOutcome | undefined }
@@ -86,6 +91,26 @@ const QUIET_TAIL_BYTES = 4_096;
 /** The user typed (the prompt hook cleared the request) or a later notice replaced it. */
 const CANCELLED: RestartResult = { kind: 'cancelled', why: 'the restart was cancelled or replaced' };
 
+/** Who typed or sent a prompt, for a line. */
+export function promptOriginText(origin: PromptOrigin): string {
+  switch (origin.kind) {
+    case 'person':
+      return 'a person typed';
+    case 'wake':
+      return "teamrig's wake of the tab arrived";
+    case 'peer':
+      return origin.from === null ? "a peer's message arrived" : `a message from ${origin.from} arrived`;
+    case 'unknown':
+      return 'a prompt teamrig could not trace arrived';
+  }
+}
+
+/** CANCELLED, naming where the prompt that cancelled this run's request came from when the prompt hook recorded it (#706). */
+async function cancelledOf(deps: RestartDeps, plan: RestartPlan): Promise<RestartResult> {
+  const cancel = await deps.store.takeCancel(plan.id, plan.at);
+  return cancel === undefined ? CANCELLED : { kind: 'cancelled', why: `${promptOriginText(cancel.origin)}, so the restart was cancelled`, by: cancel.origin };
+}
+
 /** How long the tab's mod has to claim the ask before the session is ended instead: it looks every second. */
 export const CLAIM_WAIT_MS = 10_000;
 
@@ -97,7 +122,21 @@ const CLAUDE_HOPS = 3;
  * look starts a PowerShell on Windows, and a slow hook is killed at Claude Code's timeout); undefined when none is.
  */
 export async function claudeProcessOf(processes: SessionProcesses, pid: number): Promise<number | undefined> {
-  return (await processes.lineage(pid))?.slice(0, CLAUDE_HOPS).find(isClaudeProcess)?.pid;
+  const looked = await lookUpClaude(processes, pid);
+  return looked.kind === 'found' ? looked.pid : undefined;
+}
+
+/** The Claude Code above a hook, none when the listing holds none, or why the listing failed (#706). */
+export type ClaudeLookup = { readonly kind: 'found'; readonly pid: number } | { readonly kind: 'none' } | { readonly kind: 'failed'; readonly why: string };
+
+/** `claudeProcessOf`, with why the lookup failed when it did, for the restart log. */
+export async function lookUpClaude(processes: Pick<SessionProcesses, 'lineageLookup'>, pid: number): Promise<ClaudeLookup> {
+  const looked = await processes.lineageLookup(pid);
+  if (looked.kind === 'failed') {
+    return looked;
+  }
+  const claude = looked.lineage.slice(0, CLAUDE_HOPS).find(isClaudeProcess);
+  return claude === undefined ? { kind: 'none' } : { kind: 'found', pid: claude.pid };
 }
 
 /** The pending request this restart was started for; undefined once it was cancelled, taken or replaced. */
@@ -175,7 +214,7 @@ async function waitForQuiet(deps: RestartDeps, plan: RestartPlan, transcript: st
     await deps.sleep(wait);
     const request = await pendingOf(deps, plan);
     if (request === undefined) {
-      return CANCELLED;
+      return cancelledOf(deps, plan);
     }
     if ((await deps.store.state(plan.id))?.phase !== 'ready') {
       await deps.store.clearRestart(plan.id);
@@ -292,7 +331,7 @@ async function endSession(deps: RestartDeps, plan: RestartPlan, request: Restart
   }
   // A second look takes a moment: a prompt typed meanwhile still cancels.
   if ((await pendingOf(deps, plan)) === undefined) {
-    return CANCELLED;
+    return cancelledOf(deps, plan);
   }
   await deps.store.setRestart(plan.id, { ...request, phase: 'ending' });
   if (request.supervised) {
@@ -379,7 +418,7 @@ export async function runRestart(deps: RestartDeps, plan: RestartPlan): Promise<
     }
     // That look takes a moment: a prompt typed meanwhile still cancels.
     if ((await pendingOf(deps, plan)) === undefined) {
-      return CANCELLED;
+      return cancelledOf(deps, plan);
     }
     if (!isClaudeSessionId(request.claudeSession)) {
       return endSession(deps, plan, request, claude);
@@ -396,7 +435,7 @@ export async function runRestart(deps: RestartDeps, plan: RestartPlan): Promise<
         // The end claim leaves the request pending, so a prompt typed since still cancels the end.
         return endSession(deps, plan, request, claude);
       case 'cancelled':
-        return CANCELLED;
+        return cancelledOf(deps, plan);
       case 'held': {
         // A helper may still run, which the transcript may not show: busy, never ended, however idle the transcript looks.
         modHeld = true;
@@ -423,7 +462,7 @@ export async function runRestart(deps: RestartDeps, plan: RestartPlan): Promise<
       continue;
     }
     if ((await pendingOf(deps, plan)) === undefined) {
-      return CANCELLED;
+      return cancelledOf(deps, plan);
     }
     return endSession(deps, plan, request, claude);
   }

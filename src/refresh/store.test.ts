@@ -123,6 +123,36 @@ describe('RefreshStore', () => {
     assert.equal(await store.request('alpha'), undefined);
   });
 
+  it('keeps what cancelled a pending restart in a file of its own, spent as it is read, and reads a damaged one as none (#706)', async () => {
+    const files = new MemoryFiles();
+    const store = new RefreshStore(files, PATHS);
+    const path = join(PATHS.refresh, 'alpha.cancel.json');
+    assert.equal(await store.takeCancel('alpha', AT), undefined);
+    for (const origin of [{ kind: 'person' }, { kind: 'wake' }, { kind: 'peer', from: 'lead' }, { kind: 'peer', from: null }, { kind: 'unknown' }] as const) {
+      await store.setCancel('alpha', { at: AT, origin });
+      assert.match(files.get(path) ?? '', /^\{"v":1,/);
+      assert.deepEqual(await store.takeCancel('alpha', AT), { at: AT, origin });
+      assert.equal(files.get(path), undefined, 'spent');
+    }
+    for (const bad of [{ at: 3 }, { origin: null }, { origin: { kind: 'robot' } }, { origin: { kind: 'peer' } }, { origin: { kind: 'peer', from: 3 } }, { v: 2 }]) {
+      await files.write(path, JSON.stringify({ v: 1, at: AT, origin: { kind: 'person' }, ...bad }));
+      assert.equal(await store.takeCancel('alpha', AT), undefined, JSON.stringify(bad));
+      assert.equal(files.get(path), undefined, 'a damaged one is removed too');
+    }
+  });
+
+  it("leaves a cancel record of another restart request for that request's runner: two requests in a row (#706)", async () => {
+    const files = new MemoryFiles();
+    const store = new RefreshStore(files, PATHS);
+    const path = join(PATHS.refresh, 'alpha.cancel.json');
+    const later = '2030-01-08T10:05:00.000Z';
+    await store.setCancel('alpha', { at: later, origin: { kind: 'wake' } });
+    assert.equal(await store.takeCancel('alpha', AT), undefined, "the replaced request's runner gets nothing");
+    assert.notEqual(files.get(path), undefined, 'and leaves the record');
+    assert.deepEqual(await store.takeCancel('alpha', later), { at: later, origin: { kind: 'wake' } });
+    assert.equal(files.get(path), undefined, 'spent by its own runner');
+  });
+
   it('keeps the jobs a /clear left live in a file of its own, reads a damaged one as none, and clears it', async () => {
     const files = new MemoryFiles();
     const store = new RefreshStore(files, PATHS);

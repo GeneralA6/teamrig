@@ -156,6 +156,19 @@ export interface ParkedRestart extends RestartTab {
   readonly at: string;
 }
 
+/**
+ * Where the prompt that cancelled a restart came from (#706): a person typing, teamrig's own wake of the tab
+ * (`WakePrompts`), a peer's message (`<cross-session-message from="...">`, `from` null when it names none), or
+ * `unknown` when the prompt hook could not tell, so a failure never reads as a person's prompt.
+ */
+export type PromptOrigin = { readonly kind: 'person' } | { readonly kind: 'wake' } | { readonly kind: 'peer'; readonly from: string | null } | { readonly kind: 'unknown' };
+
+/** What the prompt hook cancelled: the pending restart asked at `at`, and where the prompt came from. */
+export interface RestartCancel {
+  readonly at: string;
+  readonly origin: PromptOrigin;
+}
+
 /** A file of this format as an object; undefined for a damaged file or one in another format. */
 function recordOf(text: string): JsonRecord | undefined {
   const record = parseObject(text.trim());
@@ -380,4 +393,31 @@ function effortOf(value: unknown): EffortLevel | null | undefined {
     return null;
   }
   return isEffortLevel(value) ? value : undefined;
+}
+
+/** A cancel file's content; undefined when it is damaged or from another format. */
+export function parseRestartCancel(text: string): RestartCancel | undefined {
+  const record = recordOf(text);
+  if (record === undefined) {
+    return undefined;
+  }
+  const at = stringField(record, 'at');
+  const origin = promptOriginOf(record['origin']);
+  return at === undefined || origin === undefined ? undefined : { at, origin };
+}
+
+export function formatRestartCancel(cancel: RestartCancel): string {
+  return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...cancel });
+}
+
+function promptOriginOf(value: unknown): PromptOrigin | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const kind = value['kind'];
+  if (kind === 'person' || kind === 'wake' || kind === 'unknown') {
+    return { kind };
+  }
+  const from = nullableString(value, 'from');
+  return kind === 'peer' && from !== undefined ? { kind, from } : undefined;
 }

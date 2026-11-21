@@ -14,7 +14,7 @@ import { askFileOf, holdWhyFileOf, outcomeFileOf, type ClearMode } from '../mod/
 import { ClearAsks, type ClearAsk, type PostedClearAsk } from './clear-asks.ts';
 import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, LOOKUP_FAILED, NO_HOLD_REASON, personHoldOf, restartMayAct, runRestart, SILENT_MOD, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
-import type { RestartRequest } from './state.ts';
+import type { PromptOrigin, RestartRequest } from './state.ts';
 import { RefreshStore } from './store.ts';
 
 const PATHS = { refresh: join('/', 'team', 'state', 'refresh'), handover: join('/', 'team', 'handover') };
@@ -290,6 +290,34 @@ describe('runRestart', () => {
     assert.equal((await runRestart(replaced.deps, PLAN)).kind, 'cancelled');
     assert.deepEqual(replaced.processes.ends, []);
     assert.deepEqual(await replaced.store.restart('alpha'), later);
+  });
+
+  // #706: the cancel row said only "cancelled or replaced", whoever sent the prompt.
+  it('names where the prompt that cancelled it came from, as the prompt hook recorded it for its request', async () => {
+    const origins: readonly PromptOrigin[] = [{ kind: 'person' }, { kind: 'wake' }, { kind: 'peer', from: 'lead' }, { kind: 'peer', from: null }, { kind: 'unknown' }];
+    const whys = [
+      'a person typed, so the restart was cancelled',
+      "teamrig's wake of the tab arrived, so the restart was cancelled",
+      'a message from lead arrived, so the restart was cancelled',
+      "a peer's message arrived, so the restart was cancelled",
+      'a prompt teamrig could not trace arrived, so the restart was cancelled',
+    ];
+    for (const [index, origin] of origins.entries()) {
+      const world = await new World().arm();
+      world.onSleep(2, async () => {
+        await world.store.setCancel('alpha', { at: AT, origin });
+        await world.store.clearRestart('alpha');
+      });
+      assert.deepEqual(await runRestart(world.deps, PLAN), { kind: 'cancelled', why: whys[index], by: origin });
+      assert.equal(await world.store.takeCancel('alpha', AT), undefined, 'the record is spent');
+    }
+    const older = await new World().arm();
+    older.onSleep(2, async () => {
+      await older.store.setCancel('alpha', { at: '2030-01-08T09:00:00.000Z', origin: { kind: 'wake' } });
+      await older.store.clearRestart('alpha');
+    });
+    assert.deepEqual(await runRestart(older.deps, PLAN), { kind: 'cancelled', why: 'the restart was cancelled or replaced' }, "another request's record is not this one's");
+    assert.deepEqual(await older.store.takeCancel('alpha', '2030-01-08T09:00:00.000Z'), { at: '2030-01-08T09:00:00.000Z', origin: { kind: 'wake' } }, 'and stays for its own runner');
   });
 
   it('stops without ending anything when the user types while it looks at the process', async () => {

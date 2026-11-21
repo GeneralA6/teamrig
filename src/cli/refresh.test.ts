@@ -2,16 +2,17 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { HostSource } from '../composition/host-ports.ts';
-import type { JsonRecord } from '../core/guards.ts';
+import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { MeetingSchedule } from '../meeting/schedule.ts';
 import { bareHost } from '../testing/bare-host.ts';
-import type { RestartRequest } from '../refresh/state.ts';
+import type { PromptOrigin, RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { CONTEXT_MAX_CHARS } from '../rules/pack.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { APP, AUTO_RESTART_TEAM, CLAUDE_SESSION, CliHarness, contextOf, EVENTS_PATH, LONG_RULES_TEAM, rulesToOverflow, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { WakePrompts } from '../wake/prompts.ts';
 import { EXIT } from './runtime.ts';
 
 const STATE = (id: string): string => join(TEAM_HOME, 'state', 'refresh', `${id}.json`);
@@ -355,6 +356,33 @@ describe('runCli: context refresh', () => {
     assert.deepEqual([await offStore.restart('alpha'), none.hidden.filter((run) => run.args[1] === 'restart')], [undefined, []]);
   });
 
+  // #706: a failed lookup used to read as no Claude Code, and nothing said why the restart never came.
+  it('logs why the lookup of its Claude Code failed on the row of the restart it stopped, and nothing for a lookup that works', async () => {
+    const log = join(TEAM_HOME, 'state', 'refresh', 'restarts.jsonl');
+    const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP, TEAMRIG_LAUNCHED: 'alpha' };
+    for (const why of ['ps timed out after 20000 ms', 'ps exited with code 1: ps: cannot read /proc', 'powershell.exe gave no listing it could read: Access denied']) {
+      const kit = new CliHarness(AUTO_RESTART_TEAM);
+      const store = await handoverWritten(kit);
+      await openTask(kit, 'alpha');
+      const result = await kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE().hideLineage(why), processes: new FakeProcesses() });
+      assert.match(JSON.stringify(stopJson(result)), /type \/clear for a fresh start/);
+      assert.equal(await store.restart('alpha'), undefined);
+      const rows = ((await kit.files.read(log)) ?? '').split('\n').filter((line) => line !== '');
+      assert.equal(rows.length, 1);
+      const row: unknown = JSON.parse(rows[0] ?? '');
+      assert.ok(isRecord(row));
+      assert.deepEqual(
+        [row['session'], row['result'], row['lookupFailure']],
+        ['alpha', { kind: 'failed', why: 'its Claude Code could not be looked up, so no restart was armed' }, why],
+      );
+    }
+    const works = new CliHarness(AUTO_RESTART_TEAM);
+    await handoverWritten(works);
+    await openTask(works, 'alpha');
+    await works.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes: new FakeProcesses() });
+    assert.equal(await works.files.read(log), undefined, 'a lookup that works leaves the row to the restart');
+  });
+
   it('holds the restart back when no work of its own follows the handover, for the wake that brings some to arm (T1383)', async () => {
     const kit = new CliHarness(AUTO_RESTART_TEAM);
     const store = await handoverWritten(kit);
@@ -390,6 +418,12 @@ describe('runCli: context refresh', () => {
       cancelled.stdout.join('\n'),
     );
     assert.equal(await typedIn.store.parked('alpha'), undefined);
+    // #706: a held-back restart has no runner to log its end, so the prompt hook writes its row.
+    const rows = ((await typedIn.kit.files.read(join(TEAM_HOME, 'state', 'refresh', 'restarts.jsonl'))) ?? '').split('\n').filter((line) => line !== '');
+    assert.equal(rows.length, 1);
+    const row: unknown = JSON.parse(rows[0] ?? '');
+    assert.ok(isRecord(row));
+    assert.deepEqual([row['session'], row['result']], ['alpha', { kind: 'cancelled', why: 'a person typed, so the restart held back for work was cancelled', by: { kind: 'person' } }]);
 
     const wentOn = await parkedKit();
     assert.deepEqual(await wentOn.kit.run(['hook', 'stop'], { env, stdin: stopPayload(), sessionProcesses: UNDER_CLAUDE() }), SILENT);
@@ -415,6 +449,32 @@ describe('runCli: context refresh', () => {
 
     await finishTask(kit, 'alpha');
     assert.match(JSON.stringify(stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload() }))), /"decision":"block".*you just finished T3/);
+  });
+
+  // #706: the restart log could not tell a person's prompt from teamrig's wake or a peer's message.
+  it("records where the prompt that cancelled the restart came from: a person, teamrig's wake (turn log on or off) or a peer's message", async () => {
+    const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP };
+    const peerText = '<cross-session-message from="lead">Ship T1 first</cross-session-message>';
+    const cases: readonly { readonly prompt: string; readonly origin: PromptOrigin; readonly line: string; readonly turnLogOff?: boolean }[] = [
+      { prompt: 'one more thing', origin: { kind: 'person' }, line: 'teamrig: the user typed, so the automatic restart is cancelled' },
+      { prompt: 'You have new work: T1', origin: { kind: 'wake' }, line: "teamrig: teamrig's wake of the tab arrived, so the automatic restart is cancelled" },
+      { prompt: peerText, origin: { kind: 'peer', from: 'lead' }, line: 'teamrig: a message from lead arrived, so the automatic restart is cancelled' },
+      { prompt: '<cross-session-message>hi</cross-session-message>', origin: { kind: 'peer', from: null }, line: "teamrig: a peer's message arrived, so the automatic restart is cancelled" },
+      { prompt: 'You have new work: T1', origin: { kind: 'wake' }, line: "teamrig: teamrig's wake of the tab arrived, so the automatic restart is cancelled", turnLogOff: true },
+    ];
+    for (const { prompt, origin, line, turnLogOff } of cases) {
+      const kit = new CliHarness(turnLogOff === true ? { ...AUTO_RESTART_TEAM, turnLog: { enabled: false } } : AUTO_RESTART_TEAM);
+      const store = await handoverWritten(kit);
+      await openTask(kit, 'alpha');
+      stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes: new FakeProcesses() }));
+      const request = await store.restart('alpha');
+      assert.ok(request);
+      await new WakePrompts(kit.files, join(TEAM_HOME, 'state', 'wake')).remember('alpha', { tab: CLAUDE_SESSION, text: 'You have new work: T1' });
+      const result = await kit.run(['hook', 'inbox-reminder'], { env, stdin: JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, prompt, session_title: 'app-alpha' }) });
+      assert.ok(result.stdout.some((text) => text.includes(line)), result.stdout.join('\n'));
+      assert.deepEqual(await store.takeCancel('alpha', request.at), { at: request.at, origin }, `${origin.kind}${turnLogOff === true ? ', turn log off' : ''}`);
+      assert.equal(await store.restart('alpha'), undefined);
+    }
   });
 
   it('leaves a restart that is already ending the session alone', async () => {

@@ -3,6 +3,7 @@ import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
+import type { PromptOrigin } from '../../refresh/state.ts';
 import { cappedText, type TurnLogEntry, type TurnLogKind } from '../../turn-log/entry.ts';
 import { REPLY_TAIL_BYTES, replyOf, type Reply } from '../../turn-log/reply.ts';
 import { TurnLog } from '../../turn-log/store.ts';
@@ -47,18 +48,38 @@ function logOf(runtime: CliRuntime, scope: TurnLogScope): TurnLog {
   return new TurnLog(runtime.files, scope.paths.turnLog);
 }
 
+/** A peer's message as Claude Code hands it to the session, with the sending session when it names one. */
+const PEER_MESSAGE = /^<cross-session-message\b(?:[^>]*\bfrom="([^"]*)")?/;
+
 /**
- * UserPromptSubmit: the prompt the person sent, or the wake teamrig submitted in that tab, marked `from: teamrig`;
- * nothing with the log off or an empty prompt.
+ * UserPromptSubmit: where the prompt came from (#706). teamrig's wake of this tab is known by the text it kept for the
+ * tab (`hook wake-check`, turn log on or off) and taken here, so it marks one prompt only; a peer's message
+ * by its tag, as the usage meter reads a peer turn; anything else is a person's.
  */
-export async function logPrompt(runtime: CliRuntime, scope: TurnLogScope, payload: unknown): Promise<void> {
+export async function promptOriginOf(runtime: CliRuntime, scope: TurnLogScope, payload: unknown): Promise<PromptOrigin> {
+  const claude = sessionIdOf(payload);
+  const prompt = isRecord(payload) ? stringField(payload, 'prompt') : undefined;
+  if (claude === null || prompt === undefined) {
+    return { kind: 'person' };
+  }
+  if (await new WakePrompts(runtime.files, scope.paths.wake).take(scope.id, { tab: claude, text: prompt })) {
+    return { kind: 'wake' };
+  }
+  const peer = PEER_MESSAGE.exec(prompt.trimStart());
+  return peer === null ? { kind: 'person' } : { kind: 'peer', from: peer[1] ?? null };
+}
+
+/**
+ * UserPromptSubmit: the prompt the person sent, or the wake teamrig submitted in that tab (`promptOriginOf`), marked
+ * `from: teamrig`; nothing with the log off or an empty prompt.
+ */
+export async function logPrompt(runtime: CliRuntime, scope: TurnLogScope, payload: unknown, origin: PromptOrigin): Promise<void> {
   const claude = sessionIdOf(payload);
   const prompt = isRecord(payload) ? stringField(payload, 'prompt') : undefined;
   if (!scope.config.turnLog.enabled || claude === null || prompt === undefined || prompt.trim() === '') {
     return;
   }
-  const woke = await new WakePrompts(runtime.files, scope.paths.wake).take(scope.id, { tab: claude, text: prompt });
-  const said: Said = { kind: 'prompt', claude, text: prompt, ...(woke ? { from: 'teamrig' } : {}) };
+  const said: Said = { kind: 'prompt', claude, text: prompt, ...(origin.kind === 'wake' ? { from: 'teamrig' } : {}) };
   await logOf(runtime, scope).append(scope.id, entryOf(runtime, scope, said));
 }
 
