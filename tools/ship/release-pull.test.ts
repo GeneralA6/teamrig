@@ -52,9 +52,25 @@ describe('releaseRefusal: the release pull request merges only when it holds onl
   });
 
   it('refuses a head that also changes any other path, naming it', () => {
-    release('0.2.0');
-    const sha = commitFiles('feat: slipped in', { 'src/a.ts': 'a, changed\n' });
+    const sha = commitFiles('chore(main): release 0.2.0', { ...versions('0.2.0'), [CHANGELOG]: notesWith('0.2.0'), 'src/a.ts': 'a, changed\n' });
     assert.match(refusal(sha) ?? '', /^src\/a\.ts is neither a version file nor the changelog CHANGELOG\.md/);
+  });
+
+  it('refuses a head of two commits, even when the second undoes what the first slipped in (T4712)', () => {
+    commitFiles('feat: slipped in', { 'src/a.ts': 'a, changed\n' });
+    const sha = commitFiles('chore(main): release 0.2.0', { ...versions('0.2.0'), [CHANGELOG]: notesWith('0.2.0'), 'src/a.ts': 'a\n' });
+    assert.equal(refusal(sha), `the release pull request's head ${sha} is not one commit on main: release-please writes its release as exactly one`);
+  });
+
+  it('refuses a merge commit as the head (T4712)', () => {
+    const released = release('0.2.0');
+    repo.git('checkout', '-q', 'main');
+    commitFiles('feat: more', { 'src/a.ts': 'a2\n' });
+    repo.git('checkout', '-q', RELEASE.head);
+    repo.git('merge', '-q', '--no-edit', '--no-ff', 'main');
+    const sha = repo.git('rev-parse', 'HEAD').trim();
+    assert.notEqual(sha, released);
+    assert.equal(refusal(sha), `the release pull request's head ${sha} is not one commit on main: release-please writes its release as exactly one`);
   });
 
   it('refuses a version file changed past its version token', () => {
@@ -82,23 +98,54 @@ describe('releaseRefusal: the release pull request merges only when it holds onl
     assert.equal(refusal(sha), `${CHANGELOG} deletes or rewrites 1 line(s): the release pull request may only add its version's notes`);
   });
 
+  it('refuses changelog notes added in a second place (T4712)', () => {
+    const sha = commitFiles('chore(main): release 0.2.0', { ...versions('0.2.0'), [CHANGELOG]: `${notesWith('0.2.0')}- slipped at the end\n` });
+    assert.equal(refusal(sha), `${CHANGELOG} changes 2 places: the release pull request adds its version's notes in one block`);
+  });
+
+  it('refuses changelog lines added above its title (T4712)', () => {
+    const sha = commitFiles('chore(main): release 0.2.0', { ...versions('0.2.0'), [CHANGELOG]: `## 0.2.0\n\n${NOTES_BASE}` });
+    assert.equal(refusal(sha), `${CHANGELOG} adds lines above its title: the release pull request adds its version's notes below it`);
+  });
+
   it('refuses a changelog made executable', () => {
-    release('0.2.0');
+    repo.write(CHANGELOG, notesWith('0.2.0'));
+    repo.git('add', '--', CHANGELOG);
     repo.git('update-index', '--chmod=+x', CHANGELOG);
-    repo.git('commit', '-q', '-m', 'chore: mode');
-    const sha = repo.git('rev-parse', 'HEAD').trim();
+    const sha = commitFiles('chore(main): release 0.2.0', versions('0.2.0'));
     assert.equal(refusal(sha), `${CHANGELOG} is the changelog the release pull request may only add lines to, but its change is M 100644 to 100755`);
   });
 
+  it('refuses a changelog the release adds, as main has one to add to (T4712)', () => {
+    repo.git('checkout', '-q', 'main');
+    repo.git('rm', '-q', CHANGELOG);
+    repo.git('commit', '-q', '-m', 'docs: drop the notes');
+    repo.git('checkout', '-q', '-B', RELEASE.head);
+    const sha = commitFiles('chore(main): release 0.2.0', { ...versions('0.2.0'), [CHANGELOG]: notesWith('0.2.0') });
+    assert.match(refusal(sha) ?? '', /^CHANGELOG\.md is the changelog the release pull request may only add lines to, but its change is A 000000 to 100644$/);
+  });
+
+  it('refuses a version file made executable (T4712)', () => {
+    repo.write(PLUGIN, plugin('0.2.0'));
+    repo.git('add', '--', PLUGIN);
+    repo.git('update-index', '--chmod=+x', PLUGIN);
+    const sha = commitFiles('chore(main): release 0.2.0', { [VERSION_TS]: versionTs('0.2.0'), [RELEASE_MANIFEST]: releaseManifest('0.2.0'), [CHANGELOG]: notesWith('0.2.0') });
+    assert.equal(refusal(sha), `${PLUGIN} is a version file the release pull request must only edit, but its change is M 100644 to 100755`);
+  });
+
   it('refuses a deleted version file', () => {
-    commitFiles('chore(main): release 0.2.0', { [PLUGIN]: plugin('0.2.0'), [VERSION_TS]: versionTs('0.2.0'), [CHANGELOG]: notesWith('0.2.0') });
     repo.git('rm', '-q', RELEASE_MANIFEST);
-    repo.git('commit', '-q', '-m', 'chore: drop');
-    const sha = repo.git('rev-parse', 'HEAD').trim();
+    const sha = commitFiles('chore(main): release 0.2.0', { [PLUGIN]: plugin('0.2.0'), [VERSION_TS]: versionTs('0.2.0'), [CHANGELOG]: notesWith('0.2.0') });
     assert.equal(refusal(sha), `${RELEASE_MANIFEST} is a version file the release pull request must only edit, but its change is D 100644 to 000000`);
   });
 
+  it('refuses a head that is main itself, as no commit of a release', () => {
+    const sha = repo.git('rev-parse', 'HEAD').trim();
+    assert.equal(refusal(sha), `the release pull request's head ${sha} is not one commit on main: release-please writes its release as exactly one`);
+  });
+
   it('refuses a head that changes nothing over main', () => {
+    repo.git('commit', '-q', '--allow-empty', '-m', 'chore(main): release 0.2.0');
     const sha = repo.git('rev-parse', 'HEAD').trim();
     assert.equal(refusal(sha), `the release pull request's head ${sha} changes nothing over main`);
   });
