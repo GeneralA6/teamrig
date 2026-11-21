@@ -1,4 +1,15 @@
-import { isUnsupported, type HookBridge, type HostPaths, type HostPermissions, type HostPlugin, type HostPorts, type StatusLine, type TranscriptReader, type UsageMeter } from '../ports/host/index.ts';
+import {
+  isUnsupported,
+  type HookBridge,
+  type HostPaths,
+  type HostPermissions,
+  type HostPlugin,
+  type HostPorts,
+  type SessionIdentity,
+  type StatusLine,
+  type TranscriptReader,
+  type UsageMeter,
+} from '../ports/host/index.ts';
 import type { ContextSource } from '../refresh/usage.ts';
 import type { HostSecretFiles } from '../secret-guard/rules.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
@@ -116,6 +127,19 @@ export function secretFilesOf(runtime: Pick<CliRuntime, 'host' | 'shippedHosts' 
   });
   const once: readonly string[] = [...new Set(named)];
   return { secretFiles: () => once };
+}
+
+/** What a host telling nothing of its sessions tells a run: no part of who it is. */
+const UNTOLD: SessionIdentity = { projectDir: undefined, startedAs: undefined, sessionKind: undefined };
+
+/**
+ * Who the run's host says this run is: the folder its session started in, how the host was started and the kind of
+ * session. It never refuses: on a host that tells nothing of its sessions each part is untold, and a caller goes on
+ * as in a run no session started, by the working folder and what its own input says.
+ */
+export function identityOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): SessionIdentity {
+  const { launcher } = hostOf(runtime);
+  return isUnsupported(launcher) ? UNTOLD : launcher.identity();
 }
 
 /** The host's own folder for the person of this run. A host whose folders teamrig does not know refuses, as `pathsOf` does. */

@@ -9,7 +9,21 @@ import { bareHost } from '../testing/bare-host.ts';
 import { HOOKS_ONLY_HOST, NO_PATHS_HOST, SHIPPED_HOST, testPaths } from '../testing/host.ts';
 import { quietWorld } from '../testing/quiet-world.ts';
 import { join } from 'node:path';
-import { contextSourceIfTold, hooksOf, hostHomeIfKnown, hostHomeOf, hostOf, pathsIfKnown, pathsOf, secretFilesOf, transcriptsIfKept, transcriptsOf, usageIfMetered, usageOf } from './host.ts';
+import {
+  contextSourceIfTold,
+  hooksOf,
+  hostHomeIfKnown,
+  hostHomeOf,
+  hostOf,
+  identityOf,
+  pathsIfKnown,
+  pathsOf,
+  secretFilesOf,
+  transcriptsIfKept,
+  transcriptsOf,
+  usageIfMetered,
+  usageOf,
+} from './host.ts';
 import { RefusedError } from './runtime.ts';
 
 /** One bare host, kept so a case can tell the very ports it handed in from a copy. */
@@ -240,6 +254,37 @@ describe('secretFilesOf', () => {
         assert.equal(paths.listed(path), true, `${name}: ${path}`);
       }
     }
+  });
+});
+
+describe('identityOf', () => {
+  const PROJECT = join('/', 'work', 'app');
+  const TOLD = { CLAUDE_PROJECT_DIR: PROJECT, CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_CODE_SESSION_KIND: 'bg' };
+  const UNTOLD = { projectDir: undefined, startedAs: undefined, sessionKind: undefined };
+
+  it('gives who the host says the run is, read from the environment of the run', () => {
+    const world = quietWorld();
+    assert.deepEqual(identityOf({ host: world.host, env: TOLD, platform: world.platform }), { projectDir: PROJECT, startedAs: 'cli', sessionKind: 'bg' });
+    assert.deepEqual(identityOf({ host: world.host, env: {}, platform: world.platform }), UNTOLD);
+  });
+
+  it('gives every part untold, and no refusal, on a host that tells nothing of its sessions, whatever the environment holds', () => {
+    assert.deepEqual(identityOf({ host: bare, env: TOLD, platform: 'linux' }), UNTOLD);
+    assert.deepEqual(identityOf({ host: HOOKS_ONLY_HOST, env: TOLD, platform: 'linux' }), UNTOLD);
+  });
+
+  it('asks the running host alone, with the environment and platform of the run', () => {
+    const seen: Parameters<HostSource>[0][] = [];
+    const telling: HostSource = (given) => {
+      seen.push(given);
+      return { ...BARE, launcher: { identity: () => ({ projectDir: given.env['AGENT_ROOT'], startedAs: 'desk', sessionKind: undefined }) } };
+    };
+    assert.deepEqual(identityOf({ host: telling, env: { AGENT_ROOT: PROJECT, CLAUDE_PROJECT_DIR: join('/', 'other') }, platform: 'darwin' }), {
+      projectDir: PROJECT,
+      startedAs: 'desk',
+      sessionKind: undefined,
+    });
+    assert.deepEqual(seen, [{ env: { AGENT_ROOT: PROJECT, CLAUDE_PROJECT_DIR: join('/', 'other') }, platform: 'darwin' }]);
   });
 });
 
