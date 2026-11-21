@@ -32,7 +32,7 @@ import { inboxDepsOf } from './inbox.ts';
  * folders: only the team's `skills` folder is weighed there.
  */
 export async function readContextInput(runtime: CliRuntime, project: string, skills: string, budgets: ContextFilesConfig): Promise<ContextInput> {
-  const at ={ paths: pathsIfKnown(runtime), userHome: runtime.userHome, project, skills };
+  const at = { paths: pathsIfKnown(runtime), userHome: runtime.userHome, project, skills };
   return {
     contextFiles: { read: await readContextFiles(runtime.files, at), budgets },
     sessionLists: await readSessionLists(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), project),
