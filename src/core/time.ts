@@ -11,11 +11,27 @@ const CLOCK = /^(\d{2}):(\d{2})$/;
 /** An ISO time with its zone; one without would be read in the host's local time. */
 const ZONED_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
 
+/** The one shape `Date.prototype.toISOString` writes for a year of four digits: a UTC instant to the millisecond. */
+const ISO_STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
 export const MS_PER_SECOND = 1_000;
 export const MS_PER_MINUTE = 60_000;
 export const MS_PER_HOUR = 3_600_000;
 export const MS_PER_DAY = 86_400_000;
 export const MS_PER_WEEK = 7 * MS_PER_DAY;
+
+/**
+ * The instant of a stamp teamrig itself wrote with `toISOString`, or undefined for any other text. `Date.parse` alone
+ * is no test of a stored stamp: it takes many shapes, and text in parentheses as a comment, so a line written by
+ * hand could carry any words through it. A day that does not exist (`02-30`) is refused too, by the round trip.
+ */
+export function parseIsoStamp(text: string): Date | undefined {
+  if (!ISO_STAMP.test(text)) {
+    return undefined;
+  }
+  const parsed = new Date(text);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === text ? parsed : undefined;
+}
 
 /** Minutes since 00:00 UTC of an `HH:MM`; undefined when malformed. */
 export function utcMinuteOf(text: string): number | undefined {

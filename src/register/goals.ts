@@ -1,6 +1,6 @@
 import { isStringArray, type JsonRecord } from '../core/guards.ts';
 import { parseJsonl, type JsonlParse, type JsonlRecord } from '../core/jsonl.ts';
-import { parseUtcDay } from '../core/time.ts';
+import { parseIsoStamp, parseUtcDay } from '../core/time.ts';
 import { SESSION_NAME, TASK_ID } from './model.ts';
 
 /**
@@ -221,10 +221,13 @@ function dayField(record: JsonRecord, key: string): string | undefined {
   return value !== undefined && isGoalDay(value) ? value : undefined;
 }
 
-/** The fields every record carries, or why the record cannot be read. */
+/**
+ * The fields every record carries, or why the record cannot be read. `at` is held to the stamp teamrig writes, so a
+ * record's time is never a carrier of other text to whoever is served it.
+ */
 function baseOf(record: JsonRecord): { readonly at: string; readonly by: string; readonly tag: string } | string {
   const at = textField(record, 'at');
-  if (at === undefined || Number.isNaN(Date.parse(at))) {
+  if (at === undefined || parseIsoStamp(at) === undefined) {
     return 'at is not a time';
   }
   const by = textField(record, 'by');
