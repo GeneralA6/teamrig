@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
-import { appliesTo, samePath } from '../core/installed-plugins.ts';
+import { appliesTo, samePath } from '../plugin-store/installs.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { jsonObjectOf } from '../doctor/settings-env.ts';
 import type { HostPlugin } from '../ports/host/index.ts';

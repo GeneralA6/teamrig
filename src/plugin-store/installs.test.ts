@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { InstallReach, PluginInstall } from '../ports/host/plugin.ts';
-import { appliesTo, samePath } from './installed-plugins.ts';
+import { appliesTo, samePath } from './installs.ts';
 
 const CACHE = 'C:\\Users\\me\\.claude\\plugins\\cache';
 

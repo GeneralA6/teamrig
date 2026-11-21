@@ -13,7 +13,7 @@ import { launchingShellsOf, nodeEvery, starterWatch } from '../delivery/starter-
 import { nodeStepRunner } from '../delivery/steps.ts';
 import { realSleep, systemClock } from '../core/lock.ts';
 import { NODE_PATH_PROBE } from '../core/path-probe.ts';
-import { NODE_STORE_FOLDERS } from '../core/node-store-folders.ts';
+import { NODE_STORE_FOLDERS } from '../plugin-store/node-folders.ts';
 import { chatWebhook } from '../core/webhook.ts';
 import { CREDENTIAL_TIMEOUT_MS, systemCredentials } from '../core/credentials.ts';
 import { nodeHttpClient } from '../core/http.ts';

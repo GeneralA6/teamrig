@@ -14,7 +14,7 @@ import type { ChatWebhook } from '../core/webhook.ts';
 import type { ExecPorts } from '../exec/ports.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import type { PathProbe } from '../core/path-probe.ts';
-import type { StoreFolders } from '../core/plugin-store.ts';
+import type { StoreFolders } from '../plugin-store/store.ts';
 import type { CredentialStore } from '../core/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { PullGit } from '../github/pull-conflicts.ts';
