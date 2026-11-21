@@ -13,7 +13,7 @@ import { quietWorld } from '../testing/quiet-world.ts';
 import { configChangedMeanwhile, hired } from '../testing/config-race.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
-import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, reasonOf, SKILLS_DIR, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, reasonOf, SKILLS_DIR, TEAM, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { HOOKS_ONLY_HOST, NO_PATHS_HOST, SHIPPED_HOST } from '../testing/host.ts';
 import { cutLineMessage } from './cmd-shim.ts';
 import { FULL_HELP_POINTER } from './help.ts';
@@ -827,6 +827,30 @@ describe('runCli: hook secret-guard', () => {
       assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { host, userHome, stdin: read(login) })), 'deny');
       assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { host, userHome, stdin: bash('cat ~/.claude/.credentials.json') })), 'deny');
       assert.deepEqual((await kit.run(['hook', 'secret-guard'], { host, userHome, stdin: read(join(userHome, '.claude', 'settings.json')) })).stdout, []);
+    }
+  });
+
+  it("refuses a read of Claude Code's login and prompt history in the folder CLAUDE_CONFIG_DIR names, and still at the default place", async () => {
+    const kit = new CliHarness();
+    const userHome = resolve(USER_HOME);
+    const moved = resolve(join('/', 'cfg'));
+    // The machine's own platform: the folder's path is absolute by its rules.
+    const run: RunOptions = { userHome, platform: process.platform, env: { CLAUDE_CONFIG_DIR: moved } };
+    for (const name of ['.credentials.json', 'history.jsonl']) {
+      assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { ...run, stdin: read(join(moved, name)) })), 'deny', name);
+      assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { ...run, stdin: read(join(userHome, '.claude', name)) })), 'deny', `${name} at the default place`);
+    }
+    assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { ...run, stdin: bash(`cat ${moved.replaceAll('\\', '/')}/history.jsonl`) })), 'deny');
+    assert.deepEqual((await kit.run(['hook', 'secret-guard'], { ...run, stdin: read(join(moved, 'settings.json')) })).stdout, []);
+  });
+
+  it('keeps to the default place when CLAUDE_CONFIG_DIR is blank', async () => {
+    const kit = new CliHarness();
+    const userHome = resolve(USER_HOME);
+    const run: RunOptions = { userHome, platform: process.platform, env: { CLAUDE_CONFIG_DIR: ' ' } };
+    assert.deepEqual((await kit.run(['hook', 'secret-guard'], { ...run, stdin: read(join(resolve(join('/', 'cfg')), 'history.jsonl')) })).stdout, []);
+    for (const name of ['.credentials.json', 'history.jsonl']) {
+      assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { ...run, stdin: read(join(userHome, '.claude', name)) })), 'deny', name);
     }
   });
 
