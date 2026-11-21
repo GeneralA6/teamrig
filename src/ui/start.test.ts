@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { releasedEnv, UI_ENV, uiRequest } from './start.ts';
 
 describe('releasedEnv', () => {
-  it('keeps the paths, terminal, locale and teamrig variables, in any case, and drops the rest', () => {
+  it('keeps the paths, terminal, locale and the teamrig variables the CLI reads, in any case, and drops the rest', () => {
     const env = {
       Path: 'C:\\bin',
       HOME: '/var/h',
@@ -15,6 +15,10 @@ describe('releasedEnv', () => {
       LANGUAGE: 'en',
       LC_ALL: 'C',
       TEAMRIG_HOME: '/kit',
+      TEAMRIG_TEAM: 'app',
+      teamrig_session: 'alpha',
+      TEAMRIG_X_TOKEN: 'secret',
+      TEAMRIG_HOST_LOCK: 'lock',
       GH_TOKEN: 'secret',
       AWS_SECRET_ACCESS_KEY: 'secret',
       NODE_OPTIONS: '--require /x.js',
@@ -33,6 +37,8 @@ describe('releasedEnv', () => {
       LANGUAGE: 'en',
       LC_ALL: 'C',
       TEAMRIG_HOME: '/kit',
+      TEAMRIG_TEAM: 'app',
+      teamrig_session: 'alpha',
     });
   });
 });
