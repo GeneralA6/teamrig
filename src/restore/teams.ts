@@ -14,6 +14,11 @@ export interface RestoreTeam {
   readonly areaBySession: ReadonlyMap<string, string>;
   /** The effort the config sets for each session (`launch.<id>.effort`); a session it leaves unset is not here. */
   readonly efforts: ReadonlyMap<string, EffortLevel>;
+  /**
+   * The Claude Code sessions teamrig closed (the idle pass, `teamrig close`) and has not reopened since: their newest
+   * session-log record is a close (src/sessions/log.ts `closedOf`). The restore leaves their tabs closed (#767).
+   */
+  readonly closed: ReadonlySet<string>;
 }
 
 /** The team session a Claude Code session ran as. */

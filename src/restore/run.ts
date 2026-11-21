@@ -166,7 +166,8 @@ async function factsOf(deps: RestoreDeps, entries: readonly RestoreEntry[], sinc
       }
     }
   }
-  return { now, since, shutdown: await deps.shutdowns.lastShutdown(), running, stalled, transcripts, kinds };
+  const closedByTeamrig = new Set(deps.teams.flatMap((team) => [...team.closed]));
+  return { now, since, shutdown: await deps.shutdowns.lastShutdown(), running, stalled, transcripts, kinds, closedByTeamrig };
 }
 
 /** Whether the transcript was last written HUNG_AFTER_MS ago or more: a live turn writes it at each step. */

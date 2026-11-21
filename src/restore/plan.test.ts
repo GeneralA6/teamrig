@@ -65,6 +65,7 @@ function facts(overrides: Partial<JudgeFacts> = {}): JudgeFacts {
     stalled: new Set(),
     transcripts: new Map([[SESSION, '/claude/projects/app/s.jsonl']]),
     kinds: new Map(),
+    closedByTeamrig: new Set(),
     ...overrides,
   };
 }
@@ -122,6 +123,16 @@ describe('judgeEntry', () => {
       assert.deepEqual(judgeEntry(closed, dayBefore), judgeEntry(closed, facts()), state);
     }
     assert.equal(judgeEntry(entry({ endedAt: ended, updatedAt: ended, endReason: 'other' }), dayBefore).verdict, 'closed');
+  });
+
+  it('discards a tab teamrig closed, whatever end its hook recorded after, and still restores a crash (#767)', () => {
+    const closedByTeamrig = new Set([SESSION]);
+    const ended = entry({ endedAt: SHUTDOWN - 1_800_000, updatedAt: SHUTDOWN - 1_800_000, endReason: 'other' });
+    assert.deepEqual(judgeEntry(ended, facts({ closedByTeamrig })), { verdict: 'discard', reason: 'closed by teamrig' });
+    assert.deepEqual(judgeEntry(entry(), facts({ closedByTeamrig })), { verdict: 'discard', reason: 'closed by teamrig' }, 'an end its hook never wrote');
+    assert.equal(judgeEntry(ended, facts()).verdict, 'closed', 'a tab the person closed is offered as before');
+    assert.deepEqual(judgeEntry(entry(), facts()), { verdict: 'restore', reason: 'killed without exiting' }, 'a crash restores as before');
+    assert.equal(judgeEntry(entry(), facts({ closedByTeamrig, running: new Set([SESSION]) })).verdict, 'keep', 'reopened and running');
   });
 
   it('discards an end the person chose', () => {

@@ -38,6 +38,7 @@ const APP: RestoreTeam = {
   teamWindow: true,
   areaBySession: new Map([[OTHER, 'alpha']]),
   efforts: new Map([['alpha', 'medium']]),
+  closed: new Set(),
 };
 
 const WEB: RestoreTeam = {
@@ -51,6 +52,7 @@ const WEB: RestoreTeam = {
     [OTHER, 'gone'],
   ]),
   efforts: new Map(),
+  closed: new Set(),
 };
 
 describe('teamSessionOf', () => {

@@ -75,6 +75,7 @@ const APP: RestoreTeam = {
   teamWindow: false,
   areaBySession: new Map(),
   efforts: new Map(),
+  closed: new Set(),
 };
 /** {@link APP} after a config change set alpha's effort, which last ran at max. */
 const APP_CONFIGURED: RestoreTeam = { ...APP, efforts: new Map([['alpha', 'medium']]) };
@@ -434,6 +435,15 @@ describe('runRestore', () => {
       [CLOSED],
     );
     assert.equal(printed[0], 'Claude Code sessions closed outside a shutdown in the last 48 h (1):');
+  });
+
+  it('leaves closed a tab teamrig closed, even when nothing else is to restore (#767)', async () => {
+    const { deps, countdown, reopened, printed } = await world('go', undefined, [CLOSED_ENTRY], CLOSED_TRANSCRIPT);
+    const idleClosed = { ...deps, teams: [{ ...APP, closed: new Set([CLOSED]) }] };
+    assert.deepEqual(await runRestore(idleClosed, LOGON), { opened: 0, failed: 0 });
+    assert.deepEqual(reopened, []);
+    assert.deepEqual(countdown.offered, []);
+    assert.ok(!printed.some((line) => line.startsWith('Claude Code sessions closed outside a shutdown')), printed.join('\n'));
   });
 
   // 10-31: tabs frozen mid-turn with Claude Code still running were kept as `still running` and never offered.

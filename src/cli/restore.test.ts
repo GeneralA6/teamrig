@@ -9,7 +9,7 @@ import type { RestoreEntry } from '../restore/entry.ts';
 import { continuePrompt, HUNG_AFTER_MS } from '../restore/plan.ts';
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../restore/registry.ts';
 import { ROOM_POLL_MS, TAB_STAGGER_MS } from '../restore/run.ts';
-import { APP, CliHarness, KIT, TEAM, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { APP, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakePathProbe, FakeProcesses, NO_POWERSHELL } from '../testing/fake-processes.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeCountdown, FakeShutdownLog, FakeStopWatch } from '../testing/fake-restore.ts';
@@ -121,6 +121,22 @@ describe('teamrig restore', () => {
     });
     assert.equal((await new RestoreRegistry(kit.files, restoreSessionsDir(KIT)).list()).length, 3);
     assert.equal(await logOf(kit), '');
+  });
+
+  it("leaves a team's session closed while its newest session-log record is teamrig's close, and restores it once reopened (#767)", async () => {
+    const kit = await restoreKit();
+    const log = join(TEAM_HOME, 'state', 'session-log.jsonl');
+    const close = { v: 1, kind: 'close', session: 'alpha', by: 'idle-pass', at: '2030-01-08T09:00:00.000Z', claudeSession: ALPHA, idleMinutes: 90, freedMb: 400 };
+    await kit.files.write(log, `${JSON.stringify(close)}\n`);
+    const closed = await kit.run(['restore'], machine(kit, new FakeProcesses()));
+    assert.deepEqual(closed.stdout, [
+      `RESTORE  ${NOTES}  notes  killed without exiting; continue: mid-turn; effort default  ${APP}`,
+      `KEEP     ${LIVE}  still running  ${APP}`,
+      `DISCARD  ${ALPHA}  closed by teamrig  ${APP}`,
+    ]);
+    await kit.files.append(log, `${JSON.stringify({ v: 1, kind: 'reopen', session: 'alpha', at: '2030-01-08T09:30:00.000Z' })}\n`);
+    const reopened = await kit.run(['restore'], machine(kit, new FakeProcesses()));
+    assert.ok(reopened.stdout.includes(`RESTORE  ${ALPHA}  app-alpha  killed without exiting; idle; effort high (last run)  ${APP}`), reopened.stdout.join('\n'));
   });
 
   it('shows a team session coming back on the effort its config sets, not the level it last ran at (T2440)', async () => {

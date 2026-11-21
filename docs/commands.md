@@ -57,7 +57,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
   restore                      what a restore would do now with each Claude Code session this machine
       recorded: RESTORE (how it comes back, at which effort), CLOSED (kept, reopened only on ask), HUNG
       (still running but mid-turn with its transcript unwritten 3 h, ended and reopened only on ask),
-      KEEP or DISCARD, and why; it only reads
+      KEEP or DISCARD (a tab teamrig closed, as the idle pass does, until teamrig reopens it), and why;
+      it only reads
   restore run [--since <time>] [--terminal <name>] [--home <dir>] [--tab]   reopens the Claude Code
       sessions the last shutdown killed, after a 60 s countdown (Enter: now, i: all with no prompt,
       a: also the tabs closed outside a shutdown in the last 48 h, k: also end and reopen the tabs

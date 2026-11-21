@@ -79,6 +79,8 @@ export interface JudgeFacts {
   readonly transcripts: ReadonlyMap<string, string>;
   /** What each session's transcript says of where it runs now; a session missing here reads as a tab. */
   readonly kinds: ReadonlyMap<string, TranscriptKind>;
+  /** The Claude Code sessions teamrig closed and has not reopened since (`RestoreTeam.closed`), of every team. */
+  readonly closedByTeamrig: ReadonlySet<string>;
 }
 
 export function judgeEntry(entry: RestoreEntry, facts: JudgeFacts): Judgement {
@@ -118,6 +120,11 @@ export function judgeEntry(entry: RestoreEntry, facts: JudgeFacts): Judgement {
   }
   if (kind?.continuedIn !== undefined) {
     return { verdict: 'discard', reason: `continued in ${kind.continuedIn.slice(0, 8)}` };
+  }
+  // Ended on purpose, whatever end its SessionEnd hook recorded after the close: work or an answer reopens it, with a
+  // reopen record that takes it off this set (#767).
+  if (facts.closedByTeamrig.has(entry.claudeSession)) {
+    return { verdict: 'discard', reason: 'closed by teamrig' };
   }
   if (entry.endedAt === undefined) {
     return { verdict: 'restore', reason: 'killed without exiting' };
