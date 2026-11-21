@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { addUtcDays, formatUtcDay, formatUtcHour, formatUtcMinute, isMinuteInSpan, parseDayStart, parseDeadline, parseTypedInstant, parseUtcDay, parseUtcDeadline, showStored, storedDeadline, typedDeadline, typedTimeHint, utcMinuteOf } from './time.ts';
+import { addUtcDays, formatUtcDay, formatUtcHour, formatUtcMinute, isMinuteInSpan, parseDayStart, parseDeadline, parseIsoStamp, parseTypedInstant, parseUtcDay, parseUtcDeadline, showStored, storedDeadline, typedDeadline, typedTimeHint, utcMinuteOf } from './time.ts';
 import { TimeZone } from './zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 
@@ -10,6 +10,22 @@ describe('utcMinuteOf', () => {
       ['00:00', '06:30', '23:59', '24:00', '06:60', '6:30', '06:30 ', ''].map(utcMinuteOf),
       [0, 390, 1439, undefined, undefined, undefined, undefined, undefined],
     );
+  });
+});
+
+describe('parseIsoStamp', () => {
+  it('reads the stamp toISOString writes, and no other shape of the same instant', () => {
+    assert.equal(parseIsoStamp('2030-01-09T10:00:00.000Z')?.getTime(), Date.UTC(2030, 0, 9, 10));
+    assert.deepEqual(
+      ['2030-01-09T10:00:00Z', '2030-01-09T10:00:00.000+00:00', '2030-01-09', '2030-01-09 10:00', 'Jan 9 2030 10:00 UTC', ' 2030-01-09T10:00:00.000Z', ''].map(parseIsoStamp),
+      [undefined, undefined, undefined, undefined, undefined, undefined, undefined],
+    );
+  });
+
+  it('refuses a text Date.parse reads as a time with words in it, and a day that does not exist', () => {
+    const worded = 'Jan 9 2030 10:00 UTC (any words)';
+    assert.ok(!Number.isNaN(Date.parse(worded)), 'the engine reads it, which is why the shape is held');
+    assert.deepEqual([worded, '2030-02-30T10:00:00.000Z', '2030-01-09T25:00:00.000Z'].map(parseIsoStamp), [undefined, undefined, undefined]);
   });
 });
 

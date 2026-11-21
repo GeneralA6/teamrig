@@ -158,6 +158,8 @@ describe('parseGoalRecord', () => {
   it('says why a record cannot be read', () => {
     const cases: readonly (readonly [JsonRecord, string])[] = [
       [{ ...goalRecordJson(add()), at: 'yesterday' }, 'at is not a time'],
+      [{ ...goalRecordJson(add()), at: 'Jan 9 2030 10:00 UTC (any words)' }, 'at is not a time'],
+      [{ ...goalRecordJson(add()), at: '2030-01-09' }, 'at is not a time'],
       [{ ...goalRecordJson(add()), by: 'no such session!' }, 'by is not a session'],
       [{ ...goalRecordJson(add()), tag: '2A' }, 'tag "2A" is not a goal tag'],
       [{ ...goalRecordJson(add()), tag: 'none' }, 'tag "none" is not a goal tag'],
