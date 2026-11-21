@@ -4518,6 +4518,33 @@ run [teamrig page test](#teamrig-page-test) to see a page arrive.
 WARN page-webhook team shop's alerts.pageWebhookFile gives no page URL (the webhook URL alerts.pageWebhookFile gives is not an https URL), so an expired Claude login pages nobody: fix alerts.pageWebhookFile or what it names, then run teamrig page test
 ```
 
+### teamrig ui
+
+Starts the dedicated UI in the terminal it is run in, with its input and output on that terminal, and ends when the
+UI does. Run it yourself in a terminal tab: it draws the whole screen, so it shows nothing through `/teamrig` or a
+session's shell. It runs the entry script [ui.path] names (a UI build of your own) and writes nothing. No released
+UI is pinned yet, so it is refused while [ui.path] is unset, and when the key names no file.
+
+Flags:
+
+- `--session <id|name>`: the session whose view it opens on. Without it: the team's.
+- `--team <team>`: the team to show. Without it: the team of this folder.
+
+Example:
+
+```sh
+teamrig ui --session web
+```
+
+Output (none of its own while the UI runs, and exit 0 when you quit it; this is the refusal while [ui.path] is
+unset):
+
+```text
+REFUSED no released UI is pinned in this teamrig yet; set ui.path in the team config to a UI entry script of your own build
+```
+
+`FAILED the UI exited with code <n>` and exit 1 when the UI ended any other way.
+
 ### teamrig page test
 
 Posts one page marked TEST through the page webhook the team's alerts, or the first team above that names one, name,
