@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.499.0](https://github.com/teamrig/teamrig/compare/teamrig-v0.498.0...teamrig-v0.499.0) (2026-11-21)
+
+
+### Features
+
+* **conformance:** a permissions contract, bound to the Claude Code adapter (T4750) ([ba376c1](https://github.com/teamrig/teamrig/commit/ba376c1ad836f16a1652a6e7cb490653ebe8a2ec)), closes [#1988](https://github.com/teamrig/teamrig/issues/1988)
+* **delivery:** read the tree a host step runs on, and keep it on its ledger record ([#708](https://github.com/teamrig/teamrig/issues/708)) ([04b9c3a](https://github.com/teamrig/teamrig/commit/04b9c3a5e28ea10d9147d62e9217eff956dfaa76))
+* **host:** a permissions port: allow and deny rules, the credential deny lines and the trusted routes (T4750) ([8dc641b](https://github.com/teamrig/teamrig/commit/8dc641b7619538b7a2055f075285385b30f01245)), closes [#1988](https://github.com/teamrig/teamrig/issues/1988)
+* **interface:** the served interface is 1.4, the minor that adds the stats document ([#2058](https://github.com/teamrig/teamrig/issues/2058)) ([e578287](https://github.com/teamrig/teamrig/commit/e578287f9144764565c1a37a4b93ff103c20cdc9))
+* **interface:** the stats body serves the register's numbers over a range, the tasks behind each count by id ([#2058](https://github.com/teamrig/teamrig/issues/2058)) ([ca0739f](https://github.com/teamrig/teamrig/commit/ca0739f55c7e5ac3f25410918e568ab74143f8b7))
+* **ports:** the host's paths tell its context files (T4749) ([33c40a7](https://github.com/teamrig/teamrig/commit/33c40a728c0a6cb9234de2209ea3b2c3b1296363))
+* **queue:** record the tree a step runs on, and start a detached run's log with it ([#708](https://github.com/teamrig/teamrig/issues/708)) ([8c9b108](https://github.com/teamrig/teamrig/commit/8c9b108e776f262cd3d1a8d0cd0d188e14c3402d))
+* **read:** teamrig read stats serves the register's numbers over --range, with validUntil for the counts the clock ages ([#2058](https://github.com/teamrig/teamrig/issues/2058)) ([1cd81ac](https://github.com/teamrig/teamrig/commit/1cd81ac3e4887d1f02f6646b7d7d27ed79a288c7))
+* **register:** the end of a calendar day in the team's zone is exported for the stats document ([#2058](https://github.com/teamrig/teamrig/issues/2058)) ([ece7123](https://github.com/teamrig/teamrig/commit/ece7123a39e7117a5d4c708eac2a9dabe75caf99))
+* **test:** a teamrig test log starts with the folder and tree it ran on ([#708](https://github.com/teamrig/teamrig/issues/708)) ([fc3a450](https://github.com/teamrig/teamrig/commit/fc3a450abbf3b8047a8699cdeb5347f6070a0968))
+
+
+### Bug Fixes
+
+* **cli:** open's help says it takes no --session and names --terminal print ([029c5bd](https://github.com/teamrig/teamrig/commit/029c5bd51ee22c6717c560eb271be76d577f39a3)), closes [#1307](https://github.com/teamrig/teamrig/issues/1307)
+* **delivery:** the tree header names a Windows top level with backslashes, like the folder line ([#708](https://github.com/teamrig/teamrig/issues/708)) ([d169e83](https://github.com/teamrig/teamrig/commit/d169e8368952d10e762e4672ac37e0b894ea5704))
+* **rename:** point another session's rename at inbox status, never a read ([#1255](https://github.com/teamrig/teamrig/issues/1255)) ([e76b04a](https://github.com/teamrig/teamrig/commit/e76b04a4b2b8791968014cdd5855f49aac3d07d9))
+* **rename:** print the follow-up steps for the renamed session ([#1255](https://github.com/teamrig/teamrig/issues/1255)) ([77da92c](https://github.com/teamrig/teamrig/commit/77da92c840951d1a80516a36f4e38166766f7e33))
+
 ## [0.498.0](https://github.com/teamrig/teamrig/compare/teamrig-v0.497.0...teamrig-v0.498.0) (2026-11-21)
 
 
