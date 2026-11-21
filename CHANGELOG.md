@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.500.0](https://github.com/teamrig/teamrig/compare/teamrig-v0.499.0...teamrig-v0.500.0) (2026-11-21)
+
+
+### Features
+
+* **ci:** count each skill's host and tool words against a baseline that may fall, never rise (T4860) ([a9ea3e5](https://github.com/teamrig/teamrig/commit/a9ea3e590a1acb6d04dbe883d0d4106622de3fc0))
+* **cli:** a run asks its host who it is (T4749) ([25e24ae](https://github.com/teamrig/teamrig/commit/25e24ae8a3932396d12ef4594bc6d9c730f524e8))
+* **composition:** the run is given every shipped host adapter (T4749) ([5608e5e](https://github.com/teamrig/teamrig/commit/5608e5e9886f0f3e37c1f8d1964d3a16bd97e7af))
+* **conformance:** a plugin contract, bound to the Claude Code adapter (T4750) ([fc7d08c](https://github.com/teamrig/teamrig/commit/fc7d08c682f13dfa34370724f8ea8f6bf75376fb)), closes [#1988](https://github.com/teamrig/teamrig/issues/1988)
+* **core:** the program runner can cap what one run prints (T4767) ([d63c9f0](https://github.com/teamrig/teamrig/commit/d63c9f084ea4efb8530ac1856dc6b9c9d1195bb9))
+* **host:** a plugin port: the plugin list, the marketplace list, the cache and the update steps (T4750) ([31ea5fc](https://github.com/teamrig/teamrig/commit/31ea5fc8120af51a286f283b30864216e70979aa)), closes [#1988](https://github.com/teamrig/teamrig/issues/1988)
+* **ports:** the host's paths tell its own secret files (T4749) ([4255113](https://github.com/teamrig/teamrig/commit/4255113947854ba65f34f084f4f3ca794010ebdc))
+* **ports:** the host's session launcher port, telling who a run is (T4749) ([e8b2653](https://github.com/teamrig/teamrig/commit/e8b2653a6ed8fdc5bf8957a33b8b9039fcc29c87))
+* **queue:** a waiting ship moves its clean tool checkout to the newest main instead of refusing (T4280) ([2b5edda](https://github.com/teamrig/teamrig/commit/2b5eddae0c875360c49da79388e3922248b56376))
+
+
+### Bug Fixes
+
+* **budget:** the pace line after a reset inside the week starts at the use the reset left (T4864) ([3a4065c](https://github.com/teamrig/teamrig/commit/3a4065cd2b5801151065c9a09c7b5b8bbb444203))
+* **secret-guard:** the guard keeps Claude Code's login and prompt history in a moved folder too (T4749) ([5334e33](https://github.com/teamrig/teamrig/commit/5334e33b71932c3964fd861bfd79500650844438))
+* **secret-guard:** the guard keeps Claude Code's login in a folder named like its own too (T4749) ([3b3d2cb](https://github.com/teamrig/teamrig/commit/3b3d2cbcc9992973c7fb27b0c538e27b15de8458))
+* **ship:** a main move read right after older merges landed in the landing turn is not counted toward the merge's three (T4280) ([bb6648c](https://github.com/teamrig/teamrig/commit/bb6648c260dd337fde2bbe559a5fe2c8c173a96f))
+
 ## [0.499.0](https://github.com/teamrig/teamrig/compare/teamrig-v0.498.0...teamrig-v0.499.0) (2026-11-21)
 
 
