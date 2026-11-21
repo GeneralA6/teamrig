@@ -131,9 +131,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       the batch asked, as a meeting start does; in a tree of teams the root lead's batch holds every
       team's waits under it, and a child team's decisions prints its own and its teams' waits, naming
       that lead
-  add --title "<one line>" --description "<what and why>" --priority p<n> [--ref <where it was asked>]
+  add --title "<one line>" --description "<what and why>" --priority p<n>|blocker [--ref <where it was asked>]
       [--owner <session>] [--source <session>|<owner source>] [--due <date>] [--goals a,b|none]
       [--week <date>] [--after T5,T6] [--size <pct>] [--type task|bug] [--critical] [--class <name>]
+      --priority: p0 (urgent, right now), a level of register.priorities, or blocker, above p0: its owner
+      drops everything and fixes it now; a blocker says why in its description and comes after no task
       --description: what the task is and why, in plain words for a person (newlines kept, at most 2,000
       characters), needed unless register.requireDescription is off; show prints it under the title
       --after: the tasks to finish before this one starts; its line shows "after T5"
@@ -153,7 +155,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       --local: why the task gets no issue, written as its ref "local: <why>"; a security hole is always added
       with --local; while github.issueAtAdd is set, an add gives --issue or --local (or a --ref to an issue),
       else it is refused
-  add --team <team> [--owner <s>] [--source owner] --title .. --description .. --priority p<n> [...]   asks a team of your tree for work
+  add --team <team> [--owner <s>] [--source owner] --title .. --description .. --priority p<n>|blocker [...]   asks a team of your tree for work
       --source owner: the lead of a team above <team> relays the owner's order, sourced owner there
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>|none]
@@ -208,7 +210,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       a critical one (--critical, or an owner in criticalOwners) --harden "<past the direct guard>" too;
       each part at least 3 words besides task ids, kept across sets; tasks a missed part names join
       --followups; verifying and done need every part (requireOn; mode refuse, warn or off)
-  update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
+  update <id> [--title ..] [--description ..|none] [--owner ..] [--priority p<n>|blocker] [--ref ..|none]
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
       [--type task|bug] [--class <name>|none] [--critical|--not-critical] [--pin|--unpin]
       [--prepares <goal>:<slice>|none] [--note ..]
