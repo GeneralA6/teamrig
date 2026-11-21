@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { readEvents } from '../register/snapshot.ts';
 import { APP, CLAUDE_SESSION, CliHarness, EVENTS_PATH, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { ok } from '../testing/hired-team.ts';
+import { NO_MARK_HOST, NO_SESSION_HOST } from '../testing/host.ts';
 import { teamEventsOf, teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import { WakeAsks } from '../wake/asks.ts';
 import { ownerNextLeadLine, ownerNextLine, ownerNoteLine } from './commands/owner.ts';
@@ -155,6 +156,20 @@ describe('teamrig owner where Claude Code runs it (T1780)', () => {
     assert.equal(kit.files.get(EVENTS_PATH), before);
     assert.deepEqual([...(await inboxOf(kit, 'alpha')), ...(await inboxOf(kit, 'lead'))], []);
     assert.deepEqual([...(await asksOf(kit, 'alpha')), ...(await asksOf(kit, 'lead'))], []);
+  });
+
+  it("refuses a Note and a Next on a host that tells no agent's run from the person's, with the host's reason, and under a shipped host's mark there", async () => {
+    const kit = await team();
+    const before = kit.files.get(EVENTS_PATH);
+    assertRefused(
+      await kit.run(['owner', 'note', 'T1', '--text', 'ship it'], { host: NO_SESSION_HOST }),
+      /^REFUSED teamrig owner note is for the person alone, so it is refused on a host where an agent's run cannot be told from theirs \(no session of the host is told\); the host's adapter must name a mark of an agent's run in its declaration's sessionVariables\.marks and fill its session launcher port$/,
+    );
+    assertRefused(await kit.run(['owner', 'next', 'T1'], { host: NO_MARK_HOST }), /^REFUSED teamrig owner next is for the person alone, .* \(its session launcher names no mark of an agent's run\); /);
+    assertRefused(await kit.run(['owner', 'note', 'T1', '--text', 'ship it'], { ...UNDER_CLAUDE_CODE, host: NO_SESSION_HOST }), /^REFUSED teamrig owner note acts as the owner, .* \(CLAUDECODE is set: /);
+    assert.equal(kit.files.get(EVENTS_PATH), before);
+    assert.deepEqual([...(await asksOf(kit, 'alpha')), ...(await asksOf(kit, 'lead'))], []);
+    assert.match(ok(await kit.run(['owner', 'next', 'T1', '--preview'], { host: NO_SESSION_HOST })).stdout.join('\n'), /^PREVIEW owner next T1: /);
   });
 
   it('still previews a Next, which writes nothing, and takes an empty CLAUDECODE as unset', async () => {

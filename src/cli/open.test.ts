@@ -7,6 +7,7 @@ import type { RunOutcome, RunRequest } from '../open/processes.ts';
 import { decodePrompt, defaultPrompt, encodePrompt, refreshPrompt } from '../open/prompt.ts';
 import { shellCommand } from '../open/quote.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
+import { NO_MARK_HOST, NO_SESSION_HOST } from '../testing/host.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import type { RestartRequest } from '../refresh/state.ts';
@@ -88,6 +89,16 @@ describe('teamrig open', () => {
       assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
       assert.deepEqual(processes.started, []);
       assert.deepEqual(processes.keptFocus, ['wt.exe']);
+    });
+
+    it("keeps the focus where it was on a host that tells no agent's run from the person's", async () => {
+      for (const host of [NO_SESSION_HOST, NO_MARK_HOST]) {
+        const processes = new FakeProcesses().onRun('powershell.exe', { kind: 'exited', code: 0 });
+        const result = await openAlpha(processes, { platform: 'win32', host });
+        assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+        assert.deepEqual(processes.started, []);
+        assert.deepEqual(processes.keptFocus, ['wt.exe']);
+      }
     });
 
     it('keeps the focus while the meeting of any team of the tree is open, and gives it once that meeting ended', async () => {

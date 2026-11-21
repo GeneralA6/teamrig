@@ -1,18 +1,18 @@
 import { MeetingSchedule, meetingsOnOf } from '../meeting/schedule.ts';
 import { MeetingStore, phaseOf } from '../meeting/state.ts';
 import type { TabFocus } from '../open/terminals.ts';
-import { underClaudeCode } from './claude-code-env.ts';
+import { runBy } from './agent-run.ts';
 import type { CliRuntime } from './runtime.ts';
 import { loadTree } from './tree.ts';
 
 /**
- * Whether a tab a command opens takes the focus (T2510): only when the human typed the command, which Claude Code's
- * CLAUDECODE in the environment rules out (an agent's tool call, a hook, a script one runs), and no team of the kit home
- * has its daily meeting open or a booked or on-the-spot one on (T2985), so a tab opened then never pulls the owner
- * out of the meeting.
+ * Whether a tab a command opens takes the focus (T2510): only when the human typed the command, which a host's mark
+ * in the environment rules out (an agent's tool call, a hook, a script one runs) and a host naming no mark leaves
+ * untold (`runBy`), and no team of the kit home has its daily meeting open or a booked or on-the-spot one on (T2985),
+ * so a tab opened then never pulls the owner out of the meeting.
  */
 export async function tabFocusOf(runtime: CliRuntime): Promise<TabFocus> {
-  if (underClaudeCode(runtime)) {
+  if (runBy(runtime).kind !== 'person') {
     return 'keep';
   }
   const { teams } = await loadTree(runtime);

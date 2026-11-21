@@ -21,8 +21,8 @@ import { InboxDir, JsonlMarkLog } from '../../inbox/store.ts';
 import { WAKE_AT_ONCE, WAKE_NOW, wakeByOf, wakeRefusal, wakesLine, type ReceiverWake, type WakeSender, type WakeTarget, type WakeWhen } from '../../inbox/wake-now.ts';
 import { WakeAsks } from '../../wake/asks.ts';
 import { wakeCost } from '../../wake/decide.ts';
+import { refuseUnlessPerson, runBy, untoldRefusal } from '../agent-run.ts';
 import { noPositionals, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
-import { underClaudeCode } from '../claude-code-env.ts';
 import { closedByTeamrig, closedTimedWakeLine, closedWakeLine, wakeClosedSession } from '../closed-wake.ts';
 import { hookLogOf } from '../hook-logs.ts';
 import { callerOf, instantOf, sessionRef } from '../inputs.ts';
@@ -47,11 +47,11 @@ function claudeSessionOf(env: Env): string | null {
   return id !== undefined && CLAUDE_SESSION_ID.test(id) ? id : null;
 }
 
-/** Why a tool call's `inbox read` may not make its tab, the `bound` session, the `area` session. */
-export function rebindRefusal(bound: string, area: string): string {
+/** Why a tool call's `inbox read` may not make its tab, the `bound` session, the `area` session: `mark` is the variable that says an agent runs it. */
+export function rebindRefusal(bound: string, area: string, mark: string): string {
   return (
     `${KIT_NAME} inbox read --session ${area} would make this tab, the ${bound} session, the ${area} session: a tab keeps the session it was bound to, ` +
-    `which the guards read as who runs a command, so a tool call, a script or a hook (${ENV.claudeCode} is set) cannot move it. Read ${bound}'s inbox here; ` +
+    `which the guards read as who runs a command, so a tool call, a script or a hook (${mark} is set) cannot move it. Read ${bound}'s inbox here; ` +
     `to move the tab, the person types /${KIT_NAME} inbox read --session ${area} in it, or ${area} runs in its own tab.`
   );
 }
@@ -59,7 +59,7 @@ export function rebindRefusal(bound: string, area: string): string {
 /**
  * `inbox read`: prints the caller's unread lines, but those the prompt hook showed this Claude Code
  * session, and marks them all read; then, when the caller holds verifying tasks, its verify queue in one line.
- * Where Claude Code set CLAUDECODE, it refuses to move a tab already bound to another session of the roster.
+ * In any run but the person's own (`runBy`), it refuses to move a tab already bound to another session of the roster.
  */
 export async function read(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -71,10 +71,13 @@ export async function read(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const claudeSession = claudeSessionOf(runtime.env);
   const deps = inboxDepsOf(runtime, kit.paths);
   // Bind once (T3081): the person may move a tab, by /teamrig or in a terminal; a tool call, a script or a hook may not.
-  if (underClaudeCode(runtime)) {
+  // On a host that tells no agent's run from the person's, the tab stays where it is bound too.
+  const by = runBy(runtime);
+  if (by.kind !== 'person') {
     const bound = boundElsewhereOf((await deps.marks.read()).marks, claudeSession, area, (id) => roster.ids.includes(id));
     if (bound !== undefined) {
-      throw new RefusedError(rebindRefusal(bound, area));
+      const moving = `${KIT_NAME} inbox read --session ${area} in this tab, the ${bound} session, which it would make the ${area} session,`;
+      throw new RefusedError(by.kind === 'agent' ? rebindRefusal(bound, area, by.mark) : untoldRefusal(moving, by.notice));
     }
   }
   const now = new Date(runtime.clock.now());
@@ -282,18 +285,19 @@ const HOST_ROLE_WORDS: readonly string[] = ['owner', 'lead'];
  * no session of the team, so the line names the job as its sender. It posts to sessions of the team by id or name
  * only, wakes no one (the line waits for the session's next prompt) and takes no `--session`; the line itself meets
  * the inbox's rules as any other, and a `--to` that names no session is refused as `inbox add` refuses it. It is
- * refused where Claude Code runs it, so an agent's tool call cannot post as a job, and for a job named as a role or
- * a session of the team, so the line never reads as that sender's.
+ * refused in any run a host's agent started or may have (`runBy`), so an agent's tool call cannot post as a job, and
+ * for a job named as a role or a session of the team, so the line never reads as that sender's.
  */
 async function addFromHost(args: ParsedArgs, runtime: CliRuntime, from: string): Promise<ExitCode> {
   if (!HOST_SENDER.test(from)) {
     throw new UsageError(`--from takes host:<job>, the job ${NAME_RULE}, not "${from}"`);
   }
-  if (underClaudeCode(runtime)) {
-    throw new RefusedError(
-      `--from ${from} is for a job the host runs on a schedule, so it is refused where Claude Code runs it (${ENV.claudeCode} is set: an agent's tool call, a script it runs or a hook); a session posts as itself without --from`,
-    );
-  }
+  refuseUnlessPerson(
+    runtime,
+    `${KIT_NAME} inbox add --from ${from}`,
+    (mark) =>
+      `--from ${from} is for a job the host runs on a schedule, so it is refused where Claude Code runs it (${mark} is set: an agent's tool call, a script it runs or a hook); a session posts as itself without --from`,
+  );
   if (args.flags.get('session') !== undefined) {
     throw new UsageError(`--from ${from} is for a job that runs as no session: drop --session, or post as the session without --from`);
   }

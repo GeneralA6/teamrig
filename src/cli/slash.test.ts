@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { ASK_EXIT } from '../mod/slash-hand.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
+import { NO_MARK_HOST, NO_SESSION_HOST } from '../testing/host.ts';
 import { slashRule } from './commands/slash.ts';
 import { COMMAND_HELP, COMMAND_TABLE } from './run.ts';
 import { EXIT } from './runtime.ts';
@@ -210,6 +211,26 @@ describe('/teamrig with a command that changes the team files', () => {
       assert.match(result.stdout.join('\n'), new RegExp(`^REFUSED teamrig ui changes the team's files or acts on the machine, .*this line came from ${origin}\\.`));
     }
     assert.deepEqual(processes.ran, []);
+  });
+
+  it("refuses any line on a host that tells no agent's run from the person's, with the host's reason, and runs nothing", async () => {
+    const kit = new CliHarness();
+    const before = (await kit.run(['inbox', 'status', '--session', 'bravo'])).stdout;
+    for (const [host, notice] of [
+      [NO_SESSION_HOST, 'no session of the host is told'],
+      [NO_MARK_HOST, "its session launcher names no mark of an agent's run"],
+    ] as const) {
+      const line = 'inbox add --session alpha --to bravo --text "x y"';
+      const result = await slash(kit, line, { ...ALPHA_TAB, host }, { origin: 'composer', agreed: `teamrig ${line}` });
+      assert.equal(result.code, EXIT.refused, notice);
+      assert.equal(
+        result.stdout.join('\n'),
+        `REFUSED teamrig hook slash-command is for the person alone, so it is refused on a host where an agent's run cannot be told from theirs (${notice}); the host's adapter must name a mark of an agent's run in its declaration's sessionVariables.marks and fill its session launcher port`,
+      );
+    }
+    const marked = await slash(kit, 'list', { env: { TEAMRIG_SESSION: 'alpha', CLAUDECODE: '1' }, host: NO_SESSION_HOST });
+    assert.match(marked.stdout.join('\n'), /^REFUSED teamrig hook slash-command answers \/teamrig typed in a tab and runs only from the teamrig mod; CLAUDECODE is set, /);
+    assert.deepEqual((await kit.run(['inbox', 'status', '--session', 'bravo'])).stdout, before);
   });
 
   it('refuses a sweep no person typed, as its --out writes the path the line names', async () => {

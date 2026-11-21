@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { CliHarness, TEAM } from '../testing/cli-harness.ts';
+import { NO_MARK_HOST, NO_SESSION_HOST } from '../testing/host.ts';
 import { teamInboxOf } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
@@ -55,6 +56,22 @@ describe('teamrig inbox add --from host:<job> (#930)', () => {
     const result = await kit.run(['inbox', 'add', '--from', 'host:nightly-backup', '--to', 'alpha', '--text', 'hi'], { env: { CLAUDECODE: '1' } });
     assert.equal(result.code, EXIT.refused);
     assert.match([...result.stdout, ...result.stderr].join('\n'), /CLAUDECODE/);
+    assert.equal(inboxOf(kit, 'alpha'), undefined);
+  });
+
+  it("refuses on a host that tells no agent's run from the person's, with the host's reason, and under a shipped host's mark there", async () => {
+    const kit = new CliHarness(TEAM);
+    const words = ['inbox', 'add', '--from', 'host:nightly-backup', '--to', 'alpha', '--text', 'hi'];
+    const untold = await kit.run(words, { ...NO_SESSION, host: NO_SESSION_HOST });
+    assert.deepEqual(untold, {
+      code: EXIT.refused,
+      stdout: [
+        "REFUSED teamrig inbox add --from host:nightly-backup is for the person alone, so it is refused on a host where an agent's run cannot be told from theirs (no session of the host is told); the host's adapter must name a mark of an agent's run in its declaration's sessionVariables.marks and fill its session launcher port",
+      ],
+      stderr: [],
+    });
+    assert.match((await kit.run(words, { ...NO_SESSION, host: NO_MARK_HOST })).stdout.join('\n'), /^REFUSED .* \(its session launcher names no mark of an agent's run\); /);
+    assert.match((await kit.run(words, { env: { CLAUDECODE: '1' }, host: NO_SESSION_HOST })).stdout.join('\n'), /^REFUSED --from host:nightly-backup is for a job the host runs on a schedule, .* \(CLAUDECODE is set: /);
     assert.equal(inboxOf(kit, 'alpha'), undefined);
   });
 

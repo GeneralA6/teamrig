@@ -2,8 +2,8 @@ import { stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { planSlash, SESSION_FLAG, sessionReads, withSession, type CommandTable } from '../../slash/plan.ts';
 import { joinWords, splitWords } from '../../slash/words.ts';
+import { refuseUnlessPerson } from '../agent-run.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { underClaudeCode } from '../claude-code-env.ts';
 import type { CommandHelp } from '../help.ts';
 import { openKit, rosterOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -105,12 +105,13 @@ export function slashCommand(deps: SlashDeps): (args: ParsedArgs, runtime: CliRu
   return async (args, runtime) => {
     noPositionals(args);
     // Its stdin says who typed the line, and whoever runs it writes that stdin, so only the mod runs it (T3081). The
-    // mod runs it without CLAUDECODE; a tool call, a script and a hook have it.
-    if (underClaudeCode(runtime)) {
-      throw new RefusedError(
-        `${KIT_NAME} hook slash-command answers /${KIT_NAME} typed in a tab and runs only from the ${KIT_NAME} mod; ${ENV.claudeCode} is set, so Claude Code started this run (a tool call, a script it runs or a hook). Type /${KIT_NAME} <command> in the tab instead.`,
-      );
-    }
+    // mod runs it without the host's mark of an agent's run; a tool call, a script and a hook have it.
+    refuseUnlessPerson(
+      runtime,
+      `${KIT_NAME} hook slash-command`,
+      (mark) =>
+        `${KIT_NAME} hook slash-command answers /${KIT_NAME} typed in a tab and runs only from the ${KIT_NAME} mod; ${mark} is set, so Claude Code started this run (a tool call, a script it runs or a hook). Type /${KIT_NAME} <command> in the tab instead.`,
+    );
     const request = await readModRequest(runtime);
     const input = slashInputOf(request?.fields);
     const words = splitWords(input.args);

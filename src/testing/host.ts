@@ -53,13 +53,16 @@ export function hostTelling(identity: Partial<SessionIdentity>): HostSource {
 }
 
 /**
- * The shipped host, its sessions told by `variables` in place of its own and each run's identity untold: for a spec
- * of a run on a host that names marks of its own, or none.
+ * The shipped host, its sessions told by `variables` in place of its own and every run said to be `identity`, each
+ * part untold unless given: for a spec of a run on a host that names marks of its own, or none.
  */
-export function hostNaming(variables: SessionVariables): HostSource {
-  const untold: SessionIdentity = { projectDir: undefined, startedAs: undefined, sessionKind: undefined, sessionId: undefined };
-  return (given) => ({ ...SHIPPED_HOST(given), launcher: { variables, identity: () => untold } });
+export function hostNaming(variables: SessionVariables, identity: Partial<SessionIdentity> = {}): HostSource {
+  const told: SessionIdentity = { projectDir: undefined, startedAs: undefined, sessionKind: undefined, sessionId: undefined, ...identity };
+  return (given) => ({ ...SHIPPED_HOST(given), launcher: { variables, identity: () => told } });
 }
+
+/** A host whose launcher names no mark of an agent's run, which no adapter that loaded does: every run there is untold. */
+export const NO_MARK_HOST: HostSource = hostNaming({ marks: [], identity: [] });
 
 /** The session variables the shipped host hands a run: the ones its declaration names. */
 export function testSessionVariables(): SessionVariables {

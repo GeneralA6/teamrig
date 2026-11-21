@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import type { HostSource } from '../composition/host-ports.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { indexMarks, readMarks } from '../inbox/marks.ts';
-import { HOOKS_ONLY_HOST, hostTelling, NO_SESSION_HOST } from '../testing/host.ts';
+import { HOOKS_ONLY_HOST, hostNaming, hostTelling, NO_SESSION_HOST } from '../testing/host.ts';
 import { APP, CLAUDE_SESSION, CliHarness, contextOf, RENAMES_PATH, TEAM, TEAM_HOME, titledPromptOf, USER_HOME } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { treeHarness } from '../testing/team-tree.ts';
@@ -303,6 +303,23 @@ describe('runCli: a tool call cannot move its tab to another session by reading 
     assert.equal((await kit.run(['inbox', 'read', '--session', 'alpha'], { env: UNDER_CLAUDE })).code, EXIT.ok, 'its own inbox');
     const approve = JSON.stringify({ cwd: APP, session_id: CLAUDE_SESSION, tool_name: 'Bash', tool_input: { command: 'teamrig exec approve R1 --session bravo' } });
     assert.match((await kit.run(['hook', 'exec-guard'], { stdin: approve })).stdout.join('\n'), /"permissionDecision":"deny"/);
+  });
+
+  it("keeps a bound tab where it is on a host that tells no agent's run from the person's, with the host's reason", async () => {
+    const kit = new CliHarness();
+    const untold = { env: AS_CLAUDE, host: hostNaming({ marks: [], identity: [] }, { sessionId: CLAUDE_SESSION }) };
+    assert.equal((await kit.run(['inbox', 'read', '--session', 'alpha'], untold)).code, EXIT.ok, 'the first binding');
+    const bound = await marks(kit);
+    const taken = await kit.run(['inbox', 'read', '--session', 'bravo'], untold);
+    assert.equal(taken.code, EXIT.refused);
+    assert.equal(
+      taken.stdout.join('\n'),
+      "REFUSED teamrig inbox read --session bravo in this tab, the alpha session, which it would make the bravo session, is for the person alone, so it is refused on a host where an agent's run cannot be told from theirs (its session launcher names no mark of an agent's run); the host's adapter must name a mark of an agent's run in its declaration's sessionVariables.marks and fill its session launcher port",
+    );
+    assert.equal(await marks(kit), bound, 'no mark written');
+    assert.equal((await kit.run(['inbox', 'read', '--session', 'alpha'], untold)).code, EXIT.ok, 'its own inbox');
+    const marked = await kit.run(['inbox', 'read', '--session', 'bravo'], { ...untold, env: UNDER_CLAUDE });
+    assert.match(marked.stdout.join('\n'), /^REFUSED teamrig inbox read --session bravo would make this tab, .* \(CLAUDECODE is set\) cannot move it\./);
   });
 
   it('lets the person move the tab, and a restarted tab bind afresh', async () => {

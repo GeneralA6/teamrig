@@ -9,7 +9,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 import { tabFocusOf } from '../tab-focus.ts';
 import { postAtOnce } from '../urgent-line.ts';
 import { openSession, printOpenResult, terminalFlag } from './open.ts';
-import { namesOf, refuseUnderClaudeCode } from './owner.ts';
+import { namesOf, refuseUnlessOwner } from './owner.ts';
 import { teamOf } from './register-team.ts';
 import { sessionProjectOf } from './setup.ts';
 
@@ -26,11 +26,12 @@ export function ownerWakeLine(owner: string, id: string): string {
  * once to work its list; while that ask still waits, nothing more is posted (postAtOnce). A tab in a turn, at a tool
  * call or with a decision put to the person is refused with nothing posted: it reads its list once the step ends, and
  * a question waits on the person in that tab. A session that does not run opens in a new tab as `open` opens it,
- * refused when the host has no room. Refused when wake.enabled is false on a running session's team, and under
- * CLAUDECODE. The owner is above every team, so a session of any team of the tree may be woken.
+ * refused when the host has no room. Refused when wake.enabled is false on a running session's team, and in any run
+ * but the person's own (refuseUnlessOwner). The owner is above every team, so a session of any team of the tree may
+ * be woken.
  */
 export async function ownerWake(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  refuseUnderClaudeCode(runtime, 'wake');
+  refuseUnlessOwner(runtime, 'wake');
   const typed = onePositional(args, '[team/]id|name');
   const address = splitAddress(typed);
   if (address === undefined) {
