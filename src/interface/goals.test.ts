@@ -89,6 +89,13 @@ describe('goalsBody', () => {
     );
   });
 
+  it('serves a slip’s time as the instant it reads as, never as a stored text with words in it', () => {
+    const worded: GoalSlip = { ...slip('2030-02-10', 'a plain note'), at: `Jan 9 2030 08:00 UTC (${SECRET})` };
+    const answer = body({ team: 'app', goals: [goal('A1', { slips: [worded] })] });
+    assert.deepEqual(servedOf(answer, 'A1').slips.map((moved) => moved.at), ['2030-01-09T08:00:00.000Z']);
+    assert.ok(!JSON.stringify(answer).includes(SECRET));
+  });
+
   it('cuts a title or a note shaped like a secret, and names the goal and the field', () => {
     const shape = new SecretScanner().find(SECRET)?.description;
     assert.ok(shape !== undefined, 'the shipped shapes know the test secret');
