@@ -88,6 +88,21 @@ test('waits while an older live merge is in line, then goes on once its ticket i
   assert.equal(line.tickets.get(7)?.beatAt, 1_003_000, 'it beats each look');
 });
 
+test('counts only the waits older merges ended by landing, not one with none ahead or one that timed out (T4280)', async () => {
+  const line = fakeLine();
+  const turn = landingTurn({ store: line.store, pid: 7, pidAlive: () => true, clock: line.clock }, TIMES);
+  await turn.wait(() => undefined);
+  assert.equal(turn.waited(), 0, 'nothing ahead: no wait');
+  line.tickets.set(5, ready(5, 999_000, 1_000_000));
+  line.clock.at(1000, () => line.tickets.delete(5));
+  await turn.wait(() => undefined);
+  assert.equal(turn.waited(), 1, 'the older merge landed');
+  line.tickets.set(4, ready(4, 998_000, 1_001_000));
+  for (let ms = 1000; ms <= 1000 + TIMES.timeoutMs; ms += TIMES.pollMs) line.clock.at(ms, () => line.tickets.set(4, ready(4, 998_000, 1_000_000 + ms)));
+  await turn.wait(() => undefined);
+  assert.equal(turn.waited(), 1, 'a timed-out wait is not counted');
+});
+
 test('an older ticket whose process ended frees the turn at once and is removed', async () => {
   const line = fakeLine();
   line.tickets.set(5, ready(5, 999_000, 1_000_000));

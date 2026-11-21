@@ -70,6 +70,11 @@ export interface LandingTurn {
    * `timeoutMs`; says what it waited on. It stays ready through its catch-ups, so newer merges wait on them.
    */
   wait(log: (line: string) => void): Promise<void>;
+  /**
+   * How many waits ended because the older merges it waited on landed or ended, not at the time out: each such wait
+   * likely moved main by design, so the move a merge reads next is not one it lost a race to (T4280).
+   */
+  waited(): number;
   /** Marks this merge live now. */
   beat(): void;
   /** Leaves the line. */
@@ -110,9 +115,11 @@ export function landingTurn(deps: TurnDeps, times: TurnTimes = TURN_TIMES): Land
     });
   };
 
+  let landedWaits = 0;
   return {
     beat,
     end: () => tried(() => store.remove(pid)),
+    waited: () => landedWaits,
     wait: async log => {
       const since = clock.now();
       readyAt ??= since;
@@ -121,7 +128,10 @@ export function landingTurn(deps: TurnDeps, times: TurnTimes = TURN_TIMES): Land
         beat();
         const older = ahead();
         if (older.length === 0) {
-          if (said !== '') log(`older merges landed or ended: going on after ${Math.round((clock.now() - since) / 1000)} s`);
+          if (said !== '') {
+            landedWaits += 1;
+            log(`older merges landed or ended: going on after ${Math.round((clock.now() - since) / 1000)} s`);
+          }
           return;
         }
         if (clock.now() - since >= times.timeoutMs) {

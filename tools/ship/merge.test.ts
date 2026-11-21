@@ -557,6 +557,8 @@ interface RunFixture {
   lostShare?: string;
   /** Whether main, at BASE when the merge starts, moves to MOVED while the first head's checks run (mainTip unset). */
   movesDuringWait?: boolean;
+  /** Whether each landing-turn wait ends because older merges landed (T4280); none waited unless given. */
+  olderLanded?: boolean;
   /** The work commits each head carries over main (approval.ts `workCommitsOf`); SHA and REBASED the same two unless given. */
   work?: Readonly<Record<string, readonly WorkCommit[]>>;
   /** How many of main's fetches after the merge call fail on a ref-store race with another fetch (#1452); none unless given. */
@@ -728,6 +730,7 @@ function runFixture(fixture: RunFixture = {}): {
   const releaseProfile = fixture.release === undefined ? '' : `,"release":{"head":"${RELEASE}","changelog":"CHANGELOG.md"}`;
   const answersOfCatchUp = fixture.catchUp ?? [CAUGHT_UP_REFUSED];
   let caughtUp = 0;
+  let landedWaits = 0;
   const catchUp = mock.fn<MergeDeps['catchUp']>(() => answersOfCatchUp[Math.min(caughtUp++, answersOfCatchUp.length - 1)] ?? CAUGHT_UP_REFUSED);
   const deps: MergeDeps = {
     git: (...args) => {
@@ -769,8 +772,10 @@ function runFixture(fixture: RunFixture = {}): {
     turn: {
       wait: () => {
         gitCalls.push('turn wait');
+        if (fixture.olderLanded === true) landedWaits += 1;
         return Promise.resolve();
       },
+      waited: () => landedWaits,
       beat: () => undefined,
       end: () => undefined,
     },
@@ -1109,6 +1114,17 @@ test(`each move during a catch-up counts toward the ${MERGE_ATTEMPTS} a merge al
   assert.equal(catchUp.mock.callCount(), MERGE_ATTEMPTS - 1);
   assert.deepEqual(err, [`REFUSED ${MOVED_AGAIN.kind === 'moved' ? MOVED_AGAIN.reason : ''} (main moved ${MERGE_ATTEMPTS} times during this merge)`]);
   assert.equal(ghWrites.length, 0);
+});
+
+test(`a move read right after older merges landed during the turn's wait is not counted toward the ${MERGE_ATTEMPTS} (T4280)`, async () => {
+  const afterTurn = runFixture({ movesDuringWait: true, olderLanded: true, catchUp: [MOVED_AGAIN, MOVED_AGAIN, CAUGHT_UP] });
+  assert.equal(await runMerge(ARGS, afterTurn.deps), 0, afterTurn.err.join('\n'));
+  assert.equal(afterTurn.catchUp.mock.callCount(), MERGE_ATTEMPTS);
+  assert.equal(afterTurn.out.at(-1), 'MERGED #3 into main, now at main999');
+
+  const raced = runFixture({ movesDuringWait: true, catchUp: [MOVED_AGAIN, MOVED_AGAIN, CAUGHT_UP] });
+  assert.equal(await runMerge(ARGS, raced.deps), 1, 'the same moves with no older merge waited on still count');
+  assert.match(raced.err.at(-1) ?? '', new RegExp(`main moved ${MERGE_ATTEMPTS} times during this merge`));
 });
 
 test("on the ci gate the step's host share is set aside for the checks' wait and the merge call, never taken back once merged (T3336)", async () => {
