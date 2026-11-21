@@ -20,6 +20,7 @@ export { inboxBody, type InboxBody, type InboxInput, type ServedLine } from './i
 export { meetingsBody, type MeetingInput, type MeetingsBody, type MeetingsInput, type ServedMeeting, type ServedMeetingStatus } from './meetings.ts';
 export {
   planBody,
+  type FinishedTask,
   type PlanBody,
   type PlanInput,
   type PlannedTask,
@@ -28,6 +29,7 @@ export {
   type ServedGoalRank,
   type ServedMove,
   type ServedNeed,
+  type ServedNeeder,
   type ServedUnblocks,
 } from './plan.ts';
 export { refOf, type ServedRef } from './ref.ts';
