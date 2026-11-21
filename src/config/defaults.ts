@@ -294,7 +294,7 @@ export const DEFAULT_WAKE: WakeConfig = { enabled: true, priority: 1, batchSecon
 export const DEFAULT_MEETING: MeetingConfig = {
   panel: { enabled: true },
   spotlight: { enabled: true, dim: 0.6, breakthroughSeconds: 120 },
-  statusLine: { enabled: true, colour: '#8b57e3', heldText: 'meeting on: held' },
+  statusLine: { enabled: true, colour: '#8b57e3', heldText: 'owner in meeting' },
 };
 
 /** About a screenful: two or three failing tests with their errors and first stack frames. */

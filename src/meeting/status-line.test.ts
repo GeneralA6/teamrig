@@ -10,7 +10,8 @@ const START = Date.parse('2030-01-08T08:00:00Z');
 const OPEN: Meeting = { startedAt: new Date(START).toISOString(), by: 'lead', endedAt: null, since: null, carried: [], kind: 'daily' };
 const SHOWN = DEFAULT_MEETING.statusLine;
 const TAB = { kind: 'tab', colour: '#8b57e3', title: 'daily' };
-const HELD = { kind: 'held', colour: '#8b57e3', text: 'meeting on: held' };
+// #1675: only messages to the meeting's own session wait, so another tab's mark names the meeting and never says held.
+const OTHER = { kind: 'other', colour: '#8b57e3', text: 'owner in meeting', title: 'daily' };
 const TECH: ScheduledMeeting = {
   id: 'M4',
   at: START,
@@ -37,26 +38,28 @@ describe('statusLineMeetingOf', () => {
     assert.equal(statusLineMeetingOf({ shown: SHOWN, own: undefined, above: [], booked: [{ ...TECH, status: 'done' }], now, tab: 'front' }), undefined, 'ended');
   });
 
-  it("marks the tab of the lead that started its team's open meeting with the daily title, and holds every other tab's", () => {
+  it("marks the tab of the lead that started its team's open meeting with the daily title, and names it on every other tab's", () => {
     const now = START + 60_000;
     assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [], booked: [], now, tab: 'lead' }), TAB);
-    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [], booked: [], now, tab: 'front' }), HELD);
-    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [], booked: [], now, tab: undefined }), HELD);
+    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [], booked: [], now, tab: 'front' }), OTHER);
+    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [], booked: [], now, tab: undefined }), OTHER);
   });
 
   // T3137: a meeting started after the day's daily one has ended is not the daily meeting.
-  it("marks the lead's tab with the extra title for an extra meeting, and holds every other tab's as for the daily one", () => {
+  it("marks the lead's tab with the extra title for an extra meeting, and names it so on every other tab's", () => {
     const now = START + 60_000;
     const extra: Meeting = { ...OPEN, kind: 'extra' };
     assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: extra, above: [], booked: [], now, tab: 'lead' }), { ...TAB, title: 'extra' });
-    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: extra, above: [], booked: [], now, tab: 'front' }), HELD);
+    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: extra, above: [], booked: [], now, tab: 'front' }), { ...OTHER, title: 'extra' });
   });
 
-  it("holds a sub-team's tabs while a team above meets, and colours its lead's tab for its own meeting (T2985)", () => {
+  it("names a team above's meeting on a sub-team's tabs, and colours its lead's tab for its own meeting (T2985)", () => {
     const now = START + 60_000;
-    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: undefined, above: [undefined, OPEN], booked: [], now, tab: 'lead' }), HELD, "the root's lead shares the id, not the tab");
+    const extra: Meeting = { ...OPEN, kind: 'extra' };
+    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: undefined, above: [undefined, OPEN], booked: [], now, tab: 'lead' }), OTHER, "the root's lead shares the id, not the tab");
+    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: undefined, above: [extra], booked: [], now, tab: 'front' }), { ...OTHER, title: 'extra' }, "titled by the team above's meeting");
     assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [OPEN], booked: [], now, tab: 'lead' }), TAB);
-    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [undefined], booked: [], now, tab: 'front' }), HELD);
+    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [undefined], booked: [], now, tab: 'front' }), OTHER);
   });
 
   it('marks nothing with no meeting, an ended or lapsed one, or the marks off', () => {

@@ -5,12 +5,13 @@ import { phaseOf, type Meeting, type MeetingKind } from './state.ts';
 /**
  * How a tab's status line marks an open meeting (T2513): the meeting tab, the one whose session started its team's
  * meeting or is met in a booked one, leads its line with `Meeting: <title>` in the meeting colour; every other tab a
- * team's meeting covers ends its line in the held text, in the same colour. Only the mark takes the colour, so the rest
- * of the line reads as usual (T2985).
+ * team's meeting covers ends its line in the configured text and the meeting's title, in the same colour. Only messages
+ * to the meeting's own session wait, so the other tabs' mark only names the meeting (#1675). Only the mark takes the
+ * colour, so the rest of the line reads as usual (T2985).
  */
 export type StatusLineMeeting =
   | { readonly kind: 'tab'; readonly colour: string; readonly title: string }
-  | { readonly kind: 'held'; readonly colour: string; readonly text: string };
+  | { readonly kind: 'other'; readonly colour: string; readonly text: string; readonly title: string };
 
 /**
  * The short title of a meeting a team's bare `meeting start` opens, by its kind (T3137): the day's first is the
@@ -33,23 +34,30 @@ export interface StatusLineMeetingInput {
 
 /**
  * The tab's meeting mark: the meeting tab's when its session started its team's open meeting (titled by its kind), or
- * is met in a booked or on-the-spot meeting on now (titled by what it is about); else the held text while its team or
- * a team above has its meeting open, daily or extra; undefined with the marks off or none on, ended or lapsed alike.
+ * is met in a booked or on-the-spot meeting on now (titled by what it is about); else the other tabs' mark, titled by
+ * its own team's open meeting or else the nearest team above's, daily or extra; undefined with the marks off or none
+ * on, ended or lapsed alike.
  */
 export function statusLineMeetingOf(input: StatusLineMeetingInput): StatusLineMeeting | undefined {
   const { shown, own, above, booked, now, tab } = input;
   if (!shown.enabled) {
     return undefined;
   }
-  const open = (meeting: Meeting | undefined): boolean => meeting !== undefined && phaseOf(meeting, now).kind === 'open';
-  if (own !== undefined && open(own) && own.by === tab) {
+  const open = (meeting: Meeting | undefined): meeting is Meeting => meeting !== undefined && phaseOf(meeting, now).kind === 'open';
+  if (open(own) && own.by === tab) {
     return { kind: 'tab', colour: shown.colour, title: MEETING_TITLES[own.kind] };
   }
   const inTab = tab === undefined ? undefined : meetingInTabOf(booked, tab, now);
   if (inTab !== undefined) {
     return { kind: 'tab', colour: shown.colour, title: meetingTitleOf(inTab) };
   }
-  return open(own) || above.some(open) ? { kind: 'held', colour: shown.colour, text: shown.heldText } : undefined;
+  const covering = [own, ...above].find(open);
+  return covering === undefined ? undefined : { kind: 'other', colour: shown.colour, text: shown.heldText, title: MEETING_TITLES[covering.kind] };
+}
+
+/** The other tabs' mark as their status line ends with it, uncoloured: `owner in meeting: daily`. */
+export function otherTabLabel(text: string, title: string): string {
+  return `${text}: ${title}`;
 }
 
 /** The meeting tab's mark as its status line leads with it, uncoloured: `Meeting: daily`. */

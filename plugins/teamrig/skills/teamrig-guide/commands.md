@@ -7161,7 +7161,7 @@ team, or once the reading's week reset, no pace is shown. The team config's `sta
 on by default; with `branch` off, git is never asked). While the owner's meeting is open on a team or a team above
 it (`teamrig meeting start`, until `meeting end` or its lapse), the lead's tab that started it leads its line with
 `Meeting: daily | ` (`Meeting: extra | ` for one started after the day's daily meeting) and every other tab, a
-sub-team's too, adds `meeting.statusLine.heldText` (`meeting on: held`)
+sub-team's too, adds `meeting.statusLine.heldText` (`owner in meeting`) and the meeting's title (`owner in meeting: daily`)
 last; only that mark takes `meeting.statusLine.colour` (`#8b57e3`, teamrig's purple, by default), and
 `meeting.statusLine.enabled: false` turns both off. The tab of a session the owner meets in a booked or on-the-spot
 meeting, any session's, a worker's too, leads its line with `Meeting: <its title> | `, what the meeting is about cut

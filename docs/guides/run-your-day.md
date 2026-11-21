@@ -77,7 +77,7 @@ dimming, a CRITICAL message that breaks through to the lead lifts it for two min
 ([the spotlight](../../plugins/teamrig/skills/teamrig-guide/hooks.md#meeting-start-the-spotlight)).
 Under `teamrig statusline`, the lead's status line starts with `Meeting: daily` in the meeting colour (`Meeting: extra`
 for a meeting you start after the day's daily one has ended) and every other
-tab's ends in `meeting on: held`, so a glance at any tab tells the team waits; `meeting.statusLine` sets the colour and the text
+tab's ends in `owner in meeting: daily`, so a glance at any tab tells which meeting is on (only messages to the lead wait); `meeting.statusLine` sets the colour and the text
 ([teamrig statusline](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-statusline)).
 
 The start counts as asking you every decision it lists. Between meetings the lead asks the new ones in batches:

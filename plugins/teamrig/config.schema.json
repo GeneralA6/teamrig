@@ -1727,7 +1727,7 @@
           }
         },
         "statusLine": {
-          "description": "The status line while a meeting is open: the lead's tab shows its line in the meeting colour, every other tab adds the held text, so a glance at any tab tells the meeting is on.",
+          "description": "The status line while a meeting is open: the lead's tab shows its line in the meeting colour, every other tab adds the held text and the meeting's title, so a glance at any tab tells which meeting is on.",
           "type": "object",
           "properties": {
             "enabled": {
@@ -1736,15 +1736,15 @@
               "default": true
             },
             "colour": {
-              "description": "The colour of the meeting marks in the status lines while a meeting is open, as #rrggbb: the meeting tab's leading Meeting title and every other tab's held text; the terminal must show 24-bit colour.",
+              "description": "The colour of the meeting marks in the status lines while a meeting is open, as #rrggbb: the meeting tab's leading Meeting title and every other tab's meeting name; the terminal must show 24-bit colour.",
               "type": "string",
               "default": "#8b57e3",
               "pattern": "^#[0-9a-fA-F]{6}$"
             },
             "heldText": {
-              "description": "The words every other tab's status line adds while a meeting is open, on one line.",
+              "description": "The words every other tab's status line adds before the open meeting's title (`owner in meeting: daily`), on one line. Only messages to the meeting's own session wait, so the words should not say the tab is held.",
               "type": "string",
-              "default": "meeting on: held",
+              "default": "owner in meeting",
               "minLength": 1,
               "maxLength": 40,
               "pattern": "^[^\\r\\n]+$"

@@ -711,7 +711,7 @@ The owner's daily meeting with the lead, in the lead's tab.
 | --- | --- | --- | --- |
 | `panel` | [object](#meetingpanel) |  | The agenda panel beside the chat of the session the owner meets while a meeting is open (the lead's daily one, or a started M\<n>). |
 | `spotlight` | [object](#meetingspotlight) |  | The spotlight while a meeting is open: every screen dimmed but the window holding the lead's tab. Windows Terminal on Windows only. |
-| `statusLine` | [object](#meetingstatusline) |  | The status line while a meeting is open: the lead's tab shows its line in the meeting colour, every other tab adds the held text, so a glance at any tab tells the meeting is on. |
+| `statusLine` | [object](#meetingstatusline) |  | The status line while a meeting is open: the lead's tab shows its line in the meeting colour, every other tab adds the held text and the meeting's title, so a glance at any tab tells which meeting is on. |
 
 ## `meeting.panel`
 
@@ -733,13 +733,13 @@ The spotlight while a meeting is open: every screen dimmed but the window holdin
 
 ## `meeting.statusLine`
 
-The status line while a meeting is open: the lead's tab shows its line in the meeting colour, every other tab adds the held text, so a glance at any tab tells the meeting is on.
+The status line while a meeting is open: the lead's tab shows its line in the meeting colour, every other tab adds the held text and the meeting's title, so a glance at any tab tells which meeting is on.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `true` | Marks the status lines while the owner's daily meeting is open; they go back as they were at meeting end, or when the meeting lapses. On unless a team sets it false. |
-| `colour` | string (matching `^#[0-9a-fA-F]{6}$`) | `"#8b57e3"` | The colour of the meeting marks in the status lines while a meeting is open, as #rrggbb: the meeting tab's leading Meeting title and every other tab's held text; the terminal must show 24-bit colour. |
-| `heldText` | string (1 to 40 characters, matching `^[^\r\n]+$`) | `"meeting on: held"` | The words every other tab's status line adds while a meeting is open, on one line. |
+| `colour` | string (matching `^#[0-9a-fA-F]{6}$`) | `"#8b57e3"` | The colour of the meeting marks in the status lines while a meeting is open, as #rrggbb: the meeting tab's leading Meeting title and every other tab's meeting name; the terminal must show 24-bit colour. |
+| `heldText` | string (1 to 40 characters, matching `^[^\r\n]+$`) | `"owner in meeting"` | The words every other tab's status line adds before the open meeting's title (`owner in meeting: daily`), on one line. Only messages to the meeting's own session wait, so the words should not say the tab is held. |
 
 ## `turnLog`
 

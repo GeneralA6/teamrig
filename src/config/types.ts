@@ -1759,8 +1759,8 @@ export interface MeetingConfig {
   readonly spotlight: { readonly enabled: boolean; readonly dim: number; readonly breakthroughSeconds: number };
   /**
    * The status line while a meeting is open (T2513): the meeting tab leads its line with `Meeting: <title>` and every
-   * other tab appends `heldText`, each mark alone in `colour` (`#rrggbb`, T2985), so a glance at any tab says the team
-   * is held for the meeting.
+   * other tab appends `heldText: <title>`, each mark alone in `colour` (`#rrggbb`, T2985), so a glance at any tab says
+   * which meeting is on; only messages to the meeting's own session wait, so the mark never says the tab is held (#1675).
    */
   readonly statusLine: { readonly enabled: boolean; readonly colour: string; readonly heldText: string };
 }

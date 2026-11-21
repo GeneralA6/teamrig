@@ -378,7 +378,7 @@ describe('statusLineText', () => {
     assert.equal(statusLineText(snapshot({ model: null, rateLimits: null }), { effort: 'xhigh' }), 'Claude (xhigh)');
   });
 
-  it("leads the meeting tab's line with the coloured meeting title, and ends every other tab's in the coloured held text (T2985)", () => {
+  it("leads the meeting tab's line with the coloured meeting title, and ends every other tab's in the coloured meeting name (T2985, #1675)", () => {
     const view = { folder: 'app', branch: 'main' };
     assert.equal(
       statusLineText(both, { ...view, meeting: { kind: 'tab', colour: '#8b57e3', title: 'daily' } }),
@@ -386,8 +386,8 @@ describe('statusLineText', () => {
       'only the mark takes the colour',
     );
     assert.equal(
-      statusLineText(both, { ...view, meeting: { kind: 'held', colour: '#8b57e3', text: 'meeting on: held' } }),
-      'Opus 5.5, app on main, week 57%, 5h 6%, \x1b[38;2;139;87;227mmeeting on: held\x1b[0m',
+      statusLineText(both, { ...view, meeting: { kind: 'other', colour: '#8b57e3', text: 'owner in meeting', title: 'daily' } }),
+      'Opus 5.5, app on main, week 57%, 5h 6%, \x1b[38;2;139;87;227mowner in meeting: daily\x1b[0m',
     );
   });
 });

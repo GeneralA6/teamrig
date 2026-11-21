@@ -1334,7 +1334,7 @@ describe('teamrig statusline', () => {
     const MEETING_FILE = join(TEAM_HOME, 'state', 'meeting.json');
     /** The lead's meeting, started an hour before the harness's clock. */
     const OPEN_MEETING: Meeting = { startedAt: '2030-01-08T09:00:00.000Z', by: 'lead', endedAt: null, since: null, carried: [], kind: 'daily' };
-    const HELD = `${SHOWN}, \x1b[38;2;139;87;227mmeeting on: held\x1b[0m`;
+    const OTHER = `${SHOWN}, \x1b[38;2;139;87;227mowner in meeting: daily\x1b[0m`;
     const COLOURED = `\x1b[38;2;139;87;227mMeeting: daily\x1b[0m | ${SHOWN}`;
 
     async function meetingKit(config: JsonRecord = LIMITED, meeting: Meeting = OPEN_MEETING): Promise<CliHarness> {
@@ -1351,23 +1351,23 @@ describe('teamrig statusline', () => {
       assert.deepEqual(ok(await named.run(['statusline'], { stdin: status(APP), env: { TEAMRIG_SESSION: 'lead' } })), [COLOURED]);
     });
 
-    it("adds the held text to every other tab's line: another session's, or one no session holds", async () => {
+    it("names the meeting on every other tab's line, never held (#1675): another session's, or one no session holds", async () => {
       const kit = await meetingKit();
-      assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP), env: { TEAMRIG_SESSION: 'alpha' } })), [HELD]);
-      assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP) })), [HELD]);
+      assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP), env: { TEAMRIG_SESSION: 'alpha' } })), [OTHER]);
+      assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP) })), [OTHER]);
     });
 
-    it("shows the team's own colour and held text", async () => {
+    it("shows the team's own colour and words before the meeting's title", async () => {
       const kit = await meetingKit({ ...LIMITED, meeting: { statusLine: { colour: '#00ff00', heldText: 'owner meeting' } } });
-      assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP) })), [`${SHOWN}, \x1b[38;2;0;255;0mowner meeting\x1b[0m`]);
+      assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP) })), [`${SHOWN}, \x1b[38;2;0;255;0mowner meeting: daily\x1b[0m`]);
       assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP), env: { TEAMRIG_SESSION: 'lead' } })), [`\x1b[38;2;0;255;0mMeeting: daily\x1b[0m | ${SHOWN}`]);
     });
 
-    it("holds a sub-team's tabs, its own lead's too, by the root team's meeting", async () => {
+    it("names the root team's meeting on a sub-team's tabs, its own lead's too", async () => {
       const kit = await treeHarness();
       await kit.files.write(MEETING_FILE, formatMeeting(OPEN_MEETING));
       const line = ok(await kit.run(['statusline'], { stdin: status(APP), env: { TEAMRIG_TEAM: 'ui', TEAMRIG_SESSION: 'lead' } }));
-      assert.match(line.join('\n'), /^Opus 5\.5, .*, \x1b\[38;2;139;87;227mmeeting on: held\x1b\[0m$/);
+      assert.match(line.join('\n'), /^Opus 5\.5, .*, \x1b\[38;2;139;87;227mowner in meeting: daily\x1b\[0m$/);
     });
 
     it('marks nothing once the meeting ended, or with the marks off', async () => {

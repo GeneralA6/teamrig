@@ -6,7 +6,7 @@ import { isTemporaryName, type Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
 import { MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
 import { CLAUDE_SESSION_ID } from '../inbox/marks.ts';
-import { coloured, meetingLabel, type StatusLineMeeting } from '../meeting/status-line.ts';
+import { coloured, meetingLabel, otherTabLabel, type StatusLineMeeting } from '../meeting/status-line.ts';
 import type { RateLimits, RateWindow, StatusLine, UsageMeter } from '../ports/host/index.ts';
 
 /**
@@ -373,8 +373,8 @@ export function statusLineText(snapshot: StatusSnapshot, view: StatusLineView): 
     parts.push(view.rush);
   }
   const meeting = view.meeting;
-  if (meeting?.kind === 'held') {
-    parts.push(coloured(meeting.text, meeting.colour));
+  if (meeting?.kind === 'other') {
+    parts.push(coloured(otherTabLabel(meeting.text, meeting.title), meeting.colour));
   }
   const text = parts.join(', ');
   return meeting?.kind === 'tab' ? `${coloured(meetingLabel(meeting.title), meeting.colour)} | ${text}` : text;
