@@ -8,7 +8,7 @@ import { CliHarness, TEAM_HOME, type RunOptions } from '../../testing/cli-harnes
 import { normalisePath } from '../../testing/memory-files.ts';
 import { problemsOf, rowsOf, served } from '../../testing/read-answers.ts';
 import { rotateRegister } from '../../testing/rotation.ts';
-import { teamEventsOf, teamHomeOf, treeHarness } from '../../testing/team-tree.ts';
+import { teamConfigOf, teamEventsOf, teamHomeOf, treeHarness } from '../../testing/team-tree.ts';
 import { WatchedFiles } from '../../testing/watched-files.ts';
 import { EXIT } from '../runtime.ts';
 
@@ -143,6 +143,15 @@ describe('teamrig read plan', () => {
     await kit.files.write(join(teamHomeOf('web'), 'state', 'usage', 'back.json'), '{}\n');
     const afterSpend = await revision();
     assert.equal(new Set([first, afterRegister, afterGoal, afterSpend]).size, 4);
+  });
+
+  it('serves the plan beside a team folder whose config cannot be read, and moves its revision when that config is written', async () => {
+    const kit = await needingTheRoot();
+    await kit.files.write(teamConfigOf('torn'), '{ not json');
+    const torn = served(await kit.run(READ_PLAN, AS_WEB));
+    assert.deepEqual([idsOf(torn), problemsOf(torn)], [['T2'], []]);
+    await kit.files.write(teamConfigOf('torn'), '{ still not json, and longer');
+    assert.notEqual(served(await kit.run(READ_PLAN, AS_WEB))['revision'], torn['revision']);
   });
 
   it('holds its revision as the clock runs, and says in validUntil when to ask again', async () => {
