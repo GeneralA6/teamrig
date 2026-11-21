@@ -1,6 +1,41 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { UI_ENV, uiRequest } from './start.ts';
+import { releasedEnv, UI_ENV, uiRequest } from './start.ts';
+
+describe('releasedEnv', () => {
+  it('keeps the paths, terminal, locale and teamrig variables, in any case, and drops the rest', () => {
+    const env = {
+      Path: 'C:\\bin',
+      HOME: '/var/h',
+      USERPROFILE: 'D:\\profile',
+      SystemRoot: 'C:\\Windows',
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+      LANG: 'en_US.UTF-8',
+      LANGUAGE: 'en',
+      LC_ALL: 'C',
+      TEAMRIG_HOME: '/kit',
+      GH_TOKEN: 'secret',
+      AWS_SECRET_ACCESS_KEY: 'secret',
+      NODE_OPTIONS: '--require /x.js',
+      PATHEXT: '.EXE',
+      HOMEDRIVE: 'C:',
+      UNSET: undefined,
+    };
+    assert.deepEqual(releasedEnv(env), {
+      Path: 'C:\\bin',
+      HOME: '/var/h',
+      USERPROFILE: 'D:\\profile',
+      SystemRoot: 'C:\\Windows',
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+      LANG: 'en_US.UTF-8',
+      LANGUAGE: 'en',
+      LC_ALL: 'C',
+      TEAMRIG_HOME: '/kit',
+    });
+  });
+});
 
 const START = { entry: '/pane/out/ui/main.js', node: '/bin/node', script: '/kit/dist/cli/main.js', team: 'app', cwd: '/work/app', env: { PATH: '/bin' } };
 
