@@ -651,8 +651,8 @@ export async function execGuardReply(event: HookEvent, env: ExecGuardEnv): Promi
   reasons.push(...opaque.map((run) => opaqueRefusalOf(run.program)));
   reasons.push(...calls.flatMap(({ call }) => (call.kind === 'owner' ? [ownerRefusalOf(call.action)] : call.kind === 'hook' ? [hookRefusalOf(call.name)] : [])));
   reasons.push(...opaqueOwner.map((words) => ownerRefusalOf(ownerActionOf(words))));
-  reasons.push(...calls.flatMap(({ call }) => (call.kind === 'settings' ? [settingsWriteRefusal(call.command)] : [])));
-  reasons.push(...opaqueSettings.map(settingsWriteRefusal));
+  reasons.push(...calls.flatMap(({ call }) => (call.kind === 'settings' ? [settingsWriteRefusal(call.command, ENV.claudeCode)] : [])));
+  reasons.push(...opaqueSettings.map((command) => settingsWriteRefusal(command, ENV.claudeCode)));
   reasons.push(...opaqueHook.map((words) => hookRefusalOf(hookNameOf(words))));
   const roots = new Set<string>();
   for (const { call, client, at } of calls) {

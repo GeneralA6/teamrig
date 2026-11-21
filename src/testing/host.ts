@@ -32,6 +32,13 @@ export const HOOKS_ONLY_HOST: HostSource = (given) => {
 };
 
 /**
+ * A bare host (`bareHost`) whose sessions are still told: the shipped host's session launcher, and no other port.
+ * For a spec of an act kept for the person on a host lacking the rest: on a wholly bare host no agent's run is told
+ * from theirs, so the act is refused before it reaches what the spec is about.
+ */
+export const SESSIONS_ONLY_HOST: HostSource = (given) => ({ ...bareHost(), launcher: SHIPPED_HOST(given).launcher });
+
+/**
  * The shipped host, telling none of its folders: every other port is the shipped one. For a spec of what a run does
  * with no place of the host known, while its hooks, transcript and usage are still read.
  */

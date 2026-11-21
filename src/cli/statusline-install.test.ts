@@ -5,10 +5,9 @@ import { formatConfig } from '../config/load.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { LAUNCHER_RECORD_FORMAT, launcherRecordPath } from '../restore/launcher-refresh.ts';
 import { LAUNCHER_SCRIPT } from '../statusline/launcher.ts';
-import { bareHost } from '../testing/bare-host.ts';
 import { CliHarness, KIT, USER_HOME } from '../testing/cli-harness.ts';
 import { holderLetsGo, holdFileLock } from '../testing/held-file-lock.ts';
-import { NO_PATHS_HOST } from '../testing/host.ts';
+import { NO_PATHS_HOST, SESSIONS_ONLY_HOST } from '../testing/host.ts';
 import { EXIT } from './runtime.ts';
 
 const SETTINGS = join(USER_HOME, '.claude', 'settings.json');
@@ -108,7 +107,7 @@ describe('teamrig statusline install', () => {
   it('refuses on a host that draws no status line, install and uninstall alike, reading and writing nothing', async () => {
     for (const command of ['install', 'uninstall']) {
       const kit = await withSettings(ORIGINAL);
-      const result = await kit.run(['statusline', command, '--yes'], { host: bareHost });
+      const result = await kit.run(['statusline', command, '--yes'], { host: SESSIONS_ONLY_HOST });
       assert.deepEqual([result.code, result.stdout], [EXIT.refused, ['REFUSED no status line is drawn']], command);
       assert.deepEqual([kit.files.get(SETTINGS), kit.files.get(LAUNCHER)], [ORIGINAL, undefined], command);
     }

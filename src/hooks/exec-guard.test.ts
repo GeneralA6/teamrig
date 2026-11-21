@@ -441,7 +441,7 @@ describe('execGuardReply', () => {
     ] as const) {
       const found = await verdict(payload, quiet);
       assert.equal(found?.decision, 'deny', JSON.stringify(payload));
-      assert.equal(found?.reason, `teamrig exec guard: ${settingsWriteRefusal(command)}`, JSON.stringify(payload));
+      assert.equal(found?.reason, `teamrig exec guard: ${settingsWriteRefusal(command, 'CLAUDECODE')}`, JSON.stringify(payload));
     }
     assert.equal(quiet.reads(), 0);
     assert.equal(quiet.checks(), 0);

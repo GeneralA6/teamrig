@@ -3,6 +3,7 @@ import { ENV, KIT_NAME } from '../core/home.ts';
 import { TEAM_POINTER } from '../core/team.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { isSettingsWriter, settingsWriteRefusal, WRITE_SWITCH } from '../core/settings-writers.ts';
+import { refuseUnlessPerson } from './agent-run.ts';
 import { cutLineMessage, shimArgs } from './cmd-shim.ts';
 import { QUEUE_FLAGS, QUEUE_SWITCHES } from './commands/queue-args.ts';
 import { CommandHelp } from './help.ts';
@@ -1175,11 +1176,13 @@ export const HELP: ReadonlySet<string> = new Set(['help', '--help', '-h']);
 /** The words that print the version; the LLM guide documents them as `teamrig version`. */
 export const VERSION: ReadonlySet<string> = new Set(['version', '--version', '-v']);
 
-/** Refuses a settings writer's write where Claude Code set CLAUDECODE (src/core/settings-writers.ts); its preview runs. */
+/**
+ * Refuses a settings writer's write unless the person runs it (src/core/settings-writers.ts): an agent's run by its
+ * host's mark, and any run on a host that tells none from the person's. Its preview runs.
+ */
 function refuseSettingsWrite(command: string, switches: ReadonlySet<string>, runtime: CliRuntime): void {
-  const claudeCode = runtime.env[ENV.claudeCode];
-  if (claudeCode !== undefined && claudeCode !== '' && switches.has(WRITE_SWITCH) && isSettingsWriter(command)) {
-    throw new RefusedError(settingsWriteRefusal(command));
+  if (switches.has(WRITE_SWITCH) && isSettingsWriter(command)) {
+    refuseUnlessPerson(runtime, `\`${KIT_NAME} ${command} --${WRITE_SWITCH}\``, (mark) => settingsWriteRefusal(command, mark));
   }
 }
 
