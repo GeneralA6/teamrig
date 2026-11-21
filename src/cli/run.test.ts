@@ -168,7 +168,7 @@ describe('runCli: help, version and usage errors', () => {
     const kit = new CliHarness();
     const add = await kit.run(['add', '--help']);
     assert.deepEqual([add.code, add.stdout, add.stderr], [EXIT.ok, [COMMAND_HELP.forCommand('add')], []]);
-    assert.match(add.stdout[0] ?? '', /\n {2}add --title .*\n(?: {6}\[.*\n)+ {6}--description: .*\n {6}\S.*\n {6}--after: .*\n {6}--size: .*\n {6}\S.*\n {6}--type: .*\n(?: {6}\S.*\n)+ {2}add --team /);
+    assert.match(add.stdout[0] ?? '', /\n {2}add --title .*\n(?: {6}\[.*\n)+ {6}--priority: .*\n {6}\S.*\n {6}--description: .*\n {6}\S.*\n {6}--after: .*\n {6}--size: .*\n {6}\S.*\n {6}--type: .*\n(?: {6}\S.*\n)+ {2}add --team /);
     assert.match(add.stdout[0] ?? '', / \[--goals a,b\|none\]\n/, "add's usage names --goals none, which add takes (T1730)");
     assert.deepEqual((await kit.run(['set', 'T1', '-h'])).stdout, [COMMAND_HELP.forCommand('set')]);
     const inbox = await kit.run(['inbox', '--help']);
@@ -186,6 +186,15 @@ describe('runCli: help, version and usage errors', () => {
     assert.deepEqual(COMMAND_HELP.undocumented(), []);
     assert.ok(USAGE.includes(`within ${SHORT_FORM_CHARS.toLocaleString('en-US')} characters`));
     assert.match(USAGE, /\nOne command's help: teamrig <command> --help\.$/);
+  });
+
+  it('names the blocker level wherever add and update take --priority (T4329)', () => {
+    const lines = USAGE.split('\n').filter((line) => /^ {2}(add|update) /.test(line) && line.includes('--priority'));
+    assert.equal(lines.length, 3);
+    for (const line of lines) {
+      assert.match(line, /--priority p<n>\|blocker/);
+    }
+    assert.match(USAGE, /--priority: p0 \(urgent, right now\), a level of register\.priorities, or blocker, above p0/);
   });
 
   it('refuses the renamed --tier on any command and a priority in the old spelling, writing nothing', async () => {
