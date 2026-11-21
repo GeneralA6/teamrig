@@ -137,8 +137,11 @@ describe('pathsOf', () => {
   });
 });
 
-/** The secret files the shipped host adapters name: the lines the guard's defaults held before the hosts told their own. */
-const SHIPPED_SECRET_FILES = ['~/.claude/.credentials.json', '~/.claude/history.jsonl', '**/.claude/settings.local.json'];
+/**
+ * The secret files the shipped host adapters name: the lines the guard's defaults held before the hosts told their
+ * own, then the login in a folder named like Claude Code's own.
+ */
+const SHIPPED_SECRET_FILES = ['~/.claude/.credentials.json', '~/.claude/history.jsonl', '**/.claude/settings.local.json', '**/.claude*/.credentials.json'];
 
 /**
  * The guard's default globs as they stood when it named the hosts' files itself, copied and not computed: under any

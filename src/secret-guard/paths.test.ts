@@ -97,6 +97,21 @@ describe('SecretPaths.listed', () => {
     assert.deepEqual(['/srv/cfg2/history.jsonl', '/srv/CFG*/history.jsonl', '/work/srv/cfg*/history.jsonl'].filter((path) => linux.listed(path)), []);
   });
 
+  it("lists the shipped host's login in a folder named like its own at any depth, and in no other folder", () => {
+    const listed = [`${HOME}/.claude-work/.credentials.json`, `${HOME}/.claude2/.credentials.json`, `${REPO}/.Claude-Old/.credentials.json`, 'D:/accounts/.claude.bak/.credentials.json'];
+    assert.deepEqual(listed.filter((path) => !secrets.listed(path)), []);
+    const readable = [
+      `${REPO}/.credentials.json`,
+      `${REPO}/vendor/agent/.credentials.json`,
+      `${REPO}/claude-work/.credentials.json`,
+      `${HOME}/.claude-work/credentials.json`,
+      `${HOME}/.claude-work/history.jsonl`,
+      `${HOME}/.claude-work/app/.credentials.json`,
+    ];
+    assert.deepEqual(readable.filter((path) => secrets.listed(path)), []);
+    assert.equal(new SecretPaths(testPaths().secretFiles(), '/u', false).listed('/u/.Claude-work/.credentials.json'), false, 'a name in another case is another folder where case counts');
+  });
+
   it('lets a later !glob keep a default readable, and reads Windows paths in any case', () => {
     const team = new SecretPaths([...DEFAULT_SECRET_PATHS, '!**/fixtures/*.pem'], HOME, true);
     assert.equal(team.listed(`${REPO}/test/fixtures/fake.pem`), false);
@@ -150,6 +165,13 @@ describe('SecretPaths.mayName', () => {
     assert.equal(secrets.mayName(`${REPO}/*.ts`, ANY_WORD), false, '*.ts fits .env.* only as .env.ts');
     assert.equal(secrets.mayName(`${REPO}/*.json`, ANY_WORD), false);
     assert.equal(secrets.mayName(`${REPO}/src/*.txt`, ANY_WORD), false);
+  });
+
+  it("counts a word whose wildcard is in the folder's name as naming the shipped host's login, and no word of *.json files in another folder", () => {
+    assert.equal(secrets.mayName(`${HOME}/.claude-w*/.credentials.json`, BASH_WORD), true);
+    assert.equal(secrets.mayName(`${HOME}/.claude?/.credentials.json`, BASH_WORD), true);
+    assert.equal(secrets.mayName(`${REPO}/vendor/agent/*.json`, ANY_WORD), false);
+    assert.equal(secrets.mayName(`${REPO}/src/*.json`, ANY_WORD), false);
   });
 
   it('reads a ripgrep set as reaching a slash, and a negated one as fitting it (T2357)', () => {
