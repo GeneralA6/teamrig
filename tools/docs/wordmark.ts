@@ -1,33 +1,35 @@
 /**
- * The README's name, drawn as a two-tone monospace wordmark: a bold "team" and a lighter accent "rig".
+ * The README's name, drawn as the brand logo's two-tone word: a regular grey "team" and a bold accent "rig", in Open
+ * Sans drawn as paths (./wordmark-glyphs.ts), so every system shows the same letters.
  * An SVG in an <img> follows the viewer's OS colour scheme, not GitHub's theme, so a dark-mode colour inside it can
  * land on a light page. Every colour, the dark scheme's included, is a mid-tone that reads on both of GitHub's
- * backgrounds; the dark scheme only lifts "team" a step, where the light scheme's grey sits dim on a dark page.
+ * backgrounds; the dark scheme lifts each a step, as the brand logo does.
  */
+import { WORDMARK_GLYPHS } from './wordmark-glyphs.ts';
 
-const WORD = { strong: 'team', accent: 'rig' } as const;
-const FONT_SIZE = 34;
-/** A monospace glyph is about 0.6 em wide; `textLength` holds the word to exactly this, whatever font draws it. */
-const CHAR_WIDTH = FONT_SIZE * 0.6;
+const NAME = 'teamrig';
 const HEIGHT = 42;
-const BASELINE = 32;
 
-/** GitHub's muted greys and purple, each readable as large text on white and on GitHub's dark background. */
-export const WORDMARK_COLOURS = { strong: '#6e7781', strongDark: '#8b949e', accent: '#8957e5' } as const;
+/** The brand palette (docs/images/brand/colors.md), each readable as large text on white and on GitHub's dark page. */
+export const WORDMARK_COLOURS = {
+  base: '#6e7781',
+  baseDark: '#8b949e',
+  accent: '#8957e5',
+  accentDark: '#a371f7',
+} as const;
 
 export function renderWordmark(): string {
-  const name = `${WORD.strong}${WORD.accent}`;
-  const width = Math.round(name.length * CHAR_WIDTH);
+  const width = WORDMARK_GLYPHS.width;
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}" role="img" aria-label="${name}">`,
-    `<title>${name}</title>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}" role="img" aria-label="${NAME}">`,
+    `<title>${NAME}</title>`,
     '<style>',
-    `text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:${FONT_SIZE}px}`,
-    `.strong{fill:${WORDMARK_COLOURS.strong};font-weight:700}`,
-    `.accent{fill:${WORDMARK_COLOURS.accent};font-weight:400}`,
-    `@media (prefers-color-scheme:dark){.strong{fill:${WORDMARK_COLOURS.strongDark}}}`,
+    `.base{fill:${WORDMARK_COLOURS.base}}`,
+    `.accent{fill:${WORDMARK_COLOURS.accent}}`,
+    `@media (prefers-color-scheme:dark){.base{fill:${WORDMARK_COLOURS.baseDark}}.accent{fill:${WORDMARK_COLOURS.accentDark}}}`,
     '</style>',
-    `<text x="0" y="${BASELINE}" textLength="${width}" lengthAdjust="spacingAndGlyphs"><tspan class="strong">${WORD.strong}</tspan><tspan class="accent">${WORD.accent}</tspan></text>`,
+    `<path class="base" d="${WORDMARK_GLYPHS.team}"/>`,
+    `<path class="accent" d="${WORDMARK_GLYPHS.rig}"/>`,
     '</svg>',
     '',
   ].join('\n');
