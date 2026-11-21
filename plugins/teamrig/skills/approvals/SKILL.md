@@ -38,14 +38,14 @@ when every line holds:
   migration), or `none foreseen` with why.
 - Its tests are green, the run named in the note, and new behaviour comes with new tests.
 - A changed threshold, limit or trigger can still fire: ask "can this still fire?" and want a test of it firing in
-  the real flow, through whatever resets its count (a compaction, a `/clear`, a restart), not only the comparison.
+  the real flow, through whatever resets its count (a compaction, a context refresh, a restart), not only the comparison.
 - One logical change per commit, each within the size rule or with a `Large-commit:` reason [commits].
 - No unaudited dependency change: a changed manifest or lockfile names the exact versions it resolves and the
   advisories checked.
 - The time: before the team's queue cutoff [delivery.schedule.queueCutoffUtc] when the change needs a
   build or a test run, and outside any no-merge window in the team's rules.
 - Its reach is stated and fits where it lives: work any team using the tool would need goes into the shared tool,
-  with what differs per team in a config key, not into one team's rules or a session's skill. The note or pull request
+  with what differs per team in a config key, not into one team's rules or a session's skill. The note or change request
   says the reach; a narrow reach on generic work, decline asking to move it.
 - Nothing owner-gated inside [ownerGates]: destructive data operations, permissions, budget, resource changes,
   product or design decisions.
