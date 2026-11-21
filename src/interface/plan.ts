@@ -58,12 +58,13 @@ export interface FinishedTask {
 /**
  * Who moves first so a task can finish, on which task: its owner's work, a decision or an approval asked of `who`,
  * the owner again once `at` (ISO in UTC) has come, or (`elsewhere`) the owner of `need`, an unfinished task that `team`'s
- * register holds. `behind` is an in-progress task of the same session it works first. A minor may add a kind, so a
+ * register holds. `at` is null for a stored time that reads as none: a register is also written by hand and by
+ * imports, and a text that is no time is never served as one. `behind` is an in-progress task of the same session it works first. A minor may add a kind, so a
  * reader passes over one it does not know.
  */
 export type ServedMove =
   | { readonly kind: 'work' | 'decision' | 'approval'; readonly who: string; readonly task: string; readonly behind: string | null }
-  | { readonly kind: 'time'; readonly who: string; readonly task: string; readonly behind: string | null; readonly at: string }
+  | { readonly kind: 'time'; readonly who: string; readonly task: string; readonly behind: string | null; readonly at: string | null }
   | { readonly kind: 'elsewhere'; readonly who: string; readonly task: string; readonly team: string; readonly need: string };
 
 /**
@@ -216,7 +217,7 @@ function servedMove(move: NextMove, tree: TaskTree): ServedMove {
     case 'elsewhere':
       return { kind: 'elsewhere', who: move.who, task: move.task.id, team: move.team, need: move.need.id };
     case 'time':
-      return { kind: 'time', who: move.who, task: move.task.id, behind: move.behind?.id ?? null, at: parseDeadline(move.at, tree.zone)?.toISOString() ?? move.at };
+      return { kind: 'time', who: move.who, task: move.task.id, behind: move.behind?.id ?? null, at: parseDeadline(move.at, tree.zone)?.toISOString() ?? null };
     default:
       return { kind: move.kind, who: move.who, task: move.task.id, behind: move.behind?.id ?? null };
   }

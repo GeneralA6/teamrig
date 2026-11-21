@@ -2512,7 +2512,7 @@ Each of `tasks` holds:
 - `next`: who moves first so it can finish, `{ "kind", "who", "task", "behind" }`: the kind is `work` (its owner's),
   `decision` or `approval` (asked of `who`), `task` is the task moved on, and `behind` an in-progress task the same
   session works first, or `null`. The kind `time` adds `at`, the UTC instant the owner moves again at, whatever zone
-  the wait was written in. The kind `elsewhere` is `{ "kind", "who", "task", "team", "need" }`: the owner of `need`,
+  the wait was written in, or `null` for a stored time that reads as none. The kind `elsewhere` is `{ "kind", "who", "task", "team", "need" }`: the owner of `need`,
   an unfinished task `team`'s register holds. `next` is `null` when its needs run in a loop. A minor version may add
   a kind: pass over one you do not know.
 
