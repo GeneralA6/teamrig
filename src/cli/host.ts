@@ -130,11 +130,11 @@ export function secretFilesOf(runtime: Pick<CliRuntime, 'host' | 'shippedHosts' 
 }
 
 /** What a host telling nothing of its sessions tells a run: no part of who it is. */
-const UNTOLD: SessionIdentity = { projectDir: undefined, startedAs: undefined, sessionKind: undefined };
+const UNTOLD: SessionIdentity = { projectDir: undefined, startedAs: undefined, sessionKind: undefined, sessionId: undefined };
 
 /**
- * Who the run's host says this run is: the folder its session started in, how the host was started and the kind of
- * session. It never refuses: on a host that tells nothing of its sessions each part is untold, and a caller goes on
+ * Who the run's host says this run is: the folder its session started in, how the host was started, the kind of
+ * session and the host's id of it. It never refuses: on a host that tells nothing of its sessions each part is untold, and a caller goes on
  * as in a run no session started, by the working folder and what its own input says.
  */
 export function identityOf(runtime: Pick<CliRuntime, 'host' | 'env' | 'platform'>): SessionIdentity {

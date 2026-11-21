@@ -9,6 +9,7 @@ import {
   type HookReply,
   type HostPaths,
   type SessionIdentity,
+  type SessionVariables,
   type ShellCall,
 } from '../ports/host/index.ts';
 import { hostDeps } from './adapter-deps.ts';
@@ -47,8 +48,15 @@ export const NO_SESSION_HOST: HostSource = (given) => ({ ...SHIPPED_HOST(given),
  * ask the host who the run is and read no variable of a host itself.
  */
 export function hostTelling(identity: Partial<SessionIdentity>): HostSource {
-  const told: SessionIdentity = { projectDir: undefined, startedAs: undefined, sessionKind: undefined, ...identity };
-  return (given) => ({ ...SHIPPED_HOST(given), launcher: { identity: () => told } });
+  const told: SessionIdentity = { projectDir: undefined, startedAs: undefined, sessionKind: undefined, sessionId: undefined, ...identity };
+  return (given) => ({ ...SHIPPED_HOST(given), launcher: { variables: testSessionVariables(), identity: () => told } });
+}
+
+/** The session variables the shipped host hands a run: the ones its declaration names. */
+export function testSessionVariables(): SessionVariables {
+  const { launcher } = SHIPPED_HOST({ env: {}, platform: 'linux' });
+  if (isUnsupported(launcher)) throw new Error(`the shipped host tells nothing of its sessions: ${launcher.notice}`);
+  return launcher.variables;
 }
 
 /** The shipped host's paths in the environment `env` on `platform`: where a spec's files are, as a run would be told them. */

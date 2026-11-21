@@ -21,6 +21,11 @@ export interface SessionIdentity {
   readonly startedAs: string | undefined;
   /** The session's kind in the host's own word, kept as told for the same record; undefined when it tells none. */
   readonly sessionKind: string | undefined;
+  /**
+   * The host's own id of the session this run belongs to, which a tab's binding to a session of the team is kept
+   * by; undefined when the host tells none, as in the person's own shell.
+   */
+  readonly sessionId: string | undefined;
 }
 
 /**
@@ -42,6 +47,8 @@ export interface SessionVariables {
 }
 
 export interface SessionLauncher {
+  /** The variables the host tells a run about its session by, the ones its declaration names. */
+  readonly variables: SessionVariables;
   /** Who the host says this run is, in the environment the port was built for. */
   identity(): SessionIdentity;
 }
