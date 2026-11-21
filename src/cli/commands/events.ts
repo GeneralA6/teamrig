@@ -67,15 +67,17 @@ function requestOf(args: ParsedArgs, runtime: CliRuntime): ReadRequest {
   if (!args.switches.has('json')) {
     throw new UsageError('events answers only as JSON in interface 1: add --json');
   }
-  const documents = documentsOf(args.flags.get('documents'));
-  // history and stats are followed at read's defaults (every task, the last 7 days): events takes no --task or --range.
+  const documents = documentsOf(args.flags.get('documents'), args.flags.has('task'));
   return { documents, ...scopeFlagsOf(args, runtime.env), ...documentFlagsOf(args, documents), unless: new Map(), speaks: undefined };
 }
 
-/** `--documents`: the documents to follow, each once; every document of the interface when the flag is not given. */
-function documentsOf(typed: string | undefined): readonly DocumentName[] {
+/**
+ * `--documents`: the documents to follow, each once. With the flag left out, every document of the interface, but
+ * `history` only when `--task` names its task: `history` is one task's, so with no task it would refuse the whole run.
+ */
+function documentsOf(typed: string | undefined, taskNamed: boolean): readonly DocumentName[] {
   if (typed === undefined) {
-    return DOCUMENTS;
+    return taskNamed ? DOCUMENTS : DOCUMENTS.filter((name) => name !== 'history');
   }
   const documents: DocumentName[] = [];
   for (const name of typed.split(',')) {

@@ -2790,12 +2790,17 @@ Flags:
 
 - `--json`: required; interface 1 has no text form.
 - `--documents <document>[,<document>...]`: the documents to follow, each once: `tasks`, `inbox`, `sessions`,
-  `meetings`, `config`. Every one when left out, and then `inbox` needs a session to serve.
+  `meetings`, `config`, `plan`, `goals`, `history`, `stats`. Every one when left out, `history` only when `--task`
+  names its task, and then `inbox` needs a session to serve.
 - `--session <id|name>`: who is asking, which picks whose `inbox` is followed; `$TEAMRIG_SESSION` when left out.
 - `--conversation <id>`: the host's own id of the conversation your program runs in, as `teamrig read` takes it.
-- `--team <id>`: follows a team above yours in your tree instead of your own, for `tasks`, `meetings` and `config`.
+- `--team <id>`: follows a team above yours in your tree instead of your own, for the documents `teamrig read`
+  serves a team above yours.
 - `--owner <id|name>`: the session whose tasks your reads keep.
 - `--since <hours>`: the reach your `inbox` reads ask.
+- `--task <id>`: the one task your `history` reads ask; refused when `history` is not followed.
+- `--range <days>`: the days your `stats` reads count over, `7d` when left out; refused when `stats` is not
+  followed.
 
 Give the follower the flags you give your reads: a revision counts what was asked, so only then are its revisions
 the ones your reads hold.

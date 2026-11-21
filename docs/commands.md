@@ -354,12 +354,13 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       true in place of its body, from its files' stamps alone. --interface: the version you speak,
       refused when this teamrig does not serve it. It writes nothing
   events --json [--documents <document>[,...]] [--session <id|name>] [--conversation <id>] [--team <id>]
-      [--owner <id|name>] [--since <hours>]   the public interface's events side, for a program that
-      starts it and reads its stdout: one JSON line a frame, first hello with every followed
-      document's revision, then a changed frame naming the documents whose revision moved, at most
-      one a second. A frame holds documents and revisions only: read --unless serves what changed.
-      --documents: the documents to follow (every one unless given); the other flags are read's,
-      and so are its refusals, on stderr before the first frame. It ends with exit 0 once the
+      [--owner <id|name>] [--since <hours>] [--task <id>] [--range <days>]   the public interface's
+      events side, for a program that starts it and reads its stdout: one JSON line a frame, first
+      hello with every followed document's revision, then a changed frame naming the documents whose
+      revision moved, at most one a second. A frame holds documents and revisions only: read --unless
+      serves what changed. --documents: the documents to follow (every one unless given, history
+      only with --task); the other flags are read's, and so are its refusals, on stderr before the
+      first frame. It ends with exit 0 once the
       program that started it is gone or reads its stdout no more. It writes nothing
   sessions [--pass] [--project <dir>]   each session: running (and the MB its Claude Code's processes
       hold), closed or never recorded; then the host's free memory and commit charge. --pass: what an

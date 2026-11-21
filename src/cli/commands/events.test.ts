@@ -17,6 +17,8 @@ import { EVENTS_PASS_MS } from './events.ts';
 const EVENTS = ['events', '--json', '--session', 'alpha'] as const;
 const ALPHA_INBOX = teamInboxOf('app', 'alpha');
 const REVISION = /^[0-9a-f]{16}$/;
+/** What a run with no --documents follows: history is one task's, so it is followed only when --task names one. */
+const UNNAMED = DOCUMENTS.filter((document) => document !== 'history');
 
 /** What one wait of the follower does to the world, by the wait's number from 0; a wait with no step changes nothing. */
 type Step = () => Promise<void> | void;
@@ -65,7 +67,7 @@ function revisionIn(frame: JsonRecord | undefined, document: string): unknown {
 }
 
 describe('teamrig events', () => {
-  it('says hello with every document and the revision read answers, then ends with its starter', async () => {
+  it('says hello with every document but history and the revision read answers, then ends with its starter', async () => {
     const kit = new CliHarness();
     const starters = new FakeStarterWatch();
     const { sleep, asked } = waits(starters, []);
@@ -74,8 +76,8 @@ describe('teamrig events', () => {
     const [hello] = frames;
     assert.equal(hello?.['interface'], INTERFACE_VERSION);
     assert.equal(hello?.['event'], 'hello');
-    assert.deepEqual(namedIn(hello), [...DOCUMENTS]);
-    for (const document of DOCUMENTS) {
+    assert.deepEqual(namedIn(hello), UNNAMED);
+    for (const document of UNNAMED) {
       const read = served(await kit.run(['read', document, '--json', '--session', 'alpha']))['revision'];
       assert.match(String(read), REVISION);
       assert.equal(revisionIn(hello, document), read, document);
@@ -176,6 +178,9 @@ describe('teamrig events', () => {
     ['an unknown document', ['events', '--json', '--documents', 'tasks,notes'], /--documents takes <document>\[,<document>\.\.\.\].*got "notes"/],
     ['a document named twice', ['events', '--json', '--documents', 'tasks,tasks'], /--documents names tasks twice/],
     ['an inbox with no session to serve', ['events', '--json'], /inbox is one session's/],
+    ['history named with no task', ['events', '--json', '--documents', 'history'], /history is one task's: name it with --task T<id>/],
+    ['a --task with no history followed', ['events', '--json', '--documents', 'tasks', '--task', 'T1'], /--task names the task history is asked of, and this run does not ask for history/],
+    ['a --range with no stats followed', ['events', '--json', '--documents', 'tasks', '--range', '30d'], /--range names the days stats is counted over, and this run does not ask for stats/],
   ] as const) {
     it(`takes ${what} as a usage error, with no frame`, async () => {
       const kit = new CliHarness();
@@ -185,6 +190,26 @@ describe('teamrig events', () => {
       assert.match(result.stderr.join('\n'), words);
     });
   }
+
+  it('follows history too once --task names the task, with the revision read answers of it', async () => {
+    const kit = new CliHarness();
+    const starters = new FakeStarterWatch();
+    const { sleep } = waits(starters, []);
+    const [hello] = framesOf(await kit.run([...EVENTS, '--task', 'T1'], { starters, sleep }));
+    assert.deepEqual(namedIn(hello), [...DOCUMENTS]);
+    const read = served(await kit.run(['read', 'history', '--json', '--task', 'T1', '--session', 'alpha']))['revision'];
+    assert.match(String(read), REVISION);
+    assert.equal(revisionIn(hello, 'history'), read);
+  });
+
+  it('follows stats over the range --range names, with the revision read answers of that range', async () => {
+    const kit = new CliHarness();
+    const starters = new FakeStarterWatch();
+    const { sleep } = waits(starters, []);
+    const [hello] = framesOf(await kit.run([...EVENTS, '--documents', 'stats', '--range', '30d'], { starters, sleep }));
+    const read = served(await kit.run(['read', 'stats', '--json', '--range', '30d', '--session', 'alpha']))['revision'];
+    assert.equal(revisionIn(hello, 'stats'), read);
+  });
 
   it('keeps the scope it opened: a config edit moves every revision and ends no run', async () => {
     const kit = new CliHarness();
