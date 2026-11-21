@@ -324,16 +324,18 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
   exec run R<n>        runs an approved request once, before its approval expires
   who [<id|name|role|team/id>] the name to message a session by (no argument: every session of yours)
   read <document>... --json [--session <id|name>] [--conversation <id>] [--team <id>] [--owner <id|name>]
-      [--since <hours>] [--unless <document>=<revision>[,...]] [--interface <major.minor>]   the public
-      interface's read side, for a program: each document asked is one JSON line on stdout, in the
-      order asked, with its revision and what could not be served (problems); a refusal goes to
-      stderr, so stdout holds answers only.
+      [--task T<id>] [--since <hours>] [--unless <document>=<revision>[,...]]
+      [--interface <major.minor>]   the public interface's read side, for a program: each document
+      asked is one JSON line on stdout, in the order asked, with its revision and what could not be
+      served (problems); a refusal goes to stderr, so stdout holds answers only.
       Documents: tasks (the register's working set; --owner keeps one session's), plan (the team's
       active tasks in plan order, each with the keys of that order, what it needs, who needs it and
       who moves next, as teamrig's own lists place it; --owner keeps one session's; of another team's
       task only the id, team, owner and status), goals (the goals a task of the team may serve, its
       own and those of the teams above it, the ranked ones first: each one's title, rank, open slice,
-      window and every move of its target day), inbox (--session's own lines, marking none read: the
+      window and every move of its target day), history (every event the register holds of the one
+      task --task names, the oldest first: its creation, each status set, each change of its fields
+      and a move to another team), inbox (--session's own lines, marking none read: the
       unread ones and the read ones of the last --since hours, 24 unless given), sessions (every
       session of your tree of teams: its place, hire, state and unread count; a hire's and a
       retirement's words only for your own team and the teams above it), meetings (the team's
@@ -343,10 +345,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION;
       with the teams of this machine to join).
       --conversation: the host's id of the conversation the program runs in; sessions then names the
       session holding it (self), and inbox serves that session's when no --session is given. --team: a
-      team above yours, for tasks, plan, goals, meetings and config. --unless: the revision you hold
-      of a document asked; one still at that revision is answered with unchanged: true in place of
-      its body, from its files' stamps alone. --interface: the version you speak, refused when this
-      teamrig does not serve it. It writes nothing
+      team above yours, for tasks, plan, goals, history, meetings and config. --task: the one task
+      history is asked of. --unless: the revision you hold of a document asked; one still at that
+      revision is answered with unchanged: true in place of its body, from its files' stamps alone.
+      --interface: the version you speak, refused when this teamrig does not serve it. It writes
+      nothing
   sessions [--pass] [--project <dir>]   each session: running (and the MB its Claude Code's processes
       hold), closed or never recorded; then the host's free memory and commit charge. --pass: what an
       idle pass would close and reopen (one reopen a pass, with room on the host) and why it keeps or
