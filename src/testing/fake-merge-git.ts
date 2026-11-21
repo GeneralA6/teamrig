@@ -83,6 +83,7 @@ export class FakeMergeGit implements MergeGit {
   checkoutFails: string | undefined;
   fastForwardFails: string | undefined;
   resetFails: string | undefined;
+  detachAtFails: string | undefined;
   /** The `core.sshCommand` git's config sets; none by default. */
   sshCommandIs: string | undefined;
   /** The version `git version` names, a git new enough for every read by default; undefined when git could not tell. */
@@ -340,5 +341,13 @@ export class FakeMergeGit implements MergeGit {
       this.heads.set(dir, to);
     }
     return failed(this.resetFails);
+  }
+
+  detachAt(dir: string, ref: string): GitOutcome {
+    this.log.push(`detachAt ${dir} ${ref}`);
+    if (this.detachAtFails === undefined) {
+      this.heads.set(dir, this.commitOf(dir, ref) ?? ref);
+    }
+    return failed(this.detachAtFails);
   }
 }
